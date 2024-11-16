@@ -71,6 +71,28 @@ pub fn uring_runtime<F: Future>(future: F) -> F::Output {
         .start(future)
 }
 
+/// A variant of `uring_runtime` that also registers the fixed buffers with the
+/// Tokio `io_uring` runtime. This is useful for testing purposes, but should
+/// not be used in production code.
+///
+/// Important: cargo tests need to be run single threaded, i.e. `-- --test-threads=1`, as cargo
+/// runs test in parallel by default. We use the `serial_test` crate to explicitly ensure this.
+#[allow(dead_code)]
+pub fn test_uring_runtime<F: Future>(future: F) -> F::Output {
+    tokio_uring::builder()
+        .entries(4)
+        .uring_builder(
+            tokio_uring::uring_builder()
+                .setup_coop_taskrun()
+                .setup_taskrun_flag()
+                .dontfork(),
+        )
+        .start(async {
+            let _ = POOL.register();
+            future.await
+        })
+}
+
 /// Registers a pool of fixed buffers with varying sizes for use in `io_uring` operations.
 /// This should be called once during the initialization of the program right after the start
 /// of the `tokio_uring` runtime.

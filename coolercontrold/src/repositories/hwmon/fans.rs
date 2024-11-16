@@ -540,9 +540,8 @@ fn duty_to_pwm_value(speed_duty: u8) -> u8 {
 /// Tests
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
     use std::path::Path;
-
-    use test_context::{test_context, AsyncTestContext};
     use uuid::Uuid;
 
     use super::*;
@@ -553,299 +552,335 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    impl AsyncTestContext for HwmonFileContext {
-        async fn setup() -> HwmonFileContext {
-            let test_base_path =
-                Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
-                    .to_path_buf();
-            cc_fs::create_dir_all(&test_base_path).unwrap();
-            HwmonFileContext { test_base_path }
-        }
-
-        async fn teardown(self) {
-            cc_fs::remove_dir_all(&self.test_base_path).unwrap();
-        }
+    fn setup() -> HwmonFileContext {
+        let test_base_path =
+            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
+                .to_path_buf();
+        cc_fs::create_dir_all(&test_base_path).unwrap();
+        HwmonFileContext { test_base_path }
     }
 
-    #[tokio::test]
-    async fn find_fan_dir_not_exist() {
-        // given:
-        let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
-        let device_name = "Test Driver".to_string();
-
-        // when:
-        let fans_result = init_fans(&test_base_path, &device_name).await;
-
-        // then:
-        assert!(fans_result.is_err());
-        assert!(fans_result
-            .map_err(|err| err.to_string().contains("No such file or directory"))
-            .unwrap_err());
+    fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn find_fan(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(
-            test_base_path.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-        cc_fs::write(
-            test_base_path.join("fan1_input"),
-            b"3000".to_vec(), // rpm
-        )
-        .await
-        .unwrap();
-        let device_name = "Test Driver".to_string();
+    #[test]
+    #[serial]
+    fn find_fan_dir_not_exist() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
+            let device_name = "Test Driver".to_string();
 
-        // when:
-        let fans_result = init_fans(test_base_path, &device_name).await;
+            // when:
+            let fans_result = init_fans(&test_base_path, &device_name).await;
 
-        // then:
-        // println!("RESULT: {:?}", fans_result);
-        assert!(fans_result.is_ok());
-        let fans = fans_result.unwrap();
-        assert_eq!(fans.len(), 1);
-        assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
-        assert_eq!(fans[0].name, "fan1");
-        assert!(fans[0].pwm_mode_supported.not());
-        assert_eq!(fans[0].pwm_enable_default, None);
-        assert_eq!(fans[0].number, 1);
-        assert!(fans[0].pwm_writable);
+            // then:
+            assert!(fans_result.is_err());
+            assert!(fans_result
+                .map_err(|err| err.to_string().contains("No such file or directory"))
+                .unwrap_err());
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn find_fan_pwm_only(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(
-            test_base_path.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-        let device_name = "Test Driver".to_string();
-
-        // when:
-        let fans_result = init_fans(test_base_path, &device_name).await;
-
-        // then:
-        assert!(fans_result.is_ok());
-        let fans = fans_result.unwrap();
-        assert_eq!(fans.len(), 1);
-        assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
-        assert_eq!(fans[0].name, "fan1");
-        assert!(fans[0].pwm_mode_supported.not());
-        assert_eq!(fans[0].pwm_enable_default, None);
-        assert_eq!(fans[0].number, 1);
-        assert!(fans[0].pwm_writable);
-    }
-
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn find_fan_rpm_only(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(
-            test_base_path.join("fan1_input"),
-            b"3000".to_vec(), // rpm
-        )
-        .await
-        .unwrap();
-        let device_name = "Test Driver".to_string();
-
-        // when:
-        let fans_result = init_fans(test_base_path, &device_name).await;
-
-        // then:
-        // println!("RESULT: {:?}", fans_result);
-        assert!(fans_result.is_ok());
-        let fans = fans_result.unwrap();
-        assert_eq!(fans.len(), 1);
-        assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
-        assert_eq!(fans[0].name, "fan1");
-        assert!(fans[0].pwm_mode_supported.not());
-        assert_eq!(fans[0].pwm_enable_default, None);
-        assert_eq!(fans[0].number, 1);
-        assert!(fans[0].pwm_writable.not());
-    }
-
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_mode(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(
-            test_base_path.join("pwm1_mode"),
-            b"1".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: None,
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: true,
-            pwm_writable: true,
-        };
-
-        // when:
-        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, Some(2)).await;
-
-        // then:
-        let current_pwm_mode = cc_fs::read_sysfs(&test_base_path.join("pwm1_mode"))
+    #[test]
+    #[serial]
+    fn find_fan() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
             .await
             .unwrap();
-        assert!(pwm_mode_result.is_ok());
-        assert_eq!(current_pwm_mode, "2");
+            cc_fs::write(
+                test_base_path.join("fan1_input"),
+                b"3000".to_vec(), // rpm
+            )
+            .await
+            .unwrap();
+            let device_name = "Test Driver".to_string();
+
+            // when:
+            let fans_result = init_fans(test_base_path, &device_name).await;
+
+            // then:
+            // println!("RESULT: {:?}", fans_result);
+            teardown(&ctx);
+            assert!(fans_result.is_ok());
+            let fans = fans_result.unwrap();
+            assert_eq!(fans.len(), 1);
+            assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
+            assert_eq!(fans[0].name, "fan1");
+            assert!(fans[0].pwm_mode_supported.not());
+            assert_eq!(fans[0].pwm_enable_default, None);
+            assert_eq!(fans[0].number, 1);
+            assert!(fans[0].pwm_writable);
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_mode_not_enabled(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: None,
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: false,
-            pwm_writable: true,
-        };
+    #[test]
+    #[serial]
+    fn find_fan_pwm_only() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            let device_name = "Test Driver".to_string();
 
-        // when:
-        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, None).await;
+            // when:
+            let fans_result = init_fans(test_base_path, &device_name).await;
 
-        // then:
-        assert!(pwm_mode_result.is_ok());
+            // then:
+            teardown(&ctx);
+            assert!(fans_result.is_ok());
+            let fans = fans_result.unwrap();
+            assert_eq!(fans.len(), 1);
+            assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
+            assert_eq!(fans[0].name, "fan1");
+            assert!(fans[0].pwm_mode_supported.not());
+            assert_eq!(fans[0].pwm_enable_default, None);
+            assert_eq!(fans[0].number, 1);
+            assert!(fans[0].pwm_writable);
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_enable_to_default(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(test_base_path.join("pwm1_enable"), b"1".to_vec())
+    #[test]
+    #[serial]
+    fn find_fan_rpm_only() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("fan1_input"),
+                b"3000".to_vec(), // rpm
+            )
             .await
             .unwrap();
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: Some(2),
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: true,
-            pwm_writable: true,
-        };
+            let device_name = "Test Driver".to_string();
 
-        // when:
-        let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            // when:
+            let fans_result = init_fans(test_base_path, &device_name).await;
 
-        // then:
-        let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-            .await
-            .unwrap();
-        assert!(result.is_ok());
-        assert_eq!(current_pwm_enable, "2");
+            // then:
+            // println!("RESULT: {:?}", fans_result);
+            teardown(&ctx);
+            assert!(fans_result.is_ok());
+            let fans = fans_result.unwrap();
+            assert_eq!(fans.len(), 1);
+            assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
+            assert_eq!(fans[0].name, "fan1");
+            assert!(fans[0].pwm_mode_supported.not());
+            assert_eq!(fans[0].pwm_enable_default, None);
+            assert_eq!(fans[0].number, 1);
+            assert!(fans[0].pwm_writable.not());
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_enable_to_default_doesnt_exit(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: None,
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: true,
-            pwm_writable: true,
-        };
+    #[test]
+    #[serial]
+    fn test_set_pwm_mode() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("pwm1_mode"),
+                b"1".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: true,
+                pwm_writable: true,
+            };
 
-        // when:
-        let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            // when:
+            let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, Some(2)).await;
 
-        // then:
-        assert!(result.is_ok());
+            // then:
+            let current_pwm_mode = cc_fs::read_sysfs(&test_base_path.join("pwm1_mode"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(pwm_mode_result.is_ok());
+            assert_eq!(current_pwm_mode, "2");
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_duty(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
-            .await
-            .unwrap();
-        cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
-            .await
-            .unwrap();
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: Some(2),
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: false,
-            pwm_writable: true,
-        };
+    #[test]
+    #[serial]
+    fn test_set_pwm_mode_not_enabled() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
 
-        // when:
-        let result = set_pwm_duty(test_base_path, &channel_info, 50).await;
+            // when:
+            let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, None).await;
 
-        // then:
-        let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-            .await
-            .and_then(check_parsing_8)
-            .map(pwm_value_to_duty)
-            .unwrap();
-        let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-            .await
-            .unwrap();
-        assert!(result.is_ok());
-        assert_eq!(format!("{current_duty:.1}"), "50.0");
-        assert_eq!(current_pwm_enable, "1");
+            // then:
+            teardown(&ctx);
+            assert!(pwm_mode_result.is_ok());
+        });
     }
 
-    #[test_context(HwmonFileContext)]
-    #[tokio::test]
-    async fn test_set_pwm_duty_no_pwm_enable(ctx: &mut HwmonFileContext) {
-        // given:
-        let test_base_path = &ctx.test_base_path;
-        cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
-            .await
-            .unwrap();
-        let channel_info = HwmonChannelInfo {
-            hwmon_type: HwmonChannelType::Fan,
-            number: 1,
-            pwm_enable_default: None,
-            name: String::new(),
-            label: None,
-            pwm_mode_supported: false,
-            pwm_writable: true,
-        };
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_to_default() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"1".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: true,
+                pwm_writable: true,
+            };
 
-        // when:
-        let result = set_pwm_duty(test_base_path, &channel_info, 50).await;
+            // when:
+            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
 
-        // then:
-        let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-            .await
-            .and_then(check_parsing_8)
-            .map(pwm_value_to_duty)
-            .unwrap();
-        assert!(result.is_ok());
-        assert_eq!(current_duty.to_string(), "50");
+            // then:
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(current_pwm_enable, "2");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_to_default_doesnt_exit() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: true,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_duty() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result = set_pwm_duty(test_base_path, &channel_info, 50).await;
+
+            // then:
+            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
+                .await
+                .and_then(check_parsing_8)
+                .map(pwm_value_to_duty)
+                .unwrap();
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(format!("{current_duty:.1}"), "50.0");
+            assert_eq!(current_pwm_enable, "1");
+        });
+    }
+
+    #[test]
+    fn test_set_pwm_duty_no_pwm_enable() {
+        cc_fs::test_uring_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result = set_pwm_duty(test_base_path, &channel_info, 50).await;
+
+            // then:
+            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
+                .await
+                .and_then(check_parsing_8)
+                .map(pwm_value_to_duty)
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(current_duty.to_string(), "50");
+        });
     }
 }

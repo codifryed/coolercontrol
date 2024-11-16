@@ -177,59 +177,65 @@ async fn get_temp_channel_name(channel_number: &u8) -> String {
 /// Tests
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use serial_test::serial;
     use std::path::Path;
 
-    use super::*;
+    #[test]
+    #[serial]
+    fn find_temp_dir_not_exist() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
+            let device_name = "Test Driver".to_string();
 
-    #[tokio::test]
-    async fn find_temp_dir_not_exist() {
-        // given:
-        let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
-        let device_name = "Test Driver".to_string();
+            // when:
+            let temps_result = init_temps(&test_base_path, &device_name).await;
 
-        // when:
-        let temps_result = init_temps(&test_base_path, &device_name).await;
-
-        // then:
-        assert!(temps_result.is_err());
-        assert!(temps_result
-            .map_err(|err| err.to_string().contains("No such file or directory"))
-            .unwrap_err());
+            // then:
+            assert!(temps_result.is_err());
+            assert!(temps_result
+                .map_err(|err| err.to_string().contains("No such file or directory"))
+                .unwrap_err());
+        });
     }
 
-    #[tokio::test]
-    async fn find_temp() {
-        // given:
-        let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
-        cc_fs::write(
-            test_base_path.join("temp1_input"),
-            b"30000".to_vec(), // temp
-        )
-        .await
-        .unwrap();
-        cc_fs::write(
-            test_base_path.join("temp1_label"),
-            b"Temp 1".to_vec(), // label
-        )
-        .await
-        .unwrap();
-        let device_name = "Test Driver".to_string();
+    #[test]
+    #[serial]
+    fn find_temp() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
+            cc_fs::create_dir_all(&test_base_path).unwrap();
+            cc_fs::write(
+                test_base_path.join("temp1_input"),
+                b"30000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                test_base_path.join("temp1_label"),
+                b"Temp 1".to_vec(), // label
+            )
+            .await
+            .unwrap();
+            let device_name = "Test Driver".to_string();
 
-        // when:
-        let temps_result = init_temps(&test_base_path, &device_name).await;
+            // when:
+            let temps_result = init_temps(&test_base_path, &device_name).await;
 
-        // then:
-        // println!("RESULT: {:?}", fans_result);
-        cc_fs::remove_dir_all(&test_base_path.parent().unwrap()).unwrap();
-        assert!(temps_result.is_ok());
-        let temps = temps_result.unwrap();
-        assert_eq!(temps.len(), 1);
-        assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
-        assert_eq!(temps[0].name, "temp1");
-        assert_eq!(temps[0].label, Some("Temp 1".to_string()));
-        assert!(!temps[0].pwm_mode_supported);
-        assert_eq!(temps[0].pwm_enable_default, None);
-        assert_eq!(temps[0].number, 1);
+            // then:
+            // println!("RESULT: {:?}", fans_result);
+            cc_fs::remove_dir_all(test_base_path.parent().unwrap()).unwrap();
+            assert!(temps_result.is_ok());
+            let temps = temps_result.unwrap();
+            assert_eq!(temps.len(), 1);
+            assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
+            assert_eq!(temps[0].name, "temp1");
+            assert_eq!(temps[0].label, Some("Temp 1".to_string()));
+            assert!(!temps[0].pwm_mode_supported);
+            assert_eq!(temps[0].pwm_enable_default, None);
+            assert_eq!(temps[0].number, 1);
+        });
     }
 }

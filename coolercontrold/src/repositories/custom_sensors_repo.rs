@@ -711,6 +711,7 @@ mod tests {
     use crate::cc_fs;
     use crate::repositories::custom_sensors_repo::{CustomSensorsRepo, TempData};
     use crate::setting::{CustomSensor, CustomSensorMixFunctionType, CustomSensorType};
+    use serial_test::serial;
     use std::path::Path;
 
     // Calculates the delta between the minimum and maximum temperature values in the given vector of TempData.
@@ -1064,353 +1065,396 @@ mod tests {
         assert_eq!(result, 15.0);
     }
 
-    #[tokio::test]
-    async fn test_file_temp_status_valid() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(
-            &test_file,
-            b"30000".to_vec(), // millidegree temp
-        )
-        .await
-        .unwrap();
-        let cs_name = "test_sensor1".to_string();
-        let sensor = CustomSensor {
-            id: cs_name.clone(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
-
-        // then:
-        assert_eq!(temp.name, cs_name);
-        assert_eq!(temp.temp, 30.);
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_status_invalid() {
-        // given:
-        let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
-        let cs_name = "test_sensor1".to_string();
-        let sensor = CustomSensor {
-            id: cs_name.clone(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
-
-        // then:
-        assert_eq!(temp.name, cs_name);
-        assert_eq!(temp.temp, 0.);
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_valid() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(
-            &test_file,
-            b"30000".to_vec(), // millidegree temp
-        )
-        .await
-        .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
-
-        // then:
-        assert!(temp_result.is_ok());
-        let temp = temp_result.unwrap();
-        assert_eq!(temp, 30.);
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_valid_with_return() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_file, b" 30000\n\r".to_vec())
+    #[test]
+    #[serial]
+    fn test_file_temp_status_valid() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(
+                &test_file,
+                b"30000".to_vec(), // millidegree temp
+            )
             .await
             .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
+            let cs_name = "test_sensor1".to_string();
+            let sensor = CustomSensor {
+                id: cs_name.clone(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_ok());
-        let temp = temp_result.unwrap();
-        assert_eq!(temp, 30.);
+            // then:
+            assert_eq!(temp.name, cs_name);
+            assert_eq!(temp.temp, 30.);
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_not_exist() {
-        // given:
-        let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
-        let sensor = CustomSensor {
-            id: "test_sensor1".to_string(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
+    #[test]
+    #[serial]
+    fn test_file_temp_status_invalid() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
+            let cs_name = "test_sensor1".to_string();
+            let sensor = CustomSensor {
+                id: cs_name.clone(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp = CustomSensorsRepo::process_custom_sensor_data_file_current(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("File not found"))
-            .unwrap_err());
+            // then:
+            assert_eq!(temp.name, cs_name);
+            assert_eq!(temp.temp, 0.);
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_not_present() {
-        // given:
-        let sensor = CustomSensor {
-            id: "test_sensor1".to_string(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: None,
-        };
-
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
-
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err
-                .to_string()
-                .contains("File path not present for custom sensor"))
-            .unwrap_err());
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_invalid_out_of_range_1() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(
-            &test_file,
-            b"-1000".to_vec(), // millidegree temp
-        )
-        .await
-        .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
-
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err
-                .to_string()
-                .contains("File does not contain a reasonable temperature"))
-            .unwrap_err());
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_invalid_out_of_range_2() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(
-            &test_file,
-            b"1000000".to_vec(), // millidegree temp
-        )
-        .await
-        .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
-
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err
-                .to_string()
-                .contains("File does not contain a reasonable temperature"))
-            .unwrap_err());
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_invalid_format() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
-
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
-
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("invalid digit"))
-            .unwrap_err());
-    }
-
-    #[tokio::test]
-    async fn test_file_temp_invalid_too_large_for_i32() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
+    #[test]
+    #[serial]
+    fn test_file_temp_valid() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(
+                &test_file,
+                b"30000".to_vec(), // millidegree temp
+            )
             .await
             .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file.clone()),
-        };
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("number too large"))
-            .unwrap_err());
+            // then:
+            assert!(temp_result.is_ok());
+            let temp = temp_result.unwrap();
+            assert_eq!(temp, 30.);
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_invalid_file_size_too_large() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(
-            &test_file,
-            b"100000000000000000000000000000000000000000000000000000000000000000000000000".to_vec(),
-        )
-        .await
-        .unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file.clone()),
-        };
+    #[test]
+    #[serial]
+    fn test_file_temp_valid_with_return() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b" 30000\n\r".to_vec())
+                .await
+                .unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
-        // then:
-        // println!("{temp_result:?}");
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("File size too large"))
-            .unwrap_err());
+            // then:
+            assert!(temp_result.is_ok());
+            let temp = temp_result.unwrap();
+            assert_eq!(temp, 30.);
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_invalid_number_format() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
+    #[test]
+    #[serial]
+    fn test_file_temp_not_exist() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
+            let sensor = CustomSensor {
+                id: "test_sensor1".to_string(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("invalid digit"))
-            .unwrap_err());
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("File not found"))
+                .unwrap_err());
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_invalid_empty() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
+    #[test]
+    #[serial]
+    fn test_file_temp_not_present() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let sensor = CustomSensor {
+                id: "test_sensor1".to_string(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: None,
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("empty string"))
-            .unwrap_err());
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err
+                    .to_string()
+                    .contains("File path not present for custom sensor"))
+                .unwrap_err());
+        });
     }
 
-    #[tokio::test]
-    async fn test_file_temp_invalid_blank() {
-        // given:
-        let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
-        let sensor = CustomSensor {
-            id: String::default(),
-            cs_type: CustomSensorType::File,
-            mix_function: CustomSensorMixFunctionType::Min,
-            sources: vec![],
-            file_path: Some(test_file),
-        };
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_out_of_range_1() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(
+                &test_file,
+                b"-1000".to_vec(), // millidegree temp
+            )
+            .await
+            .unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
 
-        // when:
-        let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
-        // then:
-        assert!(temp_result.is_err());
-        assert!(temp_result
-            .map_err(|err| err.to_string().contains("empty string"))
-            .unwrap_err());
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err
+                    .to_string()
+                    .contains("File does not contain a reasonable temperature"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_out_of_range_2() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(
+                &test_file,
+                b"1000000".to_vec(), // millidegree temp
+            )
+            .await
+            .unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err
+                    .to_string()
+                    .contains("File does not contain a reasonable temperature"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_format() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("invalid digit"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_too_large_for_i32() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
+                .await
+                .unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file.clone()),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("number too large"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_file_size_too_large() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(
+                &test_file,
+                b"100000000000000000000000000000000000000000000000000000000000000000000000000"
+                    .to_vec(),
+            )
+            .await
+            .unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file.clone()),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            // println!("{temp_result:?}");
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("File size too large"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_number_format() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("invalid digit"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_empty() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("empty string"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_file_temp_invalid_blank() {
+        cc_fs::test_uring_runtime(async {
+            // given:
+            let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
+            let sensor = CustomSensor {
+                id: String::default(),
+                cs_type: CustomSensorType::File,
+                mix_function: CustomSensorMixFunctionType::Min,
+                sources: vec![],
+                file_path: Some(test_file),
+            };
+
+            // when:
+            let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
+
+            // then:
+            assert!(temp_result.is_err());
+            assert!(temp_result
+                .map_err(|err| err.to_string().contains("empty string"))
+                .unwrap_err());
+        });
     }
 }

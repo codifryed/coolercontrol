@@ -363,9 +363,8 @@ pub struct PciDeviceNames {
 /// Tests
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
     use std::path::Path;
-
-    use test_context::{test_context, AsyncTestContext};
     use uuid::Uuid;
 
     use super::*;
@@ -373,244 +372,277 @@ mod tests {
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct HwmonDeviceContext {
-        base_path: PathBuf,
-        base_path_centos: PathBuf,
+        test_dir: String,
+        hwmon_path: PathBuf,
+        hwmon_path_centos: PathBuf,
         glob_paths: GlobPaths,
     }
 
-    impl AsyncTestContext for HwmonDeviceContext {
-        async fn setup() -> HwmonDeviceContext {
-            let base_path = Path::new(
-                &(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string() + "/hwmon/hwmon1/"),
-            )
-            .to_path_buf();
-            cc_fs::create_dir_all(&base_path).unwrap();
-            let base_path_centos = Path::new(
-                &(TEST_BASE_PATH_STR.to_string()
-                    + &Uuid::new_v4().to_string()
-                    + "/hwmon/hwmon2/device/"),
-            )
-            .to_path_buf();
-            cc_fs::create_dir_all(&base_path_centos).unwrap();
-            let glob_pwm = base_path
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon1", "hwmon*")
-                + "pwm*";
-            let glob_temp = base_path
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon1", "hwmon*")
-                + "temp*";
-            let glob_pwm_centos = base_path_centos
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon2", "hwmon*")
-                + "pwm*";
-            let glob_temp_centos = base_path_centos
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon2", "hwmon*")
-                + "temp*";
-            HwmonDeviceContext {
-                base_path,
-                base_path_centos,
-                glob_paths: GlobPaths {
-                    pwm: glob_pwm,
-                    pwm_centos: glob_pwm_centos,
-                    temp: glob_temp,
-                    temp_centos: glob_temp_centos,
-                },
-            }
-        }
-
-        async fn teardown(self) {
-            cc_fs::remove_dir_all(&self.base_path).unwrap();
+    fn setup() -> HwmonDeviceContext {
+        let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
+        let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
+        let base_path_centos_str = test_dir.clone() + "/hwmon/hwmon2/device/";
+        let hwmon_path = Path::new(&base_path_str).to_path_buf();
+        let hwmon_path_centos = Path::new(&base_path_centos_str).to_path_buf();
+        cc_fs::create_dir_all(&hwmon_path).unwrap();
+        cc_fs::create_dir_all(&hwmon_path_centos).unwrap();
+        let glob_pwm = hwmon_path
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon1", "hwmon*")
+            + "pwm*";
+        let glob_temp = hwmon_path
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon1", "hwmon*")
+            + "temp*";
+        let glob_pwm_centos = hwmon_path_centos
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon2", "hwmon*")
+            + "pwm*";
+        let glob_temp_centos = hwmon_path_centos
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon2", "hwmon*")
+            + "temp*";
+        HwmonDeviceContext {
+            test_dir,
+            hwmon_path,
+            hwmon_path_centos,
+            glob_paths: GlobPaths {
+                pwm: glob_pwm,
+                pwm_centos: glob_pwm_centos,
+                temp: glob_temp,
+                temp_centos: glob_temp_centos,
+            },
         }
     }
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_device_empty(ctx: &mut HwmonDeviceContext) {
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // then:
-        assert!(hwmon_paths.is_empty());
+    fn teardown(ctx: &HwmonDeviceContext) {
+        cc_fs::remove_dir_all(&ctx.test_dir).unwrap();
     }
 
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
+    #[test]
+    #[serial]
+    fn find_device_empty() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
+            // then:
+            teardown(&ctx);
+            assert!(hwmon_paths.is_empty());
+        });
     }
 
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            &ctx.base_path.join("temp1"),
-            b"70000".to_vec(), // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path_centos.join("temp1"),
-            b"70000".to_vec(), // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_centos_and_temp_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-        cc_fs::write(
-            ctx.base_path.join("temp1"),
-            b"70000".to_vec(), // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_and_temp_centos_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-        cc_fs::write(
-            ctx.base_path_centos.join("temp1"),
-            b"70000".to_vec(), // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-
-        cc_fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127".to_vec(), // duty
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        cc_fs::write(ctx.base_path.join("temp1"), b"70000".to_vec())
+    #[test]
+    #[serial]
+    fn find_pwm_device() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
             .await
             .unwrap();
 
-        cc_fs::write(ctx.base_path_centos.join("temp1"), b"70000".to_vec())
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_device_centos() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
             .await
             .unwrap();
 
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                &ctx.hwmon_path.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device_centos() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_centos_and_temp_device() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                ctx.hwmon_path.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    // #[test_context(HwmonDeviceContext)]
+    #[test]
+    #[serial]
+    fn find_pwm_and_temp_centos_device() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_device_norm_and_centos() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device_norm_and_centos() {
+        let ctx = setup();
+        cc_fs::test_uring_runtime(async {
+            // given:
+            cc_fs::write(ctx.hwmon_path.join("temp1"), b"70000".to_vec())
+                .await
+                .unwrap();
+
+            cc_fs::write(ctx.hwmon_path_centos.join("temp1"), b"70000".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
     }
 }
