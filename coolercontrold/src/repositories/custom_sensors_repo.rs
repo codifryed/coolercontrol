@@ -418,14 +418,11 @@ impl CustomSensorsRepo {
     }
 
     async fn get_custom_sensor_file_temp(sensor: &CustomSensor) -> Result<f64> {
-        let path = match sensor.file_path.as_ref() {
-            Some(path) => path,
-            None => {
-                return Err(anyhow!(
-                    "File path not present for custom sensor: {}",
-                    sensor.id
-                ))
-            }
+        let Some(path) = sensor.file_path.as_ref() else {
+            return Err(anyhow!(
+                "File path not present for custom sensor: {}",
+                sensor.id
+            ));
         };
         cc_fs::read_sysfs(path)
             .await
@@ -446,7 +443,7 @@ impl CustomSensorsRepo {
                 }
             }
         }
-        err.into()
+        err
     }
 
     fn verify_file_size(content: String) -> Result<String> {

@@ -21,13 +21,13 @@ use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
-use anyhow::Context;
+use anyhow::{Context, Result};
 use log::{error, info, trace};
+use moro_local::Scope;
 use std::ops::Not;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
-use tokio::spawn;
 use tokio::time::{interval, sleep, timeout};
 
 static LOOP_TICK_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_millis(1000));
@@ -41,14 +41,15 @@ static LCD_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(2)
 /// devices, and checking for changes in the sleep state of the system.
 ///
 /// The main loop will exit when the application receives a termination signal.
-pub async fn run(
+pub async fn run<'s>(
     term_signal: Arc<AtomicBool>,
+    scope: &'s Scope<'s, 's, Result<()>>,
     config: Arc<Config>,
     repos: &Repos,
     settings_controller: Arc<SettingsController>,
     mode_controller: Arc<ModeController>,
-) -> anyhow::Result<()> {
-    let sleep_listener = SleepListener::new()
+) -> Result<()> {
+    let sleep_listener = SleepListener::new(scope)
         .await
         .with_context(|| "Creating DBus Sleep Listener")?;
     let mut interval = interval(*LOOP_TICK_DURATION);
@@ -56,8 +57,9 @@ pub async fn run(
     while !term_signal.load(Ordering::Relaxed) {
         interval.tick().await;
         if sleep_listener.is_preparing_to_sleep().not() {
-            fire_preloads(repos).await;
-            fire_status_snapshots_and_process(repos, &settings_controller, run_lcd_update).await;
+            fire_preloads(repos, scope).await;
+            fire_status_snapshots_and_process(repos, &settings_controller, run_lcd_update, scope)
+                .await;
             run_lcd_update = !run_lcd_update;
         } else if sleep_listener.is_resuming() {
             // delay at least a second to allow the hardware to fully wake up:
@@ -87,10 +89,10 @@ pub async fn run(
 /// Runs the status preload task for every repository individually.
 /// This allows each repository to handle its own timings for its devices and be independent
 /// of the status snapshots that will happen regardless every loop tick.
-async fn fire_preloads(repos: &Repos) {
+async fn fire_preloads<'s>(repos: &'_ Repos, scope: &'s Scope<'s, 's, Result<()>>) {
     for repo in repos.iter() {
         let move_repo = Arc::clone(repo);
-        spawn(async move {
+        scope.spawn(async move {
             trace!(
                 "STATUS PRELOAD triggered for {} repo",
                 move_repo.device_type()
@@ -104,14 +106,15 @@ async fn fire_preloads(repos: &Repos) {
 /// the `process_scheduled_speeds` function on the settings controller. This should be run
 /// separately to ensure that the status snapshots are independently and consistently taken and
 /// used for processing scheduled speeds.
-async fn fire_status_snapshots_and_process(
+async fn fire_status_snapshots_and_process<'s>(
     repos: &Repos,
     settings_controller: &Arc<SettingsController>,
     run_lcd_update: bool,
+    scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     let moved_repos = Arc::clone(repos);
     let moved_settings_controller = Arc::clone(settings_controller);
-    spawn(async move {
+    scope.spawn(async move {
         // sleep used to attempt to place the jobs appropriately in time after preloading,
         // snapshots for all devices should be done at the same time. (this is very fast)
         sleep(*SNAPSHOT_WAIT).await;
@@ -122,7 +125,7 @@ async fn fire_status_snapshots_and_process(
                 error!("Error trying to update status: {err}");
             }
         }
-        fire_lcd_update(&moved_settings_controller, run_lcd_update).await;
+        fire_lcd_update(&moved_settings_controller, run_lcd_update, scope).await;
         moved_settings_controller.process_scheduled_speeds().await;
     });
 }
@@ -133,7 +136,11 @@ async fn fire_status_snapshots_and_process(
 /// time out to avoid jobs from pilling up.
 ///
 /// Due to the long-running time of this function, it will be called every other loop tick.
-async fn fire_lcd_update(settings_controller: &Arc<SettingsController>, run_lcd_update: bool) {
+async fn fire_lcd_update<'s>(
+    settings_controller: &Arc<SettingsController>,
+    run_lcd_update: bool,
+    scope: &'s Scope<'s, 's, Result<()>>,
+) {
     if run_lcd_update.not()
         || settings_controller
             .lcd_commander
@@ -145,7 +152,7 @@ async fn fire_lcd_update(settings_controller: &Arc<SettingsController>, run_lcd_
         return;
     }
     let moved_lcd_processor = Arc::clone(&settings_controller.lcd_commander);
-    spawn(async move {
+    scope.spawn(async move {
         if timeout(*LCD_TIMEOUT, moved_lcd_processor.update_lcd())
             .await
             .is_err()

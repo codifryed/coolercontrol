@@ -201,13 +201,12 @@ pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
 
 /// Returns the device serial number if found.
 pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    match cc_fs::read_sysfs(device_path(base_path).join("serial")).await {
-        Ok(serial) => Some(serial.trim().to_string()),
-        Err(_) => {
-            // usb hid serial numbers are here:
-            let device_details = get_device_uevent_details(base_path).await;
-            device_details.get("HID_UNIQ").map(ToString::to_string)
-        }
+    if let Ok(serial) = cc_fs::read_sysfs(device_path(base_path).join("serial")).await {
+        Some(serial.trim().to_string())
+    } else {
+        // usb hid serial numbers are here:
+        let device_details = get_device_uevent_details(base_path).await;
+        device_details.get("HID_UNIQ").map(ToString::to_string)
     }
 }
 

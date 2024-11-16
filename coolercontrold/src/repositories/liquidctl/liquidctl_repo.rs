@@ -671,32 +671,29 @@ impl Repository for LiquidctlRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-
-        let mut tasks = Vec::new();
-        for device_lock in self.devices.values() {
-            let self_c = Arc::clone(&self);
-            let device_lock = Arc::clone(device_lock);
-            let join_handle = tokio::task::spawn(async move {
-                let device_id = device_lock.read().await.type_index;
-                match self_c.call_status(&device_id).await {
-                    Ok(status) => {
-                        self_c
-                            .preloaded_statuses
-                            .write()
-                            .await
-                            .insert(device_id, status);
+        moro_local::async_scope!(|scope| {
+            for device_lock in self.devices.values() {
+                let self_c = Arc::clone(&self);
+                let device_lock = Arc::clone(device_lock);
+                scope.spawn(async move {
+                    let device_id = device_lock.read().await.type_index;
+                    match self_c.call_status(&device_id).await {
+                        Ok(status) => {
+                            self_c
+                                .preloaded_statuses
+                                .write()
+                                .await
+                                .insert(device_id, status);
+                        }
+                        // this leaves the previous status in the map as backup for temporary issues
+                        Err(err) => {
+                            error!("Error getting status from device #{}: {}", device_id, err);
+                        }
                     }
-                    // this leaves the previous status in the map as backup for temporary issues
-                    Err(err) => error!("Error getting status from device #{}: {}", device_id, err),
-                }
-            });
-            tasks.push(join_handle);
-        }
-        for task in tasks {
-            if let Err(err) = task.await {
-                error!("{}", err);
+                });
             }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()

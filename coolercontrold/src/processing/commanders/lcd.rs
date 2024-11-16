@@ -28,7 +28,6 @@ use tiny_skia::{
     PremultipliedColorU8, Rect, SpreadMode, Transform,
 };
 use tokio::sync::RwLock;
-use tokio::task;
 use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
@@ -223,21 +222,19 @@ impl LcdCommander {
             .unwrap()
             .image_template
             .clone();
-        let generate_image = task::spawn_blocking(move || {
-            self_clone.generate_single_temp_image(&temp_data, image_template)
-        });
-        let (image_path, image_template) = match generate_image.await {
-            Ok(image_data_result) => match image_data_result {
-                Ok(image_data) => image_data,
-                Err(err) => {
-                    error!("Error generating image for lcd scheduler: {}", err);
-                    return;
-                }
-            },
-            Err(err) => {
-                error!("Error running image generation task: {}", err);
-                return;
-            }
+        let generate_image =
+            moro_local::async_scope!(|scope| -> Result<(String, Option<Image<Rgba>>)> {
+                scope
+                    .spawn(async move {
+                        self_clone.generate_single_temp_image(&temp_data, image_template)
+                    })
+                    .await
+            })
+            .await;
+        let Ok((image_path, image_template)) = generate_image
+            .inspect_err(|err| error!("Error generating image for lcd scheduler: {}", err))
+        else {
+            return;
         };
 
         let last_temp_set = self
@@ -334,6 +331,7 @@ impl LcdCommander {
         now = Instant::now();
 
         let image_path = Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_SINGLE_TEMP);
+        // std blocking save being used here:
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
             return Err(anyhow!("{}", e.to_string()));
         }

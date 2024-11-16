@@ -46,6 +46,7 @@ pub use self::open::*;
 
 use anyhow::{Context, Result};
 use std::cell::LazyCell;
+use std::future::Future;
 use std::iter;
 use std::ops::Deref;
 use tokio_uring::buf::fixed::FixedBufPool;
@@ -54,6 +55,21 @@ const SENSORS_POOL_SIZE: usize = 50;
 const OTHER_POOL_SIZE: usize = 2;
 
 static POOL: BufferPool = BufferPool::create();
+
+/// Initialize and run the Tokio `io_uring` runtime.
+///
+/// `io_uring` requires at least Kernel 5.11, and our optimization flags require 5.19.
+pub fn uring_runtime<F: Future>(future: F) -> F::Output {
+    tokio_uring::builder()
+        .entries(256)
+        .uring_builder(
+            tokio_uring::uring_builder()
+                .setup_coop_taskrun()
+                .setup_taskrun_flag()
+                .dontfork(),
+        )
+        .start(future)
+}
 
 /// Registers a pool of fixed buffers with varying sizes for use in `io_uring` operations.
 /// This should be called once during the initialization of the program right after the start

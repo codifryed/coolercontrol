@@ -385,29 +385,24 @@ impl Repository for HwmonRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-
-        let mut tasks = Vec::new();
-        for (device_lock, driver) in self.devices.values() {
-            let self_c = Arc::clone(&self);
-            let device_lock = Arc::clone(device_lock);
-            let driver = Arc::clone(driver);
-            let join_handle = tokio::task::spawn(async move {
-                let device_id = device_lock.read().await.type_index;
-                self_c.preloaded_statuses.write().await.insert(
-                    device_id,
-                    (
-                        fans::extract_fan_statuses(&driver).await,
-                        temps::extract_temp_statuses(&driver).await,
-                    ),
-                );
-            });
-            tasks.push(join_handle);
-        }
-        for task in tasks {
-            if let Err(err) = task.await {
-                error!("{}", err);
+        moro_local::async_scope!(|scope| {
+            for (device_lock, driver) in self.devices.values() {
+                let self_c = Arc::clone(&self);
+                let device_lock = Arc::clone(device_lock);
+                let driver = Arc::clone(driver);
+                scope.spawn(async move {
+                    let device_id = device_lock.read().await.type_index;
+                    self_c.preloaded_statuses.write().await.insert(
+                        device_id,
+                        (
+                            fans::extract_fan_statuses(&driver).await,
+                            temps::extract_temp_statuses(&driver).await,
+                        ),
+                    );
+                });
             }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()

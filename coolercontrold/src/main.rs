@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use std::collections::HashMap;
-use std::future::Future;
 use std::ops::Add;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -33,7 +32,6 @@ use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::spawn;
 use tokio::time::sleep;
 
 use crate::config::Config;
@@ -100,7 +98,7 @@ fn main() -> Result<()> {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
     let term_signal = setup_term_signal()?;
-    uring_runtime(async {
+    cc_fs::uring_runtime(async {
         cc_fs::register_uring_buffers()?;
         let config = Arc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
@@ -126,50 +124,40 @@ fn main() -> Result<()> {
         );
         mode_controller.handle_settings_at_boot().await;
 
-        match api::init_server(
-            all_devices,
-            settings_controller.clone(),
-            config.clone(),
-            custom_sensors_repo,
-            mode_controller.clone(),
-        )
+        moro_local::async_scope!(|scope_main| -> Result<()> {
+            match api::init_server(
+                all_devices,
+                settings_controller.clone(),
+                config.clone(),
+                custom_sensors_repo,
+                mode_controller.clone(),
+            )
+            .await
+            {
+                Ok(server) => {
+                    scope_main.spawn(server);
+                }
+                Err(err) => error!("Error initializing API Server: {err}"),
+            };
+
+            // give concurrent services a moment to come up:
+            sleep(Duration::from_millis(10)).await;
+            set_cpu_affinity()?;
+            info!("Initialization Complete");
+            main_loop::run(
+                term_signal,
+                scope_main,
+                config.clone(),
+                &repos,
+                settings_controller,
+                mode_controller,
+            )
+            .await?;
+            shutdown(repos, config).await?;
+            scope_main.terminate(Ok(())).await
+        })
         .await
-        {
-            Ok(server) => {
-                spawn(server);
-            }
-            Err(err) => error!("Error initializing API Server: {err}"),
-        };
-
-        // give concurrent services a moment to come up:
-        sleep(Duration::from_millis(10)).await;
-        set_cpu_affinity()?;
-        info!("Initialization Complete");
-        main_loop::run(
-            term_signal,
-            config.clone(),
-            &repos,
-            settings_controller,
-            mode_controller,
-        )
-        .await?;
-        shutdown(repos, config).await
     })
-}
-
-/// Run the given future on a Tokio `io_uring` runtime.
-///
-/// `io_uring` requires at least Kernel 5.11, and our optimization flags require 5.19.
-fn uring_runtime<F: Future>(future: F) -> F::Output {
-    tokio_uring::builder()
-        .entries(256)
-        .uring_builder(
-            tokio_uring::uring_builder()
-                .setup_coop_taskrun()
-                .setup_taskrun_flag()
-                .dontfork(),
-        )
-        .start(future)
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -249,7 +237,7 @@ fn exit_successfully() {
 }
 
 /// Some hardware needs additional time to come up and be ready to communicate.
-/// Additionally we always add a short pause here to at least allow the liqctld service to come up.
+/// Additionally, we always add a short pause here to at least allow the `liqctld` service to come up.
 async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
     sleep(
         config

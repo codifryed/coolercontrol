@@ -124,6 +124,8 @@ impl LiqctldClient {
                 }
             };
             // keeps the connection open and drives http requests
+            // Tokio::task::spawn here is preferred as we can abort() individual futures
+            // and since it's only for the hyper Connection, is fine to use here.
             let connection_handle = tokio::task::spawn(async move {
                 if let Err(err) = connection.await {
                     error!("Unexpected Error: Connection to socket failed: {:?}", err);
@@ -215,14 +217,11 @@ impl LiqctldClient {
             // If we run out of connections or timeout, this will return Err:
             let (c_index, c_lock) = self.get_socket_connection().await?;
             let mut c_write_lock = c_lock.write().await;
-            let response = match c_write_lock.sender.send_request(request.clone()).await {
-                Ok(res) => res,
-                Err(_) => {
-                    debug!("Socket Connection no longer valid. Closing.");
-                    c_write_lock.connection_handle.abort();
-                    self.connection_pool.write().await.remove(c_index);
-                    continue;
-                }
+            let Ok(response) = c_write_lock.sender.send_request(request.clone()).await else {
+                debug!("Socket Connection no longer valid. Closing.");
+                c_write_lock.connection_handle.abort();
+                self.connection_pool.write().await.remove(c_index);
+                continue;
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
             return Ok(serde_json::from_str(&lc_response.body)?);
@@ -398,7 +397,7 @@ impl LiqctldClient {
     /// * `temperature_sensor`: The `temperature_sensor` parameter is an optional parameter that
     /// represents the temperature sensor to be used for the speed profile. It is of type `Option<u8>`,
     /// which means it can either be `Some(u8)` where `u8` is the index of the temperature sensor, or
-    /// `None
+    /// `None`.
     ///
     /// Returns:
     ///
@@ -437,7 +436,7 @@ impl LiqctldClient {
     /// "solid", "fade", "blink", etc. The specific modes available may depend on the device or library
     /// * `colors`: The `colors` parameter is a vector of tuples representing RGB color values. Each
     /// tuple consists of three `u8` values representing the red, green, and blue components of the
-    /// color. For example, `(255, 0, 0)` represents the color red, `(0, 255
+    /// color. For example, `(255, 0, 0)` represents the color red.
     /// * `time_per_color`: The `time_per_color` parameter is an optional parameter that specifies the
     /// duration (in seconds) for which each color in the `colors` vector should be displayed. If this
     /// parameter is not provided, the default duration will be used.
@@ -575,7 +574,7 @@ pub struct DevicesResponse {
 pub struct DeviceResponse {
     pub id: u8,
     pub description: String,
-    /// Also called DriverName
+    /// Also called `DriverName`
     pub device_type: String,
     pub serial_number: Option<String>,
     pub properties: DeviceProperties,

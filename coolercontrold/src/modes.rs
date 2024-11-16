@@ -24,9 +24,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
+use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::api::CCError;
@@ -279,49 +279,44 @@ impl ModeController {
             return Ok(());
         }
 
-        let mut apply_settings_tasks = Vec::new();
-        for device_uid in self.all_devices.keys() {
-            if mode.all_device_settings.contains_key(device_uid).not() {
-                self.reset_device_settings(&mut apply_settings_tasks, device_uid)
-                    .await?;
-                continue;
+        moro_local::async_scope!(|scope| -> Result<()> {
+            for device_uid in self.all_devices.keys() {
+                if mode.all_device_settings.contains_key(device_uid).not() {
+                    self.reset_device_settings(device_uid, scope).await?;
+                    continue;
+                }
+                let mut settings_tuples = Vec::new();
+                for setting in self.config.get_device_settings(device_uid).await? {
+                    settings_tuples.push((setting.channel_name.clone(), setting));
+                }
+                let saved_device_settings_map: HashMap<ChannelName, Setting> =
+                    settings_tuples.into_iter().collect();
+                let mode_device_settings = mode.all_device_settings.get(device_uid).unwrap();
+                self.reset_unset_mode_channels(
+                    device_uid,
+                    &saved_device_settings_map,
+                    mode_device_settings,
+                    scope,
+                );
+                self.apply_mode_channel_settings(
+                    device_uid,
+                    &saved_device_settings_map,
+                    mode_device_settings,
+                    scope,
+                );
             }
-            let saved_device_settings_map: HashMap<ChannelName, Setting> = self
-                .config
-                .get_device_settings(device_uid)
-                .await?
-                .into_iter()
-                .map(|setting| (setting.channel_name.clone(), setting))
-                .collect();
-            let mode_device_settings = mode.all_device_settings.get(device_uid).unwrap();
-            self.reset_unset_mode_channels(
-                &mut apply_settings_tasks,
-                device_uid,
-                &saved_device_settings_map,
-                mode_device_settings,
-            );
-            self.apply_mode_channel_settings(
-                &mut apply_settings_tasks,
-                device_uid,
-                &saved_device_settings_map,
-                mode_device_settings,
-            );
-        }
-        // Wait for all tasks to complete before saving
-        for task in apply_settings_tasks {
-            if let Err(err) = task.await {
-                error!("{err}");
-            }
-        }
+            Ok(())
+        })
+        .await?;
         self.config.save_config_file().await?;
         debug!("Mode applied: {}", mode.name);
         Ok(())
     }
 
-    async fn reset_device_settings(
+    async fn reset_device_settings<'s>(
         &self,
-        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
         device_uid: &DeviceUID,
+        scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Result<()> {
         let saved_device_settings = self.config.get_device_settings(device_uid).await?;
         for setting in saved_device_settings {
@@ -334,7 +329,7 @@ impl ModeController {
                 reset_to_default: Some(true),
                 ..Default::default()
             };
-            apply_settings_tasks.push(tokio::spawn(async move {
+            scope.spawn(async move {
                 debug!("Applying RESET Mode Setting: {reset_setting:?} to device: {device_uid}");
                 if let Err(err) = settings_controller
                     .set_reset(&device_uid, &channel_name)
@@ -343,17 +338,17 @@ impl ModeController {
                     error!("Error setting device setting: {err}");
                 }
                 config.set_device_setting(&device_uid, &reset_setting).await;
-            }));
+            });
         }
         Ok(())
     }
 
-    fn reset_unset_mode_channels(
+    fn reset_unset_mode_channels<'s>(
         &self,
-        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
         device_uid: &DeviceUID,
         saved_device_settings_map: &HashMap<ChannelName, Setting>,
         mode_device_settings: &HashMap<ChannelName, Setting>,
+        scope: &'s Scope<'s, 's, Result<()>>,
     ) {
         for saved_setting_channel_name in saved_device_settings_map.keys() {
             if mode_device_settings
@@ -371,7 +366,7 @@ impl ModeController {
                     reset_to_default: Some(true),
                     ..Default::default()
                 };
-                apply_settings_tasks.push(tokio::spawn(async move {
+                scope.spawn(async move {
                     debug!("Applying Mode Setting: {reset_setting:?} to device: {device_uid}");
                     if let Err(err) = settings_controller
                         .set_reset(&device_uid, &channel_name)
@@ -380,17 +375,17 @@ impl ModeController {
                         error!("Error setting device setting: {err}");
                     }
                     config.set_device_setting(&device_uid, &reset_setting).await;
-                }));
+                });
             }
         }
     }
 
-    fn apply_mode_channel_settings(
+    fn apply_mode_channel_settings<'s>(
         &self,
-        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
         device_uid: &DeviceUID,
         saved_device_settings_map: &HashMap<ChannelName, Setting>,
         mode_device_settings: &HashMap<ChannelName, Setting>,
+        scope: &'s Scope<'s, 's, Result<()>>,
     ) {
         for (channel_name, setting) in mode_device_settings {
             if saved_device_settings_map
@@ -403,7 +398,7 @@ impl ModeController {
             let config = Arc::clone(&self.config);
             let device_uid = device_uid.clone();
             let setting = setting.clone();
-            apply_settings_tasks.push(tokio::spawn(async move {
+            scope.spawn(async move {
                 debug!("Applying Mode Setting: {setting:?} to device: {device_uid}");
                 if let Err(err) = settings_controller
                     .set_config_setting(&device_uid, &setting)
@@ -414,7 +409,7 @@ impl ModeController {
                 }
                 debug!("Device Setting Applied: {setting:?}");
                 config.set_device_setting(&device_uid, &setting).await;
-            }));
+            });
         }
     }
 

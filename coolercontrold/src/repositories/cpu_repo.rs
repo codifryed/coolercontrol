@@ -641,35 +641,30 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-
-        let mut tasks = Vec::new();
         let mut cpu_freqs = Self::collect_freq().await;
-        for (device_lock, driver) in self.devices.values() {
-            let self_c = Arc::clone(&self);
-            let device_id = device_lock.read().await.type_index;
-            let physical_id = device_id - 1;
-            let mut cpu_freq = HashMap::new();
-            if let Some(freq) = cpu_freqs.remove(&physical_id) {
-                cpu_freq.insert(physical_id, freq);
+        moro_local::async_scope!(|scope| {
+            for (device_lock, driver) in self.devices.values() {
+                let self_c = Arc::clone(&self);
+                let device_id = device_lock.read().await.type_index;
+                let physical_id = device_id - 1;
+                let mut cpu_freq = HashMap::new();
+                if let Some(freq) = cpu_freqs.remove(&physical_id) {
+                    cpu_freq.insert(physical_id, freq);
+                }
+                let driver = Arc::clone(driver);
+                scope.spawn(async move {
+                    let (channels, temps) = self_c
+                        .request_status(&physical_id, &driver, &mut cpu_freq)
+                        .await;
+                    self_c
+                        .preloaded_statuses
+                        .write()
+                        .await
+                        .insert(device_id, (channels, temps));
+                });
             }
-            let driver = Arc::clone(driver);
-            let join_handle = tokio::task::spawn(async move {
-                let (channels, temps) = self_c
-                    .request_status(&physical_id, &driver, &mut cpu_freq)
-                    .await;
-                self_c
-                    .preloaded_statuses
-                    .write()
-                    .await
-                    .insert(device_id, (channels, temps));
-            });
-            tasks.push(join_handle);
-        }
-        for task in tasks {
-            if let Err(err) = task.await {
-                error!("{}", err);
-            }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()

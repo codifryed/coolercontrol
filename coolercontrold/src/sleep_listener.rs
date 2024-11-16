@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use log::info;
+use moro_local::Scope;
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
 
@@ -29,8 +30,8 @@ pub struct SleepListener {
     resuming: Arc<AtomicBool>,
 }
 
-impl SleepListener {
-    pub async fn new() -> Result<Self> {
+impl<'s> SleepListener {
+    pub async fn new(scope: &'s Scope<'s, 's, Result<()>>) -> Result<Self> {
         let conn = Connection::system()
             .await
             .with_context(|| "Connecting to DBUS. If this errors out DBus might not be running")?;
@@ -48,7 +49,7 @@ impl SleepListener {
 
         let cloned_going_to_sleep = Arc::clone(&preparing_to_sleep);
         let cloned_resuming = Arc::clone(&resuming);
-        tokio::spawn(async move {
+        scope.spawn(async move {
             while let Some(msg) = sleep_signal.next().await {
                 let body = msg.body();
                 let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking

@@ -24,9 +24,9 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::{debug, error, info, trace, warn};
+use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::Config;
@@ -95,14 +95,13 @@ impl GpuRepo {
         }
     }
 
-    pub async fn load_amd_statuses(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
-        // todo: refactor handling concurrent access to Self and logic for gpus
+    pub async fn load_amd_statuses<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
                 let self_ref = Arc::clone(&self);
                 let amd_driver = Arc::clone(amd_driver);
-                let join_handle = tokio::task::spawn(async move {
+                scope.spawn(async move {
                     let statuses = self_ref.gpus_amd.get_amd_status(&amd_driver).await;
                     self_ref
                         .gpus_amd
@@ -111,18 +110,17 @@ impl GpuRepo {
                         .await
                         .insert(type_index, statuses);
                 });
-                tasks.push(join_handle);
             }
         }
     }
 
-    async fn load_nvml_status(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
+    async fn load_nvml_status<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
                 let self_ref = Arc::clone(&self);
                 let nv_info = Arc::clone(nv_info);
-                let join_handle = tokio::task::spawn(async move {
+                scope.spawn(async move {
                     let nvml_status = self_ref.gpus_nvidia.request_nvml_status(nv_info).await;
                     self_ref
                         .gpus_nvidia
@@ -138,13 +136,12 @@ impl GpuRepo {
                             },
                         );
                 });
-                tasks.push(join_handle);
             }
         }
     }
 
-    fn load_nvidia_smi_status(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
-        let join_handle = tokio::task::spawn(async move {
+    fn load_nvidia_smi_status<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
+        scope.spawn(async move {
             let mut nv_status_map = HashMap::new();
             for nv_status in self.gpus_nvidia.try_request_nv_smi_statuses().await {
                 nv_status_map.insert(nv_status.index, nv_status);
@@ -164,7 +161,6 @@ impl GpuRepo {
                 }
             }
         });
-        tasks.push(join_handle);
     }
 }
 
@@ -234,20 +230,17 @@ impl Repository for GpuRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-        if self.devices.is_empty().not() {
-            let mut tasks = Vec::new();
-            Arc::clone(&self).load_amd_statuses(&mut tasks).await;
-            if self.nvml_active {
-                self.load_nvml_status(&mut tasks).await;
-            } else {
-                self.load_nvidia_smi_status(&mut tasks);
-            }
-            for task in tasks {
-                if let Err(err) = task.await {
-                    error!("{}", err);
+        moro_local::async_scope!(|scope| {
+            if self.devices.is_empty().not() {
+                Arc::clone(&self).load_amd_statuses(scope).await;
+                if self.nvml_active {
+                    self.load_nvml_status(scope).await;
+                } else {
+                    self.load_nvidia_smi_status(scope);
                 }
             }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()
