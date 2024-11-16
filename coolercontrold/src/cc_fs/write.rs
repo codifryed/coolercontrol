@@ -33,7 +33,7 @@ pub async fn write_string(path: impl AsRef<Path>, txt: String) -> Result<()> {
 /// This function opens the file at `path` and writes all of `data` to it.
 /// If any of the operations fail, the function will return an error.
 pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
-    let file = File::open(path).await?;
+    let file = File::create(path).await?;
     let (res, _) = file.write_all_at(data, 0).await;
     res?;
     file.close().await?;
