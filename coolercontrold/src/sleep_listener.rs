@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use log::info;
 use moro_local::Scope;
 use std::cell::Cell;
+use std::ops::Not;
 use std::rc::Rc;
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
@@ -72,14 +73,14 @@ impl<'s> SleepListener {
     }
 
     pub fn resuming(&self, is_resuming: bool) {
-        self.resuming.set(is_resuming)
+        self.resuming.set(is_resuming);
     }
 
-    pub fn is_preparing_to_sleep(&self) -> bool {
-        self.preparing_to_sleep.get()
+    pub fn is_not_preparing_to_sleep(&self) -> bool {
+        self.preparing_to_sleep.get().not()
     }
 
     pub fn preparing_to_sleep(&self, is_preparing_to_sleep: bool) {
-        self.preparing_to_sleep.set(is_preparing_to_sleep)
+        self.preparing_to_sleep.set(is_preparing_to_sleep);
     }
 }

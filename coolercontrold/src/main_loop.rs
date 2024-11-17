@@ -23,19 +23,20 @@ use crate::Repos;
 use anyhow::{Context, Result};
 use log::{error, info, trace};
 use moro_local::Scope;
-use std::cell::Cell;
 use std::ops::Not;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio::sync::oneshot::Sender;
 use tokio::time;
 use tokio::time::{sleep, timeout};
 
-static LOOP_TICK_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_millis(1000));
-static SNAPSHOT_WAIT: LazyLock<Duration> = LazyLock::new(|| Duration::from_millis(400));
-static WAKE_PAUSE_MINIMUM: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(1));
-static LCD_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(2));
+static LOOP_TICK_DURATION_MS: u64 = 1000;
+static SNAPSHOT_WAIT_MS: u64 = 400;
+static WAKE_PAUSE_MINIMUM_S: u64 = 1;
+static LCD_TIMEOUT_S: u64 = 2;
 
 /// Run the main loop of the application.
 ///
@@ -50,52 +51,37 @@ pub async fn run<'s>(
     settings_controller: Rc<SettingsController>,
     mode_controller: Rc<ModeController>,
 ) -> Result<()> {
-    let mut interval = time::interval(*LOOP_TICK_DURATION);
+    tokio::pin! {
+        let loop_interval = time::interval(Duration::from_millis(LOOP_TICK_DURATION_MS));
+        let snapshot_timeout = sleep(Duration::from_millis(SNAPSHOT_WAIT_MS));
+    }
     let mut run_lcd_update = false; // toggle lcd updates every other loop tick
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(scope)
             .await
             .with_context(|| "Creating DBus Sleep Listener")?;
-
         while !term_signal.load(Ordering::Relaxed) {
-            interval.tick().await;
-            if sleep_listener.is_preparing_to_sleep().not() {
-                let snapshots_fired = Rc::new(Cell::new(false));
-                fire_preloads(
-                    &repos,
-                    &settings_controller,
-                    run_lcd_update,
-                    Rc::clone(&snapshots_fired),
-                    scope,
-                );
-                snapshots_and_processes_timeout(
-                    &repos,
-                    &settings_controller,
-                    run_lcd_update,
-                    snapshots_fired,
-                    scope,
-                );
+            loop_interval.tick().await;
+            if sleep_listener.is_not_preparing_to_sleep() {
+                let (tx_preload, rx_preload) = oneshot::channel::<()>();
+                fire_preloads(&repos, tx_preload, scope);
+                tokio::select! {
+                    // This ensures that our status snapshots are taken a regular intervals,
+                    // regardless of how long a particular device's status preload takes.
+                    () = &mut snapshot_timeout =>
+                    trace!("Snapshot timeout triggered before preload finished"),
+                    _ = rx_preload => trace!("Preload finished before snapshot timeout"),
+                }
+                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, scope);
                 run_lcd_update = !run_lcd_update;
             } else if sleep_listener.is_resuming() {
-                // delay at least a second to allow the hardware to fully wake up:
-                sleep(
-                    config
-                        .get_settings()
-                        .await?
-                        .startup_delay
-                        .max(*WAKE_PAUSE_MINIMUM),
+                wake_from_sleep(
+                    &config,
+                    &settings_controller,
+                    &mode_controller,
+                    &sleep_listener,
                 )
-                .await;
-                if config.get_settings().await?.apply_on_boot {
-                    info!("Re-initializing and re-applying settings after waking from sleep");
-                    settings_controller.reinitialize_devices().await;
-                    mode_controller.apply_all_saved_device_settings().await;
-                }
-                settings_controller
-                    .reinitialize_all_status_histories()
-                    .await;
-                sleep_listener.resuming(false);
-                sleep_listener.preparing_to_sleep(false);
+                .await?;
             }
         }
         Ok(())
@@ -103,84 +89,54 @@ pub async fn run<'s>(
     .await
 }
 
-/// Runs the status preload task for every repository individually.
-/// This allows each repository to handle its own timings for its devices and be independent
-/// of the status snapshots that will happen regardless every loop tick.
+/// Initiates the preload process for all repositories.
+///
+/// This function spawns asynchronous tasks that trigger the `preload_statuses` method
+/// for each repository in the given `repos`. It ensures that all preload tasks are
+/// completed before sending a signal through the `tx_preload` sender to trigger snapshots
+/// if completed before the `snapshot_timeout`.
 fn fire_preloads<'s>(
     repos: &'s Repos,
-    settings_controller: &'s Rc<SettingsController>,
-    run_lcd_update: bool,
-    snapshots_fired: Rc<Cell<bool>>,
+    tx_preload: Sender<()>,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     scope.spawn(async move {
-        moro_local::async_scope!(|scope| {
+        // This scope ensures that all concurrent preload tasks have completed.
+        moro_local::async_scope!(|preload_scope| {
             for repo in repos.iter() {
                 let repo = Rc::clone(repo);
-                scope.spawn(async move {
+                preload_scope.spawn(async move {
                     trace!("STATUS PRELOAD triggered for {} repo", repo.device_type());
                     repo.preload_statuses().await;
                 });
             }
         })
         .await;
-        fire_snapshots_and_processes(
-            repos,
-            settings_controller,
-            run_lcd_update,
-            snapshots_fired,
-            scope,
-        )
-        .await;
+        let _ = tx_preload.send(());
     });
 }
 
-/// This function will fire off the status snapshot tasks for all repositories, and then call
-/// the `process_scheduled_speeds` function on the settings controller. This should be run
-/// separately to ensure that the status snapshots are independently and consistently taken and
-/// used for processing scheduled speeds.
-fn snapshots_and_processes_timeout<'s>(
+/// Fires the status snapshot tasks for all repositories and processes scheduled speeds.
+///
+/// This function triggers all repository status updates concurrently, ensuring that snapshots
+/// for all devices are taken simultaneously. It subsequently calls `fire_lcd_update` to manage
+/// LCD updates and `process_scheduled_speeds` to apply any scheduled speed settings.
+fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
     settings_controller: &'s Rc<SettingsController>,
     run_lcd_update: bool,
-    snapshots_fired: Rc<Cell<bool>>,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     scope.spawn(async move {
-        // This sleep timeout makes is so that the snapshots are fired at the latest
-        // once this timeout expires. Otherwise, they're fired right after preloading
-        // of all statuses has completed.
-        sleep(*SNAPSHOT_WAIT).await;
-        fire_snapshots_and_processes(
-            repos,
-            settings_controller,
-            run_lcd_update,
-            snapshots_fired,
-            scope,
-        )
-        .await;
-    });
-}
-
-async fn fire_snapshots_and_processes<'s>(
-    repos: &'s Repos,
-    settings_controller: &Rc<SettingsController>,
-    run_lcd_update: bool,
-    snapshots_fired: Rc<Cell<bool>>,
-    scope: &'s Scope<'s, 's, Result<()>>,
-) {
-    if snapshots_fired.get() {
-        return;
-    }
-    snapshots_fired.set(true);
-    // snapshots for all devices should be done at the same time. (this is very fast)
-    for repo in repos.iter() {
-        if let Err(err) = repo.update_statuses().await {
-            error!("Error trying to update status: {err}");
+        // snapshots for all devices should be done at the same time. (this is very fast)
+        for repo in repos.iter() {
+            if let Err(err) = repo.update_statuses().await {
+                error!("Error trying to update status: {err}");
+            }
         }
-    }
-    fire_lcd_update(settings_controller, run_lcd_update, scope).await;
-    settings_controller.process_scheduled_speeds().await;
+        fire_lcd_update(settings_controller, run_lcd_update, scope).await;
+        settings_controller.process_scheduled_speeds().await;
+    });
 }
 
 /// This function will fire off the LCD Update job which often takes a long time (>1.0s, <2.0s)
@@ -206,11 +162,49 @@ async fn fire_lcd_update<'s>(
     }
     let lcd_commander = Rc::clone(&settings_controller.lcd_commander);
     scope.spawn(async move {
-        if timeout(*LCD_TIMEOUT, lcd_commander.update_lcd())
-            .await
-            .is_err()
+        if timeout(
+            Duration::from_secs(LCD_TIMEOUT_S),
+            lcd_commander.update_lcd(),
+        )
+        .await
+        .is_err()
         {
-            error!("LCD Scheduler timed out after {LCD_TIMEOUT:?}");
+            error!("LCD Scheduler timed out after {LCD_TIMEOUT_S}s");
         };
     });
+}
+
+/// Handles the actions needed to properly wake the system from sleep mode.
+///
+/// This function ensures that the necessary delays are observed to allow hardware components
+/// to fully power up before re-initializing and re-applying device settings. It checks if
+/// settings should be applied on boot and takes appropriate actions, such as reinitializing
+/// devices and applying saved device settings. Additionally, it reinitializes all status
+/// histories to maintain sequential data integrity and resets the sleep listener's state
+/// flags to indicate that the system is no longer preparing to sleep or resuming.
+async fn wake_from_sleep(
+    config: &Rc<Config>,
+    settings_controller: &Rc<SettingsController>,
+    mode_controller: &Rc<ModeController>,
+    sleep_listener: &SleepListener,
+) -> Result<()> {
+    sleep(
+        config
+            .get_settings()
+            .await?
+            .startup_delay
+            .max(Duration::from_secs(WAKE_PAUSE_MINIMUM_S)),
+    )
+    .await;
+    if config.get_settings().await?.apply_on_boot {
+        info!("Re-initializing and re-applying settings after waking from sleep");
+        settings_controller.reinitialize_devices().await;
+        mode_controller.apply_all_saved_device_settings().await;
+    }
+    settings_controller
+        .reinitialize_all_status_histories()
+        .await;
+    sleep_listener.resuming(false);
+    sleep_listener.preparing_to_sleep(false);
+    Ok(())
 }
