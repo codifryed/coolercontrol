@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 use crate::config::Config;
 use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
@@ -24,6 +23,7 @@ use crate::Repos;
 use anyhow::{Context, Result};
 use log::{error, info, trace};
 use moro_local::Scope;
+use std::cell::Cell;
 use std::ops::Not;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,11 +60,19 @@ pub async fn run<'s>(
         while !term_signal.load(Ordering::Relaxed) {
             interval.tick().await;
             if sleep_listener.is_preparing_to_sleep().not() {
-                fire_preloads(&repos, scope);
-                fire_status_snapshots_and_process(
+                let snapshots_fired = Rc::new(Cell::new(false));
+                fire_preloads(
                     &repos,
                     &settings_controller,
                     run_lcd_update,
+                    Rc::clone(&snapshots_fired),
+                    scope,
+                );
+                snapshots_and_processes_timeout(
+                    &repos,
+                    &settings_controller,
+                    run_lcd_update,
+                    snapshots_fired,
                     scope,
                 );
                 run_lcd_update = !run_lcd_update;
@@ -98,42 +106,81 @@ pub async fn run<'s>(
 /// Runs the status preload task for every repository individually.
 /// This allows each repository to handle its own timings for its devices and be independent
 /// of the status snapshots that will happen regardless every loop tick.
-fn fire_preloads<'s>(repos: &'s Repos, scope: &'s Scope<'s, 's, Result<()>>) {
-    for repo in repos.iter() {
-        let repo = Rc::clone(repo);
-        scope.spawn(async move {
-            trace!("STATUS PRELOAD triggered for {} repo", repo.device_type());
-            repo.preload_statuses().await;
-        });
-    }
+fn fire_preloads<'s>(
+    repos: &'s Repos,
+    settings_controller: &'s Rc<SettingsController>,
+    run_lcd_update: bool,
+    snapshots_fired: Rc<Cell<bool>>,
+    scope: &'s Scope<'s, 's, Result<()>>,
+) {
+    scope.spawn(async move {
+        moro_local::async_scope!(|scope| {
+            for repo in repos.iter() {
+                let repo = Rc::clone(repo);
+                scope.spawn(async move {
+                    trace!("STATUS PRELOAD triggered for {} repo", repo.device_type());
+                    repo.preload_statuses().await;
+                });
+            }
+        })
+        .await;
+        fire_snapshots_and_processes(
+            repos,
+            settings_controller,
+            run_lcd_update,
+            snapshots_fired,
+            scope,
+        )
+        .await;
+    });
 }
 
 /// This function will fire off the status snapshot tasks for all repositories, and then call
 /// the `process_scheduled_speeds` function on the settings controller. This should be run
 /// separately to ensure that the status snapshots are independently and consistently taken and
 /// used for processing scheduled speeds.
-fn fire_status_snapshots_and_process<'s>(
+fn snapshots_and_processes_timeout<'s>(
+    repos: &'s Repos,
+    settings_controller: &'s Rc<SettingsController>,
+    run_lcd_update: bool,
+    snapshots_fired: Rc<Cell<bool>>,
+    scope: &'s Scope<'s, 's, Result<()>>,
+) {
+    scope.spawn(async move {
+        // This sleep timeout makes is so that the snapshots are fired at the latest
+        // once this timeout expires. Otherwise, they're fired right after preloading
+        // of all statuses has completed.
+        sleep(*SNAPSHOT_WAIT).await;
+        fire_snapshots_and_processes(
+            repos,
+            settings_controller,
+            run_lcd_update,
+            snapshots_fired,
+            scope,
+        )
+        .await;
+    });
+}
+
+async fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
     settings_controller: &Rc<SettingsController>,
     run_lcd_update: bool,
+    snapshots_fired: Rc<Cell<bool>>,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
-    let repos = Rc::clone(repos);
-    let settings_controller = Rc::clone(settings_controller);
-    scope.spawn(async move {
-        // sleep used to attempt to place the jobs appropriately in time after preloading,
-        // snapshots for all devices should be done at the same time. (this is very fast)
-        sleep(*SNAPSHOT_WAIT).await;
-        for repo in repos.iter() {
-            // custom sensors should be updated after all real devices
-            //  so they should definitely be last in the list
-            if let Err(err) = repo.update_statuses().await {
-                error!("Error trying to update status: {err}");
-            }
+    if snapshots_fired.get() {
+        return;
+    }
+    snapshots_fired.set(true);
+    // snapshots for all devices should be done at the same time. (this is very fast)
+    for repo in repos.iter() {
+        if let Err(err) = repo.update_statuses().await {
+            error!("Error trying to update status: {err}");
         }
-        fire_lcd_update(&settings_controller, run_lcd_update, scope).await;
-        settings_controller.process_scheduled_speeds().await;
-    });
+    }
+    fire_lcd_update(settings_controller, run_lcd_update, scope).await;
+    settings_controller.process_scheduled_speeds().await;
 }
 
 /// This function will fire off the LCD Update job which often takes a long time (>1.0s, <2.0s)
