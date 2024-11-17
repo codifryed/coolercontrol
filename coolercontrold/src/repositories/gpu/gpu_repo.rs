@@ -95,16 +95,13 @@ impl GpuRepo {
         }
     }
 
-    pub async fn load_amd_statuses<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    pub async fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
-                let self_ref = Rc::clone(&self);
-                let amd_driver = Rc::clone(amd_driver);
                 scope.spawn(async move {
-                    let statuses = self_ref.gpus_amd.get_amd_status(&amd_driver).await;
-                    self_ref
-                        .gpus_amd
+                    let statuses = self.gpus_amd.get_amd_status(amd_driver).await;
+                    self.gpus_amd
                         .amd_preloaded_statuses
                         .write()
                         .await
@@ -114,16 +111,13 @@ impl GpuRepo {
         }
     }
 
-    async fn load_nvml_status<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    async fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
-                let self_ref = Rc::clone(&self);
-                let nv_info = Rc::clone(nv_info);
                 scope.spawn(async move {
-                    let nvml_status = self_ref.gpus_nvidia.request_nvml_status(nv_info).await;
-                    self_ref
-                        .gpus_nvidia
+                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
+                    self.gpus_nvidia
                         .nvidia_preloaded_statuses
                         .write()
                         .await
@@ -230,11 +224,12 @@ impl Repository for GpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
+        let self_c = Rc::clone(&self);
         moro_local::async_scope!(|scope| {
             if self.devices.is_empty().not() {
-                Rc::clone(&self).load_amd_statuses(scope).await;
+                self_c.load_amd_statuses(scope).await;
                 if self.nvml_active {
-                    self.load_nvml_status(scope).await;
+                    self_c.load_nvml_status(scope).await;
                 } else {
                     self.load_nvidia_smi_status(scope);
                 }

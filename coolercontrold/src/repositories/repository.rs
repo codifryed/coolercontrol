@@ -91,3 +91,51 @@ pub trait Repository {
     /// This is helpful/necessary after waking from sleep
     async fn reinitialize_devices(&self);
 }
+
+#[derive(Default)]
+pub struct Repositories {
+    pub cpu: Option<Rc<dyn Repository>>,
+    pub gpu: Option<Rc<dyn Repository>>,
+    pub liquidctl: Option<Rc<dyn Repository>>,
+    pub hwmon: Option<Rc<dyn Repository>>,
+    pub custom_sensors: Option<Rc<dyn Repository>>,
+}
+
+impl Repositories {
+    /// This is here to help with future refactorings and improvements.
+    #[allow(dead_code)]
+    pub fn get_by_type(&self, device_type: &DeviceType) -> Option<Rc<dyn Repository>> {
+        match device_type {
+            DeviceType::CPU => Self::clone_rc(self.cpu.as_ref()),
+            DeviceType::GPU => Self::clone_rc(self.gpu.as_ref()),
+            DeviceType::Liquidctl => Self::clone_rc(self.liquidctl.as_ref()),
+            DeviceType::Hwmon => Self::clone_rc(self.hwmon.as_ref()),
+            DeviceType::CustomSensors => Self::clone_rc(self.custom_sensors.as_ref()),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn Repository>> {
+        let mut repos = Vec::new();
+        if let Some(repo) = self.cpu.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.gpu.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.liquidctl.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.hwmon.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.custom_sensors.as_ref() {
+            repos.push(repo);
+        }
+        repos.into_iter()
+    }
+
+    #[allow(dead_code)]
+    fn clone_rc(repo: Option<&Rc<dyn Repository>>) -> Option<Rc<dyn Repository>> {
+        repo.map(Rc::clone)
+    }
+}

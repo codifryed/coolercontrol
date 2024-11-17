@@ -479,13 +479,13 @@ impl GpuNVidia {
 
     pub async fn request_nvml_status(
         &self,
-        nv_info: Rc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
     ) -> StatusNvidiaDeviceNvml {
         let nvml_device = self
             .nvidia_nvml_devices
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
-        let temp_status = Self::get_nvml_temp_status(nvml_device, &nv_info);
+        let temp_status = Self::get_nvml_temp_status(nvml_device, nv_info);
         let mut channel_status = Vec::new();
         for fan_index in &nv_info.fan_indices {
             let Ok(fan_speed) = nvml_device.fan_speed(u32::from(*fan_index)) else {
@@ -504,7 +504,7 @@ impl GpuNVidia {
                 ..Default::default()
             });
         }
-        Self::get_nvml_freq_status(nvml_device, &nv_info, &mut channel_status);
+        Self::get_nvml_freq_status(nvml_device, nv_info, &mut channel_status);
         StatusNvidiaDeviceNvml {
             temps: temp_status,
             channels: channel_status,

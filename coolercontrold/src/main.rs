@@ -23,6 +23,15 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::config::Config;
+use crate::device::{Device, DeviceType, DeviceUID};
+use crate::modes::ModeController;
+use crate::processing::settings::SettingsController;
+use crate::repositories::cpu_repo::CpuRepo;
+use crate::repositories::gpu::gpu_repo::GpuRepo;
+use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
+use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
+use crate::repositories::repository::{DeviceList, DeviceLock, Repositories};
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
 use env_logger::Logger;
@@ -34,16 +43,6 @@ use repositories::repository::Repository;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::time::sleep;
-
-use crate::config::Config;
-use crate::device::{Device, DeviceType, DeviceUID};
-use crate::modes::ModeController;
-use crate::processing::settings::SettingsController;
-use crate::repositories::cpu_repo::CpuRepo;
-use crate::repositories::gpu::gpu_repo::GpuRepo;
-use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
-use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
-use crate::repositories::repository::{DeviceList, DeviceLock};
 
 mod admin;
 mod api;
@@ -60,7 +59,7 @@ mod sleep_listener;
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
-type Repos = Rc<Vec<Rc<dyn Repository>>>;
+type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 
 /// A program to control your cooling devices
@@ -147,9 +146,8 @@ fn main() -> Result<()> {
             info!("Initialization Complete");
             main_loop::run(
                 term_signal,
-                scope_main,
-                config.clone(),
-                &repos,
+                Rc::clone(&config),
+                Rc::clone(&repos),
                 settings_controller,
                 mode_controller,
             )
@@ -256,36 +254,45 @@ async fn initialize_device_repos(
     cmd_args: &Args,
 ) -> Result<(Repos, Rc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
-    let mut init_repos: Vec<Rc<dyn Repository>> = vec![];
+    let mut repos = Repositories::default();
     let mut lc_locations = Vec::new();
-    // liquidctl should be first as it's the slowest:
+    // liquidctl should be first
     match init_liquidctl_repo(config.clone()).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
-            init_repos.push(repo);
+            repos.liquidctl = Some(repo);
         }
         Err(err) if err.downcast_ref() == Some(&InitError::Disabled) => info!("{err}"),
-        // todo: change to warning for connection errors once liqctld is no longer required
-        Err(err) => error!("Error initializing LIQUIDCTL Repo: {err}"),
+        Err(err) => warn!("Error initializing LIQUIDCTL Repo: {err}"),
     };
-    match init_cpu_repo(config.clone()).await {
-        Ok(repo) => init_repos.push(Rc::new(repo)),
-        Err(err) => error!("Error initializing CPU Repo: {err}"),
-    }
-    match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
-        Ok(repo) => init_repos.push(Rc::new(repo)),
-        Err(err) => error!("Error initializing GPU Repo: {err}"),
-    }
-    match init_hwmon_repo(config.clone(), lc_locations).await {
-        Ok(repo) => init_repos.push(Rc::new(repo)),
-        Err(err) => error!("Error initializing HWMON Repo: {err}"),
-    }
+    // init these concurrently:
+    moro_local::async_scope!(|init_scope| {
+        init_scope.spawn(async {
+            match init_cpu_repo(config.clone()).await {
+                Ok(repo) => repos.cpu = Some(Rc::new(repo)),
+                Err(err) => error!("Error initializing CPU Repo: {err}"),
+            }
+        });
+        init_scope.spawn(async {
+            match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
+                Ok(repo) => repos.gpu = Some(Rc::new(repo)),
+                Err(err) => error!("Error initializing GPU Repo: {err}"),
+            }
+        });
+        init_scope.spawn(async {
+            match init_hwmon_repo(config.clone(), lc_locations).await {
+                Ok(repo) => repos.hwmon = Some(Rc::new(repo)),
+                Err(err) => error!("Error initializing HWMON Repo: {err}"),
+            }
+        });
+    })
+    .await;
     // should be last as it uses all other device temps
-    let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
+    let devices_for_custom_sensors = collect_all_devices(&repos).await;
     let custom_sensors_repo =
         Rc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
-    init_repos.push(custom_sensors_repo.clone());
-    Ok((Rc::new(init_repos), custom_sensors_repo))
+    repos.custom_sensors = Some(custom_sensors_repo.clone());
+    Ok((Rc::new(repos), custom_sensors_repo))
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
@@ -332,9 +339,9 @@ async fn init_custom_sensors_repo(
 }
 
 /// Create separate list of devices to be used in the custom sensors repository
-async fn collect_all_devices(init_repos: &[Rc<dyn Repository>]) -> DeviceList {
+async fn collect_all_devices(repos: &Repositories) -> DeviceList {
     let mut devices_for_composite = Vec::new();
-    for repo in init_repos {
+    for repo in repos.iter() {
         if repo.device_type() != DeviceType::CustomSensors {
             for device_lock in repo.devices().await {
                 devices_for_composite.push(Rc::clone(&device_lock));

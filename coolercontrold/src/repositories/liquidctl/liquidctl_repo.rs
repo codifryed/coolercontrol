@@ -673,14 +673,12 @@ impl Repository for LiquidctlRepo {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for device_lock in self.devices.values() {
-                let self_c = Rc::clone(&self);
-                let device_lock = Rc::clone(device_lock);
+                let device_id = device_lock.read().await.type_index;
+                let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    let device_id = device_lock.read().await.type_index;
-                    match self_c.call_status(&device_id).await {
+                    match self.call_status(&device_id).await {
                         Ok(status) => {
-                            self_c
-                                .preloaded_statuses
+                            self.preloaded_statuses
                                 .write()
                                 .await
                                 .insert(device_id, status);

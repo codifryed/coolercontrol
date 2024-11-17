@@ -387,16 +387,14 @@ impl Repository for HwmonRepo {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let self_c = Rc::clone(&self);
-                let device_lock = Rc::clone(device_lock);
-                let driver = Rc::clone(driver);
+                let device_id = device_lock.read().await.type_index;
+                let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    let device_id = device_lock.read().await.type_index;
-                    self_c.preloaded_statuses.write().await.insert(
+                    self.preloaded_statuses.write().await.insert(
                         device_id,
                         (
-                            fans::extract_fan_statuses(&driver).await,
-                            temps::extract_temp_statuses(&driver).await,
+                            fans::extract_fan_statuses(driver).await,
+                            temps::extract_temp_statuses(driver).await,
                         ),
                     );
                 });

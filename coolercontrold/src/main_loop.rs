@@ -29,7 +29,8 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
-use tokio::time::{interval, sleep, timeout};
+use tokio::time;
+use tokio::time::{sleep, timeout};
 
 static LOOP_TICK_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_millis(1000));
 static SNAPSHOT_WAIT: LazyLock<Duration> = LazyLock::new(|| Duration::from_millis(400));
@@ -44,61 +45,65 @@ static LCD_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(2)
 /// The main loop will exit when the application receives a termination signal.
 pub async fn run<'s>(
     term_signal: Arc<AtomicBool>,
-    scope: &'s Scope<'s, 's, Result<()>>,
     config: Rc<Config>,
-    repos: &Repos,
+    repos: Repos,
     settings_controller: Rc<SettingsController>,
     mode_controller: Rc<ModeController>,
 ) -> Result<()> {
-    let sleep_listener = SleepListener::new(scope)
-        .await
-        .with_context(|| "Creating DBus Sleep Listener")?;
-    let mut interval = interval(*LOOP_TICK_DURATION);
+    let mut interval = time::interval(*LOOP_TICK_DURATION);
     let mut run_lcd_update = false; // toggle lcd updates every other loop tick
-    while !term_signal.load(Ordering::Relaxed) {
-        interval.tick().await;
-        if sleep_listener.is_preparing_to_sleep().not() {
-            fire_preloads(repos, scope).await;
-            fire_status_snapshots_and_process(repos, &settings_controller, run_lcd_update, scope)
+    moro_local::async_scope!(|scope| -> Result<()> {
+        let sleep_listener = SleepListener::new(scope)
+            .await
+            .with_context(|| "Creating DBus Sleep Listener")?;
+
+        while !term_signal.load(Ordering::Relaxed) {
+            interval.tick().await;
+            if sleep_listener.is_preparing_to_sleep().not() {
+                fire_preloads(&repos, scope);
+                fire_status_snapshots_and_process(
+                    &repos,
+                    &settings_controller,
+                    run_lcd_update,
+                    scope,
+                );
+                run_lcd_update = !run_lcd_update;
+            } else if sleep_listener.is_resuming() {
+                // delay at least a second to allow the hardware to fully wake up:
+                sleep(
+                    config
+                        .get_settings()
+                        .await?
+                        .startup_delay
+                        .max(*WAKE_PAUSE_MINIMUM),
+                )
                 .await;
-            run_lcd_update = !run_lcd_update;
-        } else if sleep_listener.is_resuming() {
-            // delay at least a second to allow the hardware to fully wake up:
-            sleep(
-                config
-                    .get_settings()
-                    .await?
-                    .startup_delay
-                    .max(*WAKE_PAUSE_MINIMUM),
-            )
-            .await;
-            if config.get_settings().await?.apply_on_boot {
-                info!("Re-initializing and re-applying settings after waking from sleep");
-                settings_controller.reinitialize_devices().await;
-                mode_controller.apply_all_saved_device_settings().await;
+                if config.get_settings().await?.apply_on_boot {
+                    info!("Re-initializing and re-applying settings after waking from sleep");
+                    settings_controller.reinitialize_devices().await;
+                    mode_controller.apply_all_saved_device_settings().await;
+                }
+                settings_controller
+                    .reinitialize_all_status_histories()
+                    .await;
+                sleep_listener.resuming(false);
+                sleep_listener.preparing_to_sleep(false);
             }
-            settings_controller
-                .reinitialize_all_status_histories()
-                .await;
-            sleep_listener.resuming(false);
-            sleep_listener.preparing_to_sleep(false);
         }
-    }
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 /// Runs the status preload task for every repository individually.
 /// This allows each repository to handle its own timings for its devices and be independent
 /// of the status snapshots that will happen regardless every loop tick.
-async fn fire_preloads<'s>(repos: &'_ Repos, scope: &'s Scope<'s, 's, Result<()>>) {
+fn fire_preloads<'s>(repos: &'s Repos, scope: &'s Scope<'s, 's, Result<()>>) {
     for repo in repos.iter() {
-        let move_repo = Rc::clone(repo);
+        let repo = Rc::clone(repo);
         scope.spawn(async move {
-            trace!(
-                "STATUS PRELOAD triggered for {} repo",
-                move_repo.device_type()
-            );
-            move_repo.preload_statuses().await;
+            trace!("STATUS PRELOAD triggered for {} repo", repo.device_type());
+            repo.preload_statuses().await;
         });
     }
 }
@@ -107,27 +112,27 @@ async fn fire_preloads<'s>(repos: &'_ Repos, scope: &'s Scope<'s, 's, Result<()>
 /// the `process_scheduled_speeds` function on the settings controller. This should be run
 /// separately to ensure that the status snapshots are independently and consistently taken and
 /// used for processing scheduled speeds.
-async fn fire_status_snapshots_and_process<'s>(
-    repos: &Repos,
+fn fire_status_snapshots_and_process<'s>(
+    repos: &'s Repos,
     settings_controller: &Rc<SettingsController>,
     run_lcd_update: bool,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
-    let moved_repos = Rc::clone(repos);
-    let moved_settings_controller = Rc::clone(settings_controller);
+    let repos = Rc::clone(repos);
+    let settings_controller = Rc::clone(settings_controller);
     scope.spawn(async move {
         // sleep used to attempt to place the jobs appropriately in time after preloading,
         // snapshots for all devices should be done at the same time. (this is very fast)
         sleep(*SNAPSHOT_WAIT).await;
-        for repo in moved_repos.iter() {
+        for repo in repos.iter() {
             // custom sensors should be updated after all real devices
             //  so they should definitely be last in the list
             if let Err(err) = repo.update_statuses().await {
                 error!("Error trying to update status: {err}");
             }
         }
-        fire_lcd_update(&moved_settings_controller, run_lcd_update, scope).await;
-        moved_settings_controller.process_scheduled_speeds().await;
+        fire_lcd_update(&settings_controller, run_lcd_update, scope).await;
+        settings_controller.process_scheduled_speeds().await;
     });
 }
 
@@ -152,9 +157,9 @@ async fn fire_lcd_update<'s>(
     {
         return;
     }
-    let moved_lcd_processor = Rc::clone(&settings_controller.lcd_commander);
+    let lcd_commander = Rc::clone(&settings_controller.lcd_commander);
     scope.spawn(async move {
-        if timeout(*LCD_TIMEOUT, moved_lcd_processor.update_lcd())
+        if timeout(*LCD_TIMEOUT, lcd_commander.update_lcd())
             .await
             .is_err()
         {
