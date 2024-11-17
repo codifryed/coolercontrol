@@ -91,6 +91,9 @@ struct Args {
     nvidia_cli: bool,
 }
 
+/// `CoolerControl` uses a single-threaded asynchronous runtime with `io_uring` support.
+/// It uses a structured concurrency model combined with `io_uring` for consistent and efficient
+/// performance while concurrently handling varying device latencies.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     setup_logging(&cmd_args)?;
