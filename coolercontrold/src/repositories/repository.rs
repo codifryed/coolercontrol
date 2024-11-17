@@ -116,18 +116,20 @@ impl Repositories {
 
     pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn Repository>> {
         let mut repos = Vec::new();
+        // liquidctl device can take the longest, so they should be first
+        if let Some(repo) = self.liquidctl.as_ref() {
+            repos.push(repo);
+        }
         if let Some(repo) = self.cpu.as_ref() {
             repos.push(repo);
         }
         if let Some(repo) = self.gpu.as_ref() {
             repos.push(repo);
         }
-        if let Some(repo) = self.liquidctl.as_ref() {
-            repos.push(repo);
-        }
         if let Some(repo) = self.hwmon.as_ref() {
             repos.push(repo);
         }
+        // custom sensors should always be last
         if let Some(repo) = self.custom_sensors.as_ref() {
             repos.push(repo);
         }
