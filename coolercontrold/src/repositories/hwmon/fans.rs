@@ -851,6 +851,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_set_pwm_duty_no_pwm_enable() {
         cc_fs::test_uring_runtime(async {
             let ctx = setup();
