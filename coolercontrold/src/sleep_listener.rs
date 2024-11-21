@@ -22,6 +22,7 @@ use moro_local::Scope;
 use std::cell::Cell;
 use std::ops::Not;
 use std::rc::Rc;
+use tokio_util::sync::CancellationToken;
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
 
@@ -31,7 +32,10 @@ pub struct SleepListener {
 }
 
 impl<'s> SleepListener {
-    pub async fn new(scope: &'s Scope<'s, 's, Result<()>>) -> Result<Self> {
+    pub async fn new(
+        run_token: CancellationToken,
+        scope: &'s Scope<'s, 's, Result<()>>,
+    ) -> Result<Self> {
         let conn = Connection::system()
             .await
             .with_context(|| "Connecting to DBUS. If this errors out DBus might not be running")?;
@@ -51,15 +55,21 @@ impl<'s> SleepListener {
         let preparing_to_sleep = Rc::clone(&listener.preparing_to_sleep);
         let resuming = Rc::clone(&listener.resuming);
         scope.spawn(async move {
-            while let Some(msg) = sleep_signal.next().await {
-                let body = msg.body();
-                let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
-                if to_sleep {
-                    info!("System is going to sleep");
-                    preparing_to_sleep.set(true);
-                } else {
-                    info!("System is waking from sleep");
-                    resuming.set(true);
+            loop {
+                tokio::select! {
+                    () = run_token.cancelled() => break,
+                    Some(msg) = sleep_signal.next() => {
+                        let body = msg.body();
+                        let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
+                        if to_sleep {
+                            info!("System is going to sleep");
+                            preparing_to_sleep.set(true);
+                        } else {
+                            info!("System is waking from sleep");
+                            resuming.set(true);
+                        }
+                    },
+                    else => break,
                 }
             }
             Ok::<(), zbus::Error>(())
