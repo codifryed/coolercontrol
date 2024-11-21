@@ -23,6 +23,7 @@ use std::{
 };
 
 use chrono::{DateTime, Local};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strum::{Display, EnumString};
@@ -43,7 +44,7 @@ pub type Duty = u8;
 pub type RPM = u32;
 pub type Mhz = u32;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Device {
     pub name: DeviceName,
 
@@ -200,13 +201,13 @@ impl Device {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempStatus {
     pub name: TempName,
     pub temp: Temp,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelStatus {
     pub name: ChannelName,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -219,7 +220,7 @@ pub struct ChannelStatus {
     pub pwm_mode: Option<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
@@ -239,7 +240,9 @@ impl Default for Status {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize, JsonSchema,
+)]
 pub enum DeviceType {
     CPU,
     GPU,
@@ -249,7 +252,7 @@ pub enum DeviceType {
 }
 
 /// Needed Device info per device
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
     pub temps: HashMap<String, TempInfo>,
@@ -285,7 +288,7 @@ impl Default for DeviceInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ChannelInfo {
     pub label: Option<String>,
     pub speed_options: Option<SpeedOptions>,
@@ -294,13 +297,13 @@ pub struct ChannelInfo {
     pub lcd_info: Option<LcdInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct TempInfo {
     pub label: TempLabel,
     pub number: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SpeedOptions {
     /// The minimum fan duty for this speed channel
     pub min_duty: Duty,
@@ -327,14 +330,14 @@ impl Default for SpeedOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum LightingModeType {
     None,
     Liquidctl,
     Custom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LightingMode {
     pub name: String,
     pub frontend_name: String,
@@ -346,14 +349,14 @@ pub struct LightingMode {
     pub type_: LightingModeType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum LcdModeType {
     None,
     Liquidctl,
     Custom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdMode {
     pub name: String,
     pub frontend_name: String,
@@ -366,7 +369,7 @@ pub struct LcdMode {
     pub type_: LcdModeType,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// Specific LCD Screen info
 pub struct LcdInfo {
     pub screen_width: u32,
@@ -374,7 +377,7 @@ pub struct LcdInfo {
     pub max_image_size_bytes: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// Specific Liquidctl device information
 pub struct LcInfo {
     /// An Enum representation of the various Liquidctl driver classes
@@ -385,7 +388,7 @@ pub struct LcInfo {
     pub unknown_asetek: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// Device Driver Information
 pub struct DriverInfo {
     pub drv_type: DriverType,
@@ -407,7 +410,7 @@ pub struct DriverInfo {
     pub locations: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 /// The Driver Type, or source of the driver actively being used for this device.
 pub enum DriverType {
     Kernel,

@@ -16,148 +16,134 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
-
-use actix_session::Session;
-use actix_web::web::{Data, Json, Path};
-use actix_web::{delete, get, post, put, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
-
-use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
+use crate::api::auth::verify_admin_permissions;
+use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
-use crate::modes::{Mode, ModeController};
+use crate::modes::Mode;
 use crate::setting::Setting;
+use aide::NoApi;
+use axum::extract::State;
+use axum::extract::{Json, Path};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use tower_sessions::Session;
 
-#[get("/modes")]
-async fn get_modes(mode_controller: Data<Arc<ModeController>>) -> Result<impl Responder, CCError> {
-    let mode_dtos: Vec<ModeDto> = mode_controller
-        .get_modes()
+pub async fn get_all(
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<Json<ModesDto>, CCError> {
+    mode_handle
+        .get_all()
         .await
-        .into_iter()
-        .map(convert_mode_to_dto)
-        .collect();
-    let modes_dto = ModesDto { modes: mode_dtos };
-    Ok(HttpResponse::Ok().json(modes_dto))
+        .map(|modes| modes.into_iter().map(convert_mode_to_dto).collect())
+        .map(|mode_dtos| Json(ModesDto { modes: mode_dtos }))
+        .map_err(handle_error)
 }
 
-#[get("/modes/{mode_uid}")]
-async fn get_mode(
-    mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-) -> Result<impl Responder, CCError> {
-    mode_controller
-        .get_mode(&mode_uid)
+pub async fn get(
+    Path(mode_uid): Path<String>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<Json<ModeDto>, CCError> {
+    mode_handle
+        .get(mode_uid.clone())
         .await
-        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
-        .ok_or_else(|| CCError::NotFound {
-            msg: format!("Mode with UID {mode_uid} not found"),
+        .map_err(handle_error)
+        .and_then(|mode| {
+            mode.map(|mode| Json(convert_mode_to_dto(mode)))
+                .ok_or_else(|| CCError::NotFound {
+                    msg: format!("Mode with UID {mode_uid} not found"),
+                })
         })
 }
 
-#[post("/modes/order")]
-async fn set_modes_order(
-    mode_order_dto: Json<ModeOrderDto>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn save_order(
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+    Json(mode_order_dto): Json<ModeOrderDto>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    handle_simple_result(
-        mode_controller
-            .update_mode_order(mode_order_dto.into_inner().mode_uids)
-            .await,
-    )
-}
-
-#[post("/modes")]
-async fn create_mode(
-    create_mode_dto: Json<CreateModeDto>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    mode_controller
-        .create_mode(create_mode_dto.into_inner().name)
+    mode_handle
+        .save_order(mode_order_dto.mode_uids)
         .await
-        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
 }
 
-#[post("/modes/{mode_uid}/duplicate")]
-async fn duplicate_mode(
-    dup_mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn create(
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+    Json(create_mode_dto): Json<CreateModeDto>,
+) -> Result<Json<ModeDto>, CCError> {
     verify_admin_permissions(&session).await?;
-    mode_controller
-        .duplicate_mode(&dup_mode_uid)
+    mode_handle
+        .create(create_mode_dto.name)
         .await
-        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
+        .map(|mode| Json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
 }
 
-#[put("/modes")]
-async fn update_mode(
-    update_mode_dto: Json<UpdateModeDto>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn update(
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+    Json(update_mode_dto): Json<UpdateModeDto>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let update_dto = update_mode_dto.into_inner();
-    handle_simple_result(
-        mode_controller
-            .update_mode(&update_dto.uid, update_dto.name)
-            .await,
-    )
-}
-
-#[put("/modes/{mode_uid}/settings")]
-async fn update_mode_settings(
-    mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    mode_controller
-        .update_mode_with_current_settings(&mode_uid)
+    mode_handle
+        .update(update_mode_dto.uid, update_mode_dto.name)
         .await
-        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
 }
 
-#[delete("/modes/{mode_uid}")]
-async fn delete_mode(
-    mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn delete(
+    Path(mode_uid): Path<String>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    handle_simple_result(mode_controller.delete_mode(&mode_uid).await)
+    mode_handle.delete(mode_uid).await.map_err(handle_error)
 }
 
-#[get("/modes-active")]
-async fn get_active_mode(
-    mode_controller: Data<Arc<ModeController>>,
-) -> Result<impl Responder, CCError> {
-    let response_body = mode_controller
-        .determine_active_modes_uids()
+pub async fn duplicate(
+    Path(dup_mode_uid): Path<String>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<Json<ModeDto>, CCError> {
+    verify_admin_permissions(&session).await?;
+    mode_handle
+        .duplicate(dup_mode_uid)
         .await
-        .iter()
-        .fold(ActiveModesDto::default(), |mut acc, mode_uid| {
-            acc.mode_uids.push(mode_uid.clone());
-            acc
-        });
-    Ok(HttpResponse::Ok().json(response_body))
+        .map(|mode| Json(convert_mode_to_dto(mode)))
+        .map_err(handle_error)
 }
 
-#[post("/modes-active/{mode_uid}")]
-async fn activate_mode(
-    mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn update_mode_settings(
+    Path(mode_uid): Path<String>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<Json<ModeDto>, CCError> {
     verify_admin_permissions(&session).await?;
-    handle_simple_result(mode_controller.activate_mode(&mode_uid).await)
+    mode_handle
+        .update_settings(mode_uid)
+        .await
+        .map(|mode| Json(convert_mode_to_dto(mode)))
+        .map_err(handle_error)
+}
+
+pub async fn get_all_active(
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<Json<ActiveModesDto>, CCError> {
+    mode_handle
+        .get_all_active()
+        .await
+        .map(|mode_uids| Json(ActiveModesDto { mode_uids }))
+        .map_err(handle_error)
+}
+
+pub async fn activate(
+    Path(mode_uid): Path<String>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    verify_admin_permissions(&session).await?;
+    mode_handle.activate(mode_uid).await.map_err(handle_error)
 }
 
 fn convert_mode_to_dto(mode: Mode) -> ModeDto {
@@ -173,37 +159,37 @@ fn convert_mode_to_dto(mode: Mode) -> ModeDto {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModesDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModesDto {
     modes: Vec<ModeDto>,
 }
 
 // We have to use nested arrays instead of maps because the class-transformer in the frontend has
 // some difficulties with maps.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModeDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModeDto {
     uid: String,
     name: String,
     device_settings: Vec<(UID, Vec<Setting>)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ModeOrderDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModeOrderDto {
     mode_uids: Vec<UID>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CreateModeDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateModeDto {
     name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct UpdateModeDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct UpdateModeDto {
     uid: UID,
     name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct ActiveModesDto {
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
+pub struct ActiveModesDto {
     mode_uids: Vec<UID>,
 }

@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-
-use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::device::ChannelName;
@@ -42,7 +42,7 @@ pub const DEFAULT_FUNCTION_UID: &str = "0";
 
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct Setting {
     pub channel_name: ChannelName,
 
@@ -76,7 +76,7 @@ impl PartialEq for Setting {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LightingSettings {
     /// The lighting mode name
     pub mode: String,
@@ -91,7 +91,7 @@ pub struct LightingSettings {
     pub colors: Vec<(R, G, B)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempSource {
     /// The internal name for this Temperature Source. NOT the TempInfo Label.
     pub temp_name: TempName,
@@ -100,7 +100,7 @@ pub struct TempSource {
     pub device_uid: DeviceUID,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdSettings {
     /// The Lcd mode name
     pub mode: String,
@@ -122,7 +122,7 @@ pub struct LcdSettings {
 }
 
 /// General Settings for `CoolerControl`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
     pub no_init: bool,
@@ -137,7 +137,7 @@ pub struct CoolerControlSettings {
 }
 
 /// General Device Settings for `CoolerControl`
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
     pub name: DeviceName,
@@ -147,7 +147,7 @@ pub struct CoolerControlDeviceSettings {
 }
 
 /// Profile Settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Profile {
     /// The Unique Identifier for this Profile
     pub uid: ProfileUID,
@@ -193,7 +193,7 @@ impl Default for Profile {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum ProfileType {
     Default,
     Fixed,
@@ -201,7 +201,7 @@ pub enum ProfileType {
     Mix,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Function {
     /// The Unique identifier for this function
     pub uid: FunctionUID,
@@ -247,14 +247,16 @@ impl Default for Function {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionType {
     Identity,
     Standard,
     ExponentialMovingAvg,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema,
+)]
 pub enum ProfileMixFunctionType {
     Min,
     Max,
@@ -267,13 +269,13 @@ impl Default for ProfileMixFunctionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum CustomSensorType {
     Mix,
     File,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum CustomSensorMixFunctionType {
     Min,
     Max,
@@ -282,13 +284,13 @@ pub enum CustomSensorMixFunctionType {
     WeightedAvg,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomTempSourceData {
     pub temp_source: TempSource,
     pub weight: Weight,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensor {
     /// ID MUST be unique, as temp_name must be unique.
     pub id: String,

@@ -16,176 +16,105 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use actix_session::Session;
-use actix_web::web::{Data, Json, Path};
-use actix_web::{get, patch, put, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-
-use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
-use crate::config::Config;
+use crate::api::auth::verify_admin_permissions;
+use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
-use crate::AllDevices;
+use aide::NoApi;
+use axum::extract::{Json, Path, State};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use tower_sessions::Session;
 
-/// Get General CoolerControl settings
-#[get("/settings")]
-async fn get_cc_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
-    config
-        .get_settings()
+/// Get General `CoolerControl` settings
+pub async fn get_cc(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlSettingsDto>, CCError> {
+    setting_handle
+        .get_cc()
         .await
-        .map(|settings| HttpResponse::Ok().json(Json(CoolerControlSettingsDto::from(&settings))))
+        .map(|settings| Json(CoolerControlSettingsDto::from(settings)))
         .map_err(handle_error)
 }
 
-/// Apply General CoolerControl settings
-#[patch("/settings")]
-async fn apply_cc_settings(
-    cc_settings_request: Json<CoolerControlSettingsDto>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+/// Apply General `CoolerControl` settings
+pub async fn update_cc(
+    NoApi(session): NoApi<Session>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(cc_settings_request): Json<CoolerControlSettingsDto>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    handle_simple_result(match config.get_settings().await {
-        Ok(current_settings) => {
-            let settings_to_set = cc_settings_request.merge(current_settings);
-            config.set_settings(&settings_to_set).await;
-            config.save_config_file().await
-        }
-        Err(err) => Err(err),
-    })
-}
-
-/// Get All CoolerControl settings that apply to a specific Device
-#[get("/settings/devices")]
-async fn get_cc_settings_for_all_devices(
-    config: Data<Arc<Config>>,
-    all_devices: Data<AllDevices>,
-) -> Result<impl Responder, CCError> {
-    let settings_map = config
-        .get_all_cc_devices_settings()
+    setting_handle
+        .update_cc(cc_settings_request)
         .await
-        .map_err(<anyhow::Error as Into<CCError>>::into)?;
-    let mut devices_settings = HashMap::new();
-    for (device_uid, device_lock) in all_devices.iter() {
-        let name = device_lock.read().await.name.clone();
-        // first fill with the default
-        devices_settings.insert(
-            device_uid.clone(),
-            CoolerControlDeviceSettingsDto {
-                uid: device_uid.to_string(),
-                name,
-                disable: false,
-            },
-        );
-    }
-    for (device_uid, setting_option) in settings_map {
-        let setting = setting_option.ok_or_else(|| CCError::InternalError {
-            msg: "CC Settings option should always be present in this situation".to_string(),
-        })?;
-        // override and fill with blacklisted devices:
-        devices_settings.insert(
-            device_uid.clone(),
-            CoolerControlDeviceSettingsDto {
-                uid: device_uid,
-                name: setting.name,
-                disable: setting.disable,
-            },
-        );
-    }
-    let cc_devices_settings = devices_settings
-        .into_values()
-        .collect::<Vec<CoolerControlDeviceSettingsDto>>();
-    Ok(
-        HttpResponse::Ok().json(Json(CoolerControlAllDeviceSettingsDto {
-            devices: cc_devices_settings,
-        })),
-    )
+        .map_err(handle_error)
 }
 
-/// Get CoolerControl settings that apply to a specific Device
-#[get("/settings/devices/{device_uid}")]
-async fn get_cc_settings_for_device(
-    device_uid: Path<String>,
-    config: Data<Arc<Config>>,
-    all_devices: Data<AllDevices>,
-) -> Result<impl Responder, CCError> {
-    let settings_option = config
-        .get_cc_settings_for_device(&device_uid)
+/// Get All `CoolerControl` settings that apply to a specific Device
+pub async fn get_all_cc_devices(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlAllDeviceSettingsDto>, CCError> {
+    setting_handle
+        .get_all_cc_devices()
         .await
-        .map_err(<anyhow::Error as Into<CCError>>::into)?;
-    match settings_option {
-        Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
-        None => {
-            let device_name = all_devices
-                .get(device_uid.as_str())
-                .ok_or_else(|| CCError::NotFound {
-                    msg: "Device not found".to_string(),
-                })?
-                .read()
-                .await
-                .name
-                .clone();
-            Ok(
-                HttpResponse::Ok().json(Json(CoolerControlDeviceSettingsDto {
-                    uid: device_uid.clone(),
-                    name: device_name,
-                    disable: false,
-                })),
-            )
-        }
-    }
+        .map(|devices| Json(CoolerControlAllDeviceSettingsDto { devices }))
+        .map_err(handle_error)
 }
 
-/// Save CoolerControl settings that apply to a specific Device
-#[put("/settings/devices/{device_uid}")]
-async fn save_cc_settings_for_device(
-    device_uid: Path<String>,
-    cc_device_settings_request: Json<CoolerControlDeviceSettings>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+/// Get `CoolerControl` settings that apply to a specific Device
+pub async fn get_cc_device(
+    Path(device_uid): Path<String>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlDeviceSettingsDto>, CCError> {
+    setting_handle
+        .get_cc_device(device_uid)
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
+/// Save `CoolerControl` settings that apply to a specific Device
+pub async fn update_cc_device(
+    Path(device_uid): Path<String>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(cc_device_settings_request): Json<CoolerControlDeviceSettings>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    config
-        .set_cc_settings_for_device(&device_uid, &cc_device_settings_request.into_inner())
-        .await;
-    config
-        .save_config_file()
+    setting_handle
+        .update_cc_device(device_uid, cc_device_settings_request)
         .await
-        .map(|()| HttpResponse::Ok().finish())
-        .map_err(std::convert::Into::into)
+        .map_err(handle_error)
 }
 
 /// Retrieves the persisted UI Settings, if found.
-#[get("/settings/ui")]
-async fn get_ui_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
-    config
-        .load_ui_config_file()
-        .await
-        .map(|settings| HttpResponse::Ok().body(settings))
-        .map_err(|err| {
-            let error = err.root_cause().to_string();
-            if error.contains("No such file") {
-                CCError::NotFound { msg: error }
-            } else {
-                CCError::InternalError { msg: error }
-            }
-        })
+pub async fn get_ui(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<String, CCError> {
+    setting_handle.get_ui().await.map_err(|err| {
+        let error = err.root_cause().to_string();
+        if error.contains("No such file") {
+            CCError::NotFound { msg: error }
+        } else {
+            CCError::InternalError { msg: error }
+        }
+    })
 }
 
 /// Persists the UI Settings, overriding anything previously saved
-#[put("/settings/ui")]
-async fn save_ui_settings(
+pub async fn update_ui(
+    State(AppState { setting_handle, .. }): State<AppState>,
     ui_settings_request: String,
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    handle_simple_result(config.save_ui_config_file(ui_settings_request).await)
+) -> Result<(), CCError> {
+    setting_handle
+        .update_ui(ui_settings_request)
+        .await
+        .map_err(handle_error)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CoolerControlSettingsDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlSettingsDto {
     apply_on_boot: Option<bool>,
     no_init: Option<bool>,
     startup_delay: Option<u8>,
@@ -196,7 +125,7 @@ struct CoolerControlSettingsDto {
 }
 
 impl CoolerControlSettingsDto {
-    fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
+    pub fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
         let apply_on_boot = if let Some(apply) = self.apply_on_boot {
             apply
         } else {
@@ -247,8 +176,8 @@ impl CoolerControlSettingsDto {
     }
 }
 
-impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
-    fn from(settings: &CoolerControlSettings) -> Self {
+impl From<CoolerControlSettings> for CoolerControlSettingsDto {
+    fn from(settings: CoolerControlSettings) -> Self {
         Self {
             apply_on_boot: Some(settings.apply_on_boot),
             no_init: Some(settings.no_init),
@@ -261,14 +190,14 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CoolerControlDeviceSettingsDto {
-    uid: UID,
-    name: String,
-    disable: bool,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlDeviceSettingsDto {
+    pub uid: UID,
+    pub name: String,
+    pub disable: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct CoolerControlAllDeviceSettingsDto {
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlAllDeviceSettingsDto {
     devices: Vec<CoolerControlDeviceSettingsDto>,
 }
