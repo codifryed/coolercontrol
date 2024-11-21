@@ -27,6 +27,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use anyhow::{Context, Result};
 use log::{info, trace, warn};
 use regex::Regex;
+use zbus::export::futures_util::future::join_all;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
@@ -74,23 +75,30 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
 /// Defaults to 0 for all temps, to handle temporary issues,
 /// as they were correctly detected on startup.
 pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> {
-    let mut temps = vec![];
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Temp {
-            continue;
+    let mut temp_tasks = vec![];
+    moro_local::async_scope!(|scope| {
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Temp {
+                continue;
+            }
+            let temp_task = scope.spawn(async {
+                let temp =
+                    cc_fs::read_sysfs(driver.path.join(format!("temp{}_input", channel.number)))
+                        .await
+                        .and_then(check_parsing_32)
+                        // hwmon temps are in millidegrees:
+                        .map(|degrees| f64::from(degrees) / 1000.0f64)
+                        .unwrap_or(0f64);
+                TempStatus {
+                    name: channel.name.clone(),
+                    temp,
+                }
+            });
+            temp_tasks.push(temp_task);
         }
-        let temp = cc_fs::read_sysfs(driver.path.join(format!("temp{}_input", channel.number)))
-            .await
-            .and_then(check_parsing_32)
-            // hwmon temps are in millidegrees:
-            .map(|degrees| f64::from(degrees) / 1000.0f64)
-            .unwrap_or(0f64);
-        temps.push(TempStatus {
-            name: channel.name.clone(),
-            temp,
-        });
-    }
-    temps
+        join_all(temp_tasks).await
+    })
+    .await
 }
 
 /// This is used to remove cpu temps, as we already have repos for that that use HWMon.

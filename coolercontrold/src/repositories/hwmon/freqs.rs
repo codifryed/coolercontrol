@@ -24,6 +24,7 @@ use log::{trace, warn};
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
+use zbus::export::futures_util::future::join_all;
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
@@ -45,7 +46,7 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
             if !sensor_is_usable(base_path, &channel_number).await {
                 continue;
             }
-            let channel_name = get_freq_channel_name(&channel_number);
+            let channel_name = get_freq_channel_name(channel_number);
             let label = get_freq_channel_label(base_path, &channel_number).await;
             freqs.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Freq,
@@ -66,23 +67,30 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
 }
 
 pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let mut freqs = vec![];
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Freq {
-            continue;
+    let mut freq_tasks = vec![];
+    moro_local::async_scope!(|scope| {
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Freq {
+                continue;
+            }
+            let freq_task = scope.spawn(async {
+                let freq =
+                    cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
+                        .await
+                        .and_then(check_parsing_64)
+                        .map(|hertz| (hertz / 1_000_000) as Mhz)
+                        .unwrap_or_default();
+                ChannelStatus {
+                    name: channel.name.clone(),
+                    freq: Some(freq),
+                    ..Default::default()
+                }
+            });
+            freq_tasks.push(freq_task);
         }
-        let freq = cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
-            .await
-            .and_then(check_parsing_64)
-            .map(|hertz| (hertz / 1_000_000) as Mhz)
-            .unwrap_or_default();
-        freqs.push(ChannelStatus {
-            name: channel.name.clone(),
-            freq: Some(freq),
-            ..Default::default()
-        });
-    }
-    freqs
+        join_all(freq_tasks).await
+    })
+    .await
 }
 
 async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
@@ -93,7 +101,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
         .inspect_err(|err| {
             warn!(
                 "Error reading frequency value from: {base_path:?}/freq{channel_number}_input - {err}"
-            )
+            );
         })
         .is_ok()
 }
@@ -123,6 +131,6 @@ async fn get_freq_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
         })
 }
 
-fn get_freq_channel_name(channel_number: &u8) -> String {
+fn get_freq_channel_name(channel_number: u8) -> String {
     format!("freq{channel_number}")
 }

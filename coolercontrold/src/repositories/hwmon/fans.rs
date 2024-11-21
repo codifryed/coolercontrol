@@ -27,6 +27,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use zbus::export::futures_util::future::{join3, join_all};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -97,9 +98,9 @@ async fn init_pwm_fan(
         return Ok(()); // skip if pwm file isn't readable
     }
     let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
-    let pwm_writable = determine_pwm_writable(base_path, &channel_number).await;
-    let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(&channel_number).await;
+    let pwm_writable = determine_pwm_writable(base_path, channel_number);
+    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
+    let channel_name = get_fan_channel_name(channel_number);
     let label = get_fan_channel_label(base_path, &channel_number).await;
     let pwm_mode_supported = determine_pwm_mode_support(base_path, &channel_number).await;
     fans.push(HwmonChannelInfo {
@@ -164,8 +165,8 @@ async fn init_rpm_only_fan(
         return Ok(()); // skip if rpm file isn't readable
     }
     let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
-    let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(&channel_number).await;
+    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
+    let channel_name = get_fan_channel_name(channel_number);
     let label = get_fan_channel_label(base_path, &channel_number).await;
     info!("Uncontrollable RPM-only fan found at {base_path:?}/{file_name}");
     fans.push(HwmonChannelInfo {
@@ -184,30 +185,45 @@ async fn init_rpm_only_fan(
 /// Defaults to 0 for rpm and duty to handle temporary issues,
 /// as they were correctly detected on startup.
 pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let mut channels = vec![];
-    for channel in &driver.channels {
-        if channel.hwmon_type != HwmonChannelType::Fan {
-            continue;
-        }
-        let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
-        let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
-        let fan_pwm_mode = if channel.pwm_mode_supported {
-            cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
+    let mut fan_tasks = vec![];
+    moro_local::async_scope!(|scope| {
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            let fan_task = scope.spawn(async {
+                moro_local::async_scope!(|channel_scope| {
+                    let fan_rpm_task =
+                        channel_scope.spawn(get_fan_rpm(&driver.path, &channel.number, false));
+                    let fan_duty_task =
+                        channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
+                    let fan_pwm_mode_task = channel_scope.spawn(async {
+                        if channel.pwm_mode_supported {
+                            cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
+                                .await
+                                .and_then(check_parsing_8)
+                                .ok()
+                        } else {
+                            None
+                        }
+                    });
+                    let (fan_rpm, fan_duty, fan_pwm_mode) =
+                        join3(fan_rpm_task, fan_duty_task, fan_pwm_mode_task).await;
+                    ChannelStatus {
+                        name: channel.name.clone(),
+                        rpm: fan_rpm,
+                        duty: fan_duty,
+                        pwm_mode: fan_pwm_mode,
+                        ..Default::default()
+                    }
+                })
                 .await
-                .and_then(check_parsing_8)
-                .ok()
-        } else {
-            None
-        };
-        channels.push(ChannelStatus {
-            name: channel.name.clone(),
-            rpm: fan_rpm,
-            duty: fan_duty,
-            pwm_mode: fan_pwm_mode,
-            ..Default::default()
-        });
-    }
-    channels
+            });
+            fan_tasks.push(fan_task);
+        }
+        join_all(fan_tasks).await
+    })
+    .await
 }
 
 async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<f64> {
@@ -218,7 +234,7 @@ async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) ->
         .map(pwm_value_to_duty)
         .inspect_err(|err| {
             if log_error {
-                warn!("Could not read fan pwm value at {pwm_path:?} ; {err}")
+                warn!("Could not read fan pwm value at {pwm_path:?} ; {err}");
             }
         })
         .ok()
@@ -233,7 +249,7 @@ async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> 
         .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
         .inspect_err(|err| {
             if log_error {
-                warn!("Could not read fan rpm value at {fan_input_path:?}: {err}")
+                warn!("Could not read fan rpm value at {fan_input_path:?}: {err}");
             }
         })
         .ok()
@@ -273,20 +289,19 @@ fn check_parsing_32(content: String) -> Result<u32> {
     }
 }
 
-/// If a HWMon driver has not set the writable bit on the sysfs file, then that
+/// If a `HWMon` driver has not set the writable bit on the sysfs file, then that
 /// indicates that the pwm value is read-only and not configurable.
-async fn determine_pwm_writable(base_path: &Path, channel_number: &u8) -> bool {
+fn determine_pwm_writable(base_path: &Path, channel_number: u8) -> bool {
     let pwm_path = base_path.join(format_pwm!(channel_number));
     let pwm_writable = cc_fs::metadata(&pwm_path)
         .inspect_err(|_| error!("PWM file metadata is not readable: {pwm_path:?}"))
         // This check should be sufficient, as we're running as root:
-        .map(|att| att.permissions().readonly().not())
-        .unwrap_or_default();
+        .is_ok_and(|att| att.permissions().readonly().not());
     if pwm_writable.not() {
         warn!(
             "PWM fan at {pwm_path:?} is NOT writable - \
             Fan control is not currently supported by the installed driver."
-        )
+        );
     }
     pwm_writable
 }
@@ -300,7 +315,7 @@ async fn determine_pwm_writable(base_path: &Path, channel_number: &u8) -> bool {
 ///
 /// Note: Some drivers should have an automatic fallback for safety reasons,
 /// regardless of the current value.
-fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> Option<u8> {
+fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Option<u8> {
     current_pwm_enable.map(|original_value| {
         if devices::device_needs_pwm_fallback(device_name) {
             2
@@ -352,7 +367,7 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
 /// Returns:
 ///
 /// * A `String` that represents a unique channel name/ID.
-async fn get_fan_channel_name(channel_number: &u8) -> String {
+fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
@@ -470,7 +485,8 @@ pub async fn set_pwm_enable(
 }
 
 /// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
-/// for `ThinkPads` where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+/// for `ThinkPads` where this means "full-speed". See:
+/// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
 pub async fn set_thinkpad_to_full_speed(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,

@@ -209,7 +209,7 @@ impl CpuRepo {
 
     async fn collect_load(
         &self,
-        physical_id: &PhysicalID,
+        physical_id: PhysicalID,
         channel_name: &str,
     ) -> Option<ChannelStatus> {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
@@ -224,7 +224,7 @@ impl CpuRepo {
             let processor_id = processor_id as ProcessorID;
             if self
                 .cpu_infos
-                .get(physical_id)
+                .get(&physical_id)
                 .expect("physical_id should be present in cpu_infos")
                 .contains(&processor_id)
             {
@@ -232,7 +232,7 @@ impl CpuRepo {
             }
         }
         let num_percents = percents.len();
-        let num_processors = self.cpu_infos.get(physical_id)?.len();
+        let num_processors = self.cpu_infos.get(&physical_id)?.len();
         if num_percents == num_processors {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
@@ -309,18 +309,20 @@ impl CpuRepo {
     }
 
     fn get_status_from_freq_output(
-        physical_id: &PhysicalID,
+        physical_id: PhysicalID,
         channel_name: &str,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> Option<ChannelStatus> {
-        cpu_freqs.remove(physical_id).map(|avg_freq| ChannelStatus {
-            name: channel_name.to_string(),
-            freq: Some(avg_freq),
-            ..Default::default()
-        })
+        cpu_freqs
+            .remove(&physical_id)
+            .map(|avg_freq| ChannelStatus {
+                name: channel_name.to_string(),
+                freq: Some(avg_freq),
+                ..Default::default()
+            })
     }
 
-    async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
+    async fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
         if self
             .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
             .await
@@ -330,7 +332,7 @@ impl CpuRepo {
         } else {
             Ok(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Load,
-                number: *physical_id,
+                number: physical_id,
                 name: SINGLE_CPU_LOAD_NAME.to_string(),
                 label: Some(SINGLE_CPU_LOAD_NAME.to_string()),
                 ..Default::default()
@@ -339,7 +341,7 @@ impl CpuRepo {
     }
 
     fn init_cpu_freq(
-        physical_id: &PhysicalID,
+        physical_id: PhysicalID,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> Result<HwmonChannelInfo> {
         if Self::get_status_from_freq_output(physical_id, SINGLE_CPU_FREQ_NAME, cpu_freqs).is_none()
@@ -348,7 +350,7 @@ impl CpuRepo {
         } else {
             Ok(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Freq,
-                number: *physical_id,
+                number: physical_id,
                 name: SINGLE_CPU_FREQ_NAME.to_string(),
                 label: Some(SINGLE_CPU_FREQ_NAME.to_string()),
                 ..Default::default()
@@ -358,7 +360,7 @@ impl CpuRepo {
 
     async fn request_status(
         &self,
-        phys_cpu_id: &PhysicalID,
+        phys_cpu_id: PhysicalID,
         driver: &HwmonDriverInfo,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
@@ -431,13 +433,13 @@ impl CpuRepo {
                         continue;
                     }
                 };
-                match self.init_cpu_load(&physical_id).await {
+                match self.init_cpu_load(physical_id).await {
                     Ok(load) => channels.push(load),
                     Err(err) => {
                         error!("Error matching cpu load percents to processors: {}", err);
                     }
                 }
-                match Self::init_cpu_freq(&physical_id, &mut cpu_freqs) {
+                match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
                     Ok(freq) => channels.push(freq),
                     Err(err) => {
                         error!("Error matching cpu frequencies to processors: {}", err);
@@ -500,7 +502,7 @@ impl Repository for CpuRepo {
         let mut cpu_freqs = Self::collect_freq().await;
         for (physical_id, driver) in hwmon_devices {
             let (channels, temps) = self
-                .request_status(&physical_id, &driver, &mut cpu_freqs)
+                .request_status(physical_id, &driver, &mut cpu_freqs)
                 .await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
@@ -653,7 +655,7 @@ impl Repository for CpuRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     let (channels, temps) = self
-                        .request_status(&physical_id, driver, &mut cpu_freq)
+                        .request_status(physical_id, driver, &mut cpu_freq)
                         .await;
                     self.preloaded_statuses
                         .write()
