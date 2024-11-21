@@ -23,15 +23,13 @@ use crate::Repos;
 use anyhow::{Context, Result};
 use log::{error, info, trace};
 use moro_local::Scope;
+use std::cell::LazyCell;
 use std::ops::Not;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::oneshot;
-use tokio::sync::oneshot::Sender;
 use tokio::time;
 use tokio::time::{sleep, timeout};
+use tokio_util::sync::CancellationToken;
 
 static LOOP_TICK_DURATION_MS: u64 = 1000;
 static SNAPSHOT_WAIT_MS: u64 = 400;
@@ -45,32 +43,31 @@ static LCD_TIMEOUT_S: u64 = 2;
 ///
 /// The main loop will exit when the application receives a termination signal.
 pub async fn run<'s>(
-    term_signal: Arc<AtomicBool>,
     config: Rc<Config>,
     repos: Repos,
     settings_controller: Rc<SettingsController>,
     mode_controller: Rc<ModeController>,
+    run_token: CancellationToken,
 ) -> Result<()> {
     tokio::pin! {
         let loop_interval = time::interval(Duration::from_millis(LOOP_TICK_DURATION_MS));
-        let snapshot_timeout = sleep(Duration::from_millis(SNAPSHOT_WAIT_MS));
     }
+    let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_WAIT_MS));
     let mut run_lcd_update = false; // toggle lcd updates every other loop tick
     moro_local::async_scope!(|scope| -> Result<()> {
-        let sleep_listener = SleepListener::new(scope)
+        let sleep_listener = SleepListener::new(run_token.clone(), scope)
             .await
             .with_context(|| "Creating DBus Sleep Listener")?;
-        while !term_signal.load(Ordering::Relaxed) {
+        while run_token.is_cancelled().not() {
             loop_interval.tick().await;
             if sleep_listener.is_not_preparing_to_sleep() {
-                let (tx_preload, rx_preload) = oneshot::channel::<()>();
-                fire_preloads(&repos, tx_preload, scope);
+                let snapshot_timeout_token = CancellationToken::new();
+                fire_preloads(&repos, snapshot_timeout_token.clone(), scope);
                 tokio::select! {
                     // This ensures that our status snapshots are taken a regular intervals,
                     // regardless of how long a particular device's status preload takes.
-                    () = &mut snapshot_timeout =>
-                    trace!("Snapshot timeout triggered before preload finished"),
-                    _ = rx_preload => trace!("Preload finished before snapshot timeout"),
+                    () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
+                    () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
                 fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, scope);
                 run_lcd_update = !run_lcd_update;
@@ -97,7 +94,7 @@ pub async fn run<'s>(
 /// if completed before the `snapshot_timeout`.
 fn fire_preloads<'s>(
     repos: &'s Repos,
-    tx_preload: Sender<()>,
+    snapshot_timeout_token: CancellationToken,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     scope.spawn(async move {
@@ -112,7 +109,7 @@ fn fire_preloads<'s>(
             }
         })
         .await;
-        let _ = tx_preload.send(());
+        snapshot_timeout_token.cancel();
     });
 }
 

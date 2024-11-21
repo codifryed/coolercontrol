@@ -19,8 +19,6 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crate::config::Config;
@@ -40,9 +38,11 @@ use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
-use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
+use tokio::signal;
+use tokio::signal::unix::SignalKind;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 mod admin;
 mod api;
@@ -100,8 +100,8 @@ fn main() -> Result<()> {
     if !Uid::effective().is_root() {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
-    let term_signal = setup_term_signal()?;
     cc_fs::uring_runtime(async {
+        let run_token = setup_termination_signals();
         cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
@@ -125,40 +125,40 @@ fn main() -> Result<()> {
             )
             .await?,
         );
-        mode_controller.handle_settings_at_boot().await;
 
-        moro_local::async_scope!(|scope_main| -> Result<()> {
-            match api::init_server(
+        moro_local::async_scope!(|main_scope| -> Result<()> {
+            mode_controller.handle_settings_at_boot().await;
+            if let Err(err) = api::start_server(
                 all_devices,
                 settings_controller.clone(),
                 config.clone(),
                 custom_sensors_repo,
                 mode_controller.clone(),
+                run_token.clone(),
+                main_scope,
             )
             .await
             {
-                Ok(server) => {
-                    scope_main.spawn(server);
-                }
-                Err(err) => error!("Error initializing API Server: {err}"),
+                error!("Error initializing API Server: {err}");
             };
 
-            // give concurrent services a moment to come up:
+            // give concurrent services a moment to finish initializing:
             sleep(Duration::from_millis(10)).await;
             set_cpu_affinity()?;
             info!("Initialization Complete");
             main_loop::run(
-                term_signal,
                 Rc::clone(&config),
                 Rc::clone(&repos),
                 settings_controller,
                 mode_controller,
+                run_token,
             )
             .await?;
-            shutdown(repos, config).await?;
-            scope_main.terminate(Ok(())).await
+            Ok(())
         })
-        .await
+        .await?;
+        // all tasks from the main scope must have completed by this point.
+        shutdown(repos, config).await
     })
 }
 
@@ -196,12 +196,51 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn setup_term_signal() -> Result<Arc<AtomicBool>> {
-    let term_signal = Arc::new(AtomicBool::new(false));
-    signal_hook::flag::register(SIGTERM, Arc::clone(&term_signal))?;
-    signal_hook::flag::register(SIGINT, Arc::clone(&term_signal))?;
-    signal_hook::flag::register(SIGQUIT, Arc::clone(&term_signal))?;
-    Ok(term_signal)
+/// Sets up signal handlers for termination and interrupt signals,
+/// and returns a `CancellationToken` that is triggered when any of
+/// those signals are received, allowing the caller to handle the
+/// signal gracefully.
+///
+/// # Errors
+///
+/// This function returns an error if there is a problem setting up
+/// the signal handlers.
+fn setup_termination_signals() -> CancellationToken {
+    let run_token = CancellationToken::new();
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+    let sigterm = async {
+        signal::unix::signal(SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+    let sigint = async {
+        signal::unix::signal(SignalKind::interrupt())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+    let sigquit = async {
+        signal::unix::signal(SignalKind::quit())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+    let sig_run_token = run_token.clone();
+    tokio::spawn(async move {
+        tokio::select! {
+            () = ctrl_c => {},
+            () = sigterm => {},
+            () = sigint => {},
+            () = sigquit => {},
+        }
+        sig_run_token.cancel();
+    });
+    run_token
 }
 
 async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
@@ -381,8 +420,6 @@ fn set_cpu_affinity() -> Result<()> {
 
 async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     info!("Main process shutting down");
-    // give concurrent tasks a moment to finish:
-    sleep(Duration::from_secs(1)).await;
     // verifies all config document locks have been released before shutdown:
     config.save_config_file().await.unwrap_or_default();
     for repo in repos.iter() {
@@ -437,8 +474,7 @@ impl CCLogger {
                 .filter_level(max_level)
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
-                .filter_module("actix_server", lib_log_level)
-                .filter_module("actix_session", session_log_level)
+                .filter_module("aide", lib_log_level)
                 // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
                 .filter_module("hyper", lib_log_level)
                 .build(),

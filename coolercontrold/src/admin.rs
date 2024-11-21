@@ -31,7 +31,7 @@ const PASSWD_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.passwd");
 const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
-pub async fn passwd_matches(passwd: &str) -> bool {
+pub async fn match_passwd(passwd: &str) -> bool {
     match load_passwd().await {
         Ok(stored_passwd) => stored_passwd == hash_passwd(passwd.as_bytes()).unwrap_or_default(),
         Err(err) => {
