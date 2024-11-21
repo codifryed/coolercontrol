@@ -16,7 +16,7 @@ license = "GPL-3.0-or-later"
 log = "0.4.22"
 env_logger = "0.11.5"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.20", features = [
+clap = { version = "4.5.21", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.93"
@@ -54,7 +54,7 @@ aide = { version = "0.13.4", features = ["axum", "axum-extra"] }
 headers = "0.4.0"
 schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
-hyper = { version = "1.5.0", default-features = false, features = [
+hyper = { version = "1.5.1", default-features = false, features = [
   "http1",
   "client",
 ] }
@@ -64,8 +64,8 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1.2"
-serde = { version = "1.0.214", features = ["derive"] }
-serde_json = "1.0.132"
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
 zbus = { version = "5.1.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
@@ -89,7 +89,7 @@ psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.99.1"
+nu-glob = "0.100.0"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "fan-control" }
 sha2 = "0.10.8"
