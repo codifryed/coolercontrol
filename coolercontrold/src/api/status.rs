@@ -17,7 +17,8 @@
  */
 
 use anyhow::Result;
-use axum::extract::{Json, State};
+use axum::extract::State;
+use axum_jsonschema::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

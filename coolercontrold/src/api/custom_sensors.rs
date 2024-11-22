@@ -20,7 +20,7 @@ use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::setting::{CustomSensor, CustomSensorType};
 use aide::NoApi;
-use axum::extract::Json;
+use axum_jsonschema::Json;
 use axum::extract::{Path, State};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
