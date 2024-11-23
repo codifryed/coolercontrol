@@ -61,6 +61,7 @@ static POOL: BufferPool = BufferPool::create();
 /// `io_uring` requires at least Kernel 5.11, and our optimization flags require 5.19.
 pub fn uring_runtime<F: Future>(future: F) -> F::Output {
     tokio_uring::builder()
+        // This will limit the number of io-wkr threads, as when the queue is full they will wait:
         .entries(4)
         .uring_builder(
             tokio_uring::uring_builder()
