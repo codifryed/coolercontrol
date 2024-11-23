@@ -30,9 +30,9 @@ const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
 pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
     let mut freqs = vec![];
-    let mut dir_entries = cc_fs::read_dir(base_path)?;
+    let dir_entries = cc_fs::read_dir(base_path)?;
     let regex_freq_input = Regex::new(PATTERN_FREQ_INPUT_NUMBER)?;
-    while let Some(entry) = dir_entries.next() {
+    for entry in dir_entries {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
         if regex_freq_input.is_match(file_name) {

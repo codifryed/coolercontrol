@@ -42,8 +42,8 @@ macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($
 /// Initialize all applicable fans
 pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
-    let mut dir_entries = cc_fs::read_dir(base_path)?;
-    while let Some(entry) = dir_entries.next() {
+    let dir_entries = cc_fs::read_dir(base_path)?;
+    for entry in dir_entries {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
         init_pwm_fan(base_path, file_name, &mut fans, device_name).await?;

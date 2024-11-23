@@ -39,9 +39,9 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
         return Ok(vec![]);
     }
     let mut temps = vec![];
-    let mut dir_entries = cc_fs::read_dir(base_path)?;
+    let dir_entries = cc_fs::read_dir(base_path)?;
     let regex_temp_input = Regex::new(PATTERN_TEMP_INPUT_NUMBER)?;
-    while let Some(entry) = dir_entries.next() {
+    for entry in dir_entries {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
         if regex_temp_input.is_match(file_name) {
@@ -101,7 +101,7 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
     .await
 }
 
-/// This is used to remove cpu temps, as we already have repos for that that use HWMon.
+/// This is used to remove cpu temps, as we already have repos for that that use `HWMon`.
 fn temps_used_by_another_repo(device_name: &str) -> bool {
     CPU_DEVICE_NAMES_ORDERED.contains(&device_name)
 }
