@@ -431,7 +431,7 @@ mod tests {
     #[serial]
     fn find_device_empty() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // when:
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
@@ -445,7 +445,7 @@ mod tests {
     #[serial]
     fn find_pwm_device() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -468,7 +468,7 @@ mod tests {
     #[serial]
     fn find_pwm_device_centos() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("pwm1"),
@@ -491,7 +491,7 @@ mod tests {
     #[serial]
     fn find_temp_device() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 &ctx.hwmon_path.join("temp1"),
@@ -514,7 +514,7 @@ mod tests {
     #[serial]
     fn find_temp_device_centos() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("temp1"),
@@ -537,7 +537,7 @@ mod tests {
     #[serial]
     fn find_pwm_centos_and_temp_device() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("pwm1"),
@@ -567,7 +567,7 @@ mod tests {
     #[serial]
     fn find_pwm_and_temp_centos_device() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -596,7 +596,7 @@ mod tests {
     #[serial]
     fn find_pwm_device_norm_and_centos() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -626,7 +626,7 @@ mod tests {
     #[serial]
     fn find_temp_device_norm_and_centos() {
         let ctx = setup();
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             cc_fs::write(ctx.hwmon_path.join("temp1"), b"70000".to_vec())
                 .await

@@ -610,7 +610,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_dir_not_exist() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
             let device_name = "Test Driver".to_string();
@@ -629,7 +629,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -668,7 +668,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_pwm_only() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_rpm_only() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -733,7 +733,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_mode() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -769,7 +769,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_mode_not_enabled() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -795,7 +795,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_enable_to_default() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -828,7 +828,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_enable_to_default_doesnt_exit() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -854,7 +854,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_duty() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
@@ -896,7 +896,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_set_pwm_duty_no_pwm_enable() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;

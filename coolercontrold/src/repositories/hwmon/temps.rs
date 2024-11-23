@@ -212,7 +212,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_temp_dir_not_exist() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
             let device_name = "Test Driver".to_string();
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     #[serial]
     fn find_temp() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
             cc_fs::create_dir_all(&test_base_path).unwrap();

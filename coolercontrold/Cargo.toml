@@ -12,6 +12,10 @@ homepage = "https://gitlab.com/coolercontrol/coolercontrol"
 repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
+[features]
+default = []
+io_uring = ["dep:tokio-uring"]
+
 [dependencies]
 log = "0.4.22"
 env_logger = "0.11.5"
@@ -33,7 +37,7 @@ tokio = { version = "1.41.1", default-features = false, features = [
   "io-std",
   "io-util",
 ] }
-tokio-uring = "0.5.0"
+tokio-uring = { version = "0.5.0", optional = true }
 tokio-util = "0.7.12"
 moro-local = "0.4.0"
 async-trait = "0.1.83"

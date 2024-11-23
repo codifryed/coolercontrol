@@ -15,10 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+#[cfg(feature = "io_uring")]
 use crate::cc_fs::{BufferSize, POOL};
 use anyhow::Result;
 use std::fs::ReadDir;
 use std::path::Path;
+#[cfg(feature = "io_uring")]
 use tokio_uring::fs::File;
 
 /// Reads the entire contents of a sysfs file into a UTF-8 encoded string.
@@ -26,9 +29,15 @@ use tokio_uring::fs::File;
 /// This function is tailored for sysfs files, which are typically small and
 /// contain few values. It will return an error if the file cannot be
 /// opened, read, or if any I/O operations fail during the process.
+#[cfg(feature = "io_uring")]
 pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
     let data = read(path, BufferSize::Small).await?;
     Ok(unsafe { String::from_utf8_unchecked(data) })
+}
+
+#[cfg(not(feature = "io_uring"))]
+pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
+    Ok(tokio::fs::read_to_string(path).await?)
 }
 
 /// Reads the entire contents of a text file into a UTF-8 encoded string.
@@ -36,8 +45,14 @@ pub async fn read_sysfs(path: impl AsRef<Path>) -> Result<String> {
 /// This function will return an error if the file cannot be opened, read, or
 /// if any I/O operations fail during the process. It will also return an error
 /// if the file's contents are not valid UTF-8.
+#[cfg(feature = "io_uring")]
 pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
     read_to_string(path, BufferSize::Medium).await
+}
+
+#[cfg(not(feature = "io_uring"))]
+pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
+    Ok(tokio::fs::read_to_string(path).await?)
 }
 
 /// Reads the entire contents of a file into a vector of bytes. This function
@@ -46,8 +61,14 @@ pub async fn read_txt(path: impl AsRef<Path>) -> Result<String> {
 ///
 /// This function will return an error if the file cannot be opened, read, or
 /// if any I/O operations fail during the process.
+#[cfg(feature = "io_uring")]
 pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
     read(path, BufferSize::Large).await
+}
+
+#[cfg(not(feature = "io_uring"))]
+pub async fn read_image(path: impl AsRef<Path>) -> Result<Vec<u8>> {
+    Ok(tokio::fs::read(path).await?)
 }
 
 /// Reads the contents of a directory.
@@ -99,6 +120,7 @@ pub fn read_dir(path: impl AsRef<Path>) -> Result<ReadDir> {
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(feature = "io_uring")]
 async fn read(path: impl AsRef<Path>, bs: BufferSize) -> Result<Vec<u8>> {
     let file = File::open(path).await?;
     let mut all_data: Vec<u8> = Vec::new();
@@ -136,6 +158,7 @@ async fn read(path: impl AsRef<Path>, bs: BufferSize) -> Result<Vec<u8>> {
 /// This function will return an error if the file cannot be opened, read, or
 /// if any I/O operations fail during the process. It will also return an error
 /// if the file's contents are not valid UTF-8.
+#[cfg(feature = "io_uring")]
 async fn read_to_string(path: impl AsRef<Path>, bs: BufferSize) -> Result<String> {
     Ok(String::from_utf8(read(path, bs).await?)?)
 }

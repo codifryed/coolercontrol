@@ -1068,7 +1068,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_status_valid() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(
@@ -1098,7 +1098,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_status_invalid() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
             let cs_name = "test_sensor1".to_string();
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_valid() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(
@@ -1152,7 +1152,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_valid_with_return() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b" 30000\n\r".to_vec())
@@ -1179,7 +1179,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_not_exist() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = Path::new("/tmp/does_not_exist").to_path_buf();
             let sensor = CustomSensor {
@@ -1204,7 +1204,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_not_present() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let sensor = CustomSensor {
                 id: "test_sensor1".to_string(),
@@ -1230,7 +1230,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_out_of_range_1() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(
@@ -1263,7 +1263,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_out_of_range_2() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(
@@ -1296,7 +1296,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_format() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
@@ -1322,7 +1322,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_too_large_for_i32() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
@@ -1350,7 +1350,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_file_size_too_large() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(
@@ -1383,7 +1383,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_number_format() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
@@ -1409,7 +1409,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_empty() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
@@ -1435,7 +1435,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_file_temp_invalid_blank() {
-        cc_fs::test_uring_runtime(async {
+        cc_fs::test_runtime(async {
             // given:
             let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
             cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();

@@ -100,8 +100,9 @@ fn main() -> Result<()> {
     if !Uid::effective().is_root() {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
-    cc_fs::uring_runtime(async {
+    cc_fs::runtime(async {
         let run_token = setup_termination_signals();
+        #[cfg(feature = "io_uring")]
         cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
