@@ -679,4 +679,3 @@ pub struct AppState {
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
 }
-
