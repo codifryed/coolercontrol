@@ -25,7 +25,6 @@ use aide::axum::ApiRouter;
 
 #[allow(clippy::too_many_lines)]
 pub fn init(app_state: AppState) -> ApiRouter {
-    aide::gen::infer_responses(true);
     let router = ApiRouter::new()
         .api_route(
             "/handshake",
@@ -477,6 +476,5 @@ pub fn init(app_state: AppState) -> ApiRouter {
         ///////////////////////////////////////////////////////////////////////////////////////////
         .route("/api.json", get(base::serve_api_doc))
         .with_state(app_state);
-    aide::gen::infer_responses(false);
     router
 }
