@@ -27,7 +27,7 @@
 
 mod auth;
 
-use log::info;
+use log::trace;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 mod custom_sensor;
@@ -67,5 +67,5 @@ async fn run_api_actor<M>(mut api_actor: impl ApiActor<M>, cancel_token: Cancell
             else => break,
         }
     }
-    info!("{} is shutting down", api_actor.name());
+    trace!("{} is shutting down", api_actor.name());
 }
