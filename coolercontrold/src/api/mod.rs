@@ -204,7 +204,6 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         .license(License {
             name: "GPL3+".to_string(),
             identifier: Some("GPL3+".to_string()),
-            url: Some("https://www.gnu.org/licenses/".to_string()),
             ..License::default()
         })
         .version(version)
@@ -223,7 +222,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             "BasicAuth",
             SecurityScheme::Http {
                 scheme: "basic".to_string(),
-                bearer_format: None,
+                bearer_format: Some(String::new()),
                 description: Some(
                     "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
                         .to_string(),

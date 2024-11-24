@@ -18,7 +18,7 @@
 
 use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
-use crate::setting::Function;
+use crate::setting::{Function, FunctionUID};
 use aide::NoApi;
 use axum::extract::{Path, State};
 use axum_jsonschema::Json;
@@ -79,7 +79,7 @@ pub async fn update(
 }
 
 pub async fn delete(
-    Path(function_uid): Path<String>,
+    Path(path): Path<FunctionPath>,
     NoApi(session): NoApi<Session>,
     State(AppState {
         function_handle, ..
@@ -87,7 +87,7 @@ pub async fn delete(
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     function_handle
-        .delete(function_uid)
+        .delete(path.function_uid)
         .await
         .map_err(handle_error)
 }
@@ -118,4 +118,9 @@ fn validate_function(function: &Function) -> Result<(), CCError> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionsDto {
     functions: Vec<Function>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FunctionPath {
+    function_uid: FunctionUID,
 }

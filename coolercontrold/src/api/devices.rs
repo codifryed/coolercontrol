@@ -18,7 +18,7 @@
 
 use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
-use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
+use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
 use crate::processing::processors::image;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::Device;
@@ -45,55 +45,64 @@ pub async fn devices_get(
 /// Returns all the currently applied settings for the given device.
 /// It returns the Config Settings model, which includes all possibilities for each channel.
 pub async fn device_settings_get(
-    Path(device_uid): Path<String>,
+    Path(path): Path<DevicePath>,
     State(AppState { device_handle, .. }): State<AppState>,
 ) -> Result<Json<SettingsResponse>, CCError> {
     device_handle
-        .device_settings_get(device_uid)
+        .device_settings_get(path.device_uid)
         .await
         .map(|settings| Json(SettingsResponse { settings }))
         .map_err(handle_error)
 }
 
 pub async fn device_setting_manual_modify(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(manual_request): Json<SettingManualRequest>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_manual(device_uid, channel_name, manual_request.speed_fixed)
+        .device_setting_manual(
+            path.device_uid,
+            path.channel_name,
+            manual_request.speed_fixed,
+        )
         .await
         .map_err(handle_error)
 }
 
 pub async fn device_setting_profile_modify(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(profile_uid_json): Json<SettingProfileUID>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_profile(device_uid, channel_name, profile_uid_json.profile_uid)
+        .device_setting_profile(
+            path.device_uid,
+            path.channel_name,
+            profile_uid_json.profile_uid,
+        )
         .await
         .map_err(handle_error)
 }
 
 pub async fn device_setting_lcd_modify(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(lcd_settings): Json<LcdSettings>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_lcd(device_uid, channel_name, lcd_settings)
+        .device_setting_lcd(path.device_uid, path.channel_name, lcd_settings)
         .await
         .map_err(handle_error)
 }
 
+// todo:
 // /// To retrieve the currently applied image
 // #[get("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
 // async fn get_device_lcd_images(
@@ -210,39 +219,39 @@ pub async fn device_setting_lcd_modify(
 // }
 
 pub async fn device_setting_lighting_modify(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(lighting_settings): Json<LightingSettings>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_lighting(device_uid, channel_name, lighting_settings)
+        .device_setting_lighting(path.device_uid, path.channel_name, lighting_settings)
         .await
         .map_err(handle_error)
 }
 
 pub async fn device_setting_pwm_mode_modify(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(pwm_mode_json): Json<SettingPWMMode>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_pwm_mode(device_uid, channel_name, pwm_mode_json.pwm_mode)
+        .device_setting_pwm_mode(path.device_uid, path.channel_name, pwm_mode_json.pwm_mode)
         .await
         .map_err(handle_error)
 }
 
 pub async fn device_setting_reset(
-    Path((device_uid, channel_name)): Path<(String, String)>,
+    Path(path): Path<DeviceChannelPath>,
     NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     device_handle
-        .device_setting_reset(device_uid, channel_name)
+        .device_setting_reset(path.device_uid, path.channel_name)
         .await
         .map_err(handle_error)
 }
@@ -250,12 +259,12 @@ pub async fn device_setting_reset(
 /// Set `AseTek` Cooler driver type
 /// This is needed to set `Legacy690Lc` or `Modern690Lc` device driver type
 pub async fn asetek_type_update(
-    Path(device_uid): Path<String>,
+    Path(path): Path<DevicePath>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(asetek690_request): Json<AseTek690Request>,
 ) -> Result<(), CCError> {
     device_handle
-        .device_asetek_type(device_uid, asetek690_request.is_legacy690)
+        .device_asetek_type(path.device_uid, asetek690_request.is_legacy690)
         .await
         .map_err(handle_error)
 }
@@ -339,4 +348,15 @@ pub struct SettingPWMMode {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ThinkPadFanControlRequest {
     enable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DevicePath {
+    pub device_uid: DeviceUID,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceChannelPath {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
 }

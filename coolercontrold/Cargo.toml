@@ -54,7 +54,11 @@ tower-http = { version = "0.6.2", features = [
 ] }
 tower-sessions = { version = "0.13.0", features = ["private"] }
 tower_governor = { version = "0.4.3", features = ["axum", "tracing"] }
-aide = { version = "0.13.4", features = ["axum", "axum-extra"] }
+aide = { version = "0.13.4", features = [
+  "axum",
+  "axum-extra",
+  "axum-multipart",
+] }
 headers = "0.4.0"
 schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"

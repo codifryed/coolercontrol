@@ -43,14 +43,14 @@ pub async fn get_all(
 }
 
 pub async fn get(
-    Path(custom_sensor_id): Path<String>,
+    Path(path): Path<CSPath>,
     State(AppState {
         custom_sensor_handle,
         ..
     }): State<AppState>,
 ) -> Result<Json<CustomSensor>, CCError> {
     custom_sensor_handle
-        .get(custom_sensor_id)
+        .get(path.custom_sensor_id)
         .await
         .map(Json)
         .map_err(handle_error)
@@ -103,7 +103,7 @@ pub async fn update(
 }
 
 pub async fn delete(
-    Path(custom_sensor_id): Path<String>,
+    Path(path): Path<CSPath>,
     NoApi(session): NoApi<Session>,
     State(AppState {
         custom_sensor_handle,
@@ -112,7 +112,7 @@ pub async fn delete(
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     custom_sensor_handle
-        .delete(custom_sensor_id)
+        .delete(path.custom_sensor_id)
         .await
         .map_err(handle_error)
 }
@@ -155,4 +155,9 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensorsDto {
     custom_sensors: Vec<CustomSensor>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CSPath {
+    custom_sensor_id: String,
 }

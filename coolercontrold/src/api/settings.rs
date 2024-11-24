@@ -17,6 +17,7 @@
  */
 
 use crate::api::auth::verify_admin_permissions;
+use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
@@ -65,11 +66,11 @@ pub async fn get_all_cc_devices(
 
 /// Get `CoolerControl` settings that apply to a specific Device
 pub async fn get_cc_device(
-    Path(device_uid): Path<String>,
+    Path(path): Path<DevicePath>,
     State(AppState { setting_handle, .. }): State<AppState>,
 ) -> Result<Json<CoolerControlDeviceSettingsDto>, CCError> {
     setting_handle
-        .get_cc_device(device_uid)
+        .get_cc_device(path.device_uid)
         .await
         .map(Json)
         .map_err(handle_error)
@@ -77,14 +78,14 @@ pub async fn get_cc_device(
 
 /// Save `CoolerControl` settings that apply to a specific Device
 pub async fn update_cc_device(
-    Path(device_uid): Path<String>,
+    Path(path): Path<DevicePath>,
     NoApi(session): NoApi<Session>,
     State(AppState { setting_handle, .. }): State<AppState>,
     Json(cc_device_settings_request): Json<CoolerControlDeviceSettings>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     setting_handle
-        .update_cc_device(device_uid, cc_device_settings_request)
+        .update_cc_device(path.device_uid, cc_device_settings_request)
         .await
         .map_err(handle_error)
 }

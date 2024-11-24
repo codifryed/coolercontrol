@@ -41,17 +41,17 @@ pub async fn get_all(
 }
 
 pub async fn get(
-    Path(mode_uid): Path<String>,
+    Path(path): Path<ModePath>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ModeDto>, CCError> {
     mode_handle
-        .get(mode_uid.clone())
+        .get(path.mode_uid.clone())
         .await
         .map_err(handle_error)
         .and_then(|mode| {
             mode.map(|mode| Json(convert_mode_to_dto(mode)))
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode with UID {mode_uid} not found"),
+                    msg: format!("Mode with UID {} not found", path.mode_uid),
                 })
         })
 }
@@ -94,35 +94,38 @@ pub async fn update(
 }
 
 pub async fn delete(
-    Path(mode_uid): Path<String>,
+    Path(path): Path<ModePath>,
     NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    mode_handle.delete(mode_uid).await.map_err(handle_error)
+    mode_handle
+        .delete(path.mode_uid)
+        .await
+        .map_err(handle_error)
 }
 
 pub async fn duplicate(
-    Path(dup_mode_uid): Path<String>,
+    Path(path): Path<ModePath>,
     NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ModeDto>, CCError> {
     verify_admin_permissions(&session).await?;
     mode_handle
-        .duplicate(dup_mode_uid)
+        .duplicate(path.mode_uid)
         .await
         .map(|mode| Json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
 }
 
 pub async fn update_mode_settings(
-    Path(mode_uid): Path<String>,
+    Path(path): Path<ModePath>,
     NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ModeDto>, CCError> {
     verify_admin_permissions(&session).await?;
     mode_handle
-        .update_settings(mode_uid)
+        .update_settings(path.mode_uid)
         .await
         .map(|mode| Json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
@@ -139,12 +142,15 @@ pub async fn get_all_active(
 }
 
 pub async fn activate(
-    Path(mode_uid): Path<String>,
+    Path(path): Path<ModePath>,
     NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    mode_handle.activate(mode_uid).await.map_err(handle_error)
+    mode_handle
+        .activate(path.mode_uid)
+        .await
+        .map_err(handle_error)
 }
 
 fn convert_mode_to_dto(mode: Mode) -> ModeDto {
@@ -193,4 +199,9 @@ pub struct UpdateModeDto {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ActiveModesDto {
     mode_uids: Vec<UID>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModePath {
+    mode_uid: UID,
 }
