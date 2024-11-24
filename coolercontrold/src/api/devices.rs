@@ -24,7 +24,7 @@ use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::NoApi;
 use axum::extract::{Path, State};
-use axum_jsonschema::Json;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::io::Read;

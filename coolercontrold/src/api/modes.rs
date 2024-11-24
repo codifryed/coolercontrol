@@ -24,7 +24,7 @@ use crate::setting::Setting;
 use aide::NoApi;
 use axum::extract::Path;
 use axum::extract::State;
-use axum_jsonschema::Json;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;

@@ -23,7 +23,7 @@ use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 use aide::NoApi;
 use axum::extract::{Path, State};
-use axum_jsonschema::Json;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

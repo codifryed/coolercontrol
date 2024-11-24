@@ -21,7 +21,7 @@ use crate::api::{handle_error, AppState, CCError};
 use crate::setting::{CustomSensor, CustomSensorType};
 use aide::NoApi;
 use axum::extract::{Path, State};
-use axum_jsonschema::Json;
+use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
