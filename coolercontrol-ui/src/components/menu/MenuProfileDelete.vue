@@ -78,7 +78,8 @@ const deleteProfile = (): void => {
         header: 'Delete Profile',
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
-            settingsStore.profiles.splice(profileIndex, 1)
+            // emit needs to happen first for Profiles, since they're re-loaded in by deleting
+            emit('deleted', profileUIDToDelete)
             await settingsStore.deleteProfile(profileUIDToDelete)
             toast.add({
                 severity: 'success',
@@ -86,7 +87,6 @@ const deleteProfile = (): void => {
                 detail: 'Profile Deleted',
                 life: 3000,
             })
-            emit('deleted', profileUIDToDelete)
         },
     })
 }
