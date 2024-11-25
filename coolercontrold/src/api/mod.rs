@@ -52,7 +52,6 @@ use log::{debug, info, warn};
 use moro_local::Scope;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::cell::LazyCell;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -60,7 +59,6 @@ use std::time::Duration;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio_util::sync::CancellationToken;
 use tower_governor::governor::GovernorConfigBuilder;
-use tower_governor::key_extractor::GlobalKeyExtractor;
 use tower_governor::GovernorLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors;
@@ -122,6 +120,17 @@ pub async fn start_server<'s>(
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnSessionEnd);
+    let govenor_layer = GovernorLayer {
+        config: Arc::new(
+            GovernorConfigBuilder::default()
+                // startup has quite a few requests (e.g. per device)
+                .burst_size(20)
+                // 10 req/s
+                .per_millisecond(100)
+                .finish()
+                .unwrap(),
+        ),
+    };
 
     if let Ok(ipv4) = ipv4 {
         main_scope.spawn(create_api_server(
@@ -129,6 +138,7 @@ pub async fn start_server<'s>(
             app_state.clone(),
             compress_enabled,
             session_layer.clone(),
+            govenor_layer.clone(),
             cancel_token.clone(),
         ));
     }
@@ -138,6 +148,7 @@ pub async fn start_server<'s>(
             app_state,
             compress_enabled,
             session_layer,
+            govenor_layer,
             cancel_token,
         ));
     }
@@ -149,21 +160,10 @@ async fn create_api_server(
     app_state: AppState,
     compress_enabled: bool,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    governor_layer: GovernorLayer,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     let mut open_api = OpenApi::default();
-    let gov_layer = LazyCell::new(|| GovernorLayer {
-        config: Arc::new(
-            GovernorConfigBuilder::default()
-                // startup has quite a few requests (e.g. per device)
-                .burst_size(20)
-                // 10 req/s
-                .per_millisecond(100)
-                .key_extractor(GlobalKeyExtractor)
-                .finish()
-                .unwrap(),
-        ),
-    });
     let router = router::init(app_state)
         .finish_api_with(&mut open_api, api_docs)
         .layer(Extension(open_api));
@@ -175,7 +175,7 @@ async fn create_api_server(
             .layer(cors_layer())
             .layer(NormalizePathLayer::trim_trailing_slash())
             .layer(session_layer)
-            .layer(gov_layer.clone())
+            .layer(governor_layer)
             .layer((
                 TraceLayer::new_for_http(),
                 TimeoutLayer::new(Duration::from_secs(30)),
