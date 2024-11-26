@@ -72,7 +72,7 @@ impl ColorMode {
 /// It is a general purpose trait and each supported device struct must implement this trait.
 /// Many of the default methods will cover all use cases, but it is advisable to override them
 /// for increased efficiency and performance.
-pub trait DeviceSupport: Debug + Sync + Send {
+pub trait DeviceSupport: Debug {
     fn supported_driver(&self) -> BaseDriver;
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo;

@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 use crate::device::{
     ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
@@ -33,13 +33,13 @@ const MAX_DUTY: u8 = 100;
 
 #[derive(Debug)]
 pub struct SmartDevice2Support {
-    init_speed_channel_map: RwLock<HashMap<u8, Vec<String>>>,
+    init_speed_channel_map: RefCell<HashMap<u8, Vec<String>>>,
 }
 
 impl SmartDevice2Support {
     pub fn new() -> Self {
         Self {
-            init_speed_channel_map: RwLock::new(HashMap::new()),
+            init_speed_channel_map: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -73,8 +73,7 @@ impl DeviceSupport for SmartDevice2Support {
             );
         }
         self.init_speed_channel_map
-            .write()
-            .unwrap()
+            .borrow_mut()
             .insert(device_response.id, init_speed_channel_names);
 
         for name in &device_response.properties.color_channels {
@@ -152,12 +151,7 @@ impl DeviceSupport for SmartDevice2Support {
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
-        if let Some(speed_channel_names) = self
-            .init_speed_channel_map
-            .read()
-            .unwrap()
-            .get(device_index)
-        {
+        if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(device_index) {
             if channel_statuses.len() < speed_channel_names.len() {
                 let channel_names_current_status = channel_statuses
                     .iter()

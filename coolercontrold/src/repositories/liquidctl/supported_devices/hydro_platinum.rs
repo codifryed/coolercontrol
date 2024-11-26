@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::Cell;
 use std::collections::HashMap;
-use std::sync::RwLock;
 
 use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
@@ -26,13 +26,13 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct HydroPlatinumSupport {
-    led_count: RwLock<u8>,
+    led_count: Cell<u8>,
 }
 
 impl HydroPlatinumSupport {
     pub fn new() -> Self {
         Self {
-            led_count: RwLock::new(1),
+            led_count: Cell::new(1),
         }
     }
 }
@@ -44,7 +44,7 @@ impl DeviceSupport for HydroPlatinumSupport {
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         if let Some(led_count) = device_response.properties.led_count {
-            *self.led_count.write().unwrap() = led_count;
+            self.led_count.set(led_count);
         }
         let mut channels = HashMap::new();
         channels.insert(
@@ -107,13 +107,7 @@ impl DeviceSupport for HydroPlatinumSupport {
         let color_modes: Vec<ColorMode> = vec![
             ColorMode::new("off", 0, 0, false, false),
             ColorMode::new("fixed", 1, 1, false, false),
-            ColorMode::new(
-                "super-fixed",
-                1,
-                *self.led_count.read().unwrap(),
-                false,
-                false,
-            ),
+            ColorMode::new("super-fixed", 1, self.led_count.get(), false, false),
         ];
         self.convert_to_channel_lighting_modes(color_modes)
     }
