@@ -163,10 +163,13 @@ async fn create_api_server(
     governor_layer: GovernorLayer,
     cancel_token: CancellationToken,
 ) -> Result<()> {
+    aide::gen::on_error(|error| {
+        debug!("OpenApi Generation Error: {error}");
+    });
     let mut open_api = OpenApi::default();
     let router = router::init(app_state)
         .finish_api_with(&mut open_api, api_docs)
-        .layer(Extension(open_api));
+        .layer(Extension(Arc::new(open_api)));
     let listener = TcpListener::bind(addr).await?;
     info!("API bound to address: {}", addr);
     axum::serve(
