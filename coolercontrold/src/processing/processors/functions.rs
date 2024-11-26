@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
@@ -221,6 +222,7 @@ impl Processor for FunctionStandardPreProcessor {
 
         // setup metadata:
         let mut metadata_lock = self.channel_settings_metadata.write().await;
+        // todo: refactor (easy - actually depends on Device RWLock being removed)
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
@@ -398,26 +400,24 @@ impl Processor for FunctionEMAPreProcessor {
 /// This post-processor keeps a set of last-applied-duties and applies only duties within set upper and
 /// lower thresholds. It also handles improvements for edge cases.
 pub struct FunctionDutyThresholdPostProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, DutySettingMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, DutySettingMetadata>>,
 }
 
 impl FunctionDutyThresholdPostProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
-    async fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
-        if self.scheduled_settings_metadata.read().await[&data.profile.profile_uid]
+    fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
+        if self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
             .last_manual_speeds_set
             .is_empty()
         {
             return data.duty; // first application (startup)
         }
-        let last_duty = self
-            .get_appropriate_last_duty(&data.profile.profile_uid)
-            .await;
+        let last_duty = self.get_appropriate_last_duty(&data.profile.profile_uid);
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
         if diff_to_last_duty < data.profile.function.duty_minimum
             && data.safety_latch_triggered.not()
@@ -437,8 +437,8 @@ impl FunctionDutyThresholdPostProcessor {
     /// This returns the last duty that was set manually. This used to also do extra work to
     /// determine if it was a true value of the device, but with the introduction of the
     /// safety-latch, that is superfluous.
-    async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
-        *self.scheduled_settings_metadata.read().await[profile_uid]
+    fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
+        *self.scheduled_settings_metadata.borrow()[profile_uid]
             .last_manual_speeds_set
             .back()
             .unwrap() // already checked to exist
@@ -453,22 +453,20 @@ impl Processor for FunctionDutyThresholdPostProcessor {
 
     async fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), DutySettingMetadata::new());
     }
 
     async fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        if let Some(duty_to_set) = self.duty_within_thresholds(data).await {
+        if let Some(duty_to_set) = self.duty_within_thresholds(data) {
             {
-                let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+                let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
                 let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
@@ -482,11 +480,7 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             trace!("Duty not above threshold to be applied to device. Skipping");
             trace!(
                 "Last applied duties: {:?}",
-                self.scheduled_settings_metadata
-                    .read()
-                    .await
-                    .get(&data.profile.profile_uid)
-                    .unwrap()
+                self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
                     .last_manual_speeds_set
             );
             data
@@ -515,13 +509,13 @@ impl DutySettingMetadata {
 /// are hit, regardless of thresholds set. It also makes sure that the device is actually doing
 /// what it should. This processor needs to run at both the start and end of the processing chain.
 pub struct FunctionSafetyLatchProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, SafetyLatchMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, SafetyLatchMetadata>>,
 }
 
 impl FunctionSafetyLatchProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -535,20 +529,18 @@ impl Processor for FunctionSafetyLatchProcessor {
 
     async fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), SafetyLatchMetadata::new());
     }
 
     async fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+        let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if data.processing_started.not() {
             // Check whether to trigger the latch at the start of processing
