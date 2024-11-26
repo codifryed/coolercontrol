@@ -57,6 +57,8 @@ tower_governor = { git = "https://github.com/codifryed/tower-governor", features
   "axum",
   "tracing",
 ] }
+tower-serve-static = "0.1.1"
+include_dir = "0.7.4"
 aide = { version = "0.13.4", features = [
   "axum",
   "axum-extra",
@@ -137,8 +139,6 @@ gifski = { version = "1.32.0", default-features = false, features = [
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
 uuid = { version = "1.11.0", features = ["v4"] }
-
-[build-dependencies]
 
 [dev-dependencies]
 serial_test = "3.2.0"

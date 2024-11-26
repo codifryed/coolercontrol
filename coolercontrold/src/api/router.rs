@@ -47,8 +47,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
                     .security_requirement("CookieAuth")
             }),
         )
-        // todo: (See Base)
-        // .service(actix_web_static_files::ResourceFiles::new("/", generate()));
+        .nest_service("/", base::web_app_service())
         ///////////////////////////////////////////////////////////////////////////////////////////
         .api_route(
             "/login",
