@@ -393,6 +393,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum_typed_multipart"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41044b23e250b46af4b73286707fe517f73b3b1518cc34347ec4ae643e3e9a27"
+dependencies = [
+ "anyhow",
+ "axum",
+ "axum_typed_multipart_macros",
+ "bytes",
+ "chrono",
+ "futures-core",
+ "futures-util",
+ "tempfile",
+ "thiserror 2.0.3",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "axum_typed_multipart_macros"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa0a06af331eb00c4f372a38664b3e4fc599bb308b2342ffdb3770b2cad3d432"
+dependencies = [
+ "darling",
+ "heck",
+ "proc-macro-error2",
+ "quote",
+ "syn",
+ "ubyte",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -705,6 +738,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
+ "axum_typed_multipart",
  "cached",
  "chrono",
  "clap",
@@ -2135,6 +2169,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-error-attr2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "proc-macro-error2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
+dependencies = [
+ "proc-macro-error-attr2",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3177,6 +3233,12 @@ name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
+
+[[package]]
+name = "ubyte"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f720def6ce1ee2fc44d40ac9ed6d3a59c361c80a75a7aa8e75bb9baed31cf2ea"
 
 [[package]]
 name = "uds_windows"

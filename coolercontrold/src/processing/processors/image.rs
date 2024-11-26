@@ -42,12 +42,12 @@ pub fn supported_image_types() -> [Mime; 5] {
 /// This method takes uploaded image data and processes it in accordance to the LCD/Screens specifications.
 /// This make sure that images are properly sized, cropped and standardized for our use.
 pub async fn process_image(
-    content_type: &Mime,
+    content_type: Mime,
     file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    if content_type == &mime::IMAGE_GIF {
+    if content_type == mime::IMAGE_GIF {
         process_gif(&file_data, screen_width, screen_height).await
     } else {
         process_static_image(&file_data, screen_width, screen_height).await

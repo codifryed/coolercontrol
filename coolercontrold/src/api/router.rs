@@ -147,12 +147,28 @@ pub fn init(app_state: AppState) -> ApiRouter {
                     .security_requirement("CookieAuth")
             }),
         )
-        // todo:
-        // .service(devices::get_device_lcd_images)
-        // todo:
-        // .service(devices::apply_device_setting_lcd_images)
-        // todo:
-        // .service(devices::process_device_lcd_images)
+        .api_route(
+            "/devices/:device_uid/settings/:channel_name/lcd/images",
+            get_with(devices::get_device_lcd_image, |o| {
+                o.summary("Retrieve Device Channel LCD")
+                    .description("Retrieves the currently applied LCD Image file.")
+                    .tag("device")
+            })
+            .post_with(devices::process_device_lcd_images, |o| {
+                o.summary("Process Device Channel LCD Image")
+                    .description("This takes and image file and processes it for optimal \
+                    use by the specified device channel. This is useful for a UI Preview \
+                    and is used internally before applying the image to the device.")
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+            })
+            .put_with(devices::update_device_setting_lcd_image, |o| {
+                o.summary("Update Device Channel LCD Settings")
+                    .description("Used to apply LCD settings that contain images.")
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+            }),
+        )
         .api_route(
             "/devices/:device_uid/settings/:channel_name/lighting",
             put_with(devices::device_setting_lighting_modify, |o| {

@@ -53,7 +53,10 @@ tower-http = { version = "0.6.2", features = [
 ] }
 tower-sessions = { version = "0.13.0", features = ["private"] }
 # Our own fork which handles our specific use case:
-tower_governor = { git = "https://github.com/codifryed/tower-governor", features = ["axum", "tracing"] }
+tower_governor = { git = "https://github.com/codifryed/tower-governor", features = [
+  "axum",
+  "tracing",
+] }
 aide = { version = "0.13.4", features = [
   "axum",
   "axum-extra",
@@ -62,6 +65,8 @@ aide = { version = "0.13.4", features = [
 headers = "0.4.0"
 schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
+axum_typed_multipart = "0.13.2"
+tempfile = "3.14.0"
 hyper = { version = "1.5.1", default-features = false, features = [
   "http1",
   "client",
@@ -137,7 +142,6 @@ uuid = { version = "1.11.0", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"
-tempfile = "3.14.0"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]

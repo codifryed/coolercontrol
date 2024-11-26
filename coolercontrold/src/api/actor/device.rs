@@ -23,6 +23,7 @@ use crate::processing::settings::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
+use mime::Mime;
 use moro_local::Scope;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -43,6 +44,26 @@ enum DeviceMessage {
     },
     DevicesGet {
         respond_to: oneshot::Sender<Result<Vec<DeviceDto>>>,
+    },
+    DeviceImageGet {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<(Mime, Vec<u8>)>>,
+    },
+    DeviceImageProcess {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        files: Vec<(Mime, Vec<u8>)>,
+        respond_to: oneshot::Sender<Result<(Mime, Vec<u8>)>>,
+    },
+    DeviceImageUpdate {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        mode: String,
+        brightness: Option<u8>,
+        orientation: Option<u16>,
+        files: Vec<(Mime, Vec<u8>)>,
+        respond_to: oneshot::Sender<Result<()>>,
     },
     DeviceSettingsGet {
         device_uid: DeviceUID,
@@ -128,6 +149,71 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     all_devices.push(device.read().await.deref().into());
                 }
                 let _ = respond_to.send(Ok(all_devices));
+            }
+            DeviceMessage::DeviceImageGet {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let response = self
+                    .settings_controller
+                    .get_lcd_image(&device_uid, &channel_name)
+                    .await;
+                let _ = respond_to.send(response);
+            }
+            DeviceMessage::DeviceImageProcess {
+                device_uid,
+                channel_name,
+                mut files,
+                respond_to,
+            } => {
+                let response = self
+                    .settings_controller
+                    .process_lcd_image(&device_uid, &channel_name, &mut files)
+                    .await;
+                let _ = respond_to.send(response);
+            }
+            DeviceMessage::DeviceImageUpdate {
+                device_uid,
+                channel_name,
+                mode,
+                brightness,
+                orientation,
+                mut files,
+                respond_to,
+            } => {
+                let result = async {
+                    let processed_image_data = self
+                        .settings_controller
+                        .process_lcd_image(&device_uid, &channel_name, &mut files)
+                        .await?;
+                    let image_path = self
+                        .settings_controller
+                        .save_lcd_image(&processed_image_data.0, processed_image_data.1)
+                        .await?;
+                    let lcd_settings = LcdSettings {
+                        mode,
+                        brightness,
+                        orientation,
+                        image_file_processed: Some(image_path),
+                        temp_source: None,
+                        colors: Vec::with_capacity(0),
+                    };
+                    self.settings_controller
+                        .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
+                        .await?;
+                    let config_setting = Setting {
+                        channel_name,
+                        lcd: Some(lcd_settings),
+                        ..Default::default()
+                    };
+                    self.config
+                        .set_device_setting(&device_uid, &config_setting)
+                        .await;
+                    self.config.save_config_file().await
+                }
+                .await;
+                let _ = respond_to.send(result);
             }
             DeviceMessage::DeviceSettingsGet {
                 device_uid,
@@ -336,6 +422,61 @@ impl DeviceHandle {
     pub async fn devices_get(&self) -> Result<Vec<DeviceDto>> {
         let (tx, rx) = oneshot::channel();
         let msg = DeviceMessage::DevicesGet { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_image_get(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> Result<(Mime, Vec<u8>)> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceImageGet {
+            device_uid,
+            channel_name,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_image_process(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        files: Vec<(Mime, Vec<u8>)>,
+    ) -> Result<(Mime, Vec<u8>)> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceImageProcess {
+            device_uid,
+            channel_name,
+            files,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_image_update(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        mode: String,
+        brightness: Option<u8>,
+        orientation: Option<u16>,
+        files: Vec<(Mime, Vec<u8>)>,
+    ) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceImageUpdate {
+            device_uid,
+            channel_name,
+            mode,
+            brightness,
+            orientation,
+            files,
+            respond_to: tx,
+        };
         let _ = self.sender.send(msg).await;
         rx.await?
     }

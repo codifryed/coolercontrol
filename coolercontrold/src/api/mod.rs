@@ -182,9 +182,8 @@ async fn create_api_server(
             ))
             // 2MB is the default payload limit:
             .layer(DefaultBodyLimit::disable())
-            // todo: need to check if multipart is also affected by this, as this affects "bytes"
-            // Limits the size of the payload in bytes:
-            .layer(RequestBodyLimitLayer::new(5 * 1024 * 1024))
+            // Limits the size of the payload in bytes: (Max 50MB for image files)
+            .layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
             .into_make_service(),
     )
     .with_graceful_shutdown(async move { cancel_token.cancelled().await })

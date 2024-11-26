@@ -376,11 +376,11 @@ impl SettingsController {
     }
 
     /// This function processes the image file for the specified device channel.
-    pub async fn process_lcd_images(
+    pub async fn process_lcd_image(
         &self,
         device_uid: &String,
         channel_name: &str,
-        files: &mut Vec<(&Mime, Vec<u8>)>,
+        files: &mut Vec<(Mime, Vec<u8>)>,
     ) -> Result<(Mime, Vec<u8>)> {
         let lcd_info = self
             .all_devices
