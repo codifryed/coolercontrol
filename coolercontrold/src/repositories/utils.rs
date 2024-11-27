@@ -103,12 +103,12 @@ impl ShellCommand {
                 if let Some(mut child_err) = child.stderr.take() {
                     child_err.read_to_string(&mut stderr).await.unwrap();
                     limit_output_length(&mut stderr);
-                    stderr = stderr.trim().to_owned();
+                    stderr = stderr.trim().to_string();
                 };
                 if let Some(mut child_out) = child.stdout.take() {
                     child_out.read_to_string(&mut stdout).await.unwrap();
                     limit_output_length(&mut stderr);
-                    stdout = stdout.trim().to_owned();
+                    stdout = stdout.trim().to_string();
                 }
             }
             Err(err) => {

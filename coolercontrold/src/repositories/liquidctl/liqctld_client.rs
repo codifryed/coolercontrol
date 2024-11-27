@@ -67,7 +67,7 @@ type ConnectionIndex = usize;
 /// Properties:
 ///
 /// * `connection_pool`: The `connection_pool` property is a vector of `SocketConnectionLock` objects,
-/// wrapped in a `RwLock`.
+///   wrapped in a `RwLock`.
 pub struct LiqctldClient {
     connection_pool: RwLock<Vec<SocketConnectionLock>>,
 }
@@ -149,7 +149,7 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `retry_count`: A mutable reference to an unsigned integer variable representing the number of
-    /// retries.
+    ///   retries.
     async fn handle_retry(retry_count: &mut usize) {
         sleep(Duration::from_secs(1)).await;
         *retry_count += 1;
@@ -204,8 +204,8 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `request`: The `request` parameter is of type `Request<String>`. It represents a request to be
-    /// sent to a socket connection. The `String` type parameter indicates the body of the request,
-    /// which is expected to be in JSON format.
+    ///   sent to a socket connection. The `String` type parameter indicates the body of the request,
+    ///   which is expected to be in JSON format.
     ///
     /// Returns:
     ///
@@ -235,7 +235,7 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `response`: The `response` parameter is of type `Response<Incoming>`. It represents the HTTP
-    /// response received from a server.
+    ///   response received from a server.
     ///
     /// Returns:
     ///
@@ -310,10 +310,10 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer
-    /// (`u8`). It is used to identify the index of the device that needs to be initialized.
+    ///   (`u8`). It is used to identify the index of the device that needs to be initialized.
     /// * `pump_mode`: The `pump_mode` parameter is an optional string that represents the desired mode
-    /// of the pump. It is used as a parameter in the `InitializeRequest` struct, which is then
-    /// serialized to JSON and included in the request body.
+    ///   of the pump. It is used as a parameter in the `InitializeRequest` struct, which is then
+    ///   serialized to JSON and included in the request body.
     ///
     /// Returns:
     ///
@@ -337,7 +337,7 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer
-    /// (`&u8`). It represents the index of a device.
+    ///   (`&u8`). It represents the index of a device.
     ///
     /// Returns:
     ///
@@ -356,11 +356,11 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is the index or identifier of the device you want
-    /// to control. It is of type `u8`, which means it is an unsigned 8-bit integer.
+    ///   to control. It is of type `u8`, which means it is an unsigned 8-bit integer.
     /// * `channel_name`: The `channel_name` parameter is a string that represents the name of the
-    /// channel for which you want to set the fixed speed.
+    ///   channel for which you want to set the fixed speed.
     /// * `fixed_speed`: The `fixed_speed` parameter represents the desired fixed speed value for a
-    /// specific channel on a device. It is of type `u8`, which means it can hold values from 0 to 255.
+    ///   specific channel on a device. It is of type `u8`, which means it can hold values from 0 to 255.
     ///
     /// Returns:
     ///
@@ -389,16 +389,16 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is the index of the device for which you want to
-    /// set the speed profile. It is of type `u8`, which means it is an unsigned 8-bit integer.
+    ///   set the speed profile. It is of type `u8`, which means it is an unsigned 8-bit integer.
     /// * `channel_name`: The `channel_name` parameter is a string that represents the name of the
-    /// channel for which the speed profile is being set.
+    ///   channel for which the speed profile is being set.
     /// * `profile`: The `profile` parameter is a vector of tuples, where each tuple contains two
-    /// values: a `f64` representing a temperature point, and a `u8` representing a speed level. This
-    /// profile represents the desired speed levels for different temperature points.
+    ///   values: a `f64` representing a temperature point, and a `u8` representing a speed level. This
+    ///   profile represents the desired speed levels for different temperature points.
     /// * `temperature_sensor`: The `temperature_sensor` parameter is an optional parameter that
-    /// represents the temperature sensor to be used for the speed profile. It is of type `Option<u8>`,
-    /// which means it can either be `Some(u8)` where `u8` is the index of the temperature sensor, or
-    /// `None`.
+    ///   represents the temperature sensor to be used for the speed profile. It is of type `Option<u8>`,
+    ///   which means it can either be `Some(u8)` where `u8` is the index of the temperature sensor, or
+    ///   `None`.
     ///
     /// Returns:
     ///
@@ -429,25 +429,25 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is the index or identifier of the device you want
-    /// to control. It is of type `u8`, which means it is an unsigned 8-bit integer.
+    ///   to control. It is of type `u8`, which means it is an unsigned 8-bit integer.
     /// * `channel_name`: The `channel_name` parameter is a string that represents the name of the
-    /// channel you want to set the color for.
+    ///   channel you want to set the color for.
     /// * `mode`: The `mode` parameter in the `put_color` function represents the mode in which the
-    /// colors will be displayed on the device. It is a string that specifies the desired mode, such as
-    /// "solid", "fade", "blink", etc. The specific modes available may depend on the device or library
+    ///   colors will be displayed on the device. It is a string that specifies the desired mode, such as
+    ///   "solid", "fade", "blink", etc. The specific modes available may depend on the device or library
     /// * `colors`: The `colors` parameter is a vector of tuples representing RGB color values. Each
-    /// tuple consists of three `u8` values representing the red, green, and blue components of the
-    /// color. For example, `(255, 0, 0)` represents the color red.
+    ///   tuple consists of three `u8` values representing the red, green, and blue components of the
+    ///   color. For example, `(255, 0, 0)` represents the color red.
     /// * `time_per_color`: The `time_per_color` parameter is an optional parameter that specifies the
-    /// duration (in seconds) for which each color in the `colors` vector should be displayed. If this
-    /// parameter is not provided, the default duration will be used.
+    ///   duration (in seconds) for which each color in the `colors` vector should be displayed. If this
+    ///   parameter is not provided, the default duration will be used.
     /// * `speed`: The `speed` parameter is an optional parameter that specifies the speed at which the
-    /// colors should transition. It is of type `Option<String>`, which means it can either be
-    /// `Some(speed_value)` or `None`. If it is `Some(speed_value)`, the `speed_value` should be
+    ///   colors should transition. It is of type `Option<String>`, which means it can either be
+    ///   `Some(speed_value)` or `None`. If it is `Some(speed_value)`, the `speed_value` should be
     /// * `direction`: The `direction` parameter is an optional string that specifies the direction of
-    /// the color change. It can have values like "forward", "backward", "clockwise",
-    /// "counterclockwise", etc., depending on the specific implementation or requirements of the system
-    /// you are working with.
+    ///   the color change. It can have values like "forward", "backward", "clockwise",
+    ///   "counterclockwise", etc., depending on the specific implementation or requirements of the system
+    ///   you are working with.
     ///
     /// Returns:
     ///
@@ -484,14 +484,14 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is the index of the device you want to put the
-    /// screen for. It is of type `u8`, which means it is an unsigned 8-bit integer.
+    ///   screen for. It is of type `u8`, which means it is an unsigned 8-bit integer.
     /// * `channel_name`: The `channel_name` parameter is a string that represents the name of the
-    /// channel for the screen. It is used to identify the specific channel on the device where the
-    /// screen is located.
+    ///   channel for the screen. It is used to identify the specific channel on the device where the
+    ///   screen is located.
     /// * `mode`: The `mode` parameter in the `put_screen` function is a string that represents the
-    /// desired mode for the screen. Current values are "gif", "static", "orientation", and "brightness".
+    ///   desired mode for the screen. Current values are "gif", "static", "orientation", and "brightness".
     /// * `value`: The `value` parameter is an optional `String` that represents the value to be set for
-    /// the screen mode.
+    ///   the screen mode.
     ///
     /// Returns:
     ///
