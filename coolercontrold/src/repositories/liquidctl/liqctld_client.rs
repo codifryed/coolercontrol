@@ -127,7 +127,7 @@ impl LiqctldClient {
             // keeps the connection open and drives http requests
             // Tokio::task::spawn here is preferred as we can abort() individual futures
             // and since it's only for the hyper Connection, is fine to use here.
-            let connection_handle = tokio::task::spawn(async move {
+            let connection_handle = tokio::task::spawn_local(async {
                 if let Err(err) = connection.await {
                     error!("Unexpected Error: Connection to socket failed: {:?}", err);
                 }

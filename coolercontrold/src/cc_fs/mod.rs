@@ -59,6 +59,8 @@ use std::ops::Deref;
 use std::time::Duration;
 #[cfg(not(feature = "io_uring"))]
 use tokio::runtime::Builder;
+#[cfg(not(feature = "io_uring"))]
+use tokio::task::LocalSet;
 #[cfg(feature = "io_uring")]
 use tokio_uring::buf::fixed::FixedBufPool;
 
@@ -102,9 +104,10 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
         .thread_keep_alive(Duration::from_secs(5))
         .thread_name("coolercontrol-wrk")
         .build();
-    // requires tokio unstable: (but would make all our spawns !Send by default - which is nice)
+    // requires tokio unstable: (but would make all our spawns !Send by default)
     // .build_local(&Default::default());
-    rt.unwrap().block_on(future)
+    // ^ until then, this allows us to use spawn_local:
+    rt.unwrap().block_on(LocalSet::new().run_until(future))
 }
 
 /// A variant of `uring_runtime` that also registers the fixed buffers with the
@@ -134,7 +137,7 @@ pub fn test_runtime<F: Future>(future: F) -> F::Output {
 #[cfg(not(feature = "io_uring"))]
 pub fn test_runtime<F: Future>(future: F) -> F::Output {
     let rt = Builder::new_current_thread().enable_all().build();
-    rt.unwrap().block_on(future)
+    rt.unwrap().block_on(LocalSet::new().run_until(future))
 }
 
 /// Registers a pool of fixed buffers with varying sizes for use in `io_uring` operations.

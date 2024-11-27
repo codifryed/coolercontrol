@@ -232,7 +232,7 @@ fn setup_termination_signals() -> CancellationToken {
             .await;
     };
     let sig_run_token = run_token.clone();
-    tokio::spawn(async move {
+    tokio::task::spawn_local(async move {
         tokio::select! {
             () = ctrl_c => {},
             () = sigterm => {},
