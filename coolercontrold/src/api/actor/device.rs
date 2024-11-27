@@ -146,7 +146,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
             DeviceMessage::DevicesGet { respond_to } => {
                 let mut all_devices = Vec::new();
                 for device in self.all_devices.values() {
-                    all_devices.push(device.read().await.deref().into());
+                    all_devices.push(device.borrow().deref().into());
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
@@ -371,14 +371,8 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     self.config.save_config_file().await?;
                     // Device is now known. Legacy690Lc devices still require a restart of the daemon.
                     if let Some(device) = self.all_devices.get(&device_uid) {
-                        if device.read().await.lc_info.is_some() {
-                            device
-                                .write()
-                                .await
-                                .lc_info
-                                .as_mut()
-                                .unwrap()
-                                .unknown_asetek = false;
+                        if device.borrow().lc_info.is_some() {
+                            device.borrow_mut().lc_info.as_mut().unwrap().unknown_asetek = false;
                         }
                     }
                     Ok(())

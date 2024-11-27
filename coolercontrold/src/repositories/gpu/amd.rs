@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
@@ -37,7 +38,6 @@ use heck::ToTitleCase;
 use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
 use log::{error, info, trace, warn};
 use regex::Regex;
-use tokio::sync::RwLock;
 
 const AMD_HWMON_NAME: &str = "amdgpu";
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
@@ -51,7 +51,7 @@ pub struct GpuAMD {
     config: Rc<Config>,
     amd_devices: HashMap<UID, DeviceLock>,
     pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
-    pub amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl GpuAMD {
@@ -60,7 +60,7 @@ impl GpuAMD {
             config,
             amd_devices: HashMap::new(),
             amd_driver_infos: HashMap::new(),
-            amd_preloaded_statuses: RwLock::new(HashMap::new()),
+            amd_preloaded_statuses: RefCell::new(HashMap::new()),
         }
     }
 
@@ -75,11 +75,11 @@ impl GpuAMD {
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
                 Ok(fans) => channels.extend(fans),
-                Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Fans: {err}"),
             };
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(temps),
-                Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Temps: {err}"),
             };
             let device_path = path
                 .join("device")
@@ -90,7 +90,7 @@ impl GpuAMD {
             }
             match freqs::init_freqs(&path).await {
                 Ok(freqs) => channels.extend(freqs),
-                Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
             };
             let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
             let drm_device_name = Self::get_drm_device_name(&path).await;
@@ -126,15 +126,12 @@ impl GpuAMD {
                     ..Default::default()
                 }),
                 Err(err) => {
-                    warn!("Error reading AMD busy percent value: {}", err);
+                    warn!("Error reading AMD busy percent value: {err}");
                     None
                 }
             },
             Err(_) => {
-                warn!(
-                    "No AMDGPU load found: {:?}/device/gpu_busy_percent",
-                    device_path
-                );
+                warn!("No AMDGPU load found: {device_path:?}/device/gpu_busy_percent");
                 None
             }
         }
@@ -143,7 +140,7 @@ impl GpuAMD {
     async fn get_drm_device_name(base_path: &Path) -> Option<String> {
         let slot_name = devices::get_pci_slot_name(base_path).await?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
-        let drm_file = crate::cc_fs::open_options()
+        let drm_file = cc_fs::open_options()
             .read(true)
             .write(true)
             .open(&path)
@@ -266,8 +263,7 @@ impl GpuAMD {
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
             self.amd_preloaded_statuses
-                .write()
-                .await
+                .borrow_mut()
                 .insert(id, amd_status.clone());
             let temps = amd_driver
                 .hwmon
@@ -327,7 +323,7 @@ impl GpuAMD {
             }
             self.amd_driver_infos
                 .insert(device.uid.clone(), Rc::new(amd_driver.clone()));
-            devices.insert(device.uid.clone(), Rc::new(RwLock::new(device)));
+            devices.insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if log::max_level() >= log::LevelFilter::Debug {
             info!("Initialized AMD HwmonInfos: {:?}", self.amd_driver_infos);
@@ -408,14 +404,11 @@ impl GpuAMD {
     pub async fn update_all_statuses(&self) {
         for (uid, amd_driver) in &self.amd_driver_infos {
             if let Some(device_lock) = self.amd_devices.get(uid) {
-                let preloaded_statuses_map = self.amd_preloaded_statuses.read().await;
-                let preloaded_statuses =
-                    preloaded_statuses_map.get(&device_lock.read().await.type_index);
+                let device_index = device_lock.borrow().type_index;
+                let preloaded_statuses_map = self.amd_preloaded_statuses.borrow();
+                let preloaded_statuses = preloaded_statuses_map.get(&device_index);
                 if preloaded_statuses.is_none() {
-                    error!(
-                        "There is no status preloaded for this AMD device: {}",
-                        device_lock.read().await.type_index
-                    );
+                    error!("There is no status preloaded for this AMD device: {device_index}");
                     continue;
                 }
                 let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -429,14 +422,22 @@ impl GpuAMD {
                     amd_driver.hwmon.name,
                     status
                 );
-                device_lock.write().await.set_status(status);
+                device_lock.borrow_mut().set_status(status);
             }
         }
     }
 
     pub async fn reset_devices(&self) {
         for (uid, device_lock) in &self.amd_devices {
-            for channel_name in device_lock.read().await.info.channels.keys() {
+            // clone here to avoid holding the lock
+            let channel_names = device_lock
+                .borrow()
+                .info
+                .channels
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            for channel_name in &channel_names {
                 self.reset_amd_to_default(uid, channel_name).await.ok();
             }
         }

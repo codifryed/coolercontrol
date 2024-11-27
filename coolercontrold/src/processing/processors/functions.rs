@@ -23,7 +23,6 @@ use std::ops::Not;
 use async_trait::async_trait;
 use log::{error, trace};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
@@ -75,8 +74,7 @@ impl Processor for FunctionIdentityPreProcessor {
         }
         data.temp = temp_source_device_option
             .unwrap()
-            .read()
-            .await
+            .borrow()
             .status_history
             .iter()
             .last() // last = latest temp
@@ -99,14 +97,14 @@ impl Processor for FunctionIdentityPreProcessor {
 /// The standard Function with Hysteresis control
 pub struct FunctionStandardPreProcessor {
     all_devices: AllDevices,
-    channel_settings_metadata: RwLock<HashMap<ProfileUID, ChannelSettingMetadata>>,
+    channel_settings_metadata: RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>,
 }
 
 impl FunctionStandardPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
         Self {
             all_devices,
-            channel_settings_metadata: RwLock::new(HashMap::new()),
+            channel_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
@@ -126,7 +124,7 @@ impl FunctionStandardPreProcessor {
         true
     }
 
-    async fn fill_temp_stack(
+    fn fill_temp_stack(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
         temp_source_device_option: Option<&DeviceLock>,
@@ -139,7 +137,7 @@ impl FunctionStandardPreProcessor {
             metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
             return;
         }
-        let temp_source_device = temp_source_device_option.unwrap().read().await;
+        let temp_source_device = temp_source_device_option.unwrap().borrow();
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
             let mut latest_temps = temp_source_device
@@ -200,15 +198,13 @@ impl Processor for FunctionStandardPreProcessor {
 
     async fn init_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), ChannelSettingMetadata::new());
     }
 
     async fn clear_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
@@ -221,8 +217,7 @@ impl Processor for FunctionStandardPreProcessor {
         }
 
         // setup metadata:
-        let mut metadata_lock = self.channel_settings_metadata.write().await;
-        // todo: refactor (easy - actually depends on Device RWLock being removed)
+        let mut metadata_lock = self.channel_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
@@ -230,7 +225,7 @@ impl Processor for FunctionStandardPreProcessor {
                 .max(data.profile.function.response_delay.unwrap() + 1)
                 as usize;
         }
-        Self::fill_temp_stack(metadata, data, temp_source_device_option).await;
+        Self::fill_temp_stack(metadata, data, temp_source_device_option);
 
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
             metadata.temp_hist_stack.pop_front();
@@ -371,7 +366,7 @@ impl Processor for FunctionEMAPreProcessor {
         }
         let mut temps = {
             // scoped for the device read lock
-            let temp_source_device = temp_source_device_option.unwrap().read().await;
+            let temp_source_device = temp_source_device_option.unwrap().borrow();
             temp_source_device
                 .status_history
                 .iter()

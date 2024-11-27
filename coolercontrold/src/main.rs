@@ -398,7 +398,7 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     let mut all_devices = HashMap::new();
     for repo in repos.iter() {
         for device_lock in repo.devices().await {
-            let uid = device_lock.read().await.uid.clone();
+            let uid = device_lock.borrow().uid.clone();
             all_devices.insert(uid, Rc::clone(&device_lock));
         }
     }

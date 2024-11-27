@@ -98,13 +98,12 @@ impl GpuRepo {
     pub async fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.read().await.type_index;
+                let type_index = device_lock.borrow().type_index;
                 scope.spawn(async move {
                     let statuses = self.gpus_amd.get_amd_status(amd_driver).await;
                     self.gpus_amd
                         .amd_preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(type_index, statuses);
                 });
             }
@@ -114,13 +113,12 @@ impl GpuRepo {
     async fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.read().await.type_index;
+                let type_index = device_lock.borrow().type_index;
                 scope.spawn(async move {
                     let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
                     self.gpus_nvidia
                         .nvidia_preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(
                             type_index,
                             StatusNvidiaDeviceSMI {
@@ -142,12 +140,11 @@ impl GpuRepo {
             }
             for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
                 if let Some(device_lock) = self.devices.get(uid) {
-                    let type_index = device_lock.read().await.type_index;
+                    let type_index = device_lock.borrow().type_index;
                     if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
                         self.gpus_nvidia
                             .nvidia_preloaded_statuses
-                            .write()
-                            .await
+                            .borrow_mut()
                             .insert(type_index, nv_status);
                     } else {
                         error!("GPU Index not found in Nvidia status response");
@@ -181,7 +178,7 @@ impl Repository for GpuRepo {
         };
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
-            init_devices.insert(uid.clone(), device.read().await.clone());
+            init_devices.insert(uid.clone(), device.borrow().clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized GPU Devices: {:?}", init_devices);

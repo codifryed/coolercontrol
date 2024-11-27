@@ -238,7 +238,7 @@ impl GraphProfileCommander {
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
-            let device_lock = self.all_devices[device_uid].read().await;
+            let device_lock = self.all_devices[device_uid].borrow();
             (device_lock.d_type.clone(), device_lock.name.clone())
         };
         debug!(
@@ -276,7 +276,7 @@ impl GraphProfileCommander {
                     temp_source.device_uid
                 )
             })?;
-        let max_temp = f64::from(temp_source_device.read().await.info.temp_max);
+        let max_temp = f64::from(temp_source_device.borrow().info.temp_max);
         let max_duty = self.get_max_device_duty(device_uid, channel_name).await?;
         let function = self.get_profiles_function(&profile.function_uid).await?;
         let normalized_speed_profile =
@@ -294,7 +294,7 @@ impl GraphProfileCommander {
         let device_to_schedule = self.all_devices.get(device_uid).with_context(|| {
             format!("Target Device to schedule speed must be present: {device_uid}")
         })?;
-        let device_lock = device_to_schedule.read().await;
+        let device_lock = device_to_schedule.borrow();
         let channel_info = device_lock.info.channels.get(channel_name).with_context(|| {
             format!(
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"

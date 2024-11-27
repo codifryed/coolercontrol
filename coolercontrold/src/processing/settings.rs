@@ -134,7 +134,7 @@ impl SettingsController {
         device_uid: &UID,
     ) -> Result<(&DeviceLock, &Rc<dyn Repository>)> {
         if let Some(device_lock) = self.all_devices.get(device_uid) {
-            let device_type = device_lock.read().await.d_type.clone();
+            let device_type = device_lock.borrow().d_type.clone();
             if let Some(repo) = self.repos.get(&device_type) {
                 Ok((device_lock, repo))
             } else {
@@ -219,8 +219,7 @@ impl SettingsController {
         }
         let (device_lock, repo) = self.get_device_repo(device_uid).await?;
         let speed_options = device_lock
-            .read()
-            .await
+            .borrow()
             .info
             .channels
             .get(channel_name)
@@ -289,8 +288,7 @@ impl SettingsController {
         }
         let (device_lock, _) = self.get_device_repo(device_uid).await?;
         let speed_options = device_lock
-            .read()
-            .await
+            .borrow()
             .info
             .channels
             .get(channel_name)
@@ -345,8 +343,7 @@ impl SettingsController {
     ) -> Result<()> {
         let (device_lock, repo) = self.get_device_repo(device_uid).await?;
         let lcd_not_enabled = device_lock
-            .read()
-            .await
+            .borrow()
             .info
             .channels
             .get(channel_name)
@@ -388,8 +385,7 @@ impl SettingsController {
             .ok_or_else(|| CCError::NotFound {
                 msg: format!("Device with UID:{device_uid}"),
             })?
-            .read()
-            .await
+            .borrow()
             .info
             .channels
             .get(channel_name)
@@ -479,8 +475,7 @@ impl SettingsController {
     ) -> Result<()> {
         let (device_lock, repo) = self.get_device_repo(device_uid).await?;
         let lighting_channels = device_lock
-            .read()
-            .await
+            .borrow()
             .info
             .channels
             .iter()
@@ -569,7 +564,7 @@ impl SettingsController {
     /// waking from sleep, as the status history is no longer sequential.
     pub async fn reinitialize_all_status_histories(&self) {
         for (_uid, device) in self.all_devices.iter() {
-            let most_recent_status = device.read().await.status_current().unwrap();
+            let most_recent_status = device.borrow().status_current().unwrap();
             let adjusted_recent_status = Status {
                 // next status snapshot after wake timing estimate:
                 //   now + 100ms(main loop delay) + 400ms(snapshot_update_initial_delay)
@@ -590,8 +585,7 @@ impl SettingsController {
                     .collect::<Vec<ChannelStatus>>(),
             };
             device
-                .write()
-                .await
+                .borrow_mut()
                 .initialize_status_history_with(adjusted_recent_status);
         }
     }

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::string::ToString;
@@ -24,7 +25,6 @@ use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace};
-use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::api::CCError;
@@ -41,7 +41,7 @@ use crate::{cc_fs, VERSION};
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
 
-type CustomSensors = Rc<RwLock<Vec<CustomSensor>>>;
+type CustomSensors = Rc<RefCell<Vec<CustomSensor>>>;
 
 /// A Repository for Custom Sensors defined by the user
 pub struct CustomSensorsRepo {
@@ -55,14 +55,14 @@ impl CustomSensorsRepo {
     pub async fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Self {
         let mut all_devices = HashMap::new();
         for device in all_other_devices {
-            let uid = device.read().await.uid.clone();
+            let uid = device.borrow().uid.clone();
             all_devices.insert(uid, device);
         }
         Self {
             config,
             custom_sensor_device: None,
             all_devices,
-            sensors: Rc::new(RwLock::new(Vec::new())),
+            sensors: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -70,16 +70,14 @@ impl CustomSensorsRepo {
         self.custom_sensor_device
             .as_ref()
             .expect("Custom Sensor Device should always be present after initialization")
-            .read()
-            .await
+            .borrow()
             .uid
             .clone()
     }
 
     pub async fn get_custom_sensor(&self, custom_sensor_id: &str) -> Result<CustomSensor> {
         self.sensors
-            .read()
-            .await
+            .borrow()
             .iter()
             .find(|cs| cs.id == custom_sensor_id)
             .cloned()
@@ -92,13 +90,13 @@ impl CustomSensorsRepo {
     }
 
     pub async fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
-        Ok(self.sensors.read().await.clone())
+        Ok(self.sensors.borrow().clone())
     }
 
     pub async fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
         self.config.set_custom_sensor_order(custom_sensors).await?;
-        self.sensors.write().await.clear();
-        self.sensors.write().await.extend(custom_sensors.to_vec());
+        self.sensors.borrow_mut().clear();
+        self.sensors.borrow_mut().extend(custom_sensors.to_vec());
         Ok(())
     }
 
@@ -109,7 +107,7 @@ impl CustomSensorsRepo {
                 error!("Failed to fill status history for new Custom Sensor: {err}")
             })?;
         self.config.set_custom_sensor(custom_sensor.clone()).await?;
-        self.sensors.write().await.push(custom_sensor);
+        self.sensors.borrow_mut().push(custom_sensor);
         self.update_device_info_temps().await;
         Ok(())
     }
@@ -122,13 +120,15 @@ impl CustomSensorsRepo {
         self.config
             .update_custom_sensor(custom_sensor.clone())
             .await?;
-        let mut sensors = self.sensors.write().await;
-        // find check is done in the config update
-        let pos = sensors
-            .iter()
-            .position(|s| s.id == custom_sensor.id)
-            .expect("Custom Sensor not found");
-        sensors[pos] = custom_sensor;
+        {
+            let mut sensors = self.sensors.borrow_mut();
+            // find check is done in the config update
+            let pos = sensors
+                .iter()
+                .position(|s| s.id == custom_sensor.id)
+                .expect("Custom Sensor not found");
+            sensors[pos] = custom_sensor;
+        }
         Ok(())
     }
 
@@ -136,8 +136,7 @@ impl CustomSensorsRepo {
         self.config.delete_custom_sensor(custom_sensor_id).await?;
         Self::remove_status_history_for_sensor(self, custom_sensor_id).await;
         self.sensors
-            .write()
-            .await
+            .borrow_mut()
             .retain(|cs| cs.id != custom_sensor_id);
         self.update_device_info_temps().await;
         Ok(())
@@ -146,8 +145,7 @@ impl CustomSensorsRepo {
     async fn update_device_info_temps(&self) {
         let temp_infos = self
             .sensors
-            .read()
-            .await
+            .borrow()
             .iter()
             .enumerate()
             .map(|(index, cs)| {
@@ -163,8 +161,7 @@ impl CustomSensorsRepo {
         self.custom_sensor_device
             .as_ref()
             .unwrap()
-            .write()
-            .await
+            .borrow_mut()
             .info
             .temps = temp_infos;
     }
@@ -183,8 +180,7 @@ impl CustomSensorsRepo {
             .custom_sensor_device
             .as_ref()
             .unwrap()
-            .read()
-            .await
+            .borrow()
             .status_history
             .clone();
         match sensor.cs_type {
@@ -216,8 +212,7 @@ impl CustomSensorsRepo {
         self.custom_sensor_device
             .as_ref()
             .unwrap()
-            .write()
-            .await
+            .borrow_mut()
             .status_history = status_history;
         Ok(())
     }
@@ -247,8 +242,7 @@ impl CustomSensorsRepo {
                 continue;
             };
             let some_temp = temp_source_device
-                .read()
-                .await
+                .borrow()
                 .status_history
                 .get(index)
                 .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
@@ -298,8 +292,7 @@ impl CustomSensorsRepo {
                 continue;
             };
             let some_temp = temp_source_device
-                .read()
-                .await
+                .borrow()
                 .status_history
                 .back()
                 .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
@@ -483,25 +476,12 @@ impl CustomSensorsRepo {
     }
 
     async fn remove_status_history_for_sensor(&self, sensor_id: &str) {
-        let mut status_history = self
-            .custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .read()
-            .await
-            .status_history
-            .clone();
-        for status in &mut status_history {
+        let mut device_lock = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
+        for status in &mut device_lock.status_history {
             status
                 .temps
                 .retain(|temp_status| temp_status.name != sensor_id);
         }
-        self.custom_sensor_device
-            .as_ref()
-            .unwrap()
-            .write()
-            .await
-            .status_history = status_history;
     }
 }
 
@@ -528,7 +508,7 @@ impl Repository for CustomSensorsRepo {
                 )
             })
             .collect();
-        let custom_sensor_device = Rc::new(RwLock::new(Device::new(
+        let custom_sensor_device = Rc::new(RefCell::new(Device::new(
             "Custom Sensors".to_string(),
             DeviceType::CustomSensors,
             1,
@@ -550,33 +530,30 @@ impl Repository for CustomSensorsRepo {
         )));
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(custom_sensor_device);
-        self.sensors.write().await.extend(custom_sensors);
+        self.sensors.borrow_mut().extend(custom_sensors);
         self.update_statuses().await?;
         let recent_status = self
             .custom_sensor_device
             .as_ref()
             .unwrap()
-            .read()
-            .await
+            .borrow()
             .status_current()
             .unwrap();
         self.custom_sensor_device
             .as_ref()
             .unwrap()
-            .write()
-            .await
+            .borrow_mut()
             .initialize_status_history_with(recent_status);
         if log::max_level() == log::LevelFilter::Debug {
             info!(
                 "Initialized Custom Sensors Device: {:?}",
-                self.custom_sensor_device.as_ref().unwrap().read().await
+                self.custom_sensor_device.as_ref().unwrap().borrow()
             );
         } else {
             info!(
                 "Initialized Custom Sensors: {:?}",
                 self.sensors
-                    .read()
-                    .await
+                    .borrow()
                     .iter()
                     .map(|d| d.id.clone())
                     .collect::<Vec<String>>()
@@ -608,7 +585,7 @@ impl Repository for CustomSensorsRepo {
         }
         let start_update = Instant::now();
         let mut custom_temps = Vec::new();
-        for sensor in self.sensors.read().await.iter() {
+        for sensor in self.sensors.borrow().iter() {
             match sensor.cs_type {
                 CustomSensorType::Mix => {
                     let temp_status = self.process_custom_sensor_data_mix_current(sensor).await;
@@ -623,8 +600,7 @@ impl Repository for CustomSensorsRepo {
         self.custom_sensor_device
             .as_ref()
             .unwrap()
-            .write()
-            .await
+            .borrow_mut()
             .set_status(Status {
                 temps: custom_temps,
                 ..Default::default()

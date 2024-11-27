@@ -15,17 +15,18 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tokio::sync::RwLock;
 
 use crate::device::{DeviceType, UID};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 
-pub type DeviceLock = Rc<RwLock<Device>>;
+pub type DeviceLock = Rc<RefCell<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
 
 /// A Repository is used to access device hardware data

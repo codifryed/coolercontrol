@@ -108,7 +108,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                     let settings_map = self.config.get_all_cc_devices_settings().await?;
                     let mut devices_settings = HashMap::new();
                     for (device_uid, device_lock) in self.all_devices.iter() {
-                        let name = device_lock.read().await.name.clone();
+                        let name = device_lock.borrow().name.clone();
                         // first fill with the default
                         devices_settings.insert(
                             device_uid.clone(),
@@ -163,8 +163,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                                 .ok_or_else(|| CCError::NotFound {
                                     msg: "Device not found".to_string(),
                                 })?
-                                .read()
-                                .await
+                                .borrow()
                                 .name
                                 .clone();
                             CoolerControlDeviceSettingsDto {

@@ -162,7 +162,7 @@ impl LcdCommander {
             .all_devices
             .get(setting_temp_source.device_uid.as_str())
         {
-            let device_read_lock = temp_source_device_lock.read().await;
+            let device_read_lock = temp_source_device_lock.borrow();
             let label = device_read_lock
                 .info
                 .temps
@@ -276,7 +276,7 @@ impl LcdCommander {
             metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
-        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
+        let device_type = self.all_devices[device_uid].borrow().d_type.clone();
         debug!(
             "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
             device_uid, lcd_settings

@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -37,7 +37,6 @@ use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
-use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
@@ -58,8 +57,8 @@ pub struct CpuRepo {
     devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
     cpu_model_names: HashMap<PhysicalID, String>,
-    cpu_percent_collector: RwLock<CpuPercentCollector>,
-    preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    cpu_percent_collector: RefCell<CpuPercentCollector>,
+    preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl CpuRepo {
@@ -69,8 +68,8 @@ impl CpuRepo {
             devices: HashMap::new(),
             cpu_infos: HashMap::new(),
             cpu_model_names: HashMap::new(),
-            cpu_percent_collector: RwLock::new(CpuPercentCollector::new()?),
-            preloaded_statuses: RwLock::new(HashMap::new()),
+            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
+            preloaded_statuses: RefCell::new(HashMap::new()),
         })
     }
 
@@ -215,8 +214,7 @@ impl CpuRepo {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
         let percent_per_processor = self
             .cpu_percent_collector
-            .write()
-            .await
+            .borrow_mut()
             .cpu_percent_percpu()
             .unwrap_or_default();
         let mut percents = Vec::new();
@@ -506,8 +504,7 @@ impl Repository for CpuRepo {
                 .await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
-                .write()
-                .await
+                .borrow_mut()
                 .insert(type_index, (channels.clone(), temps.clone()));
             let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
             let temp_infos = driver
@@ -587,17 +584,14 @@ impl Repository for CpuRepo {
             } else {
                 self.devices.insert(
                     device.uid.clone(),
-                    (Rc::new(RwLock::new(device)), Rc::new(driver)),
+                    (Rc::new(RefCell::new(device)), Rc::new(driver)),
                 );
             }
         }
 
         let mut init_devices = HashMap::new();
         for (uid, (device, hwmon_info)) in &self.devices {
-            init_devices.insert(
-                uid.clone(),
-                (device.read().await.clone(), hwmon_info.clone()),
-            );
+            init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {:?}", init_devices);
@@ -646,7 +640,7 @@ impl Repository for CpuRepo {
         let mut cpu_freqs = Self::collect_freq().await;
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let device_id = device_lock.read().await.type_index;
+                let device_id = device_lock.borrow().type_index;
                 let physical_id = device_id - 1;
                 let mut cpu_freq = HashMap::new();
                 if let Some(freq) = cpu_freqs.remove(&physical_id) {
@@ -658,8 +652,7 @@ impl Repository for CpuRepo {
                         .request_status(physical_id, driver, &mut cpu_freq)
                         .await;
                     self.preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(device_id, (channels, temps));
                 });
             }
@@ -674,8 +667,8 @@ impl Repository for CpuRepo {
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
         for (device, _) in self.devices.values() {
-            let device_id = device.read().await.type_index;
-            let preloaded_statuses_map = self.preloaded_statuses.read().await;
+            let device_id = device.borrow().type_index;
+            let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if preloaded_statuses.is_none() {
                 error!(
@@ -695,7 +688,7 @@ impl Repository for CpuRepo {
                 device_id,
                 status
             );
-            device.write().await.set_status(status);
+            device.borrow_mut().set_status(status);
         }
         trace!(
             "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",

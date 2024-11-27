@@ -190,9 +190,8 @@ impl Config {
     /// This adds a human-readable device list with UIDs to the config file
     pub async fn create_device_list(&self, devices: Rc<HashMap<UID, DeviceLock>>) -> Result<()> {
         for (uid, device) in devices.iter() {
-            self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
-                Formatted::new(device.read().await.name.clone()),
-            ));
+            self.document.write().await["devices"][uid.as_str()] =
+                Item::Value(Value::String(Formatted::new(device.borrow().name.clone())));
         }
         Ok(())
     }

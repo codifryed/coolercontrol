@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -36,7 +36,6 @@ use heck::ToTitleCase;
 use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
@@ -85,7 +84,7 @@ pub struct HwmonDriverInfo {
 pub struct HwmonRepo {
     config: Rc<Config>,
     devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
-    preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
 }
@@ -95,7 +94,7 @@ impl HwmonRepo {
         Self {
             config,
             devices: HashMap::new(),
-            preloaded_statuses: RwLock::new(HashMap::new()),
+            preloaded_statuses: RefCell::new(HashMap::new()),
             lc_hwmon_paths: lc_locations
                 .into_iter()
                 .filter(|loc| loc.contains("hwmon/hwmon"))
@@ -194,7 +193,7 @@ impl HwmonRepo {
             let type_index = (index + 1) as u8;
             let channel_statuses = fans::extract_fan_statuses(&driver).await;
             let temp_statuses = temps::extract_temp_statuses(&driver).await;
-            self.preloaded_statuses.write().await.insert(
+            self.preloaded_statuses.borrow_mut().insert(
                 type_index,
                 (channel_statuses.clone(), temp_statuses.clone()),
             );
@@ -227,7 +226,7 @@ impl HwmonRepo {
             }
             self.devices.insert(
                 device.uid.clone(),
-                (Rc::new(RwLock::new(device)), Rc::new(driver)),
+                (Rc::new(RefCell::new(device)), Rc::new(driver)),
             );
         }
     }
@@ -336,10 +335,7 @@ impl Repository for HwmonRepo {
 
         let mut init_devices = HashMap::new();
         for (uid, (device, hwmon_info)) in &self.devices {
-            init_devices.insert(
-                uid.clone(),
-                (device.read().await.clone(), hwmon_info.clone()),
-            );
+            init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Hwmon Devices: {:?}", init_devices);
@@ -387,16 +383,14 @@ impl Repository for HwmonRepo {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let device_id = device_lock.read().await.type_index;
+                let device_id = device_lock.borrow().type_index;
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    self.preloaded_statuses.write().await.insert(
-                        device_id,
-                        (
-                            fans::extract_fan_statuses(driver).await,
-                            temps::extract_temp_statuses(driver).await,
-                        ),
-                    );
+                    let fan_statuses = fans::extract_fan_statuses(driver).await;
+                    let temp_statuses = temps::extract_temp_statuses(driver).await;
+                    self.preloaded_statuses
+                        .borrow_mut()
+                        .insert(device_id, (fan_statuses, temp_statuses));
                 });
             }
         })
@@ -410,12 +404,13 @@ impl Repository for HwmonRepo {
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
         for (device, _) in self.devices.values() {
-            let preloaded_statuses_map = self.preloaded_statuses.read().await;
-            let preloaded_statuses = preloaded_statuses_map.get(&device.read().await.type_index);
+            let preloaded_statuses_map = self.preloaded_statuses.borrow();
+            let device_index = device.borrow().type_index;
+            let preloaded_statuses = preloaded_statuses_map.get(&device_index);
             if preloaded_statuses.is_none() {
                 error!(
                     "There is no status preloaded for this device: {}",
-                    device.read().await.type_index
+                    device_index
                 );
                 continue;
             }
@@ -427,10 +422,10 @@ impl Repository for HwmonRepo {
             };
             trace!(
                 "Hwmon device: {} status was updated with: {:?}",
-                device.read().await.name,
+                device.borrow().name,
                 status
             );
-            device.write().await.set_status(status);
+            device.borrow_mut().set_status(status);
         }
         trace!(
             "STATUS SNAPSHOT Time taken for all HWMON devices: {:?}",

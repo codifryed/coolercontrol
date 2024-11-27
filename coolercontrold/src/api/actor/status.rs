@@ -18,14 +18,15 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::status::DeviceStatusDto;
-use crate::device::{Device, Status};
+use crate::device::Status;
+use crate::repositories::repository::DeviceLock;
 use crate::AllDevices;
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use moro_local::Scope;
 use std::ops::Deref;
 use std::sync::LazyLock;
-use tokio::sync::{mpsc, oneshot, RwLockReadGuard};
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 // possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
@@ -73,24 +74,21 @@ impl ApiActor<StatusMessage> for StatusActor {
             StatusMessage::All { respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    let device = device_lock.read().await;
-                    all_devices.push(get_all_statuses(&device));
+                    all_devices.push(get_all_statuses(&device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
             StatusMessage::Recent { respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    let device = device_lock.read().await;
-                    all_devices.push(get_most_recent_status(&device));
+                    all_devices.push(get_most_recent_status(&device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
             StatusMessage::Since { since, respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    let device = device_lock.read().await;
-                    all_devices.push(get_statuses_since(since, &device));
+                    all_devices.push(get_statuses_since(since, &device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
@@ -98,15 +96,16 @@ impl ApiActor<StatusMessage> for StatusActor {
     }
 }
 
-fn get_all_statuses(device: &RwLockReadGuard<Device>) -> DeviceStatusDto {
-    device.deref().into()
+fn get_all_statuses(device_lock: &DeviceLock) -> DeviceStatusDto {
+    device_lock.borrow().deref().into()
 }
 
 fn get_statuses_since(
     since_timestamp: DateTime<Local>,
-    device: &RwLockReadGuard<Device>,
+    device_lock: &DeviceLock,
 ) -> DeviceStatusDto {
     let timestamp_limit = since_timestamp + *MAX_UPDATE_TIMESTAMP_VARIATION;
+    let device = device_lock.borrow();
     let filtered_history = device
         .status_history
         .iter()
@@ -121,8 +120,9 @@ fn get_statuses_since(
     }
 }
 
-fn get_most_recent_status(device: &RwLockReadGuard<Device>) -> DeviceStatusDto {
+fn get_most_recent_status(device_lock: &DeviceLock) -> DeviceStatusDto {
     let mut status_history: Vec<Status> = Vec::with_capacity(1);
+    let device = device_lock.borrow();
     if let Some(most_recent_status) = device.status_current() {
         status_history.push(most_recent_status);
     }

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -30,7 +31,6 @@ use derive_more::{Display, Error};
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use tokio::sync::RwLock;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
@@ -51,7 +51,7 @@ pub struct LiquidctlRepo {
     liqctld_client: LiqctldClient,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
-    preloaded_statuses: RwLock<HashMap<u8, LCStatus>>,
+    preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
 }
 
 impl LiquidctlRepo {
@@ -80,13 +80,12 @@ impl LiquidctlRepo {
             liqctld_client,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
-            preloaded_statuses: RwLock::new(HashMap::new()),
+            preloaded_statuses: RefCell::new(HashMap::new()),
         })
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
         let devices_response = self.liqctld_client.get_all_devices().await?;
-        let mut preloaded_status_map = self.preloaded_statuses.write().await;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
 
         for device_response in devices_response.devices {
@@ -100,7 +99,9 @@ impl LiquidctlRepo {
                 }
                 Some(d_type) => d_type,
             };
-            preloaded_status_map.insert(device_response.id, Vec::new());
+            self.preloaded_statuses
+                .borrow_mut()
+                .insert(device_response.id, Vec::new());
             let device_info = self
                 .device_mapper
                 .extract_info(&driver_type, &device_response);
@@ -126,7 +127,7 @@ impl LiquidctlRepo {
             }
             self.check_for_legacy_690(&mut device).await?;
             self.devices
-                .insert(device.uid.clone(), Rc::new(RwLock::new(device)));
+                .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if self.devices.is_empty() {
             info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
@@ -154,7 +155,7 @@ impl LiquidctlRepo {
     pub async fn get_all_driver_locations(&self) -> Vec<String> {
         let mut driver_locations = Vec::new();
         for device_lock in self.devices.values() {
-            let device = device_lock.read().await;
+            let device = device_lock.borrow();
             for location in &device.info.driver_info.locations {
                 driver_locations.push(location.to_owned());
             }
@@ -165,8 +166,8 @@ impl LiquidctlRepo {
     pub async fn update_temp_infos(&self) {
         for device_lock in self.devices.values() {
             let status = {
-                let device = device_lock.read().await;
-                let preloaded_statuses = self.preloaded_statuses.read().await;
+                let device = device_lock.borrow();
+                let preloaded_statuses = self.preloaded_statuses.borrow();
                 let lc_status = preloaded_statuses.get(&device.type_index);
                 let Some(status) = lc_status else {
                     error!(
@@ -185,7 +186,7 @@ impl LiquidctlRepo {
                     device.type_index,
                 )
             };
-            device_lock.write().await.info.temps = status
+            device_lock.borrow_mut().info.temps = status
                 .temps
                 .iter()
                 .enumerate()
@@ -247,12 +248,12 @@ impl LiquidctlRepo {
     }
 
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
-        let mut device = device_lock.write().await;
-        let device_index = device.type_index;
+        let device_index = device_lock.borrow().type_index;
         let status_response = self
             .liqctld_client
             .initialize_device(&device_index, None)
             .await?;
+        let mut device = device_lock.borrow_mut();
         let lc_info = device
             .lc_info
             .as_mut()
@@ -277,11 +278,11 @@ impl LiquidctlRepo {
     }
 
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
-        let device = device_lock.read().await;
+        let device_index = device_lock.borrow().type_index;
         // pump_modes will be set after re-initializing
         let _ = self
             .liqctld_client
-            .initialize_device(&device.type_index, None)
+            .initialize_device(&device_index, None)
             .await?;
         Ok(())
     }
@@ -546,8 +547,7 @@ impl LiquidctlRepo {
             .devices
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?
-            .read()
-            .await;
+            .borrow();
         Ok(CachedDeviceData {
             type_index: device.type_index,
             uid: device.uid.clone(),
@@ -564,8 +564,7 @@ impl LiquidctlRepo {
     async fn reset_lcd_to_default(&self) {
         for device_lock in self.devices.values() {
             if device_lock
-                .read()
-                .await
+                .borrow()
                 .lc_info
                 .as_ref()
                 .expect("Liquidctl devices should always have lc_info")
@@ -574,8 +573,8 @@ impl LiquidctlRepo {
             {
                 continue;
             }
-            let device = device_lock.read().await;
-            if let Ok(device_settings) = self.config.get_device_settings(&device.uid).await {
+            let device_uid = device_lock.borrow().uid.clone();
+            if let Ok(device_settings) = self.config.get_device_settings(&device_uid).await {
                 if device_settings
                     .iter()
                     .any(|setting| setting.lcd.is_some())
@@ -591,7 +590,7 @@ impl LiquidctlRepo {
                     colors: Vec::new(),
                     temp_source: None,
                 };
-                if let Ok(cached_device_data) = self.cache_device_data(&device.uid).await {
+                if let Ok(cached_device_data) = self.cache_device_data(&device_uid).await {
                     if let Err(err) = self
                         .set_screen(&cached_device_data, "lcd", &lcd_settings)
                         .await
@@ -607,10 +606,9 @@ impl LiquidctlRepo {
     /// This is to be called on startup only.
     pub async fn initialize_all_device_status_histories_with_current_status(&self) {
         for device_lock in self.devices.values() {
-            let recent_status = device_lock.read().await.status_current().unwrap();
+            let recent_status = device_lock.borrow().status_current().unwrap();
             device_lock
-                .write()
-                .await
+                .borrow_mut()
                 .initialize_status_history_with(recent_status);
         }
     }
@@ -628,7 +626,7 @@ impl Repository for LiquidctlRepo {
         self.call_initialize_concurrently().await;
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
-            init_devices.insert(uid.clone(), device.read().await.clone());
+            init_devices.insert(uid.clone(), device.borrow().clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Liquidctl Devices: {:?}", init_devices);
@@ -673,14 +671,13 @@ impl Repository for LiquidctlRepo {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for device_lock in self.devices.values() {
-                let device_id = device_lock.read().await.type_index;
+                let device_id = device_lock.borrow().type_index;
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     match self.call_status(&device_id).await {
                         Ok(status) => {
                             self.preloaded_statuses
-                                .write()
-                                .await
+                                .borrow_mut()
                                 .insert(device_id, status);
                         }
                         // this leaves the previous status in the map as backup for temporary issues
@@ -702,8 +699,8 @@ impl Repository for LiquidctlRepo {
         let start_update = Instant::now();
         for device_lock in self.devices.values() {
             let status = {
-                let device = device_lock.read().await;
-                let preloaded_statuses = self.preloaded_statuses.read().await;
+                let device = device_lock.borrow();
+                let preloaded_statuses = self.preloaded_statuses.borrow();
                 let lc_status = preloaded_statuses.get(&device.type_index);
                 if lc_status.is_none() {
                     error!(
@@ -724,7 +721,7 @@ impl Repository for LiquidctlRepo {
                 trace!("Device: {} status updated: {:?}", device.name, status);
                 status
             };
-            device_lock.write().await.set_status(status);
+            device_lock.borrow_mut().set_status(status);
         }
         trace!(
             "STATUS SNAPSHOT Time taken for all LIQUIDCTL devices: {:?}",
