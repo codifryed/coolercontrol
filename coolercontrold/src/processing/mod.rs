@@ -19,7 +19,6 @@
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::device::{ChannelName, DeviceUID, Duty, Temp};
@@ -117,12 +116,11 @@ impl Hash for NormalizedGraphProfile {
     }
 }
 
-#[async_trait(?Send)]
 trait Processor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
-    async fn init_state(&self, profile_uid: &ProfileUID);
-    async fn clear_state(&self, profile_uid: &ProfileUID);
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool;
+    fn init_state(&self, profile_uid: &ProfileUID);
+    fn clear_state(&self, profile_uid: &ProfileUID);
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
 }
 
 #[derive(Debug, Clone)]
@@ -138,8 +136,8 @@ struct SpeedProfileData {
 
 impl SpeedProfileData {
     async fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
-        if processor.is_applicable(self).await {
-            processor.process(self).await
+        if processor.is_applicable(self) {
+            processor.process(self)
         } else {
             self
         }

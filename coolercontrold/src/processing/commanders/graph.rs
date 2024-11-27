@@ -111,23 +111,16 @@ impl GraphProfileCommander {
             );
             // When applying a profile to an additional device_channel, we re-init the safety
             // latch so that the setting is applied right away.
-            self.processors
-                .fun_safety_latch
-                .init_state(&profile.uid)
-                .await;
+            self.processors.fun_safety_latch.init_state(&profile.uid);
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
             settings_lock.insert(Rc::new(normalized_profile_setting), new_device_channels);
-            self.processors
-                .fun_safety_latch
-                .init_state(&profile.uid)
-                .await;
+            self.processors.fun_safety_latch.init_state(&profile.uid);
             self.processors
                 .fun_duty_thresh_post
-                .init_state(&profile.uid)
-                .await;
-            self.processors.fun_std_pre.init_state(&profile.uid).await;
+                .init_state(&profile.uid);
+            self.processors.fun_std_pre.init_state(&profile.uid);
             self.process_output_cache
                 .write()
                 .await
@@ -151,16 +144,13 @@ impl GraphProfileCommander {
             if device_channels.is_empty() {
                 self.processors
                     .fun_safety_latch
-                    .clear_state(&profile.profile_uid)
-                    .await;
+                    .clear_state(&profile.profile_uid);
                 self.processors
                     .fun_duty_thresh_post
-                    .clear_state(&profile.profile_uid)
-                    .await;
+                    .clear_state(&profile.profile_uid);
                 self.processors
                     .fun_std_pre
-                    .clear_state(&profile.profile_uid)
-                    .await;
+                    .clear_state(&profile.profile_uid);
                 self.process_output_cache
                     .write()
                     .await

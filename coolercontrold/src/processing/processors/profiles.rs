@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use async_trait::async_trait;
-
 use crate::processing::{utils, Processor, SpeedProfileData};
 use crate::setting::ProfileUID;
 
@@ -30,17 +28,16 @@ impl GraphProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for GraphProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.temp.is_some()
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         data.duty = Some(utils::interpolate_profile(
             &data.profile.speed_profile,
             data.temp.unwrap(),

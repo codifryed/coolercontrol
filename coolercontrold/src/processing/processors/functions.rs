@@ -20,7 +20,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
-use async_trait::async_trait;
 use log::{error, trace};
 use serde::{Deserialize, Serialize};
 use yata::methods::TMA;
@@ -52,18 +51,17 @@ impl FunctionIdentityPreProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for FunctionIdentityPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -189,26 +187,26 @@ impl FunctionStandardPreProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for FunctionStandardPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
             .borrow_mut()
             .insert(profile_uid.clone(), ChannelSettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
             .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        // In this function impl, there is no async. todo: might want to refactor trait
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -344,18 +342,17 @@ impl FunctionEMAPreProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for FunctionEMAPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -440,25 +437,24 @@ impl FunctionDutyThresholdPostProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for FunctionDutyThresholdPostProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.duty.is_some()
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .borrow_mut()
             .insert(profile_uid.clone(), DutySettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         if let Some(duty_to_set) = self.duty_within_thresholds(data) {
             {
                 let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
@@ -515,26 +511,25 @@ impl FunctionSafetyLatchProcessor {
     }
 }
 
-#[async_trait(?Send)]
 impl Processor for FunctionSafetyLatchProcessor {
-    async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
         true
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .borrow_mut()
             .insert(profile_uid.clone(), SafetyLatchMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if data.processing_started.not() {
