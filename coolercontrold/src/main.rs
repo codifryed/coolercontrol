@@ -106,16 +106,16 @@ fn main() -> Result<()> {
         cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
-        config.verify_writeability().await?;
+        config.verify_writeability()?;
         admin::load_passwd().await?;
 
         pause_before_startup(&config).await?;
         let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
         let all_devices = create_devices_map(&repos).await;
-        config.create_device_list(all_devices.clone()).await?;
+        config.create_device_list(all_devices.clone())?;
         let settings_controller = Rc::new(SettingsController::new(
             all_devices.clone(),
-            repos.clone(),
+            &repos,
             config.clone(),
         ));
         let mode_controller = Rc::new(
@@ -283,8 +283,7 @@ fn exit_successfully() {
 async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
     sleep(
         config
-            .get_settings()
-            .await?
+            .get_settings()?
             .startup_delay
             .add(Duration::from_secs(1)),
     )

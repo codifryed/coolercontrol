@@ -90,14 +90,14 @@ impl ApiActor<SettingMessage> for SettingActor {
     async fn handle_message(&mut self, msg: SettingMessage) {
         match msg {
             SettingMessage::GetCC { respond_to } => {
-                let result = self.config.get_settings().await;
+                let result = self.config.get_settings();
                 let _ = respond_to.send(result);
             }
             SettingMessage::UpdateCC { update, respond_to } => {
                 let result = async {
-                    let current_settings = self.config.get_settings().await?;
+                    let current_settings = self.config.get_settings()?;
                     let settings_to_set = update.merge(current_settings);
-                    self.config.set_settings(&settings_to_set).await;
+                    self.config.set_settings(&settings_to_set);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -105,7 +105,7 @@ impl ApiActor<SettingMessage> for SettingActor {
             }
             SettingMessage::GetAllCCDevices { respond_to } => {
                 let result = async {
-                    let settings_map = self.config.get_all_cc_devices_settings().await?;
+                    let settings_map = self.config.get_all_cc_devices_settings()?;
                     let mut devices_settings = HashMap::new();
                     for (device_uid, device_lock) in self.all_devices.iter() {
                         let name = device_lock.borrow().name.clone();
@@ -147,8 +147,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                 respond_to,
             } => {
                 let result = async {
-                    let settings_option =
-                        self.config.get_cc_settings_for_device(&device_uid).await?;
+                    let settings_option = self.config.get_cc_settings_for_device(&device_uid)?;
                     let dto = match settings_option {
                         Some(settings) => CoolerControlDeviceSettingsDto {
                             uid: device_uid,
@@ -184,9 +183,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config
-                        .set_cc_settings_for_device(&device_uid, &update)
-                        .await;
+                    self.config.set_cc_settings_for_device(&device_uid, &update);
                     self.config.save_config_file().await
                 }
                 .await;

@@ -99,11 +99,11 @@ impl ApiActor<ModeMessage> for ModeActor {
                 mode_uid,
                 respond_to,
             } => {
-                let mode = self.modes_controller.get_mode(&mode_uid).await;
+                let mode = self.modes_controller.get_mode(&mode_uid);
                 let _ = respond_to.send(Ok(mode));
             }
             ModeMessage::GetAll { respond_to } => {
-                let modes = self.modes_controller.get_modes().await;
+                let modes = self.modes_controller.get_modes();
                 let _ = respond_to.send(Ok(modes));
             }
             ModeMessage::SaveOrder { order, respond_to } => {
@@ -153,7 +153,7 @@ impl ApiActor<ModeMessage> for ModeActor {
                 let _ = respond_to.send(result);
             }
             ModeMessage::GetAllActive { respond_to } => {
-                let mode_uids = self.modes_controller.determine_active_modes_uids().await;
+                let mode_uids = self.modes_controller.determine_active_modes_uids();
                 let _ = respond_to.send(Ok(mode_uids));
             }
             ModeMessage::Activate {

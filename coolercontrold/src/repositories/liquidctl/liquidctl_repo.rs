@@ -58,7 +58,6 @@ impl LiquidctlRepo {
     pub async fn new(config: Rc<Config>) -> Result<Self> {
         if config
             .get_settings()
-            .await
             .is_ok_and(|settings| settings.liquidctl_integration.not())
         {
             return Err(InitError::Disabled.into());
@@ -117,7 +116,7 @@ impl LiquidctlRepo {
                 device_info,
                 unique_device_identifiers.remove(&device_response.id),
             );
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
@@ -132,7 +131,7 @@ impl LiquidctlRepo {
         if self.devices.is_empty() {
             info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
             self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown().await;
+            self.liqctld_client.shutdown();
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
@@ -290,7 +289,7 @@ impl LiquidctlRepo {
     async fn check_for_legacy_690(&self, device: &mut Device) -> Result<()> {
         let lc_info = device.lc_info.as_mut().expect("Should be present");
         if lc_info.driver_type == BaseDriver::Modern690Lc {
-            if let Some(is_legacy690) = self.config.legacy690_ids().await?.get(&device.uid) {
+            if let Some(is_legacy690) = self.config.legacy690_ids()?.get(&device.uid) {
                 if *is_legacy690 {
                     let device_response = self
                         .liqctld_client
@@ -574,7 +573,7 @@ impl LiquidctlRepo {
                 continue;
             }
             let device_uid = device_lock.borrow().uid.clone();
-            if let Ok(device_settings) = self.config.get_device_settings(&device_uid).await {
+            if let Ok(device_settings) = self.config.get_device_settings(&device_uid) {
                 if device_settings
                     .iter()
                     .any(|setting| setting.lcd.is_some())
@@ -731,10 +730,10 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        if self.liqctld_client.is_connected().await {
+        if self.liqctld_client.is_connected() {
             self.reset_lcd_to_default().await;
             self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown().await;
+            self.liqctld_client.shutdown();
         }
         info!("LIQUIDCTL Repository Shutdown");
         Ok(())
@@ -825,7 +824,7 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn reinitialize_devices(&self) {
-        let no_init = match self.config.get_settings().await {
+        let no_init = match self.config.get_settings() {
             Ok(settings) => settings.no_init,
             Err(err) => {
                 error!("Error reading settings: {}", err);

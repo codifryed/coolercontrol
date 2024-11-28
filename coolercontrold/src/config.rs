@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -26,7 +27,6 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
 use log::{error, info, trace, warn};
-use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
@@ -52,7 +52,7 @@ const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-def
 pub struct Config {
     path: PathBuf,
     path_ui: PathBuf,
-    document: RwLock<DocumentMut>,
+    document: RefCell<DocumentMut>,
 }
 
 impl Config {
@@ -64,7 +64,7 @@ impl Config {
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );
-            cc_fs::create_dir_all(&config_dir)?;
+            cc_fs::create_dir_all(config_dir)?;
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
@@ -92,16 +92,16 @@ impl Config {
         let config = Self {
             path,
             path_ui,
-            document: RwLock::new(document),
+            document: RefCell::new(document),
         };
         // test parsing of config data to make sure everything is readable
-        let _ = config.legacy690_ids().await?;
-        let _ = config.get_settings().await?;
-        if let Err(err) = config.get_all_devices_settings().await {
+        let _ = config.legacy690_ids()?;
+        let _ = config.get_settings()?;
+        if let Err(err) = config.get_all_devices_settings() {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
-        if let Err(err) = config.get_all_cc_devices_settings().await {
+        if let Err(err) = config.get_all_cc_devices_settings() {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
@@ -113,7 +113,7 @@ impl Config {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
-        if let Err(err) = config.get_custom_sensors().await {
+        if let Err(err) = config.get_custom_sensors() {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
@@ -131,7 +131,7 @@ impl Config {
             .with_context(|| format!("Reading configuration file {path:?}"))
     }
 
-    pub async fn verify_writeability(&self) -> Result<()> {
+    pub fn verify_writeability(&self) -> Result<()> {
         cc_fs::metadata(&self.path)
             .inspect_err(|err| {
                 error!(
@@ -150,7 +150,7 @@ impl Config {
     }
     /// saves any changes to the configuration file - preserving formatting and comments
     pub async fn save_config_file(&self) -> Result<()> {
-        let document_content = self.document.read().await.to_string();
+        let document_content = self.document.borrow().to_string();
         if document_content.trim().is_empty() {
             error!("Config Document is empty. Something has gone wrong, saving aborted.");
             return Err(anyhow!("Config Document is empty. Saving aborted."));
@@ -163,7 +163,7 @@ impl Config {
     /// saves a backup of the daemon config file
     pub async fn save_backup_config_file(&self) -> Result<()> {
         let backup_path = Path::new(DEFAULT_BACKUP_CONFIG_FILE_PATH).to_path_buf();
-        cc_fs::write_string(&backup_path, self.document.read().await.to_string())
+        cc_fs::write_string(&backup_path, self.document.borrow().to_string())
             .await
             .with_context(|| format!("Saving backup configuration file: {:?}", &backup_path))
     }
@@ -188,17 +188,17 @@ impl Config {
     }
 
     /// This adds a human-readable device list with UIDs to the config file
-    pub async fn create_device_list(&self, devices: Rc<HashMap<UID, DeviceLock>>) -> Result<()> {
+    pub fn create_device_list(&self, devices: Rc<HashMap<UID, DeviceLock>>) -> Result<()> {
         for (uid, device) in devices.iter() {
-            self.document.write().await["devices"][uid.as_str()] =
+            self.document.borrow_mut()["devices"][uid.as_str()] =
                 Item::Value(Value::String(Formatted::new(device.borrow().name.clone())));
         }
         Ok(())
     }
 
-    pub async fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
+    pub fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
         let mut legacy690_ids = HashMap::new();
-        if let Some(table) = self.document.read().await["legacy690"].as_table() {
+        if let Some(table) = self.document.borrow()["legacy690"].as_table() {
             for (key, value) in table {
                 legacy690_ids.insert(
                     key.to_string(),
@@ -211,13 +211,13 @@ impl Config {
         Ok(legacy690_ids)
     }
 
-    pub async fn set_legacy690_id(&self, device_uid: &str, is_legacy690: &bool) {
-        self.document.write().await["legacy690"][device_uid] =
+    pub fn set_legacy690_id(&self, device_uid: &str, is_legacy690: &bool) {
+        self.document.borrow_mut()["legacy690"][device_uid] =
             Item::Value(Value::Boolean(Formatted::new(*is_legacy690)));
     }
 
-    pub async fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
-        let mut doc = self.document.write().await;
+    pub fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
+        let mut doc = self.document.borrow_mut();
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
@@ -313,7 +313,7 @@ impl Config {
         device_uid: &UID,
         channel_name: &str,
     ) -> Result<Setting> {
-        let device_settings = self.get_device_settings(device_uid).await?;
+        let device_settings = self.get_device_settings(device_uid)?;
         for setting in device_settings {
             if setting.channel_name == channel_name {
                 return Ok(setting);
@@ -327,9 +327,9 @@ impl Config {
 
     /// Retrieves the device settings from the config file to our Setting model.
     /// This has to be done defensively, as the user may change the config file.
-    pub async fn get_device_settings(&self, device_uid: &str) -> Result<Vec<Setting>> {
+    pub fn get_device_settings(&self, device_uid: &str) -> Result<Vec<Setting>> {
         let mut settings = Vec::new();
-        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid) {
+        if let Some(table_item) = self.document.borrow()["device-settings"].get(device_uid) {
             let table = table_item
                 .as_table()
                 .with_context(|| "device setting should be a table")?;
@@ -358,26 +358,26 @@ impl Config {
         Ok(settings)
     }
 
-    pub async fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
+    pub fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
         let mut devices_settings = HashMap::new();
-        if let Some(device_table) = self.document.read().await["device-settings"].as_table() {
+        if let Some(device_table) = self.document.borrow()["device-settings"].as_table() {
             for (device_uid, _value) in device_table {
-                let settings = self.get_device_settings(device_uid).await?;
+                let settings = self.get_device_settings(device_uid)?;
                 devices_settings.insert(device_uid.to_string(), settings);
             }
         }
         Ok(devices_settings)
     }
 
-    pub async fn get_all_cc_devices_settings(
+    pub fn get_all_cc_devices_settings(
         &self,
     ) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
         let mut devices_settings = HashMap::new();
-        if let Some(device_table) = self.document.read().await["settings"].as_table() {
+        if let Some(device_table) = self.document.borrow()["settings"].as_table() {
             for (device_uid, _value) in device_table {
                 if device_uid.len() == 64 {
                     // there are other settings here, we want only the ones with proper UIDs
-                    let settings = self.get_cc_settings_for_device(device_uid).await?;
+                    let settings = self.get_cc_settings_for_device(device_uid)?;
                     devices_settings.insert(device_uid.to_string(), settings);
                 }
             }
@@ -705,8 +705,8 @@ impl Config {
     }
 
     /// Returns `CoolerControl` general settings
-    pub async fn get_settings(&self) -> Result<CoolerControlSettings> {
-        if let Some(settings_item) = self.document.read().await.get("settings") {
+    pub fn get_settings(&self) -> Result<CoolerControlSettings> {
+        if let Some(settings_item) = self.document.borrow().get("settings") {
             let settings = settings_item
                 .as_table()
                 .with_context(|| "Settings should be a table")?;
@@ -795,8 +795,8 @@ impl Config {
     }
 
     /// Sets `CoolerControl` settings
-    pub async fn set_settings(&self, cc_settings: &CoolerControlSettings) {
-        let mut doc = self.document.write().await;
+    pub fn set_settings(&self, cc_settings: &CoolerControlSettings) {
+        let mut doc = self.document.borrow_mut();
         let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
         base_settings["apply_on_boot"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.apply_on_boot)));
@@ -820,11 +820,11 @@ impl Config {
     /// This gets the `CoolerControl` settings for specific devices
     /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
-    pub async fn get_cc_settings_for_device(
+    pub fn get_cc_settings_for_device(
         &self,
         device_uid: &str,
     ) -> Result<Option<CoolerControlDeviceSettings>> {
-        if let Some(table_item) = self.document.read().await["settings"].get(device_uid) {
+        if let Some(table_item) = self.document.borrow()["settings"].get(device_uid) {
             let device_settings_table = table_item
                 .as_table()
                 .with_context(|| "CoolerControl device settings should be a table")?;
@@ -848,12 +848,12 @@ impl Config {
     }
 
     /// Sets `CoolerControl` device settings
-    pub async fn set_cc_settings_for_device(
+    pub fn set_cc_settings_for_device(
         &self,
         device_uid: &str,
         cc_device_settings: &CoolerControlDeviceSettings,
     ) {
-        let mut doc = self.document.write().await;
+        let mut doc = self.document.borrow_mut();
         let device_settings_table =
             doc["settings"][device_uid].or_insert(Item::Table(Table::new()));
         device_settings_table["name"] = Item::Value(Value::String(Formatted::new(
@@ -873,19 +873,19 @@ impl Config {
     /// If there are none setup yet, it returns the initial default Profile,
     /// which should always be present.
     pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
-        let mut profiles = self.get_current_profiles().await?;
+        let mut profiles = self.get_current_profiles()?;
         if profiles.iter().any(|p| p.uid == *DEFAULT_PROFILE_UID).not() {
             // Default Profile not found, probably the first time loading
             profiles.push(Profile::default());
-            self.set_profile(Profile::default()).await?;
+            self.set_profile(Profile::default())?;
             self.save_config_file().await?;
         }
         Ok(profiles)
     }
 
-    async fn get_current_profiles(&self) -> Result<Vec<Profile>> {
+    fn get_current_profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles = Vec::new();
-        if let Some(profiles_item) = self.document.read().await.get("profiles") {
+        if let Some(profiles_item) = self.document.borrow().get("profiles") {
             let profiles_array = profiles_item
                 .as_array_of_tables()
                 .with_context(|| "Profiles should be an array of tables")?;
@@ -942,9 +942,9 @@ impl Config {
 
     /// Sets the order of stored profiles to that of the order of the give vector of profiles.
     /// It uses the UID to match and reuses the existing stored profiles.
-    pub async fn set_profiles_order(&self, profiles_ordered: &[Profile]) -> Result<()> {
+    pub fn set_profiles_order(&self, profiles_ordered: &[Profile]) -> Result<()> {
         let mut new_profiles_array_item = Item::ArrayOfTables(ArrayOfTables::new());
-        if let Some(profiles_item) = self.document.read().await.get("profiles") {
+        if let Some(profiles_item) = self.document.borrow().get("profiles") {
             let profiles_array = profiles_item
                 .as_array_of_tables()
                 .with_context(|| "Profiles should be an array of tables")?;
@@ -963,13 +963,13 @@ impl Config {
                 "There are no stored profiles in the config to order."
             ));
         }
-        self.document.write().await["profiles"] = new_profiles_array_item;
+        self.document.borrow_mut()["profiles"] = new_profiles_array_item;
         Ok(())
     }
 
     /// Sets the given new Profile
-    pub async fn set_profile(&self, profile: Profile) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn set_profile(&self, profile: Profile) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let profiles_array = doc["profiles"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -986,8 +986,8 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_profile(&self, profile: Profile) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn update_profile(&self, profile: Profile) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let profiles_array = doc["profiles"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1004,8 +1004,8 @@ impl Config {
         }
     }
 
-    pub async fn delete_profile(&self, profile_uid: &UID) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn delete_profile(&self, profile_uid: &UID) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let profiles_array = doc["profiles"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1108,7 +1108,7 @@ impl Config {
     /// If none are set it returns the initial default Function,
     /// which should be always present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
-        let mut functions = self.get_current_functions().await?;
+        let mut functions = self.get_current_functions()?;
         if functions
             .iter()
             .any(|f| f.uid == *DEFAULT_FUNCTION_UID)
@@ -1116,7 +1116,7 @@ impl Config {
         {
             // Default Function not found, probably the first time loading
             functions.push(Function::default());
-            self.set_function(Function::default()).await?;
+            self.set_function(Function::default())?;
             self.save_config_file().await?;
         } else {
             // update original default function name
@@ -1128,9 +1128,9 @@ impl Config {
         Ok(functions)
     }
 
-    async fn get_current_functions(&self) -> Result<Vec<Function>> {
+    fn get_current_functions(&self) -> Result<Vec<Function>> {
         let mut functions = Vec::new();
-        if let Some(functions_item) = self.document.read().await.get("functions") {
+        if let Some(functions_item) = self.document.borrow().get("functions") {
             let functions_array = functions_item
                 .as_array_of_tables()
                 .with_context(|| "Functions should be an array of tables")?;
@@ -1249,9 +1249,9 @@ impl Config {
 
     /// Sets the order of stored functions to that of the order of the given vector of functions.
     /// It uses the UID to match and reuses the existing stored functions.
-    pub async fn set_functions_order(&self, functions_ordered: &[Function]) -> Result<()> {
+    pub fn set_functions_order(&self, functions_ordered: &[Function]) -> Result<()> {
         let mut new_functions_array_item = Item::ArrayOfTables(ArrayOfTables::new());
-        if let Some(functions_item) = self.document.read().await.get("functions") {
+        if let Some(functions_item) = self.document.borrow().get("functions") {
             let functions_array = functions_item
                 .as_array_of_tables()
                 .with_context(|| "Functions should be an array of tables")?;
@@ -1273,13 +1273,13 @@ impl Config {
                 "There are no stored functions in the config to order."
             ));
         }
-        self.document.write().await["functions"] = new_functions_array_item;
+        self.document.borrow_mut()["functions"] = new_functions_array_item;
         Ok(())
     }
 
     /// Sets the given new Function
-    pub async fn set_function(&self, function: Function) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn set_function(&self, function: Function) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let functions_array = doc["functions"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1296,8 +1296,8 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_function(&self, function: Function) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn update_function(&self, function: Function) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let functions_array = doc["functions"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1314,8 +1314,8 @@ impl Config {
         }
     }
 
-    pub async fn delete_function(&self, function_uid: &UID) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn delete_function(&self, function_uid: &UID) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let functions_array = doc["functions"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1406,9 +1406,9 @@ impl Config {
      *
      */
 
-    pub async fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
+    pub fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
         let mut custom_sensors = Vec::new();
-        if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
+        if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
             let c_sensors_array = custom_sensors_item
                 .as_array_of_tables()
                 .with_context(|| "customer_sensors should be an array of tables")?;
@@ -1495,9 +1495,9 @@ impl Config {
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
     /// It uses the ID to match and reuses the existing stored custom sensor.
-    pub async fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
+    pub fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
         let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
-        if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
+        if let Some(custom_sensors_item) = self.document.borrow().get("custom_sensors") {
             let cs_array = custom_sensors_item
                 .as_array_of_tables()
                 .with_context(|| "Custom_Sensors should be an array of tables")?;
@@ -1525,13 +1525,13 @@ impl Config {
             }
             .into());
         }
-        self.document.write().await["custom_sensors"] = new_custom_sensors_array_item;
+        self.document.borrow_mut()["custom_sensors"] = new_custom_sensors_array_item;
         Ok(())
     }
 
     /// Sets the given new Custom Sensor
-    pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let cs_array = doc["custom_sensors"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1550,8 +1550,8 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let cs_array = doc["custom_sensors"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
@@ -1571,8 +1571,8 @@ impl Config {
         }
     }
 
-    pub async fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
-        let mut doc = self.document.write().await;
+    pub fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
+        let mut doc = self.document.borrow_mut();
         let cs_array = doc["custom_sensors"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()

@@ -575,7 +575,7 @@ impl Repository for CpuRepo {
                 ..Default::default()
             };
             device.initialize_status_history_with(status);
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",

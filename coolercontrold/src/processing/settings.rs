@@ -56,7 +56,7 @@ pub struct SettingsController {
 }
 
 impl SettingsController {
-    pub fn new(all_devices: AllDevices, repos: Repos, config: Rc<Config>) -> Self {
+    pub fn new(all_devices: AllDevices, repos: &Repos, config: Rc<Config>) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
             match repo.device_type() {
@@ -129,10 +129,7 @@ impl SettingsController {
         }
     }
 
-    async fn get_device_repo(
-        &self,
-        device_uid: &UID,
-    ) -> Result<(&DeviceLock, &Rc<dyn Repository>)> {
+    fn get_device_repo(&self, device_uid: &UID) -> Result<(&DeviceLock, &Rc<dyn Repository>)> {
         if let Some(device_lock) = self.all_devices.get(device_uid) {
             let device_type = device_lock.borrow().d_type.clone();
             if let Some(repo) = self.repos.get(&device_type) {
@@ -154,14 +151,12 @@ impl SettingsController {
         channel_name: &str,
         speed_fixed: Duty,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
+        match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
                 self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name)
-                    .await;
+                    .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name)
-                    .await;
+                    .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
                     .await
             }
@@ -217,7 +212,7 @@ impl SettingsController {
                 "Speed Profile and Temp Source must be present for a Graph Profile"
             ));
         }
-        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let speed_options = device_lock
             .borrow()
             .info
@@ -236,8 +231,7 @@ impl SettingsController {
             .find(|f| f.uid == profile.function_uid)
             .with_context(|| "Function should be present")?;
         self.mix_commander // clear any mix profile settings for this channel first:
-            .clear_channel_setting(device_uid, channel_name)
-            .await;
+            .clear_channel_setting(device_uid, channel_name);
         // For internal temps, if the device firmware supports speed profiles and settings
         // match, let's use it: (device firmwares only support Identity Functions)
         if speed_options.profiles_enabled
@@ -245,8 +239,7 @@ impl SettingsController {
             && profile_function.f_type == FunctionType::Identity
         {
             self.graph_commander
-                .clear_channel_setting(device_uid, channel_name)
-                .await;
+                .clear_channel_setting(device_uid, channel_name);
             repo.apply_setting_speed_profile(
                 device_uid,
                 channel_name,
@@ -286,7 +279,7 @@ impl SettingsController {
         if profile.mix_function_type.is_none() {
             return Err(anyhow!("Mix Profile should have a mix function type"));
         }
-        let (device_lock, _) = self.get_device_repo(device_uid).await?;
+        let (device_lock, _) = self.get_device_repo(device_uid)?;
         let speed_options = device_lock
             .borrow()
             .info
@@ -321,8 +314,7 @@ impl SettingsController {
         }
         if speed_options.fixed_enabled {
             self.graph_commander
-                .clear_channel_setting(device_uid, channel_name)
-                .await;
+                .clear_channel_setting(device_uid, channel_name);
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
                 .await
@@ -341,7 +333,7 @@ impl SettingsController {
         channel_name: &str,
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
-        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let lcd_not_enabled = device_lock
             .borrow()
             .info
@@ -362,11 +354,9 @@ impl SettingsController {
             }
             self.lcd_commander
                 .schedule_setting(device_uid, channel_name, lcd_settings)
-                .await
         } else {
             self.lcd_commander
-                .clear_channel_setting(device_uid, channel_name)
-                .await;
+                .clear_channel_setting(device_uid, channel_name);
             repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
                 .await
         }
@@ -473,7 +463,7 @@ impl SettingsController {
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
-        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let lighting_channels = device_lock
             .borrow()
             .info
@@ -493,9 +483,7 @@ impl SettingsController {
                         reset_to_default: Some(true),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(device_uid, &reset_setting)
-                        .await;
+                    self.config.set_device_setting(device_uid, &reset_setting);
                 }
             } else {
                 let reset_setting = Setting {
@@ -503,9 +491,7 @@ impl SettingsController {
                     reset_to_default: Some(true),
                     ..Default::default()
                 };
-                self.config
-                    .set_device_setting(device_uid, &reset_setting)
-                    .await;
+                self.config.set_device_setting(device_uid, &reset_setting);
             }
         }
         repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
@@ -518,7 +504,7 @@ impl SettingsController {
         channel_name: &str,
         pwm_mode: u8,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
+        match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
                 repo.apply_setting_pwm_mode(device_uid, channel_name, pwm_mode)
                     .await
@@ -528,17 +514,14 @@ impl SettingsController {
     }
 
     pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
+        match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
                 self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name)
-                    .await;
+                    .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name)
-                    .await;
+                    .clear_channel_setting(device_uid, channel_name);
                 self.lcd_commander
-                    .clear_channel_setting(device_uid, channel_name)
-                    .await;
+                    .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_reset(device_uid, channel_name).await
             }
             Err(err) => Err(err),
@@ -548,7 +531,7 @@ impl SettingsController {
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
     pub async fn process_scheduled_speeds(&self) {
-        self.graph_commander.process_all_profiles().await;
+        self.graph_commander.process_all_profiles();
         self.graph_commander.update_speeds().await;
         self.mix_commander.update_speeds().await;
     }
@@ -562,7 +545,7 @@ impl SettingsController {
 
     /// This reinitialized the status history for all devices. This is helpful for example when
     /// waking from sleep, as the status history is no longer sequential.
-    pub async fn reinitialize_all_status_histories(&self) {
+    pub fn reinitialize_all_status_histories(&self) {
         for (_uid, device) in self.all_devices.iter() {
             let most_recent_status = device.borrow().status_current().unwrap();
             let adjusted_recent_status = Status {
@@ -612,7 +595,7 @@ impl SettingsController {
             })
             .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
-            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
                     if setting.profile_uid.is_none() {
                         continue;
@@ -661,10 +644,10 @@ impl SettingsController {
             mix_profile
                 .member_profile_uids
                 .retain(|p_uid| p_uid != profile_uid);
-            self.config.update_profile(mix_profile.clone()).await?;
+            self.config.update_profile(mix_profile.clone())?;
         }
         for (device_uid, _device) in self.all_devices.iter() {
-            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
                     if setting.profile_uid.is_none() {
                         continue;
@@ -676,9 +659,7 @@ impl SettingsController {
                             reset_to_default: Some(true),
                             ..Default::default()
                         };
-                        self.config
-                            .set_device_setting(device_uid, &default_setting)
-                            .await;
+                        self.config.set_device_setting(device_uid, &default_setting);
                         self.set_reset(device_uid, &default_setting.channel_name)
                             .await
                             .ok();
@@ -724,7 +705,7 @@ impl SettingsController {
             })
             .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
-            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
                     let Some(setting_profile_uid) = setting.profile_uid else {
                         continue;
@@ -757,7 +738,7 @@ impl SettingsController {
             .collect::<Vec<Profile>>();
         for profile in &mut affected_profiles {
             profile.function_uid = DEFAULT_FUNCTION_UID.to_string(); // the default function
-            if let Err(err) = self.config.update_profile(profile.clone()).await {
+            if let Err(err) = self.config.update_profile(profile.clone()) {
                 error!("Error updating Profile: {profile:?} {err}");
                 continue;
             }
@@ -781,33 +762,32 @@ impl SettingsController {
                 profile.temp_source.is_some()
                     && profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
             });
-        let affects_lcd_settings = self
-            .config
-            .get_device_settings(cs_device_uid)
-            .await?
-            .iter()
-            .any(|setting| {
-                setting.lcd.is_some()
-                    && setting.lcd.as_ref().unwrap().temp_source.is_some()
-                    && setting
-                        .lcd
-                        .as_ref()
-                        .unwrap()
-                        .temp_source
-                        .as_ref()
-                        .unwrap()
-                        .device_uid
-                        == cs_device_uid
-                    && setting
-                        .lcd
-                        .as_ref()
-                        .unwrap()
-                        .temp_source
-                        .as_ref()
-                        .unwrap()
-                        .temp_name
-                        == custom_sensor_id
-            });
+        let affects_lcd_settings =
+            self.config
+                .get_device_settings(cs_device_uid)?
+                .iter()
+                .any(|setting| {
+                    setting.lcd.is_some()
+                        && setting.lcd.as_ref().unwrap().temp_source.is_some()
+                        && setting
+                            .lcd
+                            .as_ref()
+                            .unwrap()
+                            .temp_source
+                            .as_ref()
+                            .unwrap()
+                            .device_uid
+                            == cs_device_uid
+                        && setting
+                            .lcd
+                            .as_ref()
+                            .unwrap()
+                            .temp_source
+                            .as_ref()
+                            .unwrap()
+                            .temp_name
+                            == custom_sensor_id
+                });
         if affects_profiles || affects_lcd_settings {
             Err(CCError::UserError {
                 msg: format!(

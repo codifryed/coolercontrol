@@ -396,7 +396,7 @@ impl GpuNVidia {
             };
             device_raw.initialize_status_history_with(status);
             let uid = device_raw.uid.clone();
-            let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
@@ -782,7 +782,7 @@ impl GpuNVidia {
                     );
                     device_raw.initialize_status_history_with(status);
                     let uid = device_raw.uid.clone();
-                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
                     if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                         info!(
                             "Skipping disabled device: {} with UID: {}",

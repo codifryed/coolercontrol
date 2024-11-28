@@ -207,9 +207,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         lcd: Some(lcd_settings),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -219,7 +217,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 device_uid,
                 respond_to,
             } => {
-                let response = self.config.get_device_settings(&device_uid).await;
+                let response = self.config.get_device_settings(&device_uid);
                 let _ = respond_to.send(response);
             }
             DeviceMessage::DeviceSettingManual {
@@ -238,8 +236,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config
-                        .set_device_setting(&device_uid, &config_settings)
-                        .await;
+                        .set_device_setting(&device_uid, &config_settings);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -260,9 +257,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         profile_uid: Some(profile_uid),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -283,9 +278,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         lcd: Some(lcd_settings),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -306,9 +299,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         lighting: Some(lighting_settings),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -329,9 +320,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         pwm_mode: Some(pwm_mode),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -351,9 +340,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         reset_to_default: Some(true),
                         ..Default::default()
                     };
-                    self.config
-                        .set_device_setting(&device_uid, &config_setting)
-                        .await;
+                    self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
                 }
                 .await;
@@ -365,9 +352,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config
-                        .set_legacy690_id(&device_uid, &is_legacy690)
-                        .await;
+                    self.config.set_legacy690_id(&device_uid, &is_legacy690);
                     self.config.save_config_file().await?;
                     // Device is now known. Legacy690Lc devices still require a restart of the daemon.
                     if let Some(device) = self.all_devices.get(&device_uid) {

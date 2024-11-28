@@ -85,8 +85,7 @@ pub async fn start_server<'s>(
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
     let port = config
-        .get_settings()
-        .await?
+        .get_settings()?
         .port
         .unwrap_or(API_SERVER_PORT_DEFAULT);
     let ipv4 = determine_ipv4_address(&config, port)
@@ -101,7 +100,7 @@ pub async fn start_server<'s>(
         ));
     }
 
-    let compress_enabled = config.get_settings().await?.compress;
+    let compress_enabled = config.get_settings()?.compress;
     let app_state = create_app_state(
         all_devices,
         &settings_controller,
@@ -471,7 +470,7 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
 }
 
 async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
-    match config.get_settings().await?.ipv4_address {
+    match config.get_settings()?.ipv4_address {
         Some(ipv4_str) => {
             if ipv4_str.is_empty() {
                 Err(anyhow!("IPv4 address disabled"))
@@ -484,7 +483,7 @@ async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<Socket
 }
 
 async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
-    match config.get_settings().await?.ipv6_address {
+    match config.get_settings()?.ipv6_address {
         Some(ipv6_str) => {
             if ipv6_str.is_empty() {
                 Err(anyhow!("IPv6 address disabled"))

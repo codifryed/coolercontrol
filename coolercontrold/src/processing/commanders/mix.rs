@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Div, Not};
@@ -23,9 +24,8 @@ use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
-use crate::device::{Duty, UID};
+use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::processing::commanders::graph::GraphProfileCommander;
 use crate::processing::DeviceChannelProfileSetting;
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
@@ -38,16 +38,16 @@ type MixProfile = Profile;
 pub struct MixProfileCommander {
     graph_commander: Rc<GraphProfileCommander>,
     scheduled_settings:
-        RwLock<HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
-    all_last_applied_duties: RwLock<HashMap<ProfileUID, Duty>>,
+        RefCell<HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
+    all_last_applied_duties: RefCell<HashMap<ProfileUID, Duty>>,
 }
 
 impl MixProfileCommander {
     pub fn new(graph_commander: Rc<GraphProfileCommander>) -> Self {
         Self {
             graph_commander,
-            scheduled_settings: RwLock::new(HashMap::new()),
-            all_last_applied_duties: RwLock::new(HashMap::new()),
+            scheduled_settings: RefCell::new(HashMap::new()),
+            all_last_applied_duties: RefCell::new(HashMap::new()),
         }
     }
 
@@ -72,17 +72,15 @@ impl MixProfileCommander {
             return Err(anyhow!("Member profiles must be present for a Mix Profile"));
         }
         // Clear the channel setting in case another mix profile is already scheduled:
-        self.clear_channel_setting(device_uid, channel_name).await;
-        let normalized_mix_setting = self
-            .normalize_mix_setting(mix_profile, &member_profiles)
-            .await?;
+        self.clear_channel_setting(device_uid, channel_name);
+        let normalized_mix_setting = Self::normalize_mix_setting(mix_profile, &member_profiles);
         let device_channel = DeviceChannelProfileSetting::Mix {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
         };
         self.prepare_member_profiles(&device_channel, member_profiles)
             .await?;
-        let mut settings_lock = self.scheduled_settings.write().await;
+        let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
             // internal settings are up-to-date
@@ -101,29 +99,32 @@ impl MixProfileCommander {
         device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
     ) -> Result<()> {
-        let mut member_profile_last_applied_duty_lock = self.all_last_applied_duties.write().await;
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
             self.graph_commander
                 .schedule_setting(device_channel.clone(), &member_profile)
                 .await?;
-            if member_profile_last_applied_duty_lock
+            if self
+                .all_last_applied_duties
+                .borrow()
                 .contains_key(&member_profile.uid)
                 .not()
             {
-                member_profile_last_applied_duty_lock.insert(member_profile.uid.clone(), 0);
+                self.all_last_applied_duties
+                    .borrow_mut()
+                    .insert(member_profile.uid.clone(), 0);
             }
         }
         Ok(())
     }
 
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+    pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
         let mut mix_profile_to_remove: Option<Rc<NormalizedMixProfile>> = None;
         let device_channel = DeviceChannelProfileSetting::Mix {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
         };
-        let mut scheduled_settings_lock = self.scheduled_settings.write().await;
+        let mut scheduled_settings_lock = self.scheduled_settings.borrow_mut();
         for (mix_profile, device_channels) in scheduled_settings_lock.iter_mut() {
             device_channels.remove(&device_channel);
             if device_channels.is_empty() {
@@ -134,8 +135,7 @@ impl MixProfileCommander {
             scheduled_settings_lock.remove(&mix_profile);
         }
         self.graph_commander
-            .clear_channel_setting(device_uid, channel_name)
-            .await;
+            .clear_channel_setting(device_uid, channel_name);
     }
 
     /// Processes all the member Profiles and applies the appropriate output per Mix Profile.
@@ -143,14 +143,49 @@ impl MixProfileCommander {
     /// `MixProfileFunction` appropriately.
     /// Normally triggered by a loop/timer.
     pub async fn update_speeds(&self) {
-        self.update_last_applied_duties().await;
-        if self.scheduled_settings.read().await.is_empty() {
+        self.update_last_applied_duties();
+        if self.scheduled_settings.borrow().is_empty() {
             return;
         }
+        for (device_uid, channel_name, duty) in self.calculate_duties_to_apply() {
+            self.graph_commander
+                .set_device_speed(&device_uid, &channel_name, duty)
+                .await;
+        }
+    }
+
+    /// Updates the last applied duties for all profiles. This is done somewhat proactively so
+    /// that when a member profile is first used it has a proper last applied duty to compare to.
+    fn update_last_applied_duties(&self) {
+        let mut last_applied_duties = self.all_last_applied_duties.borrow_mut();
+        let requested_duties = self.graph_commander.process_output_cache.borrow();
+        for (profile_uid, output) in requested_duties.iter() {
+            let Some(duty) = output else {
+                continue;
+            };
+            if last_applied_duties.contains_key(profile_uid) {
+                if let Some(d) = last_applied_duties.get_mut(profile_uid) {
+                    *d = *duty;
+                };
+            } else {
+                last_applied_duties.insert(profile_uid.clone(), *duty);
+            }
+        }
+    }
+
+    /// Calculates the final duties to apply for all scheduled Mix Profiles.
+    ///
+    /// The function first fetches the output of all the member profiles from the `GraphProfileCommander`
+    /// and stores them in `requested_duties`. It then fetches the last applied duties for all profiles
+    /// from `all_last_applied_duties`. If a member profile has no output, the last applied duty is used
+    /// as a backup. The `MixProfileFunction` is then applied to the member values and the resulting
+    /// duty is stored in `duties_to_apply` for each device channel.
+    fn calculate_duties_to_apply(&self) -> Vec<(DeviceUID, ChannelName, Duty)> {
+        let mut duties_to_apply = Vec::new();
         // All the member profiles have been processed already by the graph_commander:
-        let requested_duties = self.graph_commander.process_output_cache.read().await;
-        let last_applied_duties = self.all_last_applied_duties.read().await;
-        for (mix_profile, device_channels) in self.scheduled_settings.read().await.iter() {
+        let requested_duties = self.graph_commander.process_output_cache.borrow();
+        let last_applied_duties = self.all_last_applied_duties.borrow();
+        for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
             let mut member_values = Vec::with_capacity(last_applied_duties.len());
             let mut members_have_no_output = true;
             for member_profile_uid in &mix_profile.member_profile_uids {
@@ -169,40 +204,20 @@ impl MixProfileCommander {
             if members_have_no_output {
                 continue; // Nothing to do if all member Profile Outputs are None
             }
-            let duty_to_apply = Self::apply_mix_function(&member_values, &mix_profile.mix_function);
+            let duty_to_apply = Self::apply_mix_function(&member_values, mix_profile.mix_function);
             for device_channel in device_channels {
-                self.graph_commander
-                    .set_device_speed(
-                        device_channel.device_uid(),
-                        device_channel.channel_name(),
-                        duty_to_apply,
-                    )
-                    .await;
+                duties_to_apply.push((
+                    device_channel.device_uid().clone(),
+                    device_channel.channel_name().clone(),
+                    duty_to_apply,
+                ));
             }
         }
-    }
-
-    /// Updates the last applied duties for all profiles. This is done somewhat proactively so
-    /// that when a member profile is first used it has a proper last applied duty to compare to.
-    async fn update_last_applied_duties(&self) {
-        let mut last_applied_duties = self.all_last_applied_duties.write().await;
-        let requested_duties = self.graph_commander.process_output_cache.read().await;
-        for (profile_uid, output) in requested_duties.iter() {
-            let Some(duty) = output else {
-                continue;
-            };
-            if last_applied_duties.contains_key(profile_uid) {
-                if let Some(d) = last_applied_duties.get_mut(profile_uid) {
-                    *d = *duty;
-                };
-            } else {
-                last_applied_duties.insert(profile_uid.clone(), *duty);
-            }
-        }
+        duties_to_apply
     }
 
     /// This function expects a non-empty `member_values` vector
-    fn apply_mix_function(member_values: &[&Duty], mix_function: &ProfileMixFunctionType) -> Duty {
+    fn apply_mix_function(member_values: &[&Duty], mix_function: ProfileMixFunctionType) -> Duty {
         // Since the member functions manage their own thresholds and the safety latch should
         //  kick off about the same time for all of them, we don't check thresholds here.
         match mix_function {
@@ -216,16 +231,15 @@ impl MixProfileCommander {
         }
     }
 
-    pub async fn normalize_mix_setting(
-        &self,
+    fn normalize_mix_setting(
         profile: &Profile,
         member_profiles: &[Profile],
-    ) -> Result<NormalizedMixProfile> {
-        Ok(NormalizedMixProfile {
+    ) -> NormalizedMixProfile {
+        NormalizedMixProfile {
             profile_uid: profile.uid.clone(),
             mix_function: profile.mix_function_type.unwrap(),
             member_profile_uids: member_profiles.iter().map(|p| p.uid.clone()).collect(),
-        })
+        }
     }
 }
 
@@ -271,7 +285,7 @@ mod tests {
     fn apply_mix_function_test_min() {
         let member_values = vec![&20, &21, &22, &23, &24];
         let mix_function = ProfileMixFunctionType::Min;
-        let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 20);
     }
 
@@ -279,7 +293,7 @@ mod tests {
     fn apply_mix_function_test_max() {
         let member_values = vec![&0, &1, &2, &3, &4];
         let mix_function = ProfileMixFunctionType::Max;
-        let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 4);
     }
 
@@ -287,7 +301,7 @@ mod tests {
     fn apply_mix_function_test_avg() {
         let member_values = vec![&0, &1, &2, &3, &4];
         let mix_function = ProfileMixFunctionType::Avg;
-        let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 2);
     }
 
@@ -295,7 +309,7 @@ mod tests {
     fn apply_mix_function_test_avg_large() {
         let member_values = vec![&120, &121, &122, &123, &124];
         let mix_function = ProfileMixFunctionType::Avg;
-        let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 122);
     }
 }

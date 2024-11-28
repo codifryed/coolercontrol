@@ -131,7 +131,7 @@ fn fire_snapshots_and_processes<'s>(
                 error!("Error trying to update status: {err}");
             }
         }
-        fire_lcd_update(settings_controller, run_lcd_update, scope).await;
+        fire_lcd_update(settings_controller, run_lcd_update, scope);
         settings_controller.process_scheduled_speeds().await;
     });
 }
@@ -142,7 +142,7 @@ fn fire_snapshots_and_processes<'s>(
 /// time out to avoid jobs from pilling up.
 ///
 /// Due to the long-running time of this function, it will be called every other loop tick.
-async fn fire_lcd_update<'s>(
+fn fire_lcd_update<'s>(
     settings_controller: &Rc<SettingsController>,
     run_lcd_update: bool,
     scope: &'s Scope<'s, 's, Result<()>>,
@@ -151,8 +151,7 @@ async fn fire_lcd_update<'s>(
         || settings_controller
             .lcd_commander
             .scheduled_settings
-            .read()
-            .await
+            .borrow()
             .is_empty()
     {
         return;
@@ -187,20 +186,17 @@ async fn wake_from_sleep(
 ) -> Result<()> {
     sleep(
         config
-            .get_settings()
-            .await?
+            .get_settings()?
             .startup_delay
             .max(Duration::from_secs(WAKE_PAUSE_MINIMUM_S)),
     )
     .await;
-    if config.get_settings().await?.apply_on_boot {
+    if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         settings_controller.reinitialize_devices().await;
         mode_controller.apply_all_saved_device_settings().await;
     }
-    settings_controller
-        .reinitialize_all_status_histories()
-        .await;
+    settings_controller.reinitialize_all_status_histories();
     sleep_listener.resuming(false);
     sleep_listener.preparing_to_sleep(false);
     Ok(())

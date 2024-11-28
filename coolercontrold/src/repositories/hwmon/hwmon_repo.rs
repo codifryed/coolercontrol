@@ -214,7 +214,6 @@ impl HwmonRepo {
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device.uid)
-                .await
                 .ok()
                 .flatten();
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -283,7 +282,7 @@ impl Repository for HwmonRepo {
         }
         debug!("Detected HWMon device paths: {base_paths:?}");
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
-        let hide_duplicate_devices = self.config.get_settings().await?.hide_duplicate_devices;
+        let hide_duplicate_devices = self.config.get_settings()?.hide_duplicate_devices;
         for path in base_paths {
             debug!("Processing HWMon device path: {path:?}");
             let device_name = devices::get_device_name(&path).await;
@@ -472,7 +471,7 @@ impl Repository for HwmonRepo {
         }
         if speed_fixed == 100
             && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
-            && self.config.get_settings().await?.thinkpad_full_speed
+            && self.config.get_settings()?.thinkpad_full_speed
         {
             fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
         } else {

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -27,11 +28,10 @@ use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point,
     PremultipliedColorU8, Rect, SpreadMode, Transform,
 };
-use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
-use crate::device::{Temp, TempLabel, UID};
+use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::processing::settings::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
@@ -46,8 +46,8 @@ const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Reg
 pub struct LcdCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    pub scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
-    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
+    pub scheduled_settings: RefCell<HashMap<UID, HashMap<String, LcdSettings>>>,
+    scheduled_settings_metadata: RefCell<HashMap<UID, HashMap<String, SettingMetadata>>>,
     font_mono: Font,
     font_variable: Font,
 }
@@ -57,14 +57,14 @@ impl LcdCommander {
         Self {
             all_devices,
             repos,
-            scheduled_settings: RwLock::new(HashMap::new()),
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings: RefCell::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
             font_mono: Font::from_bytes(FONT_MONO_BYTES, 100.0).expect("font to load"),
             font_variable: Font::from_bytes(FONT_VARIABLE_BYTES, 100.0).expect("font to load"),
         }
     }
 
-    pub async fn schedule_setting(
+    pub fn schedule_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -87,30 +87,27 @@ impl LcdCommander {
             format!("Target Device to schedule lcd update must be present: {device_uid}")
         })?;
         self.scheduled_settings
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), lcd_settings.clone());
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(channel_name.to_string(), SettingMetadata::new());
         Ok(())
     }
 
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+    pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
         if let Some(device_channel_settings) =
-            self.scheduled_settings.write().await.get_mut(device_uid)
+            self.scheduled_settings.borrow_mut().get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
         }
         if let Some(device_channel_settings) = self
             .scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
@@ -119,18 +116,31 @@ impl LcdCommander {
 
     pub async fn update_lcd(self: Rc<Self>) {
         trace!("LCD Scheduler triggered");
-        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
+        for (device_uid, channel_name, lcd_settings, current_source_temp_data) in
+            self.determine_temps_to_display()
+        {
+            self.clone()
+                .set_lcd_image(
+                    &device_uid,
+                    &channel_name,
+                    &lcd_settings,
+                    Rc::new(current_source_temp_data),
+                )
+                .await;
+        }
+    }
+
+    fn determine_temps_to_display(&self) -> Vec<(DeviceUID, ChannelName, LcdSettings, TempData)> {
+        let mut temps_to_display = Vec::new();
+        for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
                 if lcd_settings.mode != "temp" {
-                    return;
+                    return temps_to_display;
                 }
-                if let Some(current_source_temp_data) =
-                    self.get_source_temp_data(lcd_settings).await
-                {
+                if let Some(current_source_temp_data) = self.get_source_temp_data(lcd_settings) {
                     let last_temp_set = self
                         .scheduled_settings_metadata
-                        .read()
-                        .await
+                        .borrow()
                         .get(device_uid)
                         .expect("lcd scheduler metadata for device should be present")
                         .get(channel_name)
@@ -140,23 +150,22 @@ impl LcdCommander {
                         || (last_temp_set.is_some()
                             && last_temp_set.unwrap() != current_source_temp_data.temp)
                     {
-                        self.clone()
-                            .set_lcd_image(
-                                device_uid,
-                                channel_name,
-                                lcd_settings,
-                                Rc::new(current_source_temp_data),
-                            )
-                            .await;
+                        temps_to_display.push((
+                            device_uid.clone(),
+                            channel_name.clone(),
+                            lcd_settings.clone(),
+                            current_source_temp_data.clone(),
+                        ));
                     } else {
                         trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_data.temp);
                     }
                 }
             }
         }
+        temps_to_display
     }
 
-    async fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
+    fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
         let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
         if let Some(temp_source_device_lock) = self
             .all_devices
@@ -214,8 +223,7 @@ impl LcdCommander {
         let temp_data = Rc::clone(&temp_data_to_display);
         let image_template = self
             .scheduled_settings_metadata
-            .read()
-            .await
+            .borrow()
             .get(device_uid)
             .unwrap()
             .get(channel_name)
@@ -239,8 +247,7 @@ impl LcdCommander {
 
         let last_temp_set = self
             .scheduled_settings_metadata
-            .read()
-            .await
+            .borrow()
             .get(device_uid)
             .unwrap()
             .get(channel_name)
@@ -266,7 +273,7 @@ impl LcdCommander {
             temp_source: None,
         };
         {
-            let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+            let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
             let metadata = metadata_lock
                 .get_mut(device_uid)
                 .unwrap()

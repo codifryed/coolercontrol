@@ -89,7 +89,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
             }
             ProfileMessage::SaveOrder { order, respond_to } => {
                 let result = async {
-                    self.config.set_profiles_order(&order).await?;
+                    self.config.set_profiles_order(&order)?;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -100,7 +100,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config.set_profile(profile).await?;
+                    self.config.set_profile(profile)?;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -112,7 +112,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
             } => {
                 let result = async {
                     let profile_uid = profile.uid.clone();
-                    self.config.update_profile(profile).await?;
+                    self.config.update_profile(profile)?;
                     self.settings_controller.profile_updated(&profile_uid).await;
                     self.config.save_config_file().await
                 }
@@ -127,7 +127,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                     self.settings_controller
                         .profile_deleted(&profile_uid)
                         .await?;
-                    self.config.delete_profile(&profile_uid).await?;
+                    self.config.delete_profile(&profile_uid)?;
                     self.config.save_config_file().await?;
                     self.mode_controller.profile_deleted(&profile_uid).await
                 }

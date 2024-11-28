@@ -94,7 +94,7 @@ impl CustomSensorsRepo {
     }
 
     pub async fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
-        self.config.set_custom_sensor_order(custom_sensors).await?;
+        self.config.set_custom_sensor_order(custom_sensors)?;
         self.sensors.borrow_mut().clear();
         self.sensors.borrow_mut().extend(custom_sensors.to_vec());
         Ok(())
@@ -106,7 +106,7 @@ impl CustomSensorsRepo {
             .inspect_err(|err| {
                 error!("Failed to fill status history for new Custom Sensor: {err}")
             })?;
-        self.config.set_custom_sensor(custom_sensor.clone()).await?;
+        self.config.set_custom_sensor(custom_sensor.clone())?;
         self.sensors.borrow_mut().push(custom_sensor);
         self.update_device_info_temps().await;
         Ok(())
@@ -117,9 +117,7 @@ impl CustomSensorsRepo {
             // Make sure the file exists and temp is properly formatted
             Self::get_custom_sensor_file_temp(&custom_sensor).await?;
         }
-        self.config
-            .update_custom_sensor(custom_sensor.clone())
-            .await?;
+        self.config.update_custom_sensor(custom_sensor.clone())?;
         {
             let mut sensors = self.sensors.borrow_mut();
             // find check is done in the config update
@@ -133,7 +131,7 @@ impl CustomSensorsRepo {
     }
 
     pub async fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
-        self.config.delete_custom_sensor(custom_sensor_id).await?;
+        self.config.delete_custom_sensor(custom_sensor_id)?;
         Self::remove_status_history_for_sensor(self, custom_sensor_id).await;
         self.sensors
             .borrow_mut()
@@ -494,7 +492,7 @@ impl Repository for CustomSensorsRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        let custom_sensors = self.config.get_custom_sensors().await?;
+        let custom_sensors = self.config.get_custom_sensors()?;
         let temp_infos = custom_sensors
             .iter()
             .enumerate()

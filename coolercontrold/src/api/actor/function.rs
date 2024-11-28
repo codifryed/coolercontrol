@@ -85,7 +85,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
             }
             FunctionMessage::SaveOrder { order, respond_to } => {
                 let result = async {
-                    self.config.set_functions_order(&order).await?;
+                    self.config.set_functions_order(&order)?;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -96,7 +96,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config.set_function(function).await?;
+                    self.config.set_function(function)?;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -108,7 +108,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
             } => {
                 let result = async {
                     let function_uid = function.uid.clone();
-                    self.config.update_function(function).await?;
+                    self.config.update_function(function)?;
                     self.settings_controller
                         .function_updated(&function_uid)
                         .await;
@@ -122,7 +122,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config.delete_function(&function_uid).await?;
+                    self.config.delete_function(&function_uid)?;
                     self.settings_controller
                         .function_deleted(&function_uid)
                         .await;
