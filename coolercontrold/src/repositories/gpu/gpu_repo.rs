@@ -89,7 +89,6 @@ impl GpuRepo {
             .insert(GpuType::Nvidia, nvidia_dev_count);
         self.gpu_type_count
             .insert(GpuType::AMD, self.gpus_amd.init_devices().await.len() as u8);
-        let number_of_gpus = self.gpu_type_count.values().sum::<u8>();
     }
 
     pub async fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
