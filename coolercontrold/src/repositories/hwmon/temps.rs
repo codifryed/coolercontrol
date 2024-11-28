@@ -54,7 +54,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
             if sensor_is_usable(base_path, &channel_number).await.not() {
                 continue;
             }
-            let channel_name = get_temp_channel_name(&channel_number).await;
+            let channel_name = get_temp_channel_name(channel_number);
             let label = get_temp_channel_label(base_path, &channel_number).await;
             temps.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Temp,
@@ -198,7 +198,7 @@ async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
 /// Returns:
 ///
 /// * A `String` that represents a unique channel name/ID.
-async fn get_temp_channel_name(channel_number: &u8) -> String {
+fn get_temp_channel_name(channel_number: u8) -> String {
     format!("temp{channel_number}")
 }
 

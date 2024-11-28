@@ -55,7 +55,7 @@ pub struct Setting {
     /// Settings for LCD screens
     pub lcd: Option<LcdSettings>,
 
-    /// the current pwm_mode to set for hwmon devices, eg: 1
+    /// the current `pwm_mode` to set for hwmon devices, eg: 1
     pub pwm_mode: Option<u8>,
 
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
@@ -93,7 +93,7 @@ pub struct LightingSettings {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempSource {
-    /// The internal name for this Temperature Source. NOT the TempInfo Label.
+    /// The internal name for this Temperature Source. NOT the `TempInfo` Label.
     pub temp_name: TempName,
 
     /// The associated device uid containing current temp values
@@ -122,6 +122,7 @@ pub struct LcdSettings {
 }
 
 /// General Settings for `CoolerControl`
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
@@ -292,7 +293,7 @@ pub struct CustomTempSourceData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensor {
-    /// ID MUST be unique, as temp_name must be unique.
+    /// ID MUST be unique, as `temp_name` must be unique.
     pub id: String,
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,

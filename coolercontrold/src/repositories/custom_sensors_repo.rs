@@ -52,7 +52,7 @@ pub struct CustomSensorsRepo {
 }
 
 impl CustomSensorsRepo {
-    pub async fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Self {
+    pub fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Self {
         let mut all_devices = HashMap::new();
         for device in all_other_devices {
             let uid = device.borrow().uid.clone();
@@ -66,7 +66,7 @@ impl CustomSensorsRepo {
         }
     }
 
-    pub async fn get_device_uid(&self) -> UID {
+    pub fn get_device_uid(&self) -> UID {
         self.custom_sensor_device
             .as_ref()
             .expect("Custom Sensor Device should always be present after initialization")
@@ -75,7 +75,7 @@ impl CustomSensorsRepo {
             .clone()
     }
 
-    pub async fn get_custom_sensor(&self, custom_sensor_id: &str) -> Result<CustomSensor> {
+    pub fn get_custom_sensor(&self, custom_sensor_id: &str) -> Result<CustomSensor> {
         self.sensors
             .borrow()
             .iter()
@@ -89,11 +89,11 @@ impl CustomSensorsRepo {
             })
     }
 
-    pub async fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
-        Ok(self.sensors.borrow().clone())
+    pub fn get_custom_sensors(&self) -> Vec<CustomSensor> {
+        self.sensors.borrow().clone()
     }
 
-    pub async fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
+    pub fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
         self.config.set_custom_sensor_order(custom_sensors)?;
         self.sensors.borrow_mut().clear();
         self.sensors.borrow_mut().extend(custom_sensors.to_vec());
@@ -104,11 +104,11 @@ impl CustomSensorsRepo {
         self.fill_status_history_for_new_sensor(&custom_sensor)
             .await
             .inspect_err(|err| {
-                error!("Failed to fill status history for new Custom Sensor: {err}")
+                error!("Failed to fill status history for new Custom Sensor: {err}");
             })?;
         self.config.set_custom_sensor(custom_sensor.clone())?;
         self.sensors.borrow_mut().push(custom_sensor);
-        self.update_device_info_temps().await;
+        self.update_device_info_temps();
         Ok(())
     }
 
@@ -130,17 +130,17 @@ impl CustomSensorsRepo {
         Ok(())
     }
 
-    pub async fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
+    pub fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
         self.config.delete_custom_sensor(custom_sensor_id)?;
-        Self::remove_status_history_for_sensor(self, custom_sensor_id).await;
+        Self::remove_status_history_for_sensor(self, custom_sensor_id);
         self.sensors
             .borrow_mut()
             .retain(|cs| cs.id != custom_sensor_id);
-        self.update_device_info_temps().await;
+        self.update_device_info_temps();
         Ok(())
     }
 
-    async fn update_device_info_temps(&self) {
+    fn update_device_info_temps(&self) {
         let temp_infos = self
             .sensors
             .borrow()
@@ -184,9 +184,7 @@ impl CustomSensorsRepo {
         match sensor.cs_type {
             CustomSensorType::Mix => {
                 for (index, status) in status_history.iter_mut().enumerate() {
-                    let temp_status = self
-                        .process_custom_sensor_data_mix_indexed(sensor, index)
-                        .await?;
+                    let temp_status = self.process_custom_sensor_data_mix_indexed(sensor, index)?;
                     status.temps.push(temp_status);
                 }
             }
@@ -228,7 +226,7 @@ impl CustomSensorsRepo {
     ///   point in time.
     ///
     /// Returns: a `Result<TempStatus>`.
-    async fn process_custom_sensor_data_mix_indexed(
+    fn process_custom_sensor_data_mix_indexed(
         &self,
         sensor: &CustomSensor,
         index: usize,
@@ -282,7 +280,7 @@ impl CustomSensorsRepo {
     ///   `CustomSensor` object.
     ///
     /// Returns: an `TempStatus`
-    async fn process_custom_sensor_data_mix_current(&self, sensor: &CustomSensor) -> TempStatus {
+    fn process_custom_sensor_data_mix_current(&self, sensor: &CustomSensor) -> TempStatus {
         let mut temp_data = Vec::new();
         for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
@@ -463,17 +461,17 @@ impl CustomSensorsRepo {
 
     fn verify_temp_value(temp: i32) -> Result<f64> {
         //  temps should be in millidegrees:
-        if !(0..=120_000).contains(&temp) {
+        if (0..=120_000).contains(&temp) {
+            Ok(f64::from(temp) / 1000.0f64)
+        } else {
             Err(CCError::UserError {
                 msg: format!("File does not contain a reasonable temperature: {temp}"),
             }
             .into())
-        } else {
-            Ok(f64::from(temp) / 1000.0f64)
         }
     }
 
-    async fn remove_status_history_for_sensor(&self, sensor_id: &str) {
+    fn remove_status_history_for_sensor(&self, sensor_id: &str) {
         let mut device_lock = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
         for status in &mut device_lock.status_history {
             status
@@ -583,10 +581,12 @@ impl Repository for CustomSensorsRepo {
         }
         let start_update = Instant::now();
         let mut custom_temps = Vec::new();
-        for sensor in self.sensors.borrow().iter() {
+        // clone used here to avoid holding the lock over an await:
+        let sensors = self.sensors.borrow().clone();
+        for sensor in &sensors {
             match sensor.cs_type {
                 CustomSensorType::Mix => {
-                    let temp_status = self.process_custom_sensor_data_mix_current(sensor).await;
+                    let temp_status = self.process_custom_sensor_data_mix_current(sensor);
                     custom_temps.push(temp_status);
                 }
                 CustomSensorType::File => {

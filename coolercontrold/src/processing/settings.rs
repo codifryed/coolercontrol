@@ -434,8 +434,7 @@ impl SettingsController {
     ) -> Result<(Mime, Vec<u8>)> {
         let setting = self
             .config
-            .get_device_channel_settings(device_uid, channel_name)
-            .await?;
+            .get_device_channel_settings(device_uid, channel_name)?;
         let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound {
             msg: "LCD Settings".to_string(),
         })?;

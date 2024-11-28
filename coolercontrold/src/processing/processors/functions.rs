@@ -375,7 +375,7 @@ impl Processor for FunctionEMAPreProcessor {
                 .map(|temp_status| temp_status.temp)
                 .collect::<Vec<f64>>()
         };
-        temps.reverse(); // re-order temps so last is last
+        temps.reverse(); // re-order temps so last temp is again last
         data.temp = if temps.is_empty() {
             log_missing_temp_sensor(data);
             Some(EMERGENCY_MISSING_TEMP)

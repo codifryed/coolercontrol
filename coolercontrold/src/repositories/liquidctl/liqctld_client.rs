@@ -212,6 +212,7 @@ impl LiqctldClient {
     where
         T: for<'de> Deserialize<'de>,
     {
+        #![allow(clippy::await_holding_refcell_ref)]
         loop {
             // If we run out of connections or timeout, this will return Err:
             let (c_index, c_lock) = self.get_socket_connection().await?;

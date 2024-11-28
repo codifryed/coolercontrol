@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
@@ -42,6 +42,7 @@ pub const GPU_LOAD_NAME: &str = "GPU Load";
 pub const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
     Nvidia,
@@ -59,15 +60,15 @@ pub struct GpuRepo {
 }
 
 impl GpuRepo {
-    pub async fn new(config: Rc<Config>, nvidia_cli: bool) -> Result<Self> {
-        Ok(Self {
+    pub fn new(config: Rc<Config>, nvidia_cli: bool) -> Self {
+        Self {
             gpus_nvidia: GpuNVidia::new(Rc::clone(&config)),
             gpus_amd: GpuAMD::new(config),
             devices: HashMap::new(),
             gpu_type_count: HashMap::new(),
             nvml_active: false,
             force_nvidia_cli: nvidia_cli,
-        })
+        }
     }
 
     async fn detect_gpu_types(&mut self) {
@@ -76,7 +77,7 @@ impl GpuRepo {
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
                 .await
                 .len() as u8
-        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices().await {
+        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices() {
             self.nvml_active = true;
             num_nvml_devices
         } else {
@@ -91,7 +92,7 @@ impl GpuRepo {
             .insert(GpuType::AMD, self.gpus_amd.init_devices().await.len() as u8);
     }
 
-    pub async fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.borrow().type_index;
@@ -106,12 +107,12 @@ impl GpuRepo {
         }
     }
 
-    async fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.borrow().type_index;
                 scope.spawn(async move {
-                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info).await;
+                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info);
                     self.gpus_nvidia
                         .nvidia_preloaded_statuses
                         .borrow_mut()
@@ -220,9 +221,9 @@ impl Repository for GpuRepo {
         let self_c = Rc::clone(&self);
         moro_local::async_scope!(|scope| {
             if self.devices.is_empty().not() {
-                self_c.load_amd_statuses(scope).await;
+                self_c.load_amd_statuses(scope);
                 if self.nvml_active {
-                    self_c.load_nvml_status(scope).await;
+                    self_c.load_nvml_status(scope);
                 } else {
                     self.load_nvidia_smi_status(scope);
                 }
@@ -237,8 +238,8 @@ impl Repository for GpuRepo {
 
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
-        self.gpus_amd.update_all_statuses().await;
-        self.gpus_nvidia.update_all_statuses().await;
+        self.gpus_amd.update_all_statuses();
+        self.gpus_nvidia.update_all_statuses();
         trace!(
             "STATUS SNAPSHOT Time taken for all GPU devices: {:?}",
             start_update.elapsed()

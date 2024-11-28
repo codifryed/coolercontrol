@@ -134,11 +134,10 @@ impl HwmonRepo {
                     (
                         channel.name.clone(),
                         TempInfo {
-                            label: channel
-                                .label
-                                .as_ref()
-                                .map(|l| l.to_title_case())
-                                .unwrap_or_else(|| channel.name.to_title_case()),
+                            label: channel.label.as_ref().map_or_else(
+                                || channel.name.to_title_case(),
+                                |l| l.to_title_case(),
+                            ),
                             number: channel.number,
                         },
                     )

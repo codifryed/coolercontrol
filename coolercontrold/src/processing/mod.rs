@@ -44,15 +44,15 @@ pub enum DeviceChannelProfileSetting {
 impl DeviceChannelProfileSetting {
     pub fn device_uid(&self) -> &DeviceUID {
         match self {
-            DeviceChannelProfileSetting::Mix { device_uid, .. } => device_uid,
-            DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
+            DeviceChannelProfileSetting::Mix { device_uid, .. }
+            | DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
         }
     }
 
     pub fn channel_name(&self) -> &ChannelName {
         match self {
-            DeviceChannelProfileSetting::Mix { channel_name, .. } => channel_name,
-            DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
+            DeviceChannelProfileSetting::Mix { channel_name, .. }
+            | DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
         }
     }
 }
@@ -95,7 +95,7 @@ impl Default for NormalizedGraphProfile {
                 temp_name: String::default(),
                 device_uid: String::default(),
             },
-            function: Default::default(),
+            function: Function::default(),
         }
     }
 }
@@ -129,7 +129,7 @@ struct SpeedProfileData {
     duty: Option<Duty>,
     profile: Rc<NormalizedGraphProfile>,
     processing_started: bool,
-    /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
+    /// When this is triggered by the `SafetyLatchProcessor`, all subsequent processors
     /// MUST return a temp or duty value
     safety_latch_triggered: bool,
 }

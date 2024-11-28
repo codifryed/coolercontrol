@@ -130,17 +130,13 @@ impl DeviceSupport for SmartDeviceSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_channel_statuses(
-        &self,
-        status_map: &StatusMap,
-        device_index: &u8,
-    ) -> Vec<ChannelStatus> {
+    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: u8) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
-        if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(device_index) {
+        if let Some(speed_channel_names) = self.init_speed_channel_map.borrow().get(&device_index) {
             if channel_statuses.len() < speed_channel_names.len() {
                 let channel_names_current_status = channel_statuses
                     .iter()

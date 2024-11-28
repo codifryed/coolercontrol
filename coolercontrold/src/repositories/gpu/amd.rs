@@ -117,8 +117,8 @@ impl GpuAMD {
     }
 
     async fn init_load(device_path: &PathBuf) -> Option<HwmonChannelInfo> {
-        match cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
-            Ok(load) => match fans::check_parsing_8(load) {
+        if let Ok(load) = cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
+            match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
@@ -129,11 +129,10 @@ impl GpuAMD {
                     warn!("Error reading AMD busy percent value: {err}");
                     None
                 }
-            },
-            Err(_) => {
-                warn!("No AMDGPU load found: {device_path:?}/device/gpu_busy_percent");
-                None
             }
+        } else {
+            warn!("No AMDGPU load found: {device_path:?}/device/gpu_busy_percent");
+            None
         }
     }
 
@@ -205,7 +204,7 @@ impl GpuAMD {
                 "AMD Fan Curve found but not controllable. \
                         You may need to enable this feature with the kernel boot option: \
                         amdgpu.ppfeaturemask=0xffffffff"
-            )
+            );
         }
         info!("AMD GPU RDNA 3 Fan Control limitations - Fan in 0rpm mode until 50/60C and Min Fan Duty: {duty_min}%");
         Some(FanCurveInfo {
@@ -250,15 +249,14 @@ impl GpuAMD {
                         let label_base = channel
                             .label
                             .as_ref()
-                            .map(|l| l.to_title_case())
-                            .unwrap_or_else(|| channel.name.to_title_case());
+                            .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                         let channel_info = ChannelInfo {
                             label: Some(format!("{GPU_FREQ_NAME} {label_base}")),
                             ..Default::default()
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    _ => continue,
+                    HwmonChannelType::Temp => continue,
                 }
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
@@ -274,8 +272,7 @@ impl GpuAMD {
                     let label_base = channel
                         .label
                         .as_ref()
-                        .map(|l| l.to_title_case())
-                        .unwrap_or_else(|| channel.name.to_title_case());
+                        .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                     (
                         channel.name.clone(),
                         TempInfo {
@@ -401,7 +398,7 @@ impl GpuAMD {
         channels
     }
 
-    pub async fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self) {
         for (uid, amd_driver) in &self.amd_driver_infos {
             if let Some(device_lock) = self.amd_devices.get(uid) {
                 let device_index = device_lock.borrow().type_index;
@@ -448,27 +445,24 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        match &amd_hwmon_info.fan_curve_info {
-            Some(fan_curve_info) => {
-                if fan_curve_info.changeable {
-                    Self::reset_fan_curve(fan_curve_info).await
-                } else {
-                    Err(anyhow!(
-                        "PMFW Fan Curve control is present for this device, but not enabled"
-                    ))
-                }
+        if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
+            if fan_curve_info.changeable {
+                Self::reset_fan_curve(fan_curve_info).await
+            } else {
+                Err(anyhow!(
+                    "PMFW Fan Curve control is present for this device, but not enabled"
+                ))
             }
-            None => {
-                let channel_info = amd_hwmon_info
-                    .hwmon
-                    .channels
-                    .iter()
-                    .find(|channel| {
-                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-                    })
-                    .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-                fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
-            }
+        } else {
+            let channel_info = amd_hwmon_info
+                .hwmon
+                .channels
+                .iter()
+                .find(|channel| {
+                    channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                })
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
         }
     }
 
@@ -488,41 +482,38 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        match &amd_driver_info.fan_curve_info {
-            Some(fan_curve_info) => {
-                if fan_curve_info.changeable {
-                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
-                        .await
-                        .map_err(|err| {
-                            anyhow!(
-                                "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
-                                amd_driver_info.hwmon.name
-                            )
-                        })
-                } else {
-                    Err(anyhow!(
-                        "PMFW Fan Curve control is present for this device, but not enabled"
-                    ))
-                }
-            }
-            None => {
-                let channel_info = amd_driver_info
-                    .hwmon
-                    .channels
-                    .iter()
-                    .find(|channel| {
-                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-                    })
-                    .with_context(|| "Searching for channel name")?;
-                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+        if let Some(fan_curve_info) = &amd_driver_info.fan_curve_info {
+            if fan_curve_info.changeable {
+                Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
                     .await
                     .map_err(|err| {
                         anyhow!(
-                            "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                            "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
                             amd_driver_info.hwmon.name
                         )
                     })
+            } else {
+                Err(anyhow!(
+                    "PMFW Fan Curve control is present for this device, but not enabled"
+                ))
             }
+        } else {
+            let channel_info = amd_driver_info
+                .hwmon
+                .channels
+                .iter()
+                .find(|channel| {
+                    channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                })
+                .with_context(|| "Searching for channel name")?;
+            fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                        amd_driver_info.hwmon.name
+                    )
+                })
         }
     }
 
@@ -536,8 +527,8 @@ impl GpuAMD {
             .with_context(|| "Committing Fan Curve changes")
     }
 
-    /// Creates a "flat" fan curve by setting the duty with the temp_min and all the rest of
-    /// the points set to temp_max. This allows CoolerControl to handle Profiles and Functions
+    /// Creates a "flat" fan curve by setting the duty with the `temp_min` and all the rest of
+    /// the points set to `temp_max`. This allows `CoolerControl` to handle Profiles and Functions
     /// natively, which the firmware cannot do.
     fn create_flat_curve(fan_curve_info: &FanCurveInfo, duty: Duty) -> FanCurve {
         let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
@@ -558,7 +549,7 @@ impl GpuAMD {
         let mut new_fan_curve = FanCurve::default();
         let mut temp_steps = vec![fan_curve_info.temperature_range.start().to_owned()];
         for _ in 1..fan_curve_info.fan_curve.points.len() {
-            temp_steps.push(fan_curve_info.temperature_range.end().to_owned())
+            temp_steps.push(fan_curve_info.temperature_range.end().to_owned());
         }
         for temp_step in temp_steps {
             new_fan_curve.points.push((temp_step, clamped_duty));

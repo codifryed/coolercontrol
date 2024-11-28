@@ -32,8 +32,11 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 
 pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
 
+#[allow(clippy::upper_case_acronyms)]
 pub type UID = String;
+#[allow(clippy::upper_case_acronyms)]
 pub type DeviceUID = UID;
+#[allow(clippy::upper_case_acronyms)]
 pub type DeviceName = String;
 pub type ChannelName = String;
 pub type TempName = String;
@@ -41,6 +44,7 @@ pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
+#[allow(clippy::upper_case_acronyms)]
 pub type RPM = u32;
 pub type Mhz = u32;
 
@@ -244,7 +248,9 @@ impl Default for Status {
     Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize, JsonSchema,
 )]
 pub enum DeviceType {
+    #[allow(clippy::upper_case_acronyms)]
     CPU,
+    #[allow(clippy::upper_case_acronyms)]
     GPU,
     Liquidctl,
     Hwmon,
@@ -415,6 +421,7 @@ pub struct DriverInfo {
 pub enum DriverType {
     Kernel,
     Liquidctl,
+    #[allow(clippy::upper_case_acronyms)]
     NVML,
     NvidiaCLI,
     CoolerControl, // For things like CustomSensors

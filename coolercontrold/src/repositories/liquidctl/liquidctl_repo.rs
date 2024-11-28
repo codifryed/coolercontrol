@@ -151,7 +151,7 @@ impl LiquidctlRepo {
     /// # Notes
     ///
     /// * The function returns an empty vector if there are no devices or no driver locations.
-    pub async fn get_all_driver_locations(&self) -> Vec<String> {
+    pub fn get_all_driver_locations(&self) -> Vec<String> {
         let mut driver_locations = Vec::new();
         for device_lock in self.devices.values() {
             let device = device_lock.borrow();
@@ -162,7 +162,7 @@ impl LiquidctlRepo {
         driver_locations
     }
 
-    pub async fn update_temp_infos(&self) {
+    pub fn update_temp_infos(&self) {
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.borrow();
@@ -229,7 +229,7 @@ impl LiquidctlRepo {
     ) -> Status {
         let status_map = Self::create_status_map(lc_statuses);
         self.device_mapper
-            .extract_status(driver_type, &status_map, &device_index)
+            .extract_status(driver_type, &status_map, device_index)
     }
 
     async fn call_initialize_concurrently(&self) {
@@ -541,7 +541,7 @@ impl LiquidctlRepo {
             .with_context(|| format!("Setting screen for LIQUIDCTL Device #{type_index}: {uid}"))
     }
 
-    async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
+    fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
         let device = self
             .devices
             .get(device_uid)
@@ -589,7 +589,7 @@ impl LiquidctlRepo {
                     colors: Vec::new(),
                     temp_source: None,
                 };
-                if let Ok(cached_device_data) = self.cache_device_data(&device_uid).await {
+                if let Ok(cached_device_data) = self.cache_device_data(&device_uid) {
                     if let Err(err) = self
                         .set_screen(&cached_device_data, "lcd", &lcd_settings)
                         .await
@@ -603,7 +603,7 @@ impl LiquidctlRepo {
 
     /// The function initializes the status history of all devices with their current status.
     /// This is to be called on startup only.
-    pub async fn initialize_all_device_status_histories_with_current_status(&self) {
+    pub fn initialize_all_device_status_histories_with_current_status(&self) {
         for device_lock in self.devices.values() {
             let recent_status = device_lock.borrow().status_current().unwrap();
             device_lock
@@ -751,7 +751,7 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         speed_fixed: u8,
     ) -> Result<()> {
-        let cached_device_data = self.cache_device_data(device_uid).await?;
+        let cached_device_data = self.cache_device_data(device_uid)?;
         debug!(
             "Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}",
             device_uid, channel_name, speed_fixed
@@ -777,7 +777,7 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
             device_uid, channel_name, speed_profile
         );
-        let cached_device_data = self.cache_device_data(device_uid).await?;
+        let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(
             &cached_device_data,
             channel_name,
@@ -797,7 +797,7 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {} channel: {}; Lighting: {:?}",
             device_uid, channel_name, lighting
         );
-        let cached_device_data = self.cache_device_data(device_uid).await?;
+        let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_color(&cached_device_data, channel_name, lighting)
             .await
     }
@@ -812,7 +812,7 @@ impl Repository for LiquidctlRepo {
             "Applying LiquidCtl device: {} channel: {}; LCD: {:?}",
             device_uid, channel_name, lcd
         );
-        let cached_device_data = self.cache_device_data(device_uid).await?;
+        let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_screen(&cached_device_data, channel_name, lcd)
             .await
     }

@@ -93,19 +93,16 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
             } => {
                 let result = self
                     .custom_sensors_repo
-                    .get_custom_sensor(&custom_sensor_id)
-                    .await;
+                    .get_custom_sensor(&custom_sensor_id);
                 let _ = respond_to.send(result);
             }
             CustomSensorMessage::GetAll { respond_to } => {
-                let result = self.custom_sensors_repo.get_custom_sensors().await;
-                let _ = respond_to.send(result);
+                let result = self.custom_sensors_repo.get_custom_sensors();
+                let _ = respond_to.send(Ok(result));
             }
             CustomSensorMessage::SaveOrder { order, respond_to } => {
                 let result = async {
-                    self.custom_sensors_repo
-                        .set_custom_sensors_order(&order)
-                        .await?;
+                    self.custom_sensors_repo.set_custom_sensors_order(&order)?;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -142,13 +139,12 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
                 respond_to,
             } => {
                 let result = async {
-                    let cs_device_uid = self.custom_sensors_repo.get_device_uid().await;
+                    let cs_device_uid = self.custom_sensors_repo.get_device_uid();
                     self.settings_controller
                         .custom_sensor_deleted(&cs_device_uid, &custom_sensor_id)
                         .await?;
                     self.custom_sensors_repo
-                        .delete_custom_sensor(&custom_sensor_id)
-                        .await?;
+                        .delete_custom_sensor(&custom_sensor_id)?;
                     self.config.save_config_file().await
                 }
                 .await;

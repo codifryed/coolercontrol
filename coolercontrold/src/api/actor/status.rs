@@ -74,21 +74,21 @@ impl ApiActor<StatusMessage> for StatusActor {
             StatusMessage::All { respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    all_devices.push(get_all_statuses(&device_lock));
+                    all_devices.push(get_all_statuses(device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
             StatusMessage::Recent { respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    all_devices.push(get_most_recent_status(&device_lock));
+                    all_devices.push(get_most_recent_status(device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
             StatusMessage::Since { since, respond_to } => {
                 let mut all_devices = vec![];
                 for device_lock in self.all_devices.values() {
-                    all_devices.push(get_statuses_since(since, &device_lock));
+                    all_devices.push(get_statuses_since(since, device_lock));
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }

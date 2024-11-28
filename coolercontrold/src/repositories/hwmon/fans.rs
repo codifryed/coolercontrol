@@ -273,7 +273,7 @@ async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> 
         .await
         .and_then(check_parsing_32)
         // Edge case where on spin-up the output is max value until it begins moving
-        .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
+        .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
         .inspect_err(|err| {
             if log_error {
                 warn!("Could not read fan rpm value at {fan_input_path:?}: {err}");

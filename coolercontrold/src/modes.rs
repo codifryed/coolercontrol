@@ -119,7 +119,7 @@ impl ModeController {
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );
-            cc_fs::create_dir_all(&config_dir)?;
+            cc_fs::create_dir_all(config_dir)?;
         }
         let path = Path::new(DEFAULT_MODE_CONFIG_FILE_PATH).to_path_buf();
         let config_contents = if let Ok(contents) = cc_fs::read_txt(&path).await {
@@ -176,9 +176,6 @@ impl ModeController {
 
     /// Determines the active modes and sets them.
     fn determine_active_modes(&self) {
-        // todo: I've noticed a bug, where if there are missing devices for a Mode, it will be considered active.
-        //  - In my case, I reset my config and didn't connect to liquidctl. Almost all my modes
-        //    are considered active now because nearly all the devices I had settings for don't exist anymore.
         let mut active_modes = Vec::new();
         let modes = self.modes.borrow();
         'modes: for (mode_uid, mode) in modes.iter() {

@@ -352,7 +352,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.config.set_legacy690_id(&device_uid, &is_legacy690);
+                    self.config.set_legacy690_id(&device_uid, is_legacy690);
                     self.config.save_config_file().await?;
                     // Device is now known. Legacy690Lc devices still require a restart of the daemon.
                     if let Some(device) = self.all_devices.get(&device_uid) {

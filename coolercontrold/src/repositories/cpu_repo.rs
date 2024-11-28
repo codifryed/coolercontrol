@@ -206,11 +206,7 @@ impl CpuRepo {
         }
     }
 
-    async fn collect_load(
-        &self,
-        physical_id: PhysicalID,
-        channel_name: &str,
-    ) -> Option<ChannelStatus> {
+    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
         let percent_per_processor = self
             .cpu_percent_collector
@@ -320,10 +316,9 @@ impl CpuRepo {
             })
     }
 
-    async fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
+    fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
         if self
             .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
-            .await
             .is_none()
         {
             Err(anyhow!("Error: no load percent found!"))
@@ -366,8 +361,7 @@ impl CpuRepo {
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name).await
-                    else {
+                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name) else {
                         continue;
                     };
                     status_channels.push(load_status);
@@ -431,7 +425,7 @@ impl CpuRepo {
                         continue;
                     }
                 };
-                match self.init_cpu_load(physical_id).await {
+                match self.init_cpu_load(physical_id) {
                     Ok(load) => channels.push(load),
                     Err(err) => {
                         error!("Error matching cpu load percents to processors: {}", err);
@@ -515,8 +509,7 @@ impl Repository for CpuRepo {
                     let label_base = channel
                         .label
                         .as_ref()
-                        .map(|l| l.to_title_case())
-                        .unwrap_or_else(|| channel.name.to_title_case());
+                        .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                     (
                         channel.name.clone(),
                         TempInfo {
@@ -529,16 +522,7 @@ impl Repository for CpuRepo {
             let mut channel_infos = HashMap::new();
             for channel in &driver.channels {
                 match channel.hwmon_type {
-                    HwmonChannelType::Load => {
-                        channel_infos.insert(
-                            channel.name.clone(),
-                            ChannelInfo {
-                                label: channel.label.clone(),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    HwmonChannelType::Freq => {
+                    HwmonChannelType::Load | HwmonChannelType::Freq => {
                         channel_infos.insert(
                             channel.name.clone(),
                             ChannelInfo {

@@ -148,28 +148,27 @@ impl ApiActor<SettingMessage> for SettingActor {
             } => {
                 let result = async {
                     let settings_option = self.config.get_cc_settings_for_device(&device_uid)?;
-                    let dto = match settings_option {
-                        Some(settings) => CoolerControlDeviceSettingsDto {
+                    let dto = if let Some(settings) = settings_option {
+                        CoolerControlDeviceSettingsDto {
                             uid: device_uid,
                             name: settings.name,
                             disable: settings.disable,
-                        },
-                        None => {
-                            // Default settings for a device: (Same as None)
-                            let device_name = self
-                                .all_devices
-                                .get(&device_uid)
-                                .ok_or_else(|| CCError::NotFound {
-                                    msg: "Device not found".to_string(),
-                                })?
-                                .borrow()
-                                .name
-                                .clone();
-                            CoolerControlDeviceSettingsDto {
-                                uid: device_uid,
-                                name: device_name,
-                                disable: false,
-                            }
+                        }
+                    } else {
+                        // Default settings for a device: (Same as None)
+                        let device_name = self
+                            .all_devices
+                            .get(&device_uid)
+                            .ok_or_else(|| CCError::NotFound {
+                                msg: "Device not found".to_string(),
+                            })?
+                            .borrow()
+                            .name
+                            .clone();
+                        CoolerControlDeviceSettingsDto {
+                            uid: device_uid,
+                            name: device_name,
+                            disable: false,
                         }
                     };
                     Ok(dto)

@@ -163,7 +163,8 @@ impl Config {
     /// saves a backup of the daemon config file
     pub async fn save_backup_config_file(&self) -> Result<()> {
         let backup_path = Path::new(DEFAULT_BACKUP_CONFIG_FILE_PATH).to_path_buf();
-        cc_fs::write_string(&backup_path, self.document.borrow().to_string())
+        let doc_content = self.document.borrow().to_string();
+        cc_fs::write_string(&backup_path, doc_content)
             .await
             .with_context(|| format!("Saving backup configuration file: {:?}", &backup_path))
     }
@@ -188,12 +189,11 @@ impl Config {
     }
 
     /// This adds a human-readable device list with UIDs to the config file
-    pub fn create_device_list(&self, devices: Rc<HashMap<UID, DeviceLock>>) -> Result<()> {
+    pub fn create_device_list(&self, devices: &Rc<HashMap<UID, DeviceLock>>) {
         for (uid, device) in devices.iter() {
             self.document.borrow_mut()["devices"][uid.as_str()] =
                 Item::Value(Value::String(Formatted::new(device.borrow().name.clone())));
         }
-        Ok(())
     }
 
     pub fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
@@ -211,9 +211,9 @@ impl Config {
         Ok(legacy690_ids)
     }
 
-    pub fn set_legacy690_id(&self, device_uid: &str, is_legacy690: &bool) {
+    pub fn set_legacy690_id(&self, device_uid: &str, is_legacy690: bool) {
         self.document.borrow_mut()["legacy690"][device_uid] =
-            Item::Value(Value::Boolean(Formatted::new(*is_legacy690)));
+            Item::Value(Value::Boolean(Formatted::new(is_legacy690)));
     }
 
     pub fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
@@ -308,7 +308,7 @@ impl Config {
             Item::Value(Value::String(Formatted::new(profile_uid.clone())));
     }
 
-    pub async fn get_device_channel_settings(
+    pub fn get_device_channel_settings(
         &self,
         device_uid: &UID,
         channel_name: &str,

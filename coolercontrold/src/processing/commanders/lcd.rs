@@ -89,7 +89,7 @@ impl LcdCommander {
         self.scheduled_settings
             .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(channel_name.to_string(), lcd_settings.clone());
         self.scheduled_settings_metadata
             .borrow_mut()
@@ -195,7 +195,7 @@ impl LcdCommander {
                         .last()
                 })
                 .map(|temp_status|
-                    // rounded to nearest 10th degree to avoid updating on really small degree changes
+                    // rounded to nearest 10th degree to avoid updating on minuscule degree changes
                     (temp_status.temp * 10.).round() / 10.)?;
             Some(TempData { temp, label })
         } else {
@@ -310,7 +310,7 @@ impl LcdCommander {
         let mut image = if let Some(image_template) = image_template {
             image_template
         } else {
-            self.generate_single_temp_image_template(&temp_data_to_display, now)?
+            self.generate_single_temp_image_template(temp_data_to_display, now)?
         };
         now = Instant::now();
         let image_template = Some(image.clone());
@@ -354,7 +354,7 @@ impl LcdCommander {
 
     fn generate_single_temp_image_template(
         &self,
-        temp_data_to_display: &&TempData,
+        temp_data_to_display: &TempData,
         now: Instant,
     ) -> Result<Image<Rgba>> {
         let circle_center_x = 160.0_f32;

@@ -63,6 +63,7 @@ type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 
 /// A program to control your cooling devices
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Parser, Debug)]
 #[clap(author, about, long_about = None)]
 struct Args {
@@ -112,7 +113,7 @@ fn main() -> Result<()> {
         pause_before_startup(&config).await?;
         let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
         let all_devices = create_devices_map(&repos).await;
-        config.create_device_list(all_devices.clone())?;
+        config.create_device_list(&all_devices);
         let settings_controller = Rc::new(SettingsController::new(
             all_devices.clone(),
             &repos,
@@ -342,14 +343,12 @@ async fn init_liquidctl_repo(config: Rc<Config>) -> Result<(Rc<LiquidctlRepo>, V
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
-    let lc_locations = lc_repo.get_all_driver_locations().await;
+    let lc_locations = lc_repo.get_all_driver_locations();
     let lc_repo = Rc::new(lc_repo);
     Rc::clone(&lc_repo).preload_statuses().await;
-    lc_repo.update_temp_infos().await;
+    lc_repo.update_temp_infos();
     lc_repo.update_statuses().await?;
-    lc_repo
-        .initialize_all_device_status_histories_with_current_status()
-        .await;
+    lc_repo.initialize_all_device_status_histories_with_current_status();
     Ok((lc_repo, lc_locations))
 }
 
@@ -360,7 +359,7 @@ async fn init_cpu_repo(config: Rc<Config>) -> Result<CpuRepo> {
 }
 
 async fn init_gpu_repo(config: Rc<Config>, nvidia_cli: bool) -> Result<GpuRepo> {
-    let mut gpu_repo = GpuRepo::new(config, nvidia_cli).await?;
+    let mut gpu_repo = GpuRepo::new(config, nvidia_cli);
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }
@@ -375,7 +374,7 @@ async fn init_custom_sensors_repo(
     config: Rc<Config>,
     devices_for_custom_sensors: DeviceList,
 ) -> Result<CustomSensorsRepo> {
-    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors).await;
+    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors);
     custom_sensors_repo.initialize_devices().await?;
     Ok(custom_sensors_repo)
 }

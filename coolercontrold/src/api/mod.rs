@@ -119,7 +119,7 @@ pub async fn start_server<'s>(
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnSessionEnd);
-    let govenor_layer = GovernorLayer {
+    let governor_layer = GovernorLayer {
         config: Arc::new(
             GovernorConfigBuilder::default()
                 // startup has quite a few requests (e.g. per device)
@@ -137,7 +137,7 @@ pub async fn start_server<'s>(
             app_state.clone(),
             compress_enabled,
             session_layer.clone(),
-            govenor_layer.clone(),
+            governor_layer.clone(),
             cancel_token.clone(),
         ));
     }
@@ -147,7 +147,7 @@ pub async fn start_server<'s>(
             app_state,
             compress_enabled,
             session_layer,
-            govenor_layer,
+            governor_layer,
             cancel_token,
         ));
     }
