@@ -16,14 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use anyhow::{anyhow, Context, Result};
+use log::{debug, error, trace};
+use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-
-use anyhow::{anyhow, Context, Result};
-use log::{debug, error, trace};
-use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point,
     PremultipliedColorU8, Rect, SpreadMode, Transform,
@@ -219,6 +218,7 @@ impl LcdCommander {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
+        let start = Instant::now();
         let self_clone = Rc::clone(&self);
         let temp_data = Rc::clone(&temp_data_to_display);
         let image_template = self
@@ -282,8 +282,8 @@ impl LcdCommander {
             metadata.last_temp_set = Some(temp_data_to_display.temp);
             metadata.image_template = image_template;
         }
-        // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].borrow().d_type.clone();
+        trace!("Time to generate LCD image: {:?}", start.elapsed());
         debug!(
             "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
             device_uid, lcd_settings
@@ -296,6 +296,10 @@ impl LcdCommander {
                 error!("Error applying scheduled lcd setting: {}", err);
             }
         }
+        trace!(
+            "Time to generate LCD image and update device: {:?}",
+            start.elapsed()
+        );
     }
 
     /// Generates and saves an appropriate image and returns the path location for liquidctl

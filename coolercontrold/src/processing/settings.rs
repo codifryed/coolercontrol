@@ -21,11 +21,6 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use chrono::Local;
-use log::{error, info};
-use mime::Mime;
-
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID};
@@ -39,6 +34,11 @@ use crate::setting::{
     Setting, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
+use anyhow::{anyhow, Context, Result};
+use chrono::Local;
+use log::{error, info, trace};
+use mime::Mime;
+use tokio::time::Instant;
 
 const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
@@ -530,9 +530,15 @@ impl SettingsController {
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
     pub async fn process_scheduled_speeds(&self) {
+        let start = Instant::now();
         self.graph_commander.process_all_profiles();
+        trace!(
+            "Processing time taken for all profiles: {:?}",
+            start.elapsed()
+        );
         self.graph_commander.update_speeds().await;
         self.mix_commander.update_speeds().await;
+        trace!("Update and Processing time taken: {:?}", start.elapsed());
     }
 
     /// This is used to reinitialize liquidctl devices after waking from sleep
