@@ -581,19 +581,22 @@ impl Repository for CustomSensorsRepo {
         }
         let start_update = Instant::now();
         let mut custom_temps = Vec::new();
-        // clone used here to avoid holding the lock over an await:
-        let sensors = self.sensors.borrow().clone();
-        for sensor in &sensors {
+        let mut file_sensors = Vec::new();
+        for sensor in self.sensors.borrow().iter() {
             match sensor.cs_type {
                 CustomSensorType::Mix => {
                     let temp_status = self.process_custom_sensor_data_mix_current(sensor);
                     custom_temps.push(temp_status);
                 }
                 CustomSensorType::File => {
-                    let temp_status = Self::process_custom_sensor_data_file_current(sensor).await;
-                    custom_temps.push(temp_status);
+                    // clone used here to avoid holding the lock over an await:
+                    file_sensors.push(sensor.clone());
                 }
             }
+        }
+        for sensor in &file_sensors {
+            let temp_status = Self::process_custom_sensor_data_file_current(sensor).await;
+            custom_temps.push(temp_status);
         }
         self.custom_sensor_device
             .as_ref()
