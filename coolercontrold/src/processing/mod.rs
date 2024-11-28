@@ -135,7 +135,7 @@ struct SpeedProfileData {
 }
 
 impl SpeedProfileData {
-    async fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
+    fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
         if processor.is_applicable(self) {
             processor.process(self)
         } else {
