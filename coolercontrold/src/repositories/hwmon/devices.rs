@@ -22,6 +22,7 @@ use nu_glob::{glob, GlobResult};
 use pciid_parser::Database;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 
 use crate::device::UID;
@@ -143,8 +144,14 @@ pub fn get_device_model_name(base_path: &Path) -> Option<String> {
 /// Gets the real device path under /sys. This path doesn't change between boots
 /// and contains additional sysfs files outside of hardware monitoring.
 /// All `HWMon` devices should have this path.
+/// Note: Some 'Virtual' `HWMon` drivers do not have `device` paths, but the `base_path`
+/// is the same as the `device` path of normal drivers (/hwmon/hwmon* not in it).
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
-    get_canonical_path_str(&device_path(base_path))
+    get_canonical_path_str(&device_path(base_path)).or_else(|| {
+        // for Virtual HWMon drivers with no `device` path:
+        get_canonical_path_str(base_path)
+            .filter(|path| path.contains("devices") && path.contains("hwmon").not())
+    })
 }
 
 /// Returns the sysfs device path for a given `base_path`.
@@ -297,7 +304,10 @@ pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
 )]
 fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = std::fs::read_to_string(device_path(base_path).join("uevent")) {
+    if let Ok(content) = std::fs::read_to_string(device_path(base_path).join("uevent"))
+        // If the `device_path` doesn't exist, try to read it from the `base_path`
+        .or_else(|_| std::fs::read_to_string(base_path.join("uevent")))
+    {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
