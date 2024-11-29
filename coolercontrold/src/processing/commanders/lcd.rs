@@ -114,7 +114,6 @@ impl LcdCommander {
     }
 
     pub async fn update_lcd(self: Rc<Self>) {
-        trace!("LCD Scheduler triggered");
         for (device_uid, channel_name, lcd_settings, current_source_temp_data) in
             self.determine_temps_to_display()
         {

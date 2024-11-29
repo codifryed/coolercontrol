@@ -649,7 +649,6 @@ impl Repository for CpuRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
         for (device, _) in self.devices.values() {
             let device_id = device.borrow().type_index;
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
@@ -674,10 +673,6 @@ impl Repository for CpuRepo {
             );
             device.borrow_mut().set_status(status);
         }
-        trace!(
-            "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
-            start_update.elapsed()
-        );
         Ok(())
     }
 

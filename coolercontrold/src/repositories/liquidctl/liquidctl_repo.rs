@@ -705,7 +705,6 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.borrow();
@@ -732,10 +731,6 @@ impl Repository for LiquidctlRepo {
             };
             device_lock.borrow_mut().set_status(status);
         }
-        trace!(
-            "STATUS SNAPSHOT Time taken for all LIQUIDCTL devices: {:?}",
-            start_update.elapsed()
-        );
         Ok(())
     }
 

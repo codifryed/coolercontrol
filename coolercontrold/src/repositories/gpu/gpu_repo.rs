@@ -237,13 +237,8 @@ impl Repository for GpuRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
         self.gpus_amd.update_all_statuses();
         self.gpus_nvidia.update_all_statuses();
-        trace!(
-            "STATUS SNAPSHOT Time taken for all GPU devices: {:?}",
-            start_update.elapsed()
-        );
         Ok(())
     }
 

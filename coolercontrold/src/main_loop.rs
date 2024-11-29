@@ -103,7 +103,6 @@ fn fire_preloads<'s>(
             for repo in repos.iter() {
                 let repo = Rc::clone(repo);
                 preload_scope.spawn(async move {
-                    trace!("STATUS PRELOAD triggered for {} repo", repo.device_type());
                     repo.preload_statuses().await;
                 });
             }

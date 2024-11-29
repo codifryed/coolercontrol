@@ -400,7 +400,6 @@ impl Repository for HwmonRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
         for (device, _) in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let device_index = device.borrow().type_index;
@@ -425,10 +424,6 @@ impl Repository for HwmonRepo {
             );
             device.borrow_mut().set_status(status);
         }
-        trace!(
-            "STATUS SNAPSHOT Time taken for all HWMON devices: {:?}",
-            start_update.elapsed()
-        );
         Ok(())
     }
 
