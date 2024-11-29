@@ -27,6 +27,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use zbus::export::futures_util::future::{join3, join_all};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -183,6 +184,8 @@ async fn init_rpm_only_fan(
 /// Return the fan statuses for all channels.
 /// Defaults to 0 for rpm and duty to handle temporary issues,
 /// as they were correctly detected on startup.
+/// This function calls all fan channels and data points sequentially. See the `concurrently`
+/// version of this function for concurrent execution.
 pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
     let mut fans = vec![];
     for channel in &driver.channels {
@@ -210,48 +213,49 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
     fans
 }
 
-/// Maximum parallel requests version:
-// pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-//     let mut fan_tasks = vec![];
-//     moro_local::async_scope!(|scope| {
-//         for channel in &driver.channels {
-//             if channel.hwmon_type != HwmonChannelType::Fan {
-//                 continue;
-//             }
-//             let fan_task = scope.spawn(async {
-//                 moro_local::async_scope!(|channel_scope| {
-//                     let fan_rpm_task =
-//                         channel_scope.spawn(get_fan_rpm(&driver.path, &channel.number, false));
-//                     let fan_duty_task =
-//                         channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
-//                     let fan_pwm_mode_task = channel_scope.spawn(async {
-//                         if channel.pwm_mode_supported {
-//                             cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
-//                                 .await
-//                                 .and_then(check_parsing_8)
-//                                 .ok()
-//                         } else {
-//                             None
-//                         }
-//                     });
-//                     let (fan_rpm, fan_duty, fan_pwm_mode) =
-//                         join3(fan_rpm_task, fan_duty_task, fan_pwm_mode_task).await;
-//                     ChannelStatus {
-//                         name: channel.name.clone(),
-//                         rpm: fan_rpm,
-//                         duty: fan_duty,
-//                         pwm_mode: fan_pwm_mode,
-//                         ..Default::default()
-//                     }
-//                 })
-//                 .await
-//             });
-//             fan_tasks.push(fan_task);
-//         }
-//         join_all(fan_tasks).await
-//     })
-//         .await
-// }
+#[allow(dead_code)]
+/// This is the concurrent version of the `extract_fan_statuses` function.
+pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+    let mut fan_tasks = vec![];
+    moro_local::async_scope!(|scope| {
+        for channel in &driver.channels {
+            if channel.hwmon_type != HwmonChannelType::Fan {
+                continue;
+            }
+            let fan_task = scope.spawn(async {
+                moro_local::async_scope!(|channel_scope| {
+                    let fan_rpm_task =
+                        channel_scope.spawn(get_fan_rpm(&driver.path, &channel.number, false));
+                    let fan_duty_task =
+                        channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
+                    let fan_pwm_mode_task = channel_scope.spawn(async {
+                        if channel.pwm_mode_supported {
+                            cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
+                                .await
+                                .and_then(check_parsing_8)
+                                .ok()
+                        } else {
+                            None
+                        }
+                    });
+                    let (fan_rpm, fan_duty, fan_pwm_mode) =
+                        join3(fan_rpm_task, fan_duty_task, fan_pwm_mode_task).await;
+                    ChannelStatus {
+                        name: channel.name.clone(),
+                        rpm: fan_rpm,
+                        duty: fan_duty,
+                        pwm_mode: fan_pwm_mode,
+                        ..Default::default()
+                    }
+                })
+                .await
+            });
+            fan_tasks.push(fan_task);
+        }
+        join_all(fan_tasks).await
+    })
+    .await
+}
 
 async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<f64> {
     let pwm_path = base_path.join(format_pwm!(channel_number));
