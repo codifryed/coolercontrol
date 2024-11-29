@@ -94,14 +94,12 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
 pub fn runtime<F: Future>(future: F) -> F::Output {
     let rt = Builder::new_current_thread()
         .enable_io()
-        .max_io_events_per_tick(1024)
         .enable_time()
-        // These intervals prioritize local tasks over IO polling. A bit more efficient for our use case.
-        .event_interval(121)
-        .global_queue_interval(61)
-        // By default, this pool can grow large and fluctuate. We want efficiency over speed.
+        // By default, this pool can grow large and fluctuate over time. 
+        // A large thread pool is less efficient for us, but we want more than a single
+        // thread in case a device has severe latency:
         .max_blocking_threads(2)
-        .thread_keep_alive(Duration::from_secs(5))
+        .thread_keep_alive(Duration::from_secs(60))
         .thread_name("coolercontrold-wrk")
         .build();
     // requires tokio unstable: (but would make all our spawns !Send by default)
