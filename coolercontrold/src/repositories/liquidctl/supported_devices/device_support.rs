@@ -72,7 +72,7 @@ impl ColorMode {
 /// It is a general purpose trait and each supported device struct must implement this trait.
 /// Many of the default methods will cover all use cases, but it is advisable to override them
 /// for increased efficiency and performance.
-pub trait DeviceSupport: Debug + Sync + Send {
+pub trait DeviceSupport: Debug {
     fn supported_driver(&self) -> BaseDriver;
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo;
@@ -90,7 +90,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         locations
     }
 
-    fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
+    fn extract_status(&self, status_map: &StatusMap, device_index: u8) -> Status {
         Status {
             temps: self.get_temperatures(status_map),
             channels: self.get_channel_statuses(status_map, device_index),
@@ -226,7 +226,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     fn get_channel_statuses(
         &self,
         status_map: &StatusMap,
-        _device_index: &u8,
+        _device_index: u8,
     ) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_single_fan_status(status_map, &mut channel_statuses);
@@ -554,7 +554,7 @@ mod tests {
 
     fn assert_channel_statuses_eq(
         device_support: KrakenX3Support,
-        device_id: &u8,
+        device_id: u8,
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
         for (given, expected) in given_expected {
@@ -586,7 +586,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -618,7 +618,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -639,7 +639,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -655,7 +655,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -728,6 +728,6 @@ mod tests {
                 },
             ],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 }

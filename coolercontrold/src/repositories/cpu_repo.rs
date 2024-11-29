@@ -15,21 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::rc::Rc;
 
-use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
-use psutil::cpu::CpuPercentCollector;
-use regex::Regex;
-use tokio::sync::RwLock;
-use tokio::time::Instant;
-
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
@@ -39,6 +31,13 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use heck::ToTitleCase;
+use log::{debug, error, info, trace, warn};
+use psutil::cpu::CpuPercentCollector;
+use regex::Regex;
+use tokio::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -54,28 +53,28 @@ type ProcessorID = u16; // the logical processor ID
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
-    config: Arc<Config>,
-    devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
+    config: Rc<Config>,
+    devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
     cpu_model_names: HashMap<PhysicalID, String>,
-    cpu_percent_collector: RwLock<CpuPercentCollector>,
-    preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    cpu_percent_collector: RefCell<CpuPercentCollector>,
+    preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl CpuRepo {
-    pub fn new(config: Arc<Config>) -> Result<Self> {
+    pub fn new(config: Rc<Config>) -> Result<Self> {
         Ok(Self {
             config,
             devices: HashMap::new(),
             cpu_infos: HashMap::new(),
             cpu_model_names: HashMap::new(),
-            cpu_percent_collector: RwLock::new(CpuPercentCollector::new()?),
-            preloaded_statuses: RwLock::new(HashMap::new()),
+            cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
+            preloaded_statuses: RefCell::new(HashMap::new()),
         })
     }
 
     async fn set_cpu_infos(&mut self) -> Result<()> {
-        let cpu_info_data = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await?;
+        let cpu_info_data = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await?;
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
         let mut processor_id: ProcessorID = 0;
@@ -207,16 +206,11 @@ impl CpuRepo {
         }
     }
 
-    async fn collect_load(
-        &self,
-        physical_id: &PhysicalID,
-        channel_name: &str,
-    ) -> Option<ChannelStatus> {
+    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
         let percent_per_processor = self
             .cpu_percent_collector
-            .write()
-            .await
+            .borrow_mut()
             .cpu_percent_percpu()
             .unwrap_or_default();
         let mut percents = Vec::new();
@@ -224,7 +218,7 @@ impl CpuRepo {
             let processor_id = processor_id as ProcessorID;
             if self
                 .cpu_infos
-                .get(physical_id)
+                .get(&physical_id)
                 .expect("physical_id should be present in cpu_infos")
                 .contains(&processor_id)
             {
@@ -232,7 +226,7 @@ impl CpuRepo {
             }
         }
         let num_percents = percents.len();
-        let num_processors = self.cpu_infos.get(physical_id)?.len();
+        let num_processors = self.cpu_infos.get(&physical_id)?.len();
         if num_percents == num_processors {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
@@ -260,7 +254,7 @@ impl CpuRepo {
         // clear how to associate the frequency with the physical CPU on multi-cpu systems.
         let mut cpu_avgs = HashMap::new();
         let mut cpu_info_freqs: HashMap<PhysicalID, Vec<Mhz>> = HashMap::new();
-        let Ok(cpu_info) = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await else {
+        let Ok(cpu_info) = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await else {
             return cpu_avgs;
         };
         let mut cpu_info_physical_id: PhysicalID = 0;
@@ -309,28 +303,29 @@ impl CpuRepo {
     }
 
     fn get_status_from_freq_output(
-        physical_id: &PhysicalID,
+        physical_id: PhysicalID,
         channel_name: &str,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> Option<ChannelStatus> {
-        cpu_freqs.remove(physical_id).map(|avg_freq| ChannelStatus {
-            name: channel_name.to_string(),
-            freq: Some(avg_freq),
-            ..Default::default()
-        })
+        cpu_freqs
+            .remove(&physical_id)
+            .map(|avg_freq| ChannelStatus {
+                name: channel_name.to_string(),
+                freq: Some(avg_freq),
+                ..Default::default()
+            })
     }
 
-    async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
+    fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
         if self
             .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
-            .await
             .is_none()
         {
             Err(anyhow!("Error: no load percent found!"))
         } else {
             Ok(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Load,
-                number: *physical_id,
+                number: physical_id,
                 name: SINGLE_CPU_LOAD_NAME.to_string(),
                 label: Some(SINGLE_CPU_LOAD_NAME.to_string()),
                 ..Default::default()
@@ -339,7 +334,7 @@ impl CpuRepo {
     }
 
     fn init_cpu_freq(
-        physical_id: &PhysicalID,
+        physical_id: PhysicalID,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> Result<HwmonChannelInfo> {
         if Self::get_status_from_freq_output(physical_id, SINGLE_CPU_FREQ_NAME, cpu_freqs).is_none()
@@ -348,7 +343,7 @@ impl CpuRepo {
         } else {
             Ok(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Freq,
-                number: *physical_id,
+                number: physical_id,
                 name: SINGLE_CPU_FREQ_NAME.to_string(),
                 label: Some(SINGLE_CPU_FREQ_NAME.to_string()),
                 ..Default::default()
@@ -358,7 +353,7 @@ impl CpuRepo {
 
     async fn request_status(
         &self,
-        phys_cpu_id: &PhysicalID,
+        phys_cpu_id: PhysicalID,
         driver: &HwmonDriverInfo,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
@@ -366,8 +361,7 @@ impl CpuRepo {
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name).await
-                    else {
+                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name) else {
                         continue;
                     };
                     status_channels.push(load_status);
@@ -394,10 +388,10 @@ impl CpuRepo {
         (status_channels, temps)
     }
 
-    fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
         let mut potential_cpu_paths = Vec::new();
         for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path);
+            let device_name = devices::get_device_name(&path).await;
             if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
                 potential_cpu_paths.push((device_name, path));
             }
@@ -431,23 +425,23 @@ impl CpuRepo {
                         continue;
                     }
                 };
-                match self.init_cpu_load(&physical_id).await {
+                match self.init_cpu_load(physical_id) {
                     Ok(load) => channels.push(load),
                     Err(err) => {
                         error!("Error matching cpu load percents to processors: {}", err);
                     }
                 }
-                match Self::init_cpu_freq(&physical_id, &mut cpu_freqs) {
+                match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
                     Ok(freq) => channels.push(freq),
                     Err(err) => {
                         error!("Error matching cpu frequencies to processors: {}", err);
                     }
                 }
-                let pci_device_names = devices::get_device_pci_names(path);
-                let model = devices::get_device_model_name(path).or_else(|| {
+                let pci_device_names = devices::get_device_pci_names(path).await;
+                let model = devices::get_device_model_name(path).await.or_else(|| {
                     pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
                 });
-                let u_id = devices::get_device_unique_id(path, device_name);
+                let u_id = devices::get_device_unique_id(path, device_name).await;
                 let hwmon_driver_info = HwmonDriverInfo {
                     name: device_name.clone(),
                     path: path.clone(),
@@ -466,18 +460,18 @@ impl CpuRepo {
         hwmon_devices
     }
 
-    fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
             locations.push(mod_alias);
         }
         locations
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for CpuRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::CPU
@@ -487,7 +481,7 @@ impl Repository for CpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.set_cpu_infos().await?;
-        let potential_cpu_paths = Self::get_potential_cpu_paths();
+        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
@@ -500,12 +494,11 @@ impl Repository for CpuRepo {
         let mut cpu_freqs = Self::collect_freq().await;
         for (physical_id, driver) in hwmon_devices {
             let (channels, temps) = self
-                .request_status(&physical_id, &driver, &mut cpu_freqs)
+                .request_status(physical_id, &driver, &mut cpu_freqs)
                 .await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
-                .write()
-                .await
+                .borrow_mut()
                 .insert(type_index, (channels.clone(), temps.clone()));
             let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
             let temp_infos = driver
@@ -516,8 +509,7 @@ impl Repository for CpuRepo {
                     let label_base = channel
                         .label
                         .as_ref()
-                        .map(|l| l.to_title_case())
-                        .unwrap_or_else(|| channel.name.to_title_case());
+                        .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                     (
                         channel.name.clone(),
                         TempInfo {
@@ -530,16 +522,7 @@ impl Repository for CpuRepo {
             let mut channel_infos = HashMap::new();
             for channel in &driver.channels {
                 match channel.hwmon_type {
-                    HwmonChannelType::Load => {
-                        channel_infos.insert(
-                            channel.name.clone(),
-                            ChannelInfo {
-                                label: channel.label.clone(),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                    HwmonChannelType::Freq => {
+                    HwmonChannelType::Load | HwmonChannelType::Freq => {
                         channel_infos.insert(
                             channel.name.clone(),
                             ChannelInfo {
@@ -562,9 +545,9 @@ impl Repository for CpuRepo {
                     temp_max: 100,
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&driver.path),
+                        name: devices::get_device_driver_name(&driver.path).await,
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&driver.path),
+                        locations: Self::get_driver_locations(&driver.path).await,
                     },
                     ..Default::default()
                 },
@@ -576,7 +559,7 @@ impl Repository for CpuRepo {
                 ..Default::default()
             };
             device.initialize_status_history_with(status);
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
@@ -585,17 +568,14 @@ impl Repository for CpuRepo {
             } else {
                 self.devices.insert(
                     device.uid.clone(),
-                    (Arc::new(RwLock::new(device)), Arc::new(driver)),
+                    (Rc::new(RefCell::new(device)), Rc::new(driver)),
                 );
             }
         }
 
         let mut init_devices = HashMap::new();
         for (uid, (device, hwmon_info)) in &self.devices {
-            init_devices.insert(
-                uid.clone(),
-                (device.read().await.clone(), hwmon_info.clone()),
-            );
+            init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {:?}", init_devices);
@@ -639,36 +619,29 @@ impl Repository for CpuRepo {
             .collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-
-        let mut tasks = Vec::new();
         let mut cpu_freqs = Self::collect_freq().await;
-        for (device_lock, driver) in self.devices.values() {
-            let self = Arc::clone(&self);
-            let device_id = device_lock.read().await.type_index;
-            let physical_id = device_id - 1;
-            let mut cpu_freq = HashMap::new();
-            if let Some(freq) = cpu_freqs.remove(&physical_id) {
-                cpu_freq.insert(physical_id, freq);
+        moro_local::async_scope!(|scope| {
+            for (device_lock, driver) in self.devices.values() {
+                let device_id = device_lock.borrow().type_index;
+                let physical_id = device_id - 1;
+                let mut cpu_freq = HashMap::new();
+                if let Some(freq) = cpu_freqs.remove(&physical_id) {
+                    cpu_freq.insert(physical_id, freq);
+                }
+                let self = Rc::clone(&self);
+                scope.spawn(async move {
+                    let (channels, temps) = self
+                        .request_status(physical_id, driver, &mut cpu_freq)
+                        .await;
+                    self.preloaded_statuses
+                        .borrow_mut()
+                        .insert(device_id, (channels, temps));
+                });
             }
-            let driver = Arc::clone(driver);
-            let join_handle = tokio::task::spawn(async move {
-                let (channels, temps) = self
-                    .request_status(&physical_id, &driver, &mut cpu_freq)
-                    .await;
-                self.preloaded_statuses
-                    .write()
-                    .await
-                    .insert(device_id, (channels, temps));
-            });
-            tasks.push(join_handle);
-        }
-        for task in tasks {
-            if let Err(err) = task.await {
-                error!("{}", err);
-            }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
@@ -676,10 +649,9 @@ impl Repository for CpuRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
         for (device, _) in self.devices.values() {
-            let device_id = device.read().await.type_index;
-            let preloaded_statuses_map = self.preloaded_statuses.read().await;
+            let device_id = device.borrow().type_index;
+            let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if preloaded_statuses.is_none() {
                 error!(
@@ -699,12 +671,8 @@ impl Repository for CpuRepo {
                 device_id,
                 status
             );
-            device.write().await.set_status(status);
+            device.borrow_mut().set_status(status);
         }
-        trace!(
-            "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
-            start_update.elapsed()
-        );
         Ok(())
     }
 
@@ -771,5 +739,9 @@ impl Repository for CpuRepo {
         Err(anyhow!(
             "Applying settings is not supported for CPU devices"
         ))
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

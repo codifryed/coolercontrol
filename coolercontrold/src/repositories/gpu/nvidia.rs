@@ -16,9 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Add, Not, Sub};
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -31,7 +32,7 @@ use nvml_wrapper::sys_exports::field_id;
 use nvml_wrapper::Nvml;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{OnceCell, RwLock};
+use tokio::sync::OnceCell;
 use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
@@ -75,23 +76,23 @@ type GpuIndex = u8;
 type FanIndex = u8;
 
 pub struct GpuNVidia {
-    config: Arc<Config>,
+    config: Rc<Config>,
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
-    pub nvidia_device_infos: HashMap<UID, Arc<NvidiaDeviceInfo>>,
-    pub nvidia_preloaded_statuses: RwLock<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
+    pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
+    pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
     nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
-    xauthority_path: RwLock<Option<String>>,
+    xauthority_path: RefCell<Option<String>>,
 }
 
 impl GpuNVidia {
-    pub fn new(config: Arc<Config>) -> Self {
+    pub fn new(config: Rc<Config>) -> Self {
         Self {
             config,
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
-            nvidia_preloaded_statuses: RwLock::new(HashMap::new()),
+            nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
             nvidia_nvml_devices: HashMap::new(),
-            xauthority_path: RwLock::new(None),
+            xauthority_path: RefCell::new(None),
         }
     }
 
@@ -102,14 +103,14 @@ impl GpuNVidia {
         let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
-            self.retrieve_nvml_devices(starting_nvidia_index).await?
+            self.retrieve_nvml_devices(starting_nvidia_index)?
         };
         Ok(nvidia_devices)
     }
 
-    pub async fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self) {
         for (type_index, nv_device_lock) in &self.nvidia_devices {
-            let preloaded_statuses_map = self.nvidia_preloaded_statuses.read().await;
+            let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(type_index);
             if preloaded_statuses.is_none() {
                 error!(
@@ -125,19 +126,19 @@ impl GpuNVidia {
                 ..Default::default()
             };
             trace!("Device: {} status updated: {:?}", nv_status.name, status);
-            nv_device_lock.write().await.set_status(status);
+            nv_device_lock.borrow_mut().set_status(status);
         }
     }
 
     pub async fn reset_devices(&self) {
         for device_lock in self.nvidia_devices.values() {
-            if let Some(nv_info) = self.nvidia_device_infos.get(&device_lock.read().await.uid) {
+            let device_uid = device_lock.borrow().uid.clone();
+            if let Some(nv_info) = self.nvidia_device_infos.get(&device_uid) {
                 if self.nvidia_nvml_devices.is_empty() {
                     self.reset_nvidia_settings_to_default(nv_info).await.ok();
                 } else {
-                    for channel_name in device_lock.read().await.info.channels.keys() {
+                    for channel_name in device_lock.borrow().info.channels.keys() {
                         self.reset_nvml_device_to_default(nv_info, channel_name)
-                            .await
                             .ok();
                     }
                 }
@@ -152,8 +153,7 @@ impl GpuNVidia {
         if self.nvidia_nvml_devices.is_empty() {
             self.reset_nvidia_settings_to_default(nv_info).await?;
         } else {
-            self.reset_nvml_device_to_default(nv_info, channel_name)
-                .await?;
+            self.reset_nvml_device_to_default(nv_info, channel_name)?;
         }
         Ok(())
     }
@@ -173,7 +173,6 @@ impl GpuNVidia {
                 .await
         } else {
             self.set_nvml_fan_duty(nvidia_gpu_info, channel_name, speed_fixed)
-                .await
                 .map_err(|err| {
                     anyhow!(
                         "Error settings fan duty of {speed_fixed} on Nvidia GPU #{}:{channel_name} - {err}",
@@ -187,7 +186,7 @@ impl GpuNVidia {
     /// NVML
     /// --------------------------------------------------------------------------------------------
 
-    pub async fn init_nvml_devices(&mut self) -> Option<u8> {
+    pub fn init_nvml_devices(&mut self) -> Option<u8> {
         let nvml = Nvml::init()
             .inspect_err(|err| {
                 debug!("NVML not found or failed to initialize, falling back to CLI tools");
@@ -225,7 +224,7 @@ impl GpuNVidia {
         }
     }
 
-    pub async fn retrieve_nvml_devices(
+    pub fn retrieve_nvml_devices(
         &mut self,
         starting_nvidia_index: u8,
     ) -> Result<HashMap<UID, DeviceLock>> {
@@ -369,7 +368,7 @@ impl GpuNVidia {
             );
             let mut driver_locations = Vec::new();
             if let Ok(pci_info) = device.pci_info() {
-                driver_locations.push(pci_info.bus_id)
+                driver_locations.push(pci_info.bus_id);
             }
             let mut device_raw = Device::new(
                 name,
@@ -397,7 +396,7 @@ impl GpuNVidia {
             };
             device_raw.initialize_status_history_with(status);
             let uid = device_raw.uid.clone();
-            let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
@@ -406,11 +405,11 @@ impl GpuNVidia {
                 continue; // skip loading this device into the device list
             }
 
-            let device = Arc::new(RwLock::new(device_raw));
-            self.nvidia_devices.insert(type_index, Arc::clone(&device));
+            let device = Rc::new(RefCell::new(device_raw));
+            self.nvidia_devices.insert(type_index, Rc::clone(&device));
             self.nvidia_device_infos.insert(
                 uid.clone(),
-                Arc::new(NvidiaDeviceInfo {
+                Rc::new(NvidiaDeviceInfo {
                     gpu_index: *gpu_index,
                     display_id: 0,
                     fan_indices,
@@ -464,12 +463,12 @@ impl GpuNVidia {
             .ok()?; // If not supported, will return here
         field_values
             .into_iter()
-            .find_map(|field_value| field_value.ok())
+            .find_map(Result::ok)
             .filter(|field_sample| field_sample.field == FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP))
             .and_then(|field_sample| field_sample.value.ok())
             .map(|sample_value| match sample_value {
                 SampleValue::F64(value) => value,
-                SampleValue::U32(value) => value as Temp,
+                SampleValue::U32(value) => Temp::from(value),
                 SampleValue::U64(value) => value as Temp,
                 SampleValue::I64(value) => value as Temp,
             })
@@ -477,15 +476,12 @@ impl GpuNVidia {
             .filter(|temp| *temp > 0.)
     }
 
-    pub async fn request_nvml_status(
-        &self,
-        nv_info: Arc<NvidiaDeviceInfo>,
-    ) -> StatusNvidiaDeviceNvml {
+    pub fn request_nvml_status(&self, nv_info: &Rc<NvidiaDeviceInfo>) -> StatusNvidiaDeviceNvml {
         let nvml_device = self
             .nvidia_nvml_devices
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
-        let temp_status = Self::get_nvml_temp_status(nvml_device, &nv_info);
+        let temp_status = Self::get_nvml_temp_status(nvml_device, nv_info);
         let mut channel_status = Vec::new();
         for fan_index in &nv_info.fan_indices {
             let Ok(fan_speed) = nvml_device.fan_speed(u32::from(*fan_index)) else {
@@ -504,7 +500,7 @@ impl GpuNVidia {
                 ..Default::default()
             });
         }
-        Self::get_nvml_freq_status(nvml_device, &nv_info, &mut channel_status);
+        Self::get_nvml_freq_status(nvml_device, nv_info, &mut channel_status);
         StatusNvidiaDeviceNvml {
             temps: temp_status,
             channels: channel_status,
@@ -513,7 +509,7 @@ impl GpuNVidia {
 
     fn get_nvml_temp_status(
         nvml_device: &nvml_wrapper::Device,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
     ) -> Vec<TempStatus> {
         let mut temp_status = Vec::new();
         for nvidia_temp_name in &nv_info.temps {
@@ -544,7 +540,7 @@ impl GpuNVidia {
 
     fn get_nvml_freq_status(
         nvml_device: &nvml_wrapper::Device,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_status: &mut Vec<ChannelStatus>,
     ) {
         for nvml_clock_type in &nv_info.freqs {
@@ -578,9 +574,9 @@ impl GpuNVidia {
     }
 
     /// resets the nvidia fan control back to automatic
-    async fn reset_nvml_device_to_default(
+    fn reset_nvml_device_to_default(
         &self,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
     ) -> Result<()> {
         let nvml_device = self
@@ -588,14 +584,14 @@ impl GpuNVidia {
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
         let fan_index = Self::parse_fan_index(channel_name)?;
-        Self::verify_fan_index(nv_info, &fan_index)?;
-        nvml_device.set_default_fan_speed(fan_index as u32)?;
+        Self::verify_fan_index(nv_info, fan_index)?;
+        nvml_device.set_default_fan_speed(u32::from(fan_index))?;
         Ok(())
     }
 
-    async fn set_nvml_fan_duty(
+    fn set_nvml_fan_duty(
         &self,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
         fan_duty: Duty,
     ) -> Result<()> {
@@ -604,8 +600,8 @@ impl GpuNVidia {
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
         let fan_index = Self::parse_fan_index(channel_name)?;
-        Self::verify_fan_index(nv_info, &fan_index)?;
-        nvml_device.set_fan_speed(fan_index as u32, fan_duty as u32)?;
+        Self::verify_fan_index(nv_info, fan_index)?;
+        nvml_device.set_fan_speed(u32::from(fan_index), u32::from(fan_duty))?;
         Ok(())
     }
 
@@ -623,8 +619,8 @@ impl GpuNVidia {
         Ok(fan_index)
     }
 
-    fn verify_fan_index(nv_info: &Arc<NvidiaDeviceInfo>, fan_index: &u8) -> Result<()> {
-        if nv_info.fan_indices.contains(fan_index) {
+    fn verify_fan_index(nv_info: &Rc<NvidiaDeviceInfo>, fan_index: u8) -> Result<()> {
+        if nv_info.fan_indices.contains(&fan_index) {
             Ok(())
         } else {
             Err(anyhow!(
@@ -655,7 +651,7 @@ impl GpuNVidia {
                     Nvidia card with the proprietary drivers installed, allow access to either \
                     NVML or the CLI tools: nvidia-smi and nvidia-settings."
                 );
-                debug!("Error trying to communicate with nvidia-smi: {}", stderr)
+                debug!("Error trying to communicate with nvidia-smi: {}", stderr);
             }
             Success { stdout, stderr: _ } => {
                 debug!("Nvidia raw status output: {}", stdout);
@@ -693,8 +689,8 @@ impl GpuNVidia {
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         {
-            let mut xauth = self.xauthority_path.write().await;
-            *xauth = Self::search_for_xauthority_path().await;
+            let xauthority_path = Self::search_for_xauthority_path().await;
+            self.xauthority_path.replace(xauthority_path);
         }
         match self.get_nvidia_device_infos().await {
             Err(err) => {
@@ -703,13 +699,12 @@ impl GpuNVidia {
             }
             Ok(mut nvidia_infos) => {
                 for nv_status in self.request_nvidia_smi_statuses().await {
-                    if self.xauthority_path.read().await.is_none() {
+                    if self.xauthority_path.borrow().is_none() {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
                     let type_index = nv_status.index + starting_nvidia_index;
                     self.nvidia_preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(type_index, nv_status.clone());
                     let status = Status {
                         channels: nv_status.channels,
@@ -736,17 +731,14 @@ impl GpuNVidia {
                         .iter()
                         .any(|channel| channel.name == NVIDIA_FAN_NAME)
                     {
+                        let has_xauth = self.xauthority_path.borrow().is_some();
                         channels.insert(
                             NVIDIA_FAN_NAME.to_string(),
                             ChannelInfo {
                                 speed_options: Some(SpeedOptions {
                                     profiles_enabled: false,
-                                    fixed_enabled: self.xauthority_path.read().await.is_some(), // disable if xauth not found
-                                    manual_profiles_enabled: self
-                                        .xauthority_path
-                                        .read()
-                                        .await
-                                        .is_some(),
+                                    fixed_enabled: has_xauth, // disable if xauth not found
+                                    manual_profiles_enabled: has_xauth,
                                     ..Default::default()
                                 }),
                                 ..Default::default()
@@ -787,7 +779,7 @@ impl GpuNVidia {
                     );
                     device_raw.initialize_status_history_with(status);
                     let uid = device_raw.uid.clone();
-                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
                     if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                         info!(
                             "Skipping disabled device: {} with UID: {}",
@@ -795,8 +787,8 @@ impl GpuNVidia {
                         );
                         continue; // skip loading this device into the device list
                     }
-                    let device = Arc::new(RwLock::new(device_raw));
-                    self.nvidia_devices.insert(type_index, Arc::clone(&device));
+                    let device = Rc::new(RefCell::new(device_raw));
+                    self.nvidia_devices.insert(type_index, Rc::clone(&device));
                     let (display_id, fan_indices) = nvidia_infos
                         .get(&nv_status.index)
                         .with_context(|| {
@@ -808,7 +800,7 @@ impl GpuNVidia {
                         .to_owned();
                     self.nvidia_device_infos.insert(
                         uid.clone(),
-                        Arc::new(NvidiaDeviceInfo {
+                        Rc::new(NvidiaDeviceInfo {
                             gpu_index: nv_status.index,
                             display_id,
                             fan_indices,
@@ -871,7 +863,7 @@ impl GpuNVidia {
     async fn get_nvidia_device_infos(
         &self,
     ) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
-        if self.xauthority_path.read().await.is_none() {
+        if self.xauthority_path.borrow().is_none() {
             error!(
                 "Nvidia device detected but no xauthority cookie found which is needed \
             for proper communication with nvidia-settings. Nvidia Fan Control disabled."
@@ -880,16 +872,9 @@ impl GpuNVidia {
         }
         for display_id in 0..=3_u8 {
             let command = format!("nvidia-settings -c :{display_id} -q gpus --verbose");
+            let xauthority_path = self.xauthority_path.borrow().clone().unwrap_or_default();
             let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_FIRST_TRY)
-                .env(
-                    "XAUTHORITY",
-                    &self
-                        .xauthority_path
-                        .read()
-                        .await
-                        .clone()
-                        .unwrap_or_default(),
-                )
+                .env("XAUTHORITY", &xauthority_path)
                 .run()
                 .await;
             match command_result {
@@ -1014,7 +999,7 @@ impl GpuNVidia {
 
     /// resets the nvidia fan control back to automatic
     async fn reset_nvidia_settings_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
-        if self.xauthority_path.read().await.is_none() {
+        if self.xauthority_path.borrow().is_none() {
             return Ok(()); // nvidia-settings won't work
         }
         let command = format!(
@@ -1025,16 +1010,9 @@ impl GpuNVidia {
     }
 
     async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
+        let xauthority_path = self.xauthority_path.borrow().clone().unwrap_or_default();
         let command_result = ShellCommand::new(command, COMMAND_TIMEOUT_DEFAULT)
-            .env(
-                "XAUTHORITY",
-                &self
-                    .xauthority_path
-                    .read()
-                    .await
-                    .clone()
-                    .unwrap_or_default(),
-            )
+            .env("XAUTHORITY", &xauthority_path)
             .run()
             .await;
         match command_result {
@@ -1046,8 +1024,8 @@ impl GpuNVidia {
                         "Error communicating with nvidia-settings and appears to be an issue with \
                         the Xauthority file. Xauthority file reset in progress."
                     );
-                    let mut xauth = self.xauthority_path.write().await;
-                    *xauth = Self::search_for_xauthority_path().await;
+                    let xauthority_path = Self::search_for_xauthority_path().await;
+                    self.xauthority_path.replace(xauthority_path);
                 }
                 Err(anyhow!(
                     "Error communicating with nvidia-settings: {}",
@@ -1075,7 +1053,7 @@ impl GpuNVidia {
         nvidia_info: &NvidiaDeviceInfo,
         fixed_speed: Duty,
     ) -> Result<()> {
-        if self.xauthority_path.read().await.is_none() {
+        if self.xauthority_path.borrow().is_none() {
             return Ok(()); // nvidia-settings won't work
         }
         let mut command = format!(

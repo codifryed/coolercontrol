@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
-use async_trait::async_trait;
 use log::{error, trace};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
@@ -52,18 +51,17 @@ impl FunctionIdentityPreProcessor {
     }
 }
 
-#[async_trait]
 impl Processor for FunctionIdentityPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -74,8 +72,7 @@ impl Processor for FunctionIdentityPreProcessor {
         }
         data.temp = temp_source_device_option
             .unwrap()
-            .read()
-            .await
+            .borrow()
             .status_history
             .iter()
             .last() // last = latest temp
@@ -98,14 +95,14 @@ impl Processor for FunctionIdentityPreProcessor {
 /// The standard Function with Hysteresis control
 pub struct FunctionStandardPreProcessor {
     all_devices: AllDevices,
-    channel_settings_metadata: RwLock<HashMap<ProfileUID, ChannelSettingMetadata>>,
+    channel_settings_metadata: RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>,
 }
 
 impl FunctionStandardPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
         Self {
             all_devices,
-            channel_settings_metadata: RwLock::new(HashMap::new()),
+            channel_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
@@ -125,7 +122,7 @@ impl FunctionStandardPreProcessor {
         true
     }
 
-    async fn fill_temp_stack(
+    fn fill_temp_stack(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
         temp_source_device_option: Option<&DeviceLock>,
@@ -138,7 +135,7 @@ impl FunctionStandardPreProcessor {
             metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
             return;
         }
-        let temp_source_device = temp_source_device_option.unwrap().read().await;
+        let temp_source_device = temp_source_device_option.unwrap().borrow();
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
             let mut latest_temps = temp_source_device
@@ -190,28 +187,26 @@ impl FunctionStandardPreProcessor {
     }
 }
 
-#[async_trait]
 impl Processor for FunctionStandardPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), ChannelSettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        // In this function impl, there is no async. todo: might want to refactor trait
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -220,7 +215,7 @@ impl Processor for FunctionStandardPreProcessor {
         }
 
         // setup metadata:
-        let mut metadata_lock = self.channel_settings_metadata.write().await;
+        let mut metadata_lock = self.channel_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
@@ -228,7 +223,7 @@ impl Processor for FunctionStandardPreProcessor {
                 .max(data.profile.function.response_delay.unwrap() + 1)
                 as usize;
         }
-        Self::fill_temp_stack(metadata, data, temp_source_device_option).await;
+        Self::fill_temp_stack(metadata, data, temp_source_device_option);
 
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
             metadata.temp_hist_stack.pop_front();
@@ -347,18 +342,17 @@ impl FunctionEMAPreProcessor {
     }
 }
 
-#[async_trait]
 impl Processor for FunctionEMAPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -369,7 +363,7 @@ impl Processor for FunctionEMAPreProcessor {
         }
         let mut temps = {
             // scoped for the device read lock
-            let temp_source_device = temp_source_device_option.unwrap().read().await;
+            let temp_source_device = temp_source_device_option.unwrap().borrow();
             temp_source_device
                 .status_history
                 .iter()
@@ -381,7 +375,7 @@ impl Processor for FunctionEMAPreProcessor {
                 .map(|temp_status| temp_status.temp)
                 .collect::<Vec<f64>>()
         };
-        temps.reverse(); // re-order temps so last is last
+        temps.reverse(); // re-order temps so last temp is again last
         data.temp = if temps.is_empty() {
             log_missing_temp_sensor(data);
             Some(EMERGENCY_MISSING_TEMP)
@@ -398,26 +392,24 @@ impl Processor for FunctionEMAPreProcessor {
 /// This post-processor keeps a set of last-applied-duties and applies only duties within set upper and
 /// lower thresholds. It also handles improvements for edge cases.
 pub struct FunctionDutyThresholdPostProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, DutySettingMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, DutySettingMetadata>>,
 }
 
 impl FunctionDutyThresholdPostProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
-    async fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
-        if self.scheduled_settings_metadata.read().await[&data.profile.profile_uid]
+    fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
+        if self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
             .last_manual_speeds_set
             .is_empty()
         {
             return data.duty; // first application (startup)
         }
-        let last_duty = self
-            .get_appropriate_last_duty(&data.profile.profile_uid)
-            .await;
+        let last_duty = self.get_appropriate_last_duty(&data.profile.profile_uid);
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
         if diff_to_last_duty < data.profile.function.duty_minimum
             && data.safety_latch_triggered.not()
@@ -437,38 +429,35 @@ impl FunctionDutyThresholdPostProcessor {
     /// This returns the last duty that was set manually. This used to also do extra work to
     /// determine if it was a true value of the device, but with the introduction of the
     /// safety-latch, that is superfluous.
-    async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
-        *self.scheduled_settings_metadata.read().await[profile_uid]
+    fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
+        *self.scheduled_settings_metadata.borrow()[profile_uid]
             .last_manual_speeds_set
             .back()
             .unwrap() // already checked to exist
     }
 }
 
-#[async_trait]
 impl Processor for FunctionDutyThresholdPostProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.duty.is_some()
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), DutySettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        if let Some(duty_to_set) = self.duty_within_thresholds(data).await {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        if let Some(duty_to_set) = self.duty_within_thresholds(data) {
             {
-                let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+                let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
                 let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
@@ -482,11 +471,7 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             trace!("Duty not above threshold to be applied to device. Skipping");
             trace!(
                 "Last applied duties: {:?}",
-                self.scheduled_settings_metadata
-                    .read()
-                    .await
-                    .get(&data.profile.profile_uid)
-                    .unwrap()
+                self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
                     .last_manual_speeds_set
             );
             data
@@ -515,40 +500,37 @@ impl DutySettingMetadata {
 /// are hit, regardless of thresholds set. It also makes sure that the device is actually doing
 /// what it should. This processor needs to run at both the start and end of the processing chain.
 pub struct FunctionSafetyLatchProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, SafetyLatchMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, SafetyLatchMetadata>>,
 }
 
 impl FunctionSafetyLatchProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 }
 
-#[async_trait]
 impl Processor for FunctionSafetyLatchProcessor {
-    async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
         true
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), SafetyLatchMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if data.processing_started.not() {
             // Check whether to trigger the latch at the start of processing

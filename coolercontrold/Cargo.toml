@@ -8,20 +8,26 @@ rust-version = "1.81"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
+categories = ["hardware-support"]
+keywords = ["temperature", "hardware", "cooling", "fan", "monitor"]
 homepage = "https://gitlab.com/coolercontrol/coolercontrol"
 repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
+
+[features]
+default = []
+io_uring = ["dep:tokio-uring"]
 
 [dependencies]
 log = "0.4.22"
 env_logger = "0.11.5"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.20", features = [
+clap = { version = "4.5.21", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.91"
-derive_more = "1.0.0"
-tokio = { version = "1.41.0", default-features = false, features = [
+anyhow = "1.0.93"
+derive_more = { version = "1.0.0", features = ["display", "error"] }
+tokio = { version = "1.41.1", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -33,17 +39,39 @@ tokio = { version = "1.41.0", default-features = false, features = [
   "io-std",
   "io-util",
 ] }
-tokio-graceful-shutdown = "0.15.1"
+tokio-uring = { version = "0.5.0", optional = true }
+tokio-util = "0.7.12"
+moro-local = "0.4.0"
 async-trait = "0.1.83"
-actix-web = "4.9.0"
-actix-cors = "0.7.0"
-actix-multipart = "0.7.2"
-actix-web-static-files = { version = "4.0.1", default-features = false }
-actix-session = { version = "0.10.1", features = ["cookie-session"] }
-http-auth-basic = "0.3.5"
-static-files = { version = "0.2.4", default-features = false }
+axum = { version = "0.7.9", features = ["multipart", "macros"] }
+axum-extra = { version = "0.9.6", features = ["typed-header"] }
+tower-http = { version = "0.6.2", features = [
+  "timeout",
+  "trace",
+  "limit",
+  "cors",
+  "normalize-path",
+  "compression-full",
+] }
+tower-sessions = { version = "0.13.0", features = ["private"] }
+# Our own fork which handles our specific use case:
+tower_governor = { git = "https://github.com/codifryed/tower-governor", features = [
+  "axum",
+  "tracing",
+] }
+tower-serve-static = "0.1.1"
+include_dir = "0.7.4"
+aide = { version = "0.13.4", features = [
+  "axum",
+  "axum-extra",
+  "axum-multipart",
+] }
+headers = "0.4.0"
+schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
-hyper = { version = "1.5.0", default-features = false, features = [
+axum_typed_multipart = "0.13.2"
+tempfile = "3.14.0"
+hyper = { version = "1.5.1", default-features = false, features = [
   "http1",
   "client",
 ] }
@@ -53,9 +81,9 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1.2"
-serde = { version = "1.0.214", features = ["derive"] }
-serde_json = "1.0.132"
-zbus = { version = "5.0.1", default-features = false, features = [
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+zbus = { version = "5.1.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.32.0", default-features = false, features = [
@@ -65,21 +93,20 @@ chrono = { version = "0.4.38", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.26.3", features = ["derive"] } # Enum -> String
-regex = "1.10.6"
+regex = "1.11.1"
 lazy_static = "1.5.0" # allows us for ex to complile regex expression once in a function.
-cached = { version = "0.53.1", default-features = false, features = [
+cached = { version = "0.54.0", default-features = false, features = [
   "proc_macro",
   "ahash",
   "async",
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-signal-hook = "0.3.17"
 const_format = "0.2.33" # allows combining string constants
 psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.99.1"
+nu-glob = "0.100.0"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "fan-control" }
 sha2 = "0.10.8"
@@ -98,7 +125,7 @@ ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.4", default-features = false, features = [
+image = { version = "0.25.5", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",
@@ -115,12 +142,8 @@ imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
 uuid = { version = "1.11.0", features = ["v4"] }
 
-[build-dependencies]
-static-files = { version = "0.2.4", default-features = false }
-
 [dev-dependencies]
-test-context = "0.3.0"
-tempfile = "3.13.0"
+serial_test = "3.2.0"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]

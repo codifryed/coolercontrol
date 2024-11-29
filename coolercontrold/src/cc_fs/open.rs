@@ -16,11 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use static_files::resource_dir;
+use std::fs::OpenOptions;
 
-fn main() -> std::io::Result<()> {
-    if let Err(err) = resource_dir("./resources/app").build() {
-        println!("Error Building: {err}");
-    }
-    Ok(())
+/// Creates a new set of `std::fs::OpenOptions`.
+///
+/// All options are initially set to false.
+pub fn open_options() -> OpenOptions {
+    OpenOptions::new()
 }

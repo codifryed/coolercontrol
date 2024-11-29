@@ -16,6 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::cc_fs;
+use crate::device::UID;
+use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use cached::proc_macro::cached;
 use log::{debug, warn};
 use nu_glob::{glob, GlobResult};
@@ -23,9 +26,6 @@ use pciid_parser::Database;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-
-use crate::device::UID;
-use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
 const GLOB_TEMP_PATH: &str = "/sys/class/hwmon/hwmon*/temp*_input";
@@ -108,8 +108,8 @@ fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub fn get_device_name(base_path: &PathBuf) -> String {
-    if let Ok(contents) = std::fs::read_to_string(base_path.join("name")) {
+pub async fn get_device_name(base_path: &PathBuf) -> String {
+    if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
         contents.trim().to_string()
     } else {
         // hwmon\d+ should always exist in the path (from previous search)
@@ -134,8 +134,9 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub fn get_device_model_name(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(device_path(base_path).join("model"))
+pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
+    cc_fs::read_sysfs(device_path(base_path).join("model"))
+        .await
         .map(|model| model.trim().to_string())
         .ok()
 }
@@ -168,7 +169,7 @@ fn device_path(base_path: &Path) -> PathBuf {
 }
 
 fn get_canonical_path_str(path: &Path) -> Option<String> {
-    std::fs::canonicalize(path)
+    cc_fs::canonicalize(path)
         .inspect_err(|err| warn!("Error getting device path from {path:?}, {err}"))
         .ok()
         .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
@@ -184,12 +185,14 @@ fn get_canonical_path_str(path: &Path) -> Option<String> {
 ///
 /// The purpose of this is to ensure that we have unique IDs for device settings that persist
 /// across boots and hardware changes if possible.
-pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
-    if let Some(serial) = get_device_serial_number(base_path) {
+pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
+    if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else if let Some(device_path) = get_static_device_path_str(base_path) {
         device_path
-    } else if let Some(vendor_and_model_id) = get_device_uevent_details(base_path).get("PCI_ID") {
+    } else if let Some(vendor_and_model_id) =
+        get_device_uevent_details(base_path).await.get("PCI_ID")
+    {
         vendor_and_model_id.to_owned()
     } else {
         device_name.to_owned()
@@ -197,20 +200,19 @@ pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
 }
 
 /// Returns the device serial number if found.
-pub fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(device_path(base_path).join("serial")).map_or_else(
-        |_| {
-            // usb hid serial numbers are here:
-            let device_details = get_device_uevent_details(base_path);
-            device_details.get("HID_UNIQ").map(ToString::to_string)
-        },
-        |serial| Some(serial.trim().to_string()),
-    )
+pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
+    if let Ok(serial) = cc_fs::read_sysfs(device_path(base_path).join("serial")).await {
+        Some(serial.trim().to_string())
+    } else {
+        // usb hid serial numbers are here:
+        let device_details = get_device_uevent_details(base_path).await;
+        device_details.get("HID_UNIQ").map(ToString::to_string)
+    }
 }
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
+pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -224,7 +226,7 @@ pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
-                let alternate_name = get_alternative_device_name(driver);
+                let alternate_name = get_alternative_device_name(driver).await;
                 driver.name = alternate_name;
             }
         }
@@ -232,8 +234,8 @@ pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
 }
 
 /// Searches for the best alternative name to use in case of a duplicate device name
-fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
-    let device_details = get_device_uevent_details(&driver.path);
+async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
+    let device_details = get_device_uevent_details(&driver.path).await;
     if let Some(dev_name) = device_details.get("DEVNAME") {
         dev_name.to_string()
     } else if let Some(minor_num) = device_details.get("MINOR") {
@@ -246,8 +248,8 @@ fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
 }
 
 /// Gets the device's **PCI and SUBSYSTEM PCI** vendor and model names
-pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
-    let uevents = get_device_uevent_details(base_path);
+pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
+    let uevents = get_device_uevent_details(base_path).await;
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
@@ -266,26 +268,30 @@ pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     Some(pci_device_names)
 }
 
-pub fn get_pci_slot_name(base_path: &Path) -> Option<String> {
+pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("PCI_SLOT_NAME")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_driver_name(base_path: &Path) -> Option<String> {
+pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("DRIVER")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_mod_alias(base_path: &Path) -> Option<String> {
+pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("MODALIAS")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
+pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("HID_PHYS")
         .map(std::borrow::ToOwned::to_owned)
 }
@@ -295,9 +301,9 @@ pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     convert = r#"{ format!("{:?}", base_path) }"#,
     sync_writes = true
 )]
-fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
+async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = std::fs::read_to_string(device_path(base_path).join("uevent")) {
+    if let Ok(content) = cc_fs::read_txt(device_path(base_path).join("uevent")).await {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
@@ -320,7 +326,7 @@ fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
 // device lines up with which cpulist. (best guess for now, index == node)
 // pub async fn get_processor_ids_from_node_cpulist(index: &usize) -> Result<Vec<u16>> {
 //     let mut processor_ids = Vec::new();
-//     let content = tokio::fs::read_to_string(
+//     let content = cc_fs::read_txt(
 //         PathBuf::from(NODE_PATH).join(format!("node{}", index)).join("cpulist")
 //     ).await?;
 //     for line in content.lines() {
@@ -357,9 +363,8 @@ pub struct PciDeviceNames {
 /// Tests
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
     use std::path::Path;
-
-    use test_context::{test_context, AsyncTestContext};
     use uuid::Uuid;
 
     use super::*;
@@ -367,244 +372,277 @@ mod tests {
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
 
     struct HwmonDeviceContext {
-        base_path: PathBuf,
-        base_path_centos: PathBuf,
+        test_dir: String,
+        hwmon_path: PathBuf,
+        hwmon_path_centos: PathBuf,
         glob_paths: GlobPaths,
     }
 
-    impl AsyncTestContext for HwmonDeviceContext {
-        async fn setup() -> HwmonDeviceContext {
-            let base_path = Path::new(
-                &(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string() + "/hwmon/hwmon1/"),
-            )
-            .to_path_buf();
-            tokio::fs::create_dir_all(&base_path).await.unwrap();
-            let base_path_centos = Path::new(
-                &(TEST_BASE_PATH_STR.to_string()
-                    + &Uuid::new_v4().to_string()
-                    + "/hwmon/hwmon2/device/"),
-            )
-            .to_path_buf();
-            tokio::fs::create_dir_all(&base_path_centos).await.unwrap();
-            let glob_pwm = base_path
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon1", "hwmon*")
-                + "pwm*";
-            let glob_temp = base_path
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon1", "hwmon*")
-                + "temp*";
-            let glob_pwm_centos = base_path_centos
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon2", "hwmon*")
-                + "pwm*";
-            let glob_temp_centos = base_path_centos
-                .to_str()
-                .unwrap()
-                .to_owned()
-                .replace("hwmon2", "hwmon*")
-                + "temp*";
-            HwmonDeviceContext {
-                base_path,
-                base_path_centos,
-                glob_paths: GlobPaths {
-                    pwm: glob_pwm,
-                    pwm_centos: glob_pwm_centos,
-                    temp: glob_temp,
-                    temp_centos: glob_temp_centos,
-                },
-            }
-        }
-
-        async fn teardown(self) {
-            tokio::fs::remove_dir_all(&self.base_path).await.unwrap();
+    fn setup() -> HwmonDeviceContext {
+        let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
+        let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
+        let base_path_centos_str = test_dir.clone() + "/hwmon/hwmon2/device/";
+        let hwmon_path = Path::new(&base_path_str).to_path_buf();
+        let hwmon_path_centos = Path::new(&base_path_centos_str).to_path_buf();
+        cc_fs::create_dir_all(&hwmon_path).unwrap();
+        cc_fs::create_dir_all(&hwmon_path_centos).unwrap();
+        let glob_pwm = hwmon_path
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon1", "hwmon*")
+            + "pwm*";
+        let glob_temp = hwmon_path
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon1", "hwmon*")
+            + "temp*";
+        let glob_pwm_centos = hwmon_path_centos
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon2", "hwmon*")
+            + "pwm*";
+        let glob_temp_centos = hwmon_path_centos
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon2", "hwmon*")
+            + "temp*";
+        HwmonDeviceContext {
+            test_dir,
+            hwmon_path,
+            hwmon_path_centos,
+            glob_paths: GlobPaths {
+                pwm: glob_pwm,
+                pwm_centos: glob_pwm_centos,
+                temp: glob_temp,
+                temp_centos: glob_temp_centos,
+            },
         }
     }
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_device_empty(ctx: &mut HwmonDeviceContext) {
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // then:
-        assert!(hwmon_paths.is_empty());
+    fn teardown(ctx: &HwmonDeviceContext) {
+        cc_fs::remove_dir_all(&ctx.test_dir).unwrap();
     }
 
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
+    #[test]
+    #[serial]
+    fn find_device_empty() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
+            // then:
+            teardown(&ctx);
+            assert!(hwmon_paths.is_empty());
+        });
     }
 
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            &ctx.base_path.join("temp1"),
-            b"70000", // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path_centos.join("temp1"),
-            b"70000", // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 1);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_centos_and_temp_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
-        tokio::fs::write(
-            ctx.base_path.join("temp1"),
-            b"70000", // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_and_temp_centos_device(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
-        tokio::fs::write(
-            ctx.base_path_centos.join("temp1"),
-            b"70000", // temp
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_pwm_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(
-            ctx.base_path.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
-
-        tokio::fs::write(
-            ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
-        )
-        .await
-        .unwrap();
-
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
-
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
-    }
-
-    #[test_context(HwmonDeviceContext)]
-    #[tokio::test]
-    async fn find_temp_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
-        // given:
-        tokio::fs::write(ctx.base_path.join("temp1"), b"70000")
+    #[test]
+    #[serial]
+    fn find_pwm_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
             .await
             .unwrap();
 
-        tokio::fs::write(ctx.base_path_centos.join("temp1"), b"70000")
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_device_centos() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
             .await
             .unwrap();
 
-        // when:
-        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
-        // then:
-        assert!(!hwmon_paths.is_empty());
-        assert_eq!(hwmon_paths.len(), 2);
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                &ctx.hwmon_path.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device_centos() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_centos_and_temp_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                ctx.hwmon_path.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    // #[test_context(HwmonDeviceContext)]
+    #[test]
+    #[serial]
+    fn find_pwm_and_temp_centos_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("temp1"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_pwm_device_norm_and_centos() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("pwm1"),
+                b"127".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_temp_device_norm_and_centos() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(ctx.hwmon_path.join("temp1"), b"70000".to_vec())
+                .await
+                .unwrap();
+
+            cc_fs::write(ctx.hwmon_path_centos.join("temp1"), b"70000".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
     }
 }

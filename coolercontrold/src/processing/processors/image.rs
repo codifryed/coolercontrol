@@ -42,12 +42,12 @@ pub fn supported_image_types() -> [Mime; 5] {
 /// This method takes uploaded image data and processes it in accordance to the LCD/Screens specifications.
 /// This make sure that images are properly sized, cropped and standardized for our use.
 pub async fn process_image(
-    content_type: &Mime,
+    content_type: Mime,
     file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    if content_type == &mime::IMAGE_GIF {
+    if content_type == mime::IMAGE_GIF {
         process_gif(&file_data, screen_width, screen_height).await
     } else {
         process_static_image(&file_data, screen_width, screen_height).await
@@ -69,6 +69,8 @@ async fn process_gif(
     })?;
     let decoder = GifDecoder::new(Cursor::new(file_data))?;
     let frames = decoder.into_frames().collect_frames()?;
+    // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
+    //  and these processing functions are rarely executed.
     let join_handler: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
         let mut presentation_timestamp = 0.;
         for (index, frame) in frames.iter().enumerate() {
@@ -107,6 +109,8 @@ async fn process_static_image(
 ) -> Result<(Mime, Vec<u8>)> {
     let mut image_output = Cursor::new(Vec::new());
     let file_data_move = file_data.to_owned();
+    // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
+    //  and these processing functions are rarely executed.
     let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
         image::load_from_memory(&file_data_move)?
             .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)

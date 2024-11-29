@@ -16,19 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::rc::Rc;
 
-use anyhow::{anyhow, Context, Result};
-use heck::ToTitleCase;
-use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
-use log::{error, info, trace, warn};
-use regex::Regex;
-use tokio::sync::RwLock;
-
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
@@ -38,6 +33,11 @@ use crate::repositories::gpu::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, freqs, temps};
 use crate::repositories::repository::DeviceLock;
+use anyhow::{anyhow, Context, Result};
+use heck::ToTitleCase;
+use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
+use log::{error, info, trace, warn};
+use regex::Regex;
 
 const AMD_HWMON_NAME: &str = "amdgpu";
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
@@ -48,19 +48,19 @@ const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
 type CurveTemp = u8;
 
 pub struct GpuAMD {
-    config: Arc<Config>,
+    config: Rc<Config>,
     amd_devices: HashMap<UID, DeviceLock>,
-    pub amd_driver_infos: HashMap<UID, Arc<AMDDriverInfo>>,
-    pub amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
+    pub amd_preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl GpuAMD {
-    pub fn new(config: Arc<Config>) -> Self {
+    pub fn new(config: Rc<Config>) -> Self {
         Self {
             config,
             amd_devices: HashMap::new(),
             amd_driver_infos: HashMap::new(),
-            amd_preloaded_statuses: RwLock::new(HashMap::new()),
+            amd_preloaded_statuses: RefCell::new(HashMap::new()),
         }
     }
 
@@ -68,18 +68,18 @@ impl GpuAMD {
         let base_paths = devices::find_all_hwmon_device_paths();
         let mut amd_infos = vec![];
         for path in base_paths {
-            let device_name = devices::get_device_name(&path);
+            let device_name = devices::get_device_name(&path).await;
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
                 Ok(fans) => channels.extend(fans),
-                Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Fans: {err}"),
             };
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(temps),
-                Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Temps: {err}"),
             };
             let device_path = path
                 .join("device")
@@ -90,15 +90,16 @@ impl GpuAMD {
             }
             match freqs::init_freqs(&path).await {
                 Ok(freqs) => channels.extend(freqs),
-                Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
+                Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
             };
             let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
-            let drm_device_name = Self::get_drm_device_name(&path);
-            let pci_device_names = devices::get_device_pci_names(&path);
+            let drm_device_name = Self::get_drm_device_name(&path).await;
+            let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path)
+                .await
                 .or(drm_device_name)
                 .or_else(|| pci_device_names.and_then(|names| names.device_name));
-            let u_id = devices::get_device_unique_id(&path, &device_name);
+            let u_id = devices::get_device_unique_id(&path, &device_name).await;
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -116,8 +117,8 @@ impl GpuAMD {
     }
 
     async fn init_load(device_path: &PathBuf) -> Option<HwmonChannelInfo> {
-        match tokio::fs::read_to_string(device_path.join("gpu_busy_percent")).await {
-            Ok(load) => match fans::check_parsing_8(load) {
+        if let Ok(load) = cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
+            match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
@@ -125,24 +126,20 @@ impl GpuAMD {
                     ..Default::default()
                 }),
                 Err(err) => {
-                    warn!("Error reading AMD busy percent value: {}", err);
+                    warn!("Error reading AMD busy percent value: {err}");
                     None
                 }
-            },
-            Err(_) => {
-                warn!(
-                    "No AMDGPU load found: {:?}/device/gpu_busy_percent",
-                    device_path
-                );
-                None
             }
+        } else {
+            warn!("No AMDGPU load found: {device_path:?}/device/gpu_busy_percent");
+            None
         }
     }
 
-    fn get_drm_device_name(base_path: &Path) -> Option<String> {
-        let slot_name = devices::get_pci_slot_name(base_path)?;
+    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
+        let slot_name = devices::get_pci_slot_name(base_path).await?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
-        let drm_file = std::fs::OpenOptions::new()
+        let drm_file = cc_fs::open_options()
             .read(true)
             .write(true)
             .open(&path)
@@ -158,7 +155,7 @@ impl GpuAMD {
     /// Only available on Navi3x (RDNA 3) or newer devices.
     async fn get_fan_curve_info(device_path: &Path) -> Option<FanCurveInfo> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
-        let fan_curve_file = tokio::fs::read_to_string(&path).await.ok()?;
+        let fan_curve_file = cc_fs::read_txt(&path).await.ok()?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
@@ -207,7 +204,7 @@ impl GpuAMD {
                 "AMD Fan Curve found but not controllable. \
                         You may need to enable this feature with the kernel boot option: \
                         amdgpu.ppfeaturemask=0xffffffff"
-            )
+            );
         }
         info!("AMD GPU RDNA 3 Fan Control limitations - Fan in 0rpm mode until 50/60C and Min Fan Duty: {duty_min}%");
         Some(FanCurveInfo {
@@ -252,21 +249,19 @@ impl GpuAMD {
                         let label_base = channel
                             .label
                             .as_ref()
-                            .map(|l| l.to_title_case())
-                            .unwrap_or_else(|| channel.name.to_title_case());
+                            .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                         let channel_info = ChannelInfo {
                             label: Some(format!("{GPU_FREQ_NAME} {label_base}")),
                             ..Default::default()
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    _ => continue,
+                    HwmonChannelType::Temp => continue,
                 }
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
             self.amd_preloaded_statuses
-                .write()
-                .await
+                .borrow_mut()
                 .insert(id, amd_status.clone());
             let temps = amd_driver
                 .hwmon
@@ -277,8 +272,7 @@ impl GpuAMD {
                     let label_base = channel
                         .label
                         .as_ref()
-                        .map(|l| l.to_title_case())
-                        .unwrap_or_else(|| channel.name.to_title_case());
+                        .map_or_else(|| channel.name.to_title_case(), |l| l.to_title_case());
                     (
                         channel.name.clone(),
                         TempInfo {
@@ -302,9 +296,9 @@ impl GpuAMD {
                     model: amd_driver.hwmon.model.clone(),
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&amd_driver.hwmon.path),
+                        name: devices::get_device_driver_name(&amd_driver.hwmon.path).await,
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&amd_driver.hwmon.path),
+                        locations: Self::get_driver_locations(&amd_driver.hwmon.path).await,
                     },
                     ..Default::default()
                 },
@@ -316,7 +310,7 @@ impl GpuAMD {
                 ..Default::default()
             };
             device.initialize_status_history_with(status);
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
@@ -325,8 +319,8 @@ impl GpuAMD {
                 continue; // skip loading this device into the device list
             }
             self.amd_driver_infos
-                .insert(device.uid.clone(), Arc::new(amd_driver.clone()));
-            devices.insert(device.uid.clone(), Arc::new(RwLock::new(device)));
+                .insert(device.uid.clone(), Rc::new(amd_driver.clone()));
+            devices.insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if log::max_level() >= log::LevelFilter::Debug {
             info!("Initialized AMD HwmonInfos: {:?}", self.amd_driver_infos);
@@ -357,11 +351,11 @@ impl GpuAMD {
         }
     }
 
-    fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
             locations.push(mod_alias);
         }
         locations
@@ -391,7 +385,7 @@ impl GpuAMD {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
-            let load = tokio::fs::read_to_string(driver.device_path.join("gpu_busy_percent"))
+            let load = cc_fs::read_sysfs(driver.device_path.join("gpu_busy_percent"))
                 .await
                 .and_then(fans::check_parsing_8)
                 .unwrap_or(0);
@@ -404,17 +398,14 @@ impl GpuAMD {
         channels
     }
 
-    pub async fn update_all_statuses(&self) {
+    pub fn update_all_statuses(&self) {
         for (uid, amd_driver) in &self.amd_driver_infos {
             if let Some(device_lock) = self.amd_devices.get(uid) {
-                let preloaded_statuses_map = self.amd_preloaded_statuses.read().await;
-                let preloaded_statuses =
-                    preloaded_statuses_map.get(&device_lock.read().await.type_index);
+                let device_index = device_lock.borrow().type_index;
+                let preloaded_statuses_map = self.amd_preloaded_statuses.borrow();
+                let preloaded_statuses = preloaded_statuses_map.get(&device_index);
                 if preloaded_statuses.is_none() {
-                    error!(
-                        "There is no status preloaded for this AMD device: {}",
-                        device_lock.read().await.type_index
-                    );
+                    error!("There is no status preloaded for this AMD device: {device_index}");
                     continue;
                 }
                 let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -428,14 +419,22 @@ impl GpuAMD {
                     amd_driver.hwmon.name,
                     status
                 );
-                device_lock.write().await.set_status(status);
+                device_lock.borrow_mut().set_status(status);
             }
         }
     }
 
     pub async fn reset_devices(&self) {
         for (uid, device_lock) in &self.amd_devices {
-            for channel_name in device_lock.read().await.info.channels.keys() {
+            // clone here to avoid holding the lock
+            let channel_names = device_lock
+                .borrow()
+                .info
+                .channels
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            for channel_name in &channel_names {
                 self.reset_amd_to_default(uid, channel_name).await.ok();
             }
         }
@@ -446,32 +445,29 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        match &amd_hwmon_info.fan_curve_info {
-            Some(fan_curve_info) => {
-                if fan_curve_info.changeable {
-                    Self::reset_fan_curve(fan_curve_info).await
-                } else {
-                    Err(anyhow!(
-                        "PMFW Fan Curve control is present for this device, but not enabled"
-                    ))
-                }
+        if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
+            if fan_curve_info.changeable {
+                Self::reset_fan_curve(fan_curve_info).await
+            } else {
+                Err(anyhow!(
+                    "PMFW Fan Curve control is present for this device, but not enabled"
+                ))
             }
-            None => {
-                let channel_info = amd_hwmon_info
-                    .hwmon
-                    .channels
-                    .iter()
-                    .find(|channel| {
-                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-                    })
-                    .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-                fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
-            }
+        } else {
+            let channel_info = amd_hwmon_info
+                .hwmon
+                .channels
+                .iter()
+                .find(|channel| {
+                    channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                })
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
         }
     }
 
     async fn reset_fan_curve(fan_curve_info: &FanCurveInfo) -> Result<()> {
-        tokio::fs::write(&fan_curve_info.path, b"r\n")
+        cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
     }
@@ -486,56 +482,53 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        match &amd_driver_info.fan_curve_info {
-            Some(fan_curve_info) => {
-                if fan_curve_info.changeable {
-                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
-                        .await
-                        .map_err(|err| {
-                            anyhow!(
-                                "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
-                                amd_driver_info.hwmon.name
-                            )
-                        })
-                } else {
-                    Err(anyhow!(
-                        "PMFW Fan Curve control is present for this device, but not enabled"
-                    ))
-                }
-            }
-            None => {
-                let channel_info = amd_driver_info
-                    .hwmon
-                    .channels
-                    .iter()
-                    .find(|channel| {
-                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-                    })
-                    .with_context(|| "Searching for channel name")?;
-                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+        if let Some(fan_curve_info) = &amd_driver_info.fan_curve_info {
+            if fan_curve_info.changeable {
+                Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
                     .await
                     .map_err(|err| {
                         anyhow!(
-                            "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                            "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
                             amd_driver_info.hwmon.name
                         )
                     })
+            } else {
+                Err(anyhow!(
+                    "PMFW Fan Curve control is present for this device, but not enabled"
+                ))
             }
+        } else {
+            let channel_info = amd_driver_info
+                .hwmon
+                .channels
+                .iter()
+                .find(|channel| {
+                    channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                })
+                .with_context(|| "Searching for channel name")?;
+            fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                        amd_driver_info.hwmon.name
+                    )
+                })
         }
     }
 
     async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
         for (i, (temp, duty)) in flat_curve.points.into_iter().enumerate() {
-            tokio::fs::write(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
+            cc_fs::write_string(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
         }
-        tokio::fs::write(&fan_curve_info.path, b"c\n")
+        cc_fs::write(&fan_curve_info.path, b"c\n".to_vec())
             .await
             .with_context(|| "Committing Fan Curve changes")
     }
 
-    /// Creates a "flat" fan curve by setting the duty with the temp_min and all the rest of
-    /// the points set to temp_max. This allows CoolerControl to handle Profiles and Functions
+    /// Creates a "flat" fan curve by setting the duty with the `temp_min` and all the rest of
+    /// the points set to `temp_max`. This allows `CoolerControl` to handle Profiles and Functions
     /// natively, which the firmware cannot do.
     fn create_flat_curve(fan_curve_info: &FanCurveInfo, duty: Duty) -> FanCurve {
         let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
@@ -556,7 +549,7 @@ impl GpuAMD {
         let mut new_fan_curve = FanCurve::default();
         let mut temp_steps = vec![fan_curve_info.temperature_range.start().to_owned()];
         for _ in 1..fan_curve_info.fan_curve.points.len() {
-            temp_steps.push(fan_curve_info.temperature_range.end().to_owned())
+            temp_steps.push(fan_curve_info.temperature_range.end().to_owned());
         }
         for temp_step in temp_steps {
             new_fan_curve.points.push((temp_step, clamped_duty));

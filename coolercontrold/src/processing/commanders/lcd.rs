@@ -16,23 +16,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Arc;
-
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, trace};
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::Path;
+use std::rc::Rc;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point,
     PremultipliedColorU8, Rect, SpreadMode, Transform,
 };
-use tokio::sync::RwLock;
-use tokio::task;
 use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
-use crate::device::{Temp, TempLabel, UID};
+use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::processing::settings::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
@@ -47,8 +45,8 @@ const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Reg
 pub struct LcdCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    pub scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
-    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
+    pub scheduled_settings: RefCell<HashMap<UID, HashMap<String, LcdSettings>>>,
+    scheduled_settings_metadata: RefCell<HashMap<UID, HashMap<String, SettingMetadata>>>,
     font_mono: Font,
     font_variable: Font,
 }
@@ -58,14 +56,14 @@ impl LcdCommander {
         Self {
             all_devices,
             repos,
-            scheduled_settings: RwLock::new(HashMap::new()),
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings: RefCell::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
             font_mono: Font::from_bytes(FONT_MONO_BYTES, 100.0).expect("font to load"),
             font_variable: Font::from_bytes(FONT_VARIABLE_BYTES, 100.0).expect("font to load"),
         }
     }
 
-    pub async fn schedule_setting(
+    pub fn schedule_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -88,50 +86,59 @@ impl LcdCommander {
             format!("Target Device to schedule lcd update must be present: {device_uid}")
         })?;
         self.scheduled_settings
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(channel_name.to_string(), lcd_settings.clone());
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(channel_name.to_string(), SettingMetadata::new());
         Ok(())
     }
 
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+    pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
         if let Some(device_channel_settings) =
-            self.scheduled_settings.write().await.get_mut(device_uid)
+            self.scheduled_settings.borrow_mut().get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
         }
         if let Some(device_channel_settings) = self
             .scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
         }
     }
 
-    pub async fn update_lcd(self: Arc<Self>) {
-        trace!("LCD Scheduler triggered");
-        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
+    pub async fn update_lcd(self: Rc<Self>) {
+        for (device_uid, channel_name, lcd_settings, current_source_temp_data) in
+            self.determine_temps_to_display()
+        {
+            self.clone()
+                .set_lcd_image(
+                    &device_uid,
+                    &channel_name,
+                    &lcd_settings,
+                    Rc::new(current_source_temp_data),
+                )
+                .await;
+        }
+    }
+
+    fn determine_temps_to_display(&self) -> Vec<(DeviceUID, ChannelName, LcdSettings, TempData)> {
+        let mut temps_to_display = Vec::new();
+        for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
                 if lcd_settings.mode != "temp" {
-                    return;
+                    return temps_to_display;
                 }
-                if let Some(current_source_temp_data) =
-                    self.get_source_temp_data(lcd_settings).await
-                {
+                if let Some(current_source_temp_data) = self.get_source_temp_data(lcd_settings) {
                     let last_temp_set = self
                         .scheduled_settings_metadata
-                        .read()
-                        .await
+                        .borrow()
                         .get(device_uid)
                         .expect("lcd scheduler metadata for device should be present")
                         .get(channel_name)
@@ -141,29 +148,28 @@ impl LcdCommander {
                         || (last_temp_set.is_some()
                             && last_temp_set.unwrap() != current_source_temp_data.temp)
                     {
-                        self.clone()
-                            .set_lcd_image(
-                                device_uid,
-                                channel_name,
-                                lcd_settings,
-                                Arc::new(current_source_temp_data),
-                            )
-                            .await;
+                        temps_to_display.push((
+                            device_uid.clone(),
+                            channel_name.clone(),
+                            lcd_settings.clone(),
+                            current_source_temp_data.clone(),
+                        ));
                     } else {
                         trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_data.temp);
                     }
                 }
             }
         }
+        temps_to_display
     }
 
-    async fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
+    fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
         let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
         if let Some(temp_source_device_lock) = self
             .all_devices
             .get(setting_temp_source.device_uid.as_str())
         {
-            let device_read_lock = temp_source_device_lock.read().await;
+            let device_read_lock = temp_source_device_lock.borrow();
             let label = device_read_lock
                 .info
                 .temps
@@ -187,7 +193,7 @@ impl LcdCommander {
                         .last()
                 })
                 .map(|temp_status|
-                    // rounded to nearest 10th degree to avoid updating on really small degree changes
+                    // rounded to nearest 10th degree to avoid updating on minuscule degree changes
                     (temp_status.temp * 10.).round() / 10.)?;
             Some(TempData { temp, label })
         } else {
@@ -199,51 +205,48 @@ impl LcdCommander {
         }
     }
 
-    /// The self: Arc<Self> is a 'trick' to be able to call methods that belong to self in another thread
+    /// The self: Rc<Self> is a 'trick' to be able to call methods that belong to self in another thread
     async fn set_lcd_image(
-        self: Arc<Self>,
+        self: Rc<Self>,
         device_uid: &UID,
         channel_name: &str,
         lcd_settings: &LcdSettings,
-        temp_data_to_display: Arc<TempData>,
+        temp_data_to_display: Rc<TempData>,
     ) {
         if lcd_settings.mode != "temp" {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
-        let self_clone = Arc::clone(&self);
-        let temp_data = Arc::clone(&temp_data_to_display);
+        let start = Instant::now();
+        let self_clone = Rc::clone(&self);
+        let temp_data = Rc::clone(&temp_data_to_display);
         let image_template = self
             .scheduled_settings_metadata
-            .read()
-            .await
+            .borrow()
             .get(device_uid)
             .unwrap()
             .get(channel_name)
             .unwrap()
             .image_template
             .clone();
-        let generate_image = task::spawn_blocking(move || {
-            self_clone.generate_single_temp_image(&temp_data, image_template)
-        });
-        let (image_path, image_template) = match generate_image.await {
-            Ok(image_data_result) => match image_data_result {
-                Ok(image_data) => image_data,
-                Err(err) => {
-                    error!("Error generating image for lcd scheduler: {}", err);
-                    return;
-                }
-            },
-            Err(err) => {
-                error!("Error running image generation task: {}", err);
-                return;
-            }
+        let generate_image =
+            moro_local::async_scope!(|scope| -> Result<(String, Option<Image<Rgba>>)> {
+                scope
+                    .spawn(async move {
+                        self_clone.generate_single_temp_image(&temp_data, image_template)
+                    })
+                    .await
+            })
+            .await;
+        let Ok((image_path, image_template)) = generate_image
+            .inspect_err(|err| error!("Error generating image for lcd scheduler: {}", err))
+        else {
+            return;
         };
 
         let last_temp_set = self
             .scheduled_settings_metadata
-            .read()
-            .await
+            .borrow()
             .get(device_uid)
             .unwrap()
             .get(channel_name)
@@ -269,7 +272,7 @@ impl LcdCommander {
             temp_source: None,
         };
         {
-            let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+            let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
             let metadata = metadata_lock
                 .get_mut(device_uid)
                 .unwrap()
@@ -278,8 +281,8 @@ impl LcdCommander {
             metadata.last_temp_set = Some(temp_data_to_display.temp);
             metadata.image_template = image_template;
         }
-        // this will block if reference is held, thus clone()
-        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
+        let device_type = self.all_devices[device_uid].borrow().d_type.clone();
+        trace!("Time to generate LCD image: {:?}", start.elapsed());
         debug!(
             "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
             device_uid, lcd_settings
@@ -292,6 +295,10 @@ impl LcdCommander {
                 error!("Error applying scheduled lcd setting: {}", err);
             }
         }
+        trace!(
+            "Time to generate LCD image and update device: {:?}",
+            start.elapsed()
+        );
     }
 
     /// Generates and saves an appropriate image and returns the path location for liquidctl
@@ -306,7 +313,7 @@ impl LcdCommander {
         let mut image = if let Some(image_template) = image_template {
             image_template
         } else {
-            self.generate_single_temp_image_template(&temp_data_to_display, now)?
+            self.generate_single_temp_image_template(temp_data_to_display, now)?
         };
         now = Instant::now();
         let image_template = Some(image.clone());
@@ -334,6 +341,7 @@ impl LcdCommander {
         now = Instant::now();
 
         let image_path = Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_SINGLE_TEMP);
+        // std blocking save being used here:
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
             return Err(anyhow!("{}", e.to_string()));
         }
@@ -349,7 +357,7 @@ impl LcdCommander {
 
     fn generate_single_temp_image_template(
         &self,
-        temp_data_to_display: &&TempData,
+        temp_data_to_display: &TempData,
         now: Instant,
     ) -> Result<Image<Rgba>> {
         let circle_center_x = 160.0_f32;

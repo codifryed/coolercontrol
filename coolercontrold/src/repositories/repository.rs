@@ -16,23 +16,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use log::error;
-use tokio::sync::RwLock;
 
 use crate::device::{DeviceType, UID};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 
-pub type DeviceLock = Arc<RwLock<Device>>;
+pub type DeviceLock = Rc<RefCell<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
 
 /// A Repository is used to access device hardware data
-#[async_trait]
-pub trait Repository: Send + Sync {
+#[async_trait(?Send)]
+pub trait Repository {
     fn device_type(&self) -> DeviceType;
 
     async fn initialize_devices(&mut self) -> Result<()>;
@@ -45,7 +44,7 @@ pub trait Repository: Send + Sync {
     /// Preloading keeps response times for clients really quick and dependable, despite any
     /// bad timing, like calling during the middle of an update which can cause inconsistent
     /// status responses
-    async fn preload_statuses(self: Arc<Self>);
+    async fn preload_statuses(self: Rc<Self>);
 
     /// This method should be called after preload_statuses to update the internal
     /// device status history with the last polled status
@@ -91,7 +90,55 @@ pub trait Repository: Send + Sync {
     ) -> Result<()>;
 
     /// This is helpful/necessary after waking from sleep
-    async fn reinitialize_devices(&self) {
-        error!("Reinitializing Devices is not supported for this Repository");
+    async fn reinitialize_devices(&self);
+}
+
+#[derive(Default)]
+pub struct Repositories {
+    pub cpu: Option<Rc<dyn Repository>>,
+    pub gpu: Option<Rc<dyn Repository>>,
+    pub liquidctl: Option<Rc<dyn Repository>>,
+    pub hwmon: Option<Rc<dyn Repository>>,
+    pub custom_sensors: Option<Rc<dyn Repository>>,
+}
+
+impl Repositories {
+    /// This is here to help with future refactorings and improvements.
+    #[allow(dead_code)]
+    pub fn get_by_type(&self, device_type: &DeviceType) -> Option<Rc<dyn Repository>> {
+        match device_type {
+            DeviceType::CPU => Self::clone_rc(self.cpu.as_ref()),
+            DeviceType::GPU => Self::clone_rc(self.gpu.as_ref()),
+            DeviceType::Liquidctl => Self::clone_rc(self.liquidctl.as_ref()),
+            DeviceType::Hwmon => Self::clone_rc(self.hwmon.as_ref()),
+            DeviceType::CustomSensors => Self::clone_rc(self.custom_sensors.as_ref()),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn Repository>> {
+        let mut repos = Vec::new();
+        // liquidctl device can take the longest, so they should be first
+        if let Some(repo) = self.liquidctl.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.cpu.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.gpu.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.hwmon.as_ref() {
+            repos.push(repo);
+        }
+        // custom sensors should always be last
+        if let Some(repo) = self.custom_sensors.as_ref() {
+            repos.push(repo);
+        }
+        repos.into_iter()
+    }
+
+    #[allow(dead_code)]
+    fn clone_rc(repo: Option<&Rc<dyn Repository>>) -> Option<Rc<dyn Repository>> {
+        repo.map(Rc::clone)
     }
 }

@@ -16,94 +16,68 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
-
-use actix_session::Session;
-use actix_web::web::{Data, Json, Path};
-use actix_web::{delete, get, post, put, HttpResponse, Responder};
+use crate::api::auth::verify_admin_permissions;
+use crate::api::{handle_error, validate_name_string, AppState, CCError};
+use crate::setting::{Profile, ProfileType, ProfileUID};
+use aide::NoApi;
+use axum::extract::{Path, State};
+use axum::Json;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::api::{
-    handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
-};
-use crate::config::Config;
-use crate::modes::ModeController;
-use crate::processing::settings::SettingsController;
-use crate::setting::{Profile, ProfileType};
+use tower_sessions::Session;
 
 /// Retrieves the persisted Profile list
-#[get("/profiles")]
-async fn get_profiles(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
-    config
-        .get_profiles()
+pub async fn get_all(
+    State(AppState { profile_handle, .. }): State<AppState>,
+) -> Result<Json<ProfilesDto>, CCError> {
+    profile_handle
+        .get_all()
         .await
-        .map(|profiles| HttpResponse::Ok().json(Json(ProfilesDto { profiles })))
+        .map(|profiles| Json(ProfilesDto { profiles }))
         .map_err(handle_error)
 }
 
 /// Set the profile order in the array of profiles
-#[post("/profiles/order")]
-async fn save_profiles_order(
-    profiles_dto: Json<ProfilesDto>,
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    config
-        .set_profiles_order(&profiles_dto.profiles)
+pub async fn save_order(
+    State(AppState { profile_handle, .. }): State<AppState>,
+    Json(profiles_dto): Json<ProfilesDto>,
+) -> Result<(), CCError> {
+    profile_handle
+        .save_order(profiles_dto.profiles)
         .await
-        .map_err(handle_error)?;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[post("/profiles")]
-async fn save_profile(
-    profile: Json<Profile>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn create(
+    NoApi(session): NoApi<Session>,
+    State(AppState { profile_handle, .. }): State<AppState>,
+    Json(profile): Json<Profile>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
-    config
-        .set_profile(profile.into_inner())
-        .await
-        .map_err(handle_error)?;
-    handle_simple_result(config.save_config_file().await)
+    profile_handle.create(profile).await.map_err(handle_error)
 }
 
-#[put("/profiles")]
-async fn update_profile(
-    profile: Json<Profile>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn update(
+    NoApi(session): NoApi<Session>,
+    State(AppState { profile_handle, .. }): State<AppState>,
+    Json(profile): Json<Profile>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
-    config
-        .update_profile(profile.clone())
-        .await
-        .map_err(handle_error)?;
-    settings_controller.profile_updated(&profile.uid).await;
-    config.save_config_file().await.map_err(handle_error)?;
-    handle_simple_result(Ok(()))
+    profile_handle.update(profile).await.map_err(handle_error)
 }
 
-#[delete("/profiles/{profile_uid}")]
-async fn delete_profile(
-    profile_uid: Path<String>,
-    settings_controller: Data<Arc<SettingsController>>,
-    mode_controller: Data<Arc<ModeController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn delete(
+    Path(path): Path<ProfilePath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { profile_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    settings_controller.profile_deleted(&profile_uid).await?;
-    config
-        .delete_profile(&profile_uid)
+    profile_handle
+        .delete(path.profile_uid)
         .await
-        .map_err(handle_error)?;
-    config.save_config_file().await.map_err(handle_error)?;
-    mode_controller.profile_deleted(&profile_uid).await?;
-    Ok(HttpResponse::Ok().finish())
+        .map_err(handle_error)
 }
 
 fn validate_profile(profile: &Profile) -> Result<(), CCError> {
@@ -116,7 +90,12 @@ fn validate_profile(profile: &Profile) -> Result<(), CCError> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProfilesDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ProfilesDto {
     profiles: Vec<Profile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ProfilePath {
+    profile_uid: ProfileUID,
 }
