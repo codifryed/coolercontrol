@@ -20,8 +20,6 @@ BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
 
-Requires: coolercontrol-liqctld
-
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
 
