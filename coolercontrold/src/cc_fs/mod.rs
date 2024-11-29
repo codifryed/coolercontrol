@@ -102,7 +102,7 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
         // By default, this pool can grow large and fluctuate. We want efficiency over speed.
         .max_blocking_threads(2)
         .thread_keep_alive(Duration::from_secs(5))
-        .thread_name("coolercontrol-wrk")
+        .thread_name("coolercontrold-wrk")
         .build();
     // requires tokio unstable: (but would make all our spawns !Send by default)
     // .build_local(&Default::default());
