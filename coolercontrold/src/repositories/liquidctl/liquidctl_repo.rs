@@ -37,7 +37,9 @@ use crate::config::Config;
 use crate::device::{DeviceType, LcInfo, Status, TempInfo, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
+use crate::repositories::liquidctl::liqctld_client::{
+    DeviceResponse, LCStatus, LiqctldClient, LIQCTLD_CONNECTION_TRIES,
+};
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -60,9 +62,17 @@ impl LiquidctlRepo {
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
         {
+            let _: Result<()> = async {
+                // attempt to quickly shut down the liqctld service if it happens to be running.
+                let liqctld_client = LiqctldClient::new(1).await?;
+                liqctld_client.post_quit().await?;
+                liqctld_client.shutdown();
+                Ok(())
+            }
+            .await;
             return Err(InitError::Disabled.into());
         }
-        let liqctld_client = LiqctldClient::new()
+        let liqctld_client = LiqctldClient::new(LIQCTLD_CONNECTION_TRIES)
             .await
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),

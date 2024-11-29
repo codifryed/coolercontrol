@@ -45,7 +45,7 @@ const LIQCTLD_MAX_POOL_SIZE: usize = 10;
 const LIQCTLD_MAX_POOL_RETRIES: usize = 7;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrol-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
-const LIQCTLD_TIMEOUT_SECONDS: usize = 5;
+pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
@@ -79,9 +79,9 @@ impl LiqctldClient {
     ///
     /// Returns:
     /// a Result containing either an instance of the struct or an error.
-    pub async fn new() -> Result<Self> {
+    pub async fn new(connection_tries: usize) -> Result<Self> {
         let mut connection_pool = Vec::with_capacity(LIQCTLD_MAX_POOL_SIZE);
-        let connection = Self::create_connection().await?;
+        let connection = Self::create_connection(connection_tries).await?;
         connection_pool.push(Rc::new(RefCell::new(connection)));
         Ok(Self {
             connection_pool: RefCell::new(connection_pool),
@@ -99,9 +99,9 @@ impl LiqctldClient {
     /// The function `create_connection` returns a `Result` containing a `SocketConnection` if the
     /// connection is successfully established. If the connection fails after the maximum number of
     /// retries, an error is returned.
-    async fn create_connection() -> Result<SocketConnection> {
+    async fn create_connection(connection_tries: usize) -> Result<SocketConnection> {
         let mut retry_count = 0;
-        while retry_count < LIQCTLD_TIMEOUT_SECONDS {
+        while retry_count < connection_tries {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
@@ -174,7 +174,7 @@ impl LiqctldClient {
             }
             let mut pool_size = self.connection_pool.borrow().len();
             if pool_size < LIQCTLD_MAX_POOL_SIZE {
-                let connection = Self::create_connection().await?;
+                let connection = Self::create_connection(LIQCTLD_CONNECTION_TRIES).await?;
                 let connection_lock = Rc::new(RefCell::new(connection));
                 self.connection_pool
                     .borrow_mut()
