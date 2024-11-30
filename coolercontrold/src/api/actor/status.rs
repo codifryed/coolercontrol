@@ -26,7 +26,7 @@ use chrono::{DateTime, Local};
 use moro_local::Scope;
 use std::ops::Deref;
 use std::sync::LazyLock;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 // possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
@@ -137,6 +137,8 @@ fn get_most_recent_status(device_lock: &DeviceLock) -> DeviceStatusDto {
 #[derive(Clone)]
 pub struct StatusHandle {
     sender: mpsc::Sender<StatusMessage>,
+    broadcaster: broadcast::Sender<Vec<DeviceStatusDto>>,
+    cancel_token: CancellationToken,
 }
 
 impl StatusHandle {
@@ -146,9 +148,14 @@ impl StatusHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
+        let (broadcaster, _) = broadcast::channel::<Vec<DeviceStatusDto>>(2);
         let actor = StatusActor::new(receiver, all_devices);
-        main_scope.spawn(run_api_actor(actor, cancel_token));
-        Self { sender }
+        main_scope.spawn(run_api_actor(actor, cancel_token.clone()));
+        Self {
+            sender,
+            broadcaster,
+            cancel_token,
+        }
     }
 
     pub async fn all(&self) -> Result<Vec<DeviceStatusDto>> {
@@ -163,6 +170,23 @@ impl StatusHandle {
         let msg = StatusMessage::Recent { respond_to: tx };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+
+    pub fn broadcaster(&self) -> &broadcast::Sender<Vec<DeviceStatusDto>> {
+        &self.broadcaster
+    }
+
+    pub async fn broadcast_status(&self) {
+        // only collect statuses if we have listeners:
+        if self.broadcaster.receiver_count() == 0 {
+            return;
+        }
+        let recent_status = self.recent().await.unwrap_or_default();
+        let _ = self.broadcaster.send(recent_status);
+    }
+
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
     }
 
     pub async fn since(&self, since: DateTime<Local>) -> Result<Vec<DeviceStatusDto>> {

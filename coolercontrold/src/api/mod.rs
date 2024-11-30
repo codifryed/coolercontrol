@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-mod actor;
+pub mod actor;
 mod auth;
 mod base;
 mod custom_sensors;
@@ -26,6 +26,7 @@ mod modes;
 mod profiles;
 mod router;
 mod settings;
+mod sse;
 mod status;
 
 use crate::api::actor::{
@@ -33,6 +34,7 @@ use crate::api::actor::{
     SettingHandle, StatusHandle,
 };
 use crate::config::Config;
+use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
@@ -81,6 +83,8 @@ pub async fn start_server<'s>(
     config: Rc<Config>,
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     modes_controller: Rc<ModeController>,
+    log_buf_handle: LogBufHandle,
+    status_handle: StatusHandle,
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
@@ -107,6 +111,8 @@ pub async fn start_server<'s>(
         config,
         &custom_sensors_repo,
         &modes_controller,
+        log_buf_handle,
+        status_handle,
         &cancel_token,
         main_scope,
     );
@@ -276,6 +282,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             description: Some("Settings".to_string()),
             ..Tag::default()
         })
+        .tag(Tag {
+            name: "sse".to_string(),
+            description: Some("Server Side Events".to_string()),
+            ..Tag::default()
+        })
 }
 
 fn create_app_state<'s>(
@@ -284,6 +295,8 @@ fn create_app_state<'s>(
     config: Rc<Config>,
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
     modes_controller: &Rc<ModeController>,
+    log_buf_handle: LogBufHandle,
+    status_handle: StatusHandle,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
@@ -295,7 +308,6 @@ fn create_app_state<'s>(
         cancel_token.clone(),
         main_scope,
     );
-    let status_handle = StatusHandle::new(all_devices.clone(), cancel_token.clone(), main_scope);
     let profile_handle = ProfileHandle::new(
         settings_controller.clone(),
         config.clone(),
@@ -327,6 +339,7 @@ fn create_app_state<'s>(
         custom_sensor_handle,
         mode_handle,
         setting_handle,
+        log_buf_handle,
     }
 }
 
@@ -678,4 +691,5 @@ pub struct AppState {
     pub custom_sensor_handle: CustomSensorHandle,
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
+    pub log_buf_handle: LogBufHandle,
 }

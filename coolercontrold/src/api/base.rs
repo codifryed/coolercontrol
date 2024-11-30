@@ -16,10 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::api::auth::verify_admin_permissions;
-use crate::api::CCError;
+use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::openapi::OpenApi;
 use aide::NoApi;
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use include_dir::{include_dir, Dir};
@@ -43,6 +44,10 @@ pub fn web_app_service() -> ServeDir {
 
 pub async fn serve_api_doc(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
     Json(api).into_response()
+}
+
+pub async fn logs(State(AppState { log_buf_handle, .. }): State<AppState>) -> impl IntoApiResponse {
+    log_buf_handle.get_logs().await
 }
 
 pub async fn shutdown(NoApi(session): NoApi<Session>) -> Result<(), CCError> {

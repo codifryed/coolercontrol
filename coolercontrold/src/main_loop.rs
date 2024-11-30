@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
@@ -47,6 +49,7 @@ pub async fn run<'s>(
     repos: Repos,
     settings_controller: Rc<SettingsController>,
     mode_controller: Rc<ModeController>,
+    status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
     tokio::pin! {
@@ -69,7 +72,7 @@ pub async fn run<'s>(
                     () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
-                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, scope);
+                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, &status_handle, scope);
                 run_lcd_update = !run_lcd_update;
             } else if sleep_listener.is_resuming() {
                 wake_from_sleep(
@@ -121,6 +124,7 @@ fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
     settings_controller: &'s Rc<SettingsController>,
     run_lcd_update: bool,
+    status_handle: &'s StatusHandle,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     scope.spawn(async move {
@@ -132,6 +136,7 @@ fn fire_snapshots_and_processes<'s>(
         }
         fire_lcd_update(settings_controller, run_lcd_update, scope);
         settings_controller.process_scheduled_speeds().await;
+        status_handle.broadcast_status().await;
     });
 }
 

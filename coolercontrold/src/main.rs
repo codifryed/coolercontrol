@@ -126,12 +126,16 @@ fn main() -> Result<()> {
 
         moro_local::async_scope!(|main_scope| -> Result<()> {
             mode_controller.handle_settings_at_boot().await;
+            let status_handle =
+                api::actor::StatusHandle::new(all_devices.clone(), run_token.clone(), main_scope);
             if let Err(err) = api::start_server(
                 all_devices,
                 settings_controller.clone(),
                 config.clone(),
                 custom_sensors_repo,
                 mode_controller.clone(),
+                log_buf_handle,
+                status_handle.clone(),
                 run_token.clone(),
                 main_scope,
             )
@@ -149,6 +153,7 @@ fn main() -> Result<()> {
                 Rc::clone(&repos),
                 settings_controller,
                 mode_controller,
+                status_handle,
                 run_token,
             )
             .await?;

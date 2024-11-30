@@ -23,6 +23,7 @@ use log::{info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::collections::VecDeque;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
+use tokio::runtime::Handle;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -182,16 +183,11 @@ impl LogBufferActor {
         &mut self.msg_receiver
     }
 
-    fn new_log_broadcaster(&mut self) -> &mut broadcast::Sender<String> {
-        &mut self.new_log_broadcaster
-    }
-
     fn handle_msg(&mut self, msg: CCLogBufferMessage) {
         match msg {
             CCLogBufferMessage::GetLogs { respond_to } => {
                 let all_logs = self.buf.iter().fold(String::new(), |mut acc, line| {
                     acc.push_str(line);
-                    acc.push('\n');
                     acc
                 });
                 let _ = respond_to.send(all_logs);
@@ -211,32 +207,33 @@ impl LogBufferActor {
 pub struct LogBufHandle {
     msg_sender: mpsc::Sender<CCLogBufferMessage>,
     new_log_sender: broadcast::Sender<String>,
+    cancel_token: CancellationToken,
 }
 
 impl LogBufHandle {
-    pub fn new<'s>(cancel_token: CancellationToken) -> Self {
+    pub fn new(cancel_token: CancellationToken) -> Self {
         let (msg_sender, receiver) = mpsc::channel(10);
         let (new_log_sender, _new_log_rx) = broadcast::channel(NEW_LOG_CHANNEL_CAP);
         let log_buf_actor = LogBufferActor::new(new_log_sender.clone(), receiver);
-        tokio::task::spawn_local(run_log_buf_actor(log_buf_actor, cancel_token));
+        tokio::task::spawn_local(run_log_buf_actor(log_buf_actor, cancel_token.clone()));
         Self {
             msg_sender,
             new_log_sender,
+            cancel_token,
         }
     }
 
-    pub fn new_log_receiver(&self) -> broadcast::Receiver<String> {
-        self.new_log_sender.subscribe()
+    pub fn broadcaster(&self) -> &broadcast::Sender<String> {
+        &self.new_log_sender
     }
 
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
+    }
+
+    #[allow(dead_code)]
     pub async fn log(&self, log: String) {
         let _ = self.msg_sender.send(CCLogBufferMessage::Log { log }).await;
-    }
-
-    pub fn log_blocking(&self, log: String) {
-        let _ = self
-            .msg_sender
-            .blocking_send(CCLogBufferMessage::Log { log });
     }
 
     pub async fn get_logs(&self) -> String {
@@ -268,7 +265,15 @@ impl std::io::Write for LogBufHandle {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let log_string = unsafe { from_utf8_unchecked(buf).to_owned() };
-        self.log_blocking(log_string);
+        // trick to enter the runtime context inside a non-async trait impl
+        let runtime_handle = Handle::current();
+        let _ = runtime_handle.enter();
+        let sender = self.msg_sender.clone();
+        runtime_handle.spawn(async move {
+            let _ = sender
+                .send(CCLogBufferMessage::Log { log: log_string })
+                .await;
+        });
         Ok(buf.len())
     }
 

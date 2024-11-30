@@ -71,6 +71,9 @@ schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
 axum_typed_multipart = "0.13.2"
 tempfile = "3.14.0"
+tokio-stream = { version = "0.1.16", default-features = false, features = [
+  "sync",
+] }
 hyper = { version = "1.5.1", default-features = false, features = [
   "http1",
   "client",

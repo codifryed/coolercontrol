@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::{auth, base, custom_sensors, functions, modes, profiles, settings, status};
+use crate::api::{auth, base, custom_sensors, functions, modes, profiles, settings, sse, status};
 use crate::api::{devices, AppState};
 use aide::axum::routing::{delete_with, get, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
@@ -31,6 +31,14 @@ pub fn init(app_state: AppState) -> ApiRouter {
             get_with(base::handshake, |o| {
                 o.summary("Handshake")
                     .description("A simple endpoint to verify the connection")
+                    .tag("base")
+            }),
+        )
+        .api_route(
+            "/logs",
+            get_with(base::logs, |o| {
+                o.summary("Daemon Logs")
+                    .description("This returns all recent main daemon logs as raw text")
                     .tag("base")
             }),
         )
@@ -487,6 +495,23 @@ pub fn init(app_state: AppState) -> ApiRouter {
                         .description("Updates and persists the CoolerControl UI settings.")
                         .tag("setting")
                 })
+        )
+        ///////////////////////////////////////////////////////////////////////////////////////////
+        .api_route(
+            "/sse/logs",
+            get_with(sse::logs, |o| {
+                o.summary("Log Server Sent Events")
+                    .description("Subscribes and returns the Server Sent Events for a Log stream")
+                    .tag("sse")
+            })
+        )
+        .api_route(
+            "/sse/status",
+            get_with(sse::status, |o| {
+                o.summary("Recent Status Server Sent Events")
+                    .description("Subscribes and returns the Server Sent Events for a Status stream")
+                    .tag("sse")
+            })
         )
         ///////////////////////////////////////////////////////////////////////////////////////////
         .route("/api.json", get(base::serve_api_doc))
