@@ -18,7 +18,6 @@
 use std::collections::HashMap;
 use std::ops::Add;
 use std::rc::Rc;
-use std::str::FromStr;
 use std::time::Duration;
 
 use crate::config::Config;
@@ -32,13 +31,11 @@ use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repositories};
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
-use env_logger::Logger;
-use log::{error, info, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use log::{error, info, warn};
 use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use repositories::repository::Repository;
-use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::signal;
 use tokio::signal::unix::SignalKind;
 use tokio::time::sleep;
@@ -49,6 +46,7 @@ mod api;
 mod cc_fs;
 mod config;
 mod device;
+mod logger;
 mod main_loop;
 mod modes;
 mod processing;
@@ -97,12 +95,10 @@ struct Args {
 /// performance while concurrently handling varying device latencies.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
-    setup_logging(&cmd_args)?;
-    if !Uid::effective().is_root() {
-        return Err(anyhow!("coolercontrold must be run with root permissions"));
-    }
     cc_fs::runtime(async {
         let run_token = setup_termination_signals();
+        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone())?;
+        verify_is_root()?;
         #[cfg(feature = "io_uring")]
         cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
@@ -164,38 +160,12 @@ fn main() -> Result<()> {
     })
 }
 
-fn setup_logging(cmd_args: &Args) -> Result<()> {
-    let version = VERSION.unwrap_or("unknown");
-    let log_level = if cmd_args.debug {
-        LevelFilter::Debug
-    } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-        LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
+fn verify_is_root() -> Result<()> {
+    if Uid::effective().is_root() {
+        Ok(())
     } else {
-        LevelFilter::Info
-    };
-    CCLogger::new(log_level, version)?.init()?;
-    info!("Logging Level: {}", log::max_level());
-    if log::max_level() == LevelFilter::Debug || cmd_args.version {
-        info!(
-            "\n\
-            CoolerControlD v{version}\n\n\
-            System:\n\
-            \t{}\n\
-            \t{}\n\
-            ",
-            sysinfo::System::long_os_version().unwrap_or_default(),
-            sysinfo::System::kernel_version().unwrap_or_default(),
-        );
-    } else {
-        info!(
-            "Initializing CoolerControl {version} running on Kernel {}",
-            sysinfo::System::kernel_version().unwrap_or_default()
-        );
+        Err(anyhow!("coolercontrold must be run with root permissions"))
     }
-    if cmd_args.version {
-        exit_successfully();
-    }
-    Ok(())
 }
 
 /// Sets up signal handlers for termination and interrupt signals,
@@ -428,75 +398,4 @@ async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     }
     info!("Shutdown Complete");
     Ok(())
-}
-
-/// This is our own Logger, which handles appropriate logging dependent on the environment.
-struct CCLogger {
-    max_level: LevelFilter,
-    log_filter: Logger,
-    logger: Box<dyn Log>,
-}
-
-impl CCLogger {
-    fn new(max_level: LevelFilter, version: &str) -> Result<Self> {
-        // set library logging levels to one level above the application's to keep chatter down
-        let lib_log_level = if max_level == LevelFilter::Trace {
-            LevelFilter::Debug
-        } else if max_level == LevelFilter::Debug {
-            LevelFilter::Info
-        } else {
-            LevelFilter::Warn
-        };
-        let timestamp_precision = if max_level >= LevelFilter::Debug {
-            env_logger::fmt::TimestampPrecision::Millis
-        } else {
-            env_logger::fmt::TimestampPrecision::Seconds
-        };
-        let logger: Box<dyn Log> = if connected_to_journal() {
-            Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
-        } else {
-            Box::new(
-                env_logger::Builder::new()
-                    .filter_level(max_level)
-                    .format_timestamp(Some(timestamp_precision))
-                    .build(),
-            )
-        };
-        Ok(Self {
-            max_level,
-            log_filter: env_logger::Builder::from_env(LOG_ENV)
-                .filter_level(max_level)
-                .filter_module("zbus", lib_log_level)
-                .filter_module("tracing", lib_log_level)
-                .filter_module("aide", lib_log_level)
-                // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
-                .filter_module("hyper", lib_log_level)
-                .build(),
-            logger,
-        })
-    }
-
-    fn init(self) -> Result<(), SetLoggerError> {
-        log::set_max_level(self.max_level);
-        log::set_boxed_logger(Box::new(self))
-    }
-}
-
-impl Log for CCLogger {
-    /// Whether this logger is enabled.
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        self.log_filter.enabled(metadata)
-    }
-
-    /// Logs the messages and filters them by matching against the `env_logger` filter
-    fn log(&self, record: &Record) {
-        if self.log_filter.matches(record) {
-            self.logger.log(record);
-        }
-    }
-
-    /// Flush log records.
-    ///
-    /// A no-op for this implementation.
-    fn flush(&self) {}
 }
