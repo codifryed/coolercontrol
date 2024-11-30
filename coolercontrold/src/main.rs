@@ -447,7 +447,7 @@ impl CCLogger {
         } else {
             LevelFilter::Warn
         };
-        let timestamp_precision = if max_level == LevelFilter::Debug {
+        let timestamp_precision = if max_level >= LevelFilter::Debug {
             env_logger::fmt::TimestampPrecision::Millis
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
