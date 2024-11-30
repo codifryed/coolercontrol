@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use std::collections::HashMap;
-use std::ops::Add;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -255,15 +254,8 @@ fn exit_successfully() {
 }
 
 /// Some hardware needs additional time to come up and be ready to communicate.
-/// Additionally, we always add a short pause here to at least allow the `liqctld` service to come up.
 async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
-    sleep(
-        config
-            .get_settings()?
-            .startup_delay
-            .add(Duration::from_secs(1)),
-    )
-    .await;
+    sleep(config.get_settings()?.startup_delay).await;
     Ok(())
 }
 
