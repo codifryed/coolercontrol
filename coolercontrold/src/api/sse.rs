@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::api::status::StatusResponse;
 use crate::api::AppState;
 use aide::NoApi;
 use axum::extract::State;
@@ -46,7 +47,9 @@ pub async fn status(
         .map(|status| {
             Ok(Event::default()
                 .event("status")
-                .json_data(status.unwrap_or_default())
+                .json_data(StatusResponse {
+                    devices: status.unwrap_or_default(),
+                })
                 .unwrap())
         });
     NoApi(Sse::new(status_stream))

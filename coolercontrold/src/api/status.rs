@@ -50,7 +50,7 @@ pub struct StatusRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StatusResponse {
-    devices: Vec<DeviceStatusDto>,
+    pub devices: Vec<DeviceStatusDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
