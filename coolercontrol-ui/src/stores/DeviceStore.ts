@@ -20,15 +20,15 @@ import { defineStore } from 'pinia'
 import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
-import {DeviceResponseDTO, StatusResponseDTO} from '@/stores/DataTransferModels'
+import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useDialog } from 'primevue/usedialog'
-import {fetchEventSource} from "@microsoft/fetch-event-source";
-import {plainToInstance} from "class-transformer";
+import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { plainToInstance } from 'class-transformer'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -474,11 +474,11 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateStatusFromSSE(): Promise<void> {
         const thisStore = useDeviceStore()
         await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
-           async onmessage(event) {
-               const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
-               await thisStore.updateStatus(dto)
-           }
-           // possibly handle errors and closing?
+            async onmessage(event) {
+                const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
+                await thisStore.updateStatus(dto)
+            },
+            // possibly handle errors and closing?
         })
     }
 
