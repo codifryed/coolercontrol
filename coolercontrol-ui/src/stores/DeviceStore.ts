@@ -20,13 +20,15 @@ import { defineStore } from 'pinia'
 import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
-import { DeviceResponseDTO } from '@/stores/DataTransferModels'
+import {DeviceResponseDTO, StatusResponseDTO} from '@/stores/DataTransferModels'
 import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useDialog } from 'primevue/usedialog'
+import {fetchEventSource} from "@microsoft/fetch-event-source";
+import {plainToInstance} from "class-transformer";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -429,10 +431,11 @@ export const useDeviceStore = defineStore('device', () => {
      * Requests the most recent status for all devices and adds it to the current status array.
      * @return boolean true if only the most recent status was updated. False if all statuses were updated.
      */
-    async function updateStatus(): Promise<boolean> {
+    async function updateStatus(dto: StatusResponseDTO): Promise<boolean> {
         let onlyLatestStatus: boolean = true
         let timeDiffMillis: number = 0
-        const dto = await daemonClient.recentStatus()
+        // now handled by server side events:
+        // const dto = await daemonClient.recentStatus()
         if (dto.devices.length === 0 || dto.devices[0].status_history.length === 0) {
             return onlyLatestStatus // we can't update anything without data, which happens on daemon restart & resuming from sleep
         }
@@ -453,7 +456,6 @@ export const useDeviceStore = defineStore('device', () => {
                 if (devices.has(dtoDevice.uid)) {
                     const statuses = devices.get(dtoDevice.uid)!.status_history
                     statuses.push(...dtoDevice.status_history)
-                    // todo: verify that the new status is indeed "new" / timestamp != last timestamp:
                     statuses.shift()
                 }
             }
@@ -467,6 +469,17 @@ export const useDeviceStore = defineStore('device', () => {
             await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
+    }
+
+    async function updateStatusFromSSE(): Promise<void> {
+        const thisStore = useDeviceStore()
+        await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
+           async onmessage(event) {
+               const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
+               await thisStore.updateStatus(dto)
+           }
+           // possibly handle errors and closing?
+        })
     }
 
     function updateRecentDeviceStatus(): void {
@@ -525,6 +538,7 @@ export const useDeviceStore = defineStore('device', () => {
         loggedIn,
         loadCompleteStatusHistory,
         updateStatus,
+        updateStatusFromSSE,
         currentDeviceStatus,
         round,
         sanitizeString,

@@ -52,7 +52,7 @@ import {
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private readonly daemonURL: string
+    public readonly daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 2_000
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer

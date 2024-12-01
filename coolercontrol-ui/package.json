@@ -38,7 +38,8 @@
         "mitt": "^3.0.1",
         "vue": "^3.5.13",
         "vue-echarts": "^7.0.3",
-        "vue-router": "^4.5.0"
+        "vue-router": "^4.5.0",
+        "@microsoft/fetch-event-source": "^2.0.1"
     },
     "devDependencies": {
         "@tsconfig/node18": "^18.2.4",
