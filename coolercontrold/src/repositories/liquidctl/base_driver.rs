@@ -37,6 +37,7 @@ pub enum BaseDriver {
     CommanderCore,
     NzxtEPsu,
     Modern690Lc,
+    MsiAcpiEc,
     Hydro690Lc,
     Legacy690Lc,
     HydroPro,
