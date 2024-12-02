@@ -826,7 +826,7 @@ watch(
                     </router-link>
                     <template #dropdown>
                         <div
-                            class="border-2 border-border-one/95 bg-bg-two/95 rounded-lg flex content-center items-center justify-center p-[1px]"
+                            class="border border-border-one bg-bg-two/95 rounded-lg flex content-center items-center justify-center p-[1px]"
                         >
                             <div v-for="option in data.options">
                                 <menu-hide

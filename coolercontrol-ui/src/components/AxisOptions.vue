@@ -50,7 +50,7 @@ const deviceStore = useDeviceStore()
             </popover-trigger>
             <popover-content side="bottom" class="z-10">
                 <div
-                    class="w-full bg-bg-two border-2 border-border-one p-1 rounded-lg text-text-color"
+                    class="w-full bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
                 >
                     <table>
                         <thead>

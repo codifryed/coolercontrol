@@ -85,7 +85,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex flex-row h-screen w-full bg-bg-two text-text-color">
-        <div class="flex-col w-16 py-2 px-2 mx-auto h-screen bg-bg-two">
+        <div class="flex-col w-18 py-2 px-3 mx-auto h-screen bg-bg-two">
             <app-side-topbar />
         </div>
         <SplitterGroup

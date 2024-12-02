@@ -230,7 +230,7 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
-            class="mt-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
+            class="mt-0.5 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover"
             v-tooltip.right="{ value: 'System Info' }"
         >
             <router-link to="/" class="">
@@ -248,10 +248,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-3 ml-1 !rounded-lg border-none w-10 h-10 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
@@ -284,11 +284,11 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mt-[-3.4rem]"
         >
             <router-link :to="{ name: 'settings' }" class="outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                    class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 >
                     <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
                 </Button>
@@ -306,12 +306,12 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
-                <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(2.0)" />
+                <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
                 <Menu :model="modesItems" append-to="self">
@@ -341,10 +341,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
@@ -386,19 +386,22 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mt-[-3.4rem]"
         >
             <a href="http://localhost:11987" target="_blank" class="!outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                    class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 >
-                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.75)" />
+                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
                 </Button>
             </a>
             <template #dropdown>
                 <Menu :model="externalLinkItems" append-to="self" />
             </template>
         </el-dropdown>
+
+        <!--filler-->
+        <div class="flex-1 h-full" />
 
         <!--Reload-->
         <el-dropdown
@@ -407,10 +410,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+            popper-class="ml-[3.5rem] mb-[-3.5rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
@@ -420,7 +423,7 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <!--bottom filler-->
-        <div class="flex-1 h-full" />
+        <div class="h-0.5" />
     </div>
 </template>
 
