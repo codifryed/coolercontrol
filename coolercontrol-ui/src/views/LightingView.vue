@@ -49,7 +49,7 @@ for (const device of deviceStore.allDevices()) {
     if (device.uid != props.deviceId) {
         continue
     }
-    for (const mode of device.info?.channels.get(props.name)?.lighting_modes ?? []) {
+    for (const mode of device.info?.channels.get(props.channelName)?.lighting_modes ?? []) {
         lightingModes.push(mode)
     }
     for (const speed of device.info?.lighting_speeds ?? []) {
@@ -70,7 +70,7 @@ let startingBackwardEnabled = false
 let startingNumberOfColors: number = 0
 let colorsUI: Array<Ref<string>> = []
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
-    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
+    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.channelName)
 if (startingDeviceSetting?.lighting != null) {
     startingMode =
         lightingModes.find(
@@ -132,7 +132,7 @@ const parseRgbString = (rgbColor: string): [number, number, number] => {
 
 const saveLighting = async (): Promise<void> => {
     if (selectedMode.value.type === LightingModeType.NONE) {
-        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.name)
+        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
     }
     const setting = new DeviceSettingWriteLightingDTO(selectedMode.value.name)
     if (selectedMode.value.speed_enabled) {
@@ -146,7 +146,7 @@ const saveLighting = async (): Promise<void> => {
             setting.colors.push(parseRgbString(colorsUI[i].value))
         }
     }
-    await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.name, setting)
+    await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.channelName, setting)
 }
 
 const numberColorsScrolled = (event: WheelEvent): void => {
