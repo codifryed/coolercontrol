@@ -86,13 +86,13 @@ const router = createRouter({
                     props: true,
                 },
                 {
-                    path: '/devices/:deviceId/lighting/:name',
+                    path: '/devices/:deviceId/lighting/:channelName',
                     name: 'device-lighting',
                     component: () => import('@/views/LightingView.vue'),
                     props: true,
                 },
                 {
-                    path: '/devices/:deviceId/lcd/:name',
+                    path: '/devices/:deviceId/lcd/:channelName',
                     name: 'device-lcd',
                     component: () => import('@/views/LcdView.vue'),
                     props: true,

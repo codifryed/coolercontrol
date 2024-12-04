@@ -35,10 +35,13 @@ export default {
     content: {
         class: [
             // Flexbox
-            'flex items-center h-full',
+            // 'flex items-center h-full',
+            'flex h-full',
 
             // Spacing
             'py-3 px-5 gap-2',
+            // this is from the LCD Image warning about too large a file.
+            'w-96',
         ],
     },
     icon: {

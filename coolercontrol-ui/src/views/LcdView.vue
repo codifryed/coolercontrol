@@ -17,10 +17,9 @@
   -->
 
 <script setup lang="ts">
-import Dropdown from 'primevue/dropdown'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFileImageOutline, mdiChip } from '@mdi/js'
+import { mdiContentSaveOutline, mdiFileImageOutline, mdiMemory } from '@mdi/js'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
@@ -34,10 +33,14 @@ import { DeviceSettingReadDTO, DeviceSettingWriteLcdDTO, TempSource } from '@/mo
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { storeToRefs } from 'pinia'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
     deviceId: UID
-    name: string
+    channelName: string
 }
 
 const props = defineProps<Props>()
@@ -60,12 +63,14 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
+const confirm = useConfirm()
 
+let contextIsDirty: boolean = false
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
 for (const device of deviceStore.allDevices()) {
     if (device.uid === props.deviceId && device.info != null) {
-        const channelInfo = device.info.channels.get(props.name)
+        const channelInfo = device.info.channels.get(props.channelName)
         if (channelInfo != null && channelInfo.lcd_info != null) {
             imageWidth = channelInfo.lcd_info.screen_width
             imageSizeMaxBytes = channelInfo.lcd_info.max_image_size_bytes * 2 // we double it so that processing can reduce it further
@@ -79,7 +84,7 @@ for (const device of deviceStore.allDevices()) {
     if (device.uid != props.deviceId) {
         continue
     }
-    for (const mode of device.info?.channels.get(props.name)?.lcd_modes ?? []) {
+    for (const mode of device.info?.channels.get(props.channelName)?.lcd_modes ?? []) {
         lcdModes.push(mode)
     }
 }
@@ -122,7 +127,7 @@ let startingOrientation: number = 0
 let startingTempSource: AvailableTemp | undefined = undefined
 let startingImagePath: string | undefined = undefined
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
-    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
+    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.channelName)
 if (startingDeviceSetting?.lcd != null) {
     startingLcdMode =
         lcdModes.find((lcdMode: LcdMode) => lcdMode.name === startingDeviceSetting.lcd?.mode) ??
@@ -170,7 +175,7 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
     }
     const response: File | ErrorResponse = await deviceStore.daemonClient.processLcdImageFiles(
         props.deviceId,
-        props.name,
+        props.channelName,
         event.files,
     )
     if (response instanceof ErrorResponse) {
@@ -210,7 +215,7 @@ const validateFileType = (file: File): void => {
 
 const saveLCDSetting = async () => {
     if (selectedLcdMode.value.type === LcdModeType.NONE) {
-        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.name)
+        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
     }
     const setting = new DeviceSettingWriteLcdDTO(selectedLcdMode.value.name)
     if (selectedLcdMode.value.brightness) {
@@ -226,12 +231,12 @@ const saveLCDSetting = async () => {
     if (setting.mode === 'image' && files.length > 0) {
         await settingsStore.saveDaemonDeviceSettingLcdImages(
             props.deviceId,
-            props.name,
+            props.channelName,
             setting,
             files,
         )
     } else {
-        await settingsStore.saveDaemonDeviceSettingLcd(props.deviceId, props.name, setting)
+        await settingsStore.saveDaemonDeviceSettingLcd(props.deviceId, props.channelName, setting)
     }
 }
 
@@ -243,6 +248,20 @@ const updateTemps = () => {
                     .temp || '0.0'
         }
     }
+}
+
+const changeLcdMode = (event: ListboxChangeEvent): void => {
+    if (event.value === null) {
+        return // do not update on unselect
+    }
+    selectedLcdMode.value = event.value
+}
+
+const changeTempSource = (event: ListboxChangeEvent): void => {
+    if (event.value === null) {
+        return // do not update on unselect
+    }
+    chosenTemp.value = event.value
 }
 
 const brightnessScrolled = (event: WheelEvent): void => {
@@ -279,10 +298,35 @@ watch(fileDataURLs.value, () => {
     img.src = fileDataURLs.value[0]
 })
 
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to these LCD Settings.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
+
 onMounted(async () => {
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
     if (startingLcdMode.name === 'image' && startingImagePath != null) {
         const response: File | ErrorResponse =
-            await deviceStore.daemonClient.getDeviceSettingLcdImage(props.deviceId, props.name)
+            await deviceStore.daemonClient.getDeviceSettingLcdImage(
+                props.deviceId,
+                props.channelName,
+            )
         if (response instanceof ErrorResponse) {
             console.error(response.error)
         } else {
@@ -296,6 +340,12 @@ onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, () => {
         fillTempSources()
     })
+    watch(
+        [fileDataURLs.value, selectedLcdMode, selectedBrightness, selectedOrientation, chosenTemp],
+        () => {
+            contextIsDirty = true
+        },
+    )
 
     addScrollEventListeners()
     watch(selectedLcdMode, (): void => {
@@ -312,92 +362,190 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="card pt-3">
-        <div class="flex">
-            <div class="flex-inline control-column">
-                <div class="p-float-label mt-4">
-                    <Dropdown
-                        v-model="selectedLcdMode"
-                        inputId="dd-lcd-mode"
-                        :options="lcdModes"
-                        option-label="frontend_name"
-                        placeholder="Mode"
-                        class="w-full"
-                        scroll-height="400px"
+    <div class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="pl-4 py-2 text-2xl">{{ props.channelName.toUpperCase() }}</div>
+        <div class="flex justify-end">
+            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                <Button
+                    class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    label="Save"
+                    v-tooltip.bottom="'Save LCD Settings'"
+                    @click="saveLCDSetting"
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiContentSaveOutline"
+                        :size="deviceStore.getREMSize(1.5)"
                     />
-                    <label for="dd-lcd-mode">LCD Mode</label>
-                </div>
-                <div v-if="selectedLcdMode.brightness" class="brightness-input p-float-label mt-6">
-                    <InputNumber
-                        placeholder="Brightness"
-                        v-model="selectedBrightness"
-                        inputId="dd-brightness"
-                        mode="decimal"
-                        class="w-full"
-                        suffix="%"
-                        :step="1"
-                        :input-style="{ width: '60px' }"
-                        :min="0"
-                        :max="100"
-                    />
-                    <Slider
-                        v-model="selectedBrightness"
-                        :step="1"
-                        :min="0"
-                        :max="100"
-                        class="w-full mt-0"
-                    />
-                    <label for="dd-brightness">Brightness</label>
+                </Button>
+            </div>
+        </div>
+    </div>
+    <ScrollAreaRoot style="--scrollbar-size: 10px">
+        <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <div class="w-full flex flex-col lg:flex-row">
+                <div>
+                    <div class="mt-0 mr-4 w-96">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            LCD Mode
+                        </small>
+                        <Listbox
+                            :model-value="selectedLcdMode"
+                            :options="lcdModes"
+                            option-label="frontend_name"
+                            class="w-full"
+                            checkmark
+                            placeholder="Type"
+                            list-style="max-height: 100%"
+                            v-tooltip.right="'The currently available LCD Modes to choose from.'"
+                            @change="changeLcdMode"
+                        />
+                    </div>
+                    <div v-if="selectedLcdMode.brightness" class="mt-4 mr-4 w-96 border-border-one">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Brightness<br />
+                        </small>
+                        <InputNumber
+                            placeholder="Brightness"
+                            v-model="selectedBrightness"
+                            mode="decimal"
+                            class="mt-0.5 w-full"
+                            suffix="%"
+                            showButtons
+                            :min="0"
+                            :max="100"
+                            :use-grouping="false"
+                            :step="1"
+                            button-layout="horizontal"
+                            :input-style="{ width: '8rem' }"
+                            v-tooltip.bottom="'Brightness Percent'"
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                        <Slider
+                            v-model="selectedBrightness"
+                            class="!w-[23.25rem] ml-1.5"
+                            :step="1"
+                            :min="0"
+                            :max="100"
+                        />
+                    </div>
+                    <div
+                        v-if="selectedLcdMode.orientation"
+                        class="mt-4 mr-4 w-96 border-border-one"
+                    >
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Orientation<br />
+                        </small>
+                        <InputNumber
+                            placeholder="Orientation"
+                            v-model="selectedOrientation"
+                            mode="decimal"
+                            class="mt-0.5 w-full"
+                            suffix="°"
+                            showButtons
+                            :min="0"
+                            :max="270"
+                            :use-grouping="false"
+                            :step="90"
+                            button-layout="horizontal"
+                            :input-style="{ width: '8rem' }"
+                            v-tooltip.bottom="'Orientation in degrees'"
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                        <Slider
+                            v-model="selectedOrientation"
+                            class="!w-[23.25rem] ml-1.5"
+                            :step="90"
+                            :min="0"
+                            :max="270"
+                        />
+                    </div>
+                    <div v-if="selectedLcdMode.image" class="mt-8 mr-4 w-96 border-border-one">
+                        <FileUpload
+                            mode="basic"
+                            accept="image/jpeg,image/png,image/gif,image/tiff,image/bmp"
+                            :maxFileSize="imageSizeMaxBytes"
+                            chooseLabel="Choose Image&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+                            choose-icon="pi pi-images"
+                            :show-cancel-button="false"
+                            upload-label="Process"
+                            :multiple="false"
+                            auto
+                            class="w-full h-16"
+                            customUpload
+                            @uploader="filesChosen"
+                        >
+                            <template #empty>
+                                <p>Drag and drop files to here.</p>
+                            </template>
+                        </FileUpload>
+                    </div>
                 </div>
                 <div
-                    v-if="selectedLcdMode.orientation"
-                    class="orientation-input p-float-label mt-6"
+                    v-if="selectedLcdMode.image"
+                    class="flex flex-col lg:flex-row mt-4 ml-1 w-96 h-96 min-w-96 min-h-96"
                 >
-                    <InputNumber
-                        placeholder="Orientation"
-                        v-model="selectedOrientation"
-                        inputId="dd-orientation"
-                        mode="decimal"
-                        class="w-full"
-                        suffix="°"
-                        :step="90"
-                        :input-style="{ width: '60px' }"
-                        :min="0"
-                        :max="270"
-                        readonly
-                    />
-                    <Slider
-                        v-model="selectedOrientation"
-                        :step="90"
-                        :min="0"
-                        :max="270"
-                        class="w-full mt-0"
-                    />
-                    <label for="dd-brightness">Orientation</label>
+                    <div class="flex w-full mr-0">
+                        <img
+                            v-if="fileDataURLs.length > 0"
+                            :src="fileDataURLs[0]"
+                            id="lcd-image"
+                            alt="LCD Image"
+                        />
+                        <svg-icon
+                            v-else
+                            id="lcd-image"
+                            class="text-text-color-secondary"
+                            style="padding: 40px"
+                            type="mdi"
+                            :path="mdiFileImageOutline"
+                            :size="imageWidth + 60"
+                        />
+                    </div>
                 </div>
                 <div
                     v-if="
                         selectedLcdMode.type === LcdModeType.CUSTOM &&
                         selectedLcdMode.name === 'temp'
                     "
-                    class="p-float-label mt-6"
+                    class="mt-0 mr-4 w-96"
                 >
-                    <Dropdown
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Temp Source
+                    </small>
+                    <Listbox
                         v-model="chosenTemp"
-                        inputId="dd-temp-source"
+                        class="w-full mt-0"
                         :options="tempSources"
+                        filter
+                        checkmark
                         option-label="tempFrontendName"
                         option-group-label="deviceName"
                         option-group-children="temps"
-                        placeholder="Temp Source"
-                        class="w-full"
-                        scroll-height="400px"
+                        filter-placeholder="Search"
+                        list-style="max-height: 100%"
+                        :invalid="chosenTemp == null"
+                        v-tooltip.right="'Temperature source to use in LCD display.'"
+                        @change="changeTempSource"
                     >
                         <template #optiongroup="slotProps">
-                            <div class="flex align-items-center">
+                            <div class="flex items-center">
                                 <svg-icon
                                     type="mdi"
-                                    :path="mdiChip"
+                                    :path="mdiMemory"
                                     :size="deviceStore.getREMSize(1.3)"
                                     class="mr-2"
                                 />
@@ -405,7 +553,7 @@ onUnmounted(() => {
                             </div>
                         </template>
                         <template #option="slotProps">
-                            <div class="flex align-items-center w-full justify-content-between">
+                            <div class="flex items-center w-full justify-between">
                                 <div>
                                     <span
                                         class="pi pi-minus mr-2 ml-1"
@@ -417,67 +565,27 @@ onUnmounted(() => {
                                 </div>
                             </div>
                         </template>
-                    </Dropdown>
-                    <label for="dd-temp-source">Temp Source</label>
-                </div>
-                <div v-if="selectedLcdMode.image" class="p-float-label mt-6">
-                    <FileUpload
-                        mode="basic"
-                        accept="image/jpeg,image/png,image/gif,image/tiff,image/bmp"
-                        :maxFileSize="imageSizeMaxBytes"
-                        chooseLabel="Choose Image"
-                        :show-cancel-button="false"
-                        upload-label="Process"
-                        :multiple="false"
-                        auto
-                        class="w-full"
-                        customUpload
-                        @uploader="filesChosen"
-                    >
-                        <template #empty>
-                            <p>Drag and drop files to here.</p>
-                        </template>
-                    </FileUpload>
-                </div>
-                <div class="align-content-end">
-                    <div class="mt-7">
-                        <Button label="Apply" class="w-full" @click="saveLCDSetting">
-                            <span class="p-button-label">Apply</span>
-                        </Button>
-                    </div>
+                    </Listbox>
                 </div>
             </div>
-            <div v-if="selectedLcdMode.image" class="flex-1 text-center mt-3">
-                <img
-                    v-if="fileDataURLs.length > 0"
-                    :src="fileDataURLs[0]"
-                    id="lcd-image"
-                    alt="LCD Image"
-                />
-                <svg-icon
-                    v-else
-                    id="lcd-image"
-                    style="padding: 40px"
-                    type="mdi"
-                    :path="mdiFileImageOutline"
-                    :size="imageWidth + 60"
-                />
-            </div>
-        </div>
-    </div>
+        </ScrollAreaViewport>
+        <ScrollAreaScrollbar
+            class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+            orientation="vertical"
+        >
+            <ScrollAreaThumb
+                class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+            />
+        </ScrollAreaScrollbar>
+    </ScrollAreaRoot>
 </template>
 
 <style scoped lang="scss">
-.control-column {
-    width: 14rem;
-    padding-right: 1rem;
-}
-
 #lcd-image {
     border-radius: 50%;
-    border-color: var(--cc-dark-one);
-    border-width: 30px;
+    border-color: rgb(var(--colors-bg-two));
+    border-width: 1.5rem;
     border-style: solid;
-    background: var(--cc-dark-one);
+    background: rgb(var(--colors-bg-one));
 }
 </style>

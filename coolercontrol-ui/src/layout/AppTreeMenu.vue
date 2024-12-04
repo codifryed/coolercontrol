@@ -445,7 +445,7 @@ const devicesTreeArray = (): any[] => {
                     color: deviceChannelColor(device.uid, channelName),
                     to: {
                         name: 'device-lighting',
-                        params: { deviceId: device.uid, name: channelName },
+                        params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
                     options: [{ rename: true }, { hide: true }],
@@ -462,7 +462,10 @@ const devicesTreeArray = (): any[] => {
                     name: channelName,
                     icon: mdiTelevisionShimmer,
                     color: deviceChannelColor(device.uid, channelName),
-                    to: { name: 'device-lcd', params: { deviceId: device.uid, name: channelName } },
+                    to: {
+                        name: 'device-lcd',
+                        params: { deviceId: device.uid, channelName: channelName },
+                    },
                     deviceUID: device.uid,
                     options: [{ rename: true }, { hide: true }],
                 })

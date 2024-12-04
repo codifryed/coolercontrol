@@ -405,10 +405,10 @@ onMounted(async () => {
                     :input-style="{ width: '5rem' }"
                     v-tooltip.bottom="'Time Range'"
                 >
-                    <template #incrementbuttonicon>
+                    <template #incrementicon>
                         <span class="pi pi-plus" />
                     </template>
-                    <template #decrementbuttonicon>
+                    <template #decrementicon>
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
@@ -613,10 +613,10 @@ onMounted(async () => {
                                     button-layout="horizontal"
                                     :input-style="{ width: '3rem' }"
                                 >
-                                    <template #incrementbuttonicon>
+                                    <template #incrementicon>
                                         <span class="pi pi-plus" />
                                     </template>
-                                    <template #decrementbuttonicon>
+                                    <template #decrementicon>
                                         <span class="pi pi-minus" />
                                     </template>
                                 </InputNumber>

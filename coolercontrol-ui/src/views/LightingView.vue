@@ -32,7 +32,7 @@ import Button from 'primevue/button'
 
 interface Props {
     deviceId: UID
-    name: string
+    channelName: string
 }
 
 const props = defineProps<Props>()
