@@ -72,7 +72,7 @@ pub async fn run<'s>(
                     () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
-                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, &status_handle, scope);
+                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, &status_handle, scope).await;
                 run_lcd_update = !run_lcd_update;
             } else if sleep_listener.is_resuming() {
                 wake_from_sleep(
@@ -120,24 +120,22 @@ fn fire_preloads<'s>(
 /// This function triggers all repository status updates concurrently, ensuring that snapshots
 /// for all devices are taken simultaneously. It subsequently calls `fire_lcd_update` to manage
 /// LCD updates and `process_scheduled_speeds` to apply any scheduled speed settings.
-fn fire_snapshots_and_processes<'s>(
+async fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
     settings_controller: &'s Rc<SettingsController>,
     run_lcd_update: bool,
     status_handle: &'s StatusHandle,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
-    scope.spawn(async move {
-        // snapshots for all devices should be done at the same time. (this is very fast)
-        for repo in repos.iter() {
-            if let Err(err) = repo.update_statuses().await {
-                error!("Error trying to update status: {err}");
-            }
+    // snapshots for all devices should be done at the same time. (this is very fast)
+    for repo in repos.iter() {
+        if let Err(err) = repo.update_statuses().await {
+            error!("Error trying to update status: {err}");
         }
-        fire_lcd_update(settings_controller, run_lcd_update, scope);
-        settings_controller.process_scheduled_speeds().await;
-        status_handle.broadcast_status().await;
-    });
+    }
+    fire_lcd_update(settings_controller, run_lcd_update, scope);
+    settings_controller.process_scheduled_speeds().await;
+    status_handle.broadcast_status().await;
 }
 
 /// This function will fire off the LCD Update job which often takes a long time (>1.0s, <2.0s)
