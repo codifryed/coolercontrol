@@ -48,18 +48,19 @@ pub async fn process_image(
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
     if content_type == mime::IMAGE_GIF {
-        process_gif(&file_data, screen_width, screen_height).await
+        process_gif(file_data, screen_width, screen_height).await
     } else {
-        process_static_image(&file_data, screen_width, screen_height).await
+        process_static_image(file_data, screen_width, screen_height).await
     }
 }
 
 /// Our customized GIF processing implementation
 async fn process_gif(
-    file_data: &Vec<u8>,
+    file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
+    // The collector and writer must be on separate threads:
     let (collector, writer) = gifski::new(gifski::Settings {
         width: None,
         height: None,
@@ -67,11 +68,11 @@ async fn process_gif(
         fast: false,
         repeat: gifski::Repeat::Infinite,
     })?;
-    let decoder = GifDecoder::new(Cursor::new(file_data))?;
-    let frames = decoder.into_frames().collect_frames()?;
     // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
     //  and these processing functions are rarely executed.
-    let join_handler: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
+    let collector_handle: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
+        let decoder = GifDecoder::new(Cursor::new(file_data))?;
+        let frames = decoder.into_frames().collect_frames()?;
         let mut presentation_timestamp = 0.;
         for (index, frame) in frames.iter().enumerate() {
             let frame_image = image::DynamicImage::from(frame.buffer().clone())
@@ -96,23 +97,26 @@ async fn process_gif(
         }
         Ok(())
     });
-    let mut gif_image_output = Cursor::new(Vec::new());
-    writer.write(&mut gif_image_output, &mut gifski::progress::NoProgress {})?;
-    join_handler.await??;
-    Ok((mime::IMAGE_GIF, gif_image_output.into_inner()))
+    let writer_handle: JoinHandle<Result<Vec<u8>>> = tokio::task::spawn_blocking(move || {
+        let mut gif_image_output = Cursor::new(Vec::new());
+        writer.write(&mut gif_image_output, &mut gifski::progress::NoProgress {})?;
+        Ok(gif_image_output.into_inner())
+    });
+    let data = writer_handle.await??;
+    collector_handle.await??;
+    Ok((mime::IMAGE_GIF, data))
 }
 
 async fn process_static_image(
-    file_data: &[u8],
+    file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    let mut image_output = Cursor::new(Vec::new());
-    let file_data_move = file_data.to_owned();
     // Tokio::task::spawn_blocking is preferred for these more expensive CPU operations,
     //  and these processing functions are rarely executed.
     let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
-        image::load_from_memory(&file_data_move)?
+        let mut image_output = Cursor::new(Vec::new());
+        image::load_from_memory(&file_data)?
             .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)
             .write_to(&mut image_output, image::ImageFormat::Png)?;
         Ok(image_output)
