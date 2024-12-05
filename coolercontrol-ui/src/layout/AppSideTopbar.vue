@@ -32,7 +32,6 @@ import {
     mdiPlusBoxMultipleOutline,
     mdiFlaskPlusOutline,
     mdiPlusCircleMultipleOutline,
-    mdiTagPlusOutline,
     mdiAccountBadgeOutline,
     mdiAccountOffOutline,
     mdiBookmarkPlusOutline,
@@ -215,13 +214,6 @@ const addItems = computed(() => [
         command: () => {
             addMenuRef.value?.handleClose()
             router.push({ name: 'custom-sensors' })
-        },
-    },
-    {
-        label: 'Tag',
-        mdiIcon: mdiTagPlusOutline,
-        command: () => {
-            addMenuRef.value?.handleClose()
         },
     },
 ])
