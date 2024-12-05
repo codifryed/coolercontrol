@@ -28,15 +28,16 @@ use moro_local::Scope;
 use std::cell::LazyCell;
 use std::ops::Not;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-static LOOP_TICK_DURATION_MS: u64 = 1000;
-static SNAPSHOT_WAIT_MS: u64 = 400;
-static WAKE_PAUSE_MINIMUM_S: u64 = 1;
-static LCD_TIMEOUT_S: u64 = 2;
+const LOOP_TICK_DURATION_MS: u64 = 1000;
+const SNAPSHOT_WAIT_MS: u64 = 400;
+const WAKE_PAUSE_MINIMUM_S: u64 = 1;
+const LCD_TIMEOUT_S: u64 = 2;
+const FULL_SECOND_MS: u64 = 1000;
 
 /// Run the main loop of the application.
 ///
@@ -52,15 +53,15 @@ pub async fn run<'s>(
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
-    tokio::pin! {
-        let loop_interval = time::interval(Duration::from_millis(LOOP_TICK_DURATION_MS));
-    }
     let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_WAIT_MS));
     let mut run_lcd_update = false; // toggle lcd updates every other loop tick
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone(), scope)
             .await
             .with_context(|| "Creating DBus Sleep Listener")?;
+        align_loop_timing_with_clock().await;
+        // The sub-second position is set on interval creation:
+        let mut loop_interval = time::interval(Duration::from_millis(LOOP_TICK_DURATION_MS));
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
             if sleep_listener.is_not_preparing_to_sleep() {
@@ -87,6 +88,21 @@ pub async fn run<'s>(
         Ok(())
     })
     .await
+}
+
+/// Aligns the main loop's timing with the system clock.
+///
+/// This function calculates the current time in milliseconds since the last full second
+/// and determines how long to wait before the next full second mark. This ensures that
+/// the main loop ticks at a consistent sub-second position, which helps Frontends maintain
+/// consistent timestamps without random start-timing fluctuation.
+async fn align_loop_timing_with_clock() {
+    let current_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_millis();
+    let wait_duration = FULL_SECOND_MS - u64::from(current_millis);
+    sleep(Duration::from_millis(wait_duration)).await;
 }
 
 /// Initiates the preload process for all repositories.
