@@ -18,6 +18,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use std::rc::Rc;
 
 use anyhow::{anyhow, Context, Result};
@@ -130,7 +131,7 @@ impl GraphProfileCommander {
 
     pub fn clear_channel_setting(&self, device_uid: &DeviceUID, channel_name: &str) {
         // the mix commander will have multiple profiles for the same channel, so we need a Vec:
-        let mut profiles_to_remove = Vec::new();
+        let mut profiles_to_remove = HashSet::new();
         let device_channel_setting = DeviceChannelProfileSetting::Graph {
             // device_uid and channel_name are used to identify the setting, the
             // DeviceChannelProfileSetting variant is irrelevant for the hash.
@@ -153,12 +154,12 @@ impl GraphProfileCommander {
                 self.process_output_cache
                     .borrow_mut()
                     .remove(&profile.profile_uid);
-                profiles_to_remove.push(profile);
+                profiles_to_remove.insert(profile.profile_uid.clone());
             }
         }
-        for profile in profiles_to_remove {
-            self.scheduled_settings.borrow_mut().remove(profile);
-        }
+        scheduled_settings_lock.retain(|profile, _| {
+            profiles_to_remove.contains(&profile.profile_uid).not()
+        });
     }
 
     /// This method processes all scheduled profiles and updates the output cache.
