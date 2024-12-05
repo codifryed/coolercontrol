@@ -473,13 +473,22 @@ export const useDeviceStore = defineStore('device', () => {
 
     async function updateStatusFromSSE(): Promise<void> {
         const thisStore = useDeviceStore()
-        await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
-            async onmessage(event) {
-                const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
-                await thisStore.updateStatus(dto)
-            },
-            // possibly handle errors and closing?
-        })
+        async function startSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
+                async onmessage(event) {
+                    const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
+                    await thisStore.updateStatus(dto)
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await startSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startSSE()
     }
 
     function updateRecentDeviceStatus(): void {
