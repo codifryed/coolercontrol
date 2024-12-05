@@ -157,9 +157,8 @@ impl GraphProfileCommander {
                 profiles_to_remove.insert(profile.profile_uid.clone());
             }
         }
-        scheduled_settings_lock.retain(|profile, _| {
-            profiles_to_remove.contains(&profile.profile_uid).not()
-        });
+        scheduled_settings_lock
+            .retain(|profile, _| profiles_to_remove.contains(&profile.profile_uid).not());
     }
 
     /// This method processes all scheduled profiles and updates the output cache.
