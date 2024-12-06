@@ -18,9 +18,9 @@ test:
 ci-test:
 	@cargo install cargo2junit
 	@cargo build --locked $(release)
+	@./target/debug/$(executable) --version
 	@RUSTC_BOOTSTRAP=1 cargo test --locked $(release) -- -Z unstable-options --format json --report-time | tee results.json
 	@cat results.json | cargo2junit > results.xml
-	@./target/debug/$(executable) --version
     
 vendor:
 	@cargo vendor --locked

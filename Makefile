@@ -120,8 +120,16 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
+# helpful std development & testing targets
+# For testing these make targets require that a system package is already installed
+# (excludes building coolercontrol-liqctld due to python dep/install issues)
+
+# full clean release build of daemon and UI binaries:
 dev-build: clean build
 
+dev-test: clean validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-tauri
+
+# installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)
 dev-install:
 	@sudo $(MAKE) install
 	@sudo systemctl restart coolercontrold
