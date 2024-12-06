@@ -33,7 +33,6 @@ import {
     mdiFlask,
     mdiFlaskOutline,
     mdiLedOn,
-    mdiMagnify,
     mdiMemory,
     mdiSineWave,
     mdiSpeedometer,
@@ -43,9 +42,6 @@ import {
 import { computed, ComputedRef, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
-import InputText from 'primevue/inputtext'
-import IconField from 'primevue/iconfield'
-import InputIcon from 'primevue/inputicon'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
@@ -140,7 +136,7 @@ const deviceChannelIconSize = (deviceUID: UID): number => {
     }
 }
 
-const filterText: Ref<string> = ref('')
+// const filterText: Ref<string> = ref('')
 const treeRef = ref<InstanceType<typeof ElTree>>()
 const nodeProps = {
     children: 'children',
@@ -490,9 +486,7 @@ const applyFilter = (val: string | undefined) => {
 const filterNode = (value: string, data: Tree): boolean => {
     if (!settingsStore.displayHiddenItems && deviceChannelHidden(data.deviceUID, data.name).value)
         return false
-    // todo: also when value is empty - set the expanded nodes to their saved/original values
     if (!value) return true
-    // todo: add clause to never filter the static root node names i.e. "Overviews", "Profiles", etc
     return data.label.toLowerCase().includes(value)
 }
 
@@ -667,24 +661,24 @@ watch(
 
 <template>
     <div class="">
-        <IconField>
-            <InputIcon>
-                <svg-icon
-                    class="mt-[-0.75rem] ml-[-0.25rem] text-text-color-secondary"
-                    type="mdi"
-                    :path="mdiMagnify"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </InputIcon>
-            <InputText
-                v-model="filterText"
-                class="mb-4 bg-bg-one !border-border-one"
-                size="small"
-                fluid
-                placeholder="search"
-                @update:modelValue="applyFilter"
-            />
-        </IconField>
+        <!--<IconField>-->
+        <!--    <InputIcon>-->
+        <!--        <svg-icon-->
+        <!--            class="mt-[-0.75rem] ml-[-0.25rem] text-text-color-secondary"-->
+        <!--            type="mdi"-->
+        <!--            :path="mdiMagnify"-->
+        <!--            :size="deviceStore.getREMSize(1.5)"-->
+        <!--        />-->
+        <!--    </InputIcon>-->
+        <!--    <InputText-->
+        <!--        v-model="filterText"-->
+        <!--        class="mb-4 bg-bg-one !border-border-one"-->
+        <!--        size="small"-->
+        <!--        fluid-->
+        <!--        placeholder="search"-->
+        <!--        @update:modelValue="applyFilter"-->
+        <!--    />-->
+        <!--</IconField>-->
         <el-tree
             ref="treeRef"
             class="w-full"
