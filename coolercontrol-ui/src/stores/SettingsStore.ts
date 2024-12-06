@@ -27,7 +27,6 @@ import {
     DeviceUISettings,
     DeviceUISettingsDTO,
     SensorAndChannelSettings,
-    type SystemOverviewOptions,
     ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
@@ -102,16 +101,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
-    const systemOverviewOptions: SystemOverviewOptions = reactive({
-        selectedTimeRange: { name: '1 min', seconds: 60 },
-        selectedChartType: 'TimeChart',
-        temp: true,
-        duty: true,
-        load: true,
-        rpm: false,
-        freq: false,
-        timeChartLineScale: 1.5,
-    })
     const dashboards: Array<Dashboard> = reactive([Dashboard.default()])
     const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
@@ -120,21 +109,12 @@ export const useSettingsStore = defineStore('settings', () => {
     const displayHiddenItems: Ref<boolean> = ref(true)
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
-    const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
         accent: defaultCustomTheme.accent,
     })
     const showSetupInstructions: Ref<boolean> = ref(true)
-
-    /**
-     * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
-     * Currently used to watch for changes indirectly.
-     */
-    function sidebarMenuUpdate(): void {
-        console.debug('Sidebar Menu Update Triggered')
-    }
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         await loadCCSettings()
@@ -188,19 +168,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
         // load settings from persisted settings, overwriting those that are set
         const uiSettings = await deviceStore.daemonClient.loadUISettings()
-        if (uiSettings.systemOverviewOptions != null) {
-            systemOverviewOptions.selectedTimeRange =
-                uiSettings.systemOverviewOptions.selectedTimeRange
-            systemOverviewOptions.selectedChartType =
-                uiSettings.systemOverviewOptions.selectedChartType
-            systemOverviewOptions.temp = uiSettings.systemOverviewOptions.temp ?? true
-            systemOverviewOptions.duty = uiSettings.systemOverviewOptions.duty ?? true
-            systemOverviewOptions.load = uiSettings.systemOverviewOptions.load ?? true
-            systemOverviewOptions.rpm = uiSettings.systemOverviewOptions.rpm ?? false
-            systemOverviewOptions.freq = uiSettings.systemOverviewOptions.freq ?? false
-            systemOverviewOptions.timeChartLineScale =
-                uiSettings.systemOverviewOptions.timeChartLineScale ?? 1.5
-        }
         if (uiSettings.dashboards.length > 0) {
             dashboards.length = 0
             dashboards.push(...uiSettings.dashboards)
@@ -223,14 +190,12 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
         uiScale.value = uiSettings.uiScale
-        menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         showSetupInstructions.value = uiSettings.showSetupInstructions
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
-        // layout.layoutConfig.menuMode.value = uiSettings.menuMode
         if (
             uiSettings.devices != null &&
             uiSettings.deviceSettings != null &&
@@ -762,7 +727,6 @@ export const useSettingsStore = defineStore('settings', () => {
         watch(
             [
                 allUIDeviceSettings.value,
-                systemOverviewOptions,
                 dashboards,
                 chartLineScale,
                 startInSystemTray,
@@ -771,7 +735,6 @@ export const useSettingsStore = defineStore('settings', () => {
                 displayHiddenItems,
                 themeMode,
                 uiScale,
-                menuMode,
                 time24,
                 frequencyPrecision,
                 customTheme,
@@ -797,8 +760,6 @@ export const useSettingsStore = defineStore('settings', () => {
                         )
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                    // todo: replace!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                    uiSettings.systemOverviewOptions = systemOverviewOptions
                     if (deviceStore.isTauriApp()) {
                         if (startInSystemTray.value) {
                             await invoke('start_in_tray_enable')
@@ -815,7 +776,6 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.displayHiddenItems = displayHiddenItems.value
                     uiSettings.themeMode = themeMode.value
                     uiSettings.uiScale = uiScale.value
-                    uiSettings.menuMode = menuMode.value
                     uiSettings.time24 = time24.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
@@ -1002,8 +962,6 @@ export const useSettingsStore = defineStore('settings', () => {
         modesActiveLast,
         modeInEdit,
         allUIDeviceSettings,
-        sidebarMenuUpdate,
-        systemOverviewOptions,
         dashboards,
         chartLineScale,
         startInSystemTray,
@@ -1012,7 +970,6 @@ export const useSettingsStore = defineStore('settings', () => {
         displayHiddenItems,
         themeMode,
         uiScale,
-        menuMode,
         time24,
         frequencyPrecision,
         customTheme,

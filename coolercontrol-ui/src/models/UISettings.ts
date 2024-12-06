@@ -28,16 +28,16 @@ import { Dashboard } from '@/models/Dashboard.ts'
  */
 export class UISettingsDTO {
     devices?: Array<UID> = []
+
     @Type(() => DeviceUISettingsDTO)
     deviceSettings?: Array<DeviceUISettingsDTO> = []
-    systemOverviewOptions?: SystemOverviewOptions
+
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
     closeToSystemTray: boolean = false
     displayHiddenItems: boolean = true
     themeMode: ThemeMode = ThemeMode.SYSTEM
     uiScale: number = 100
-    menuMode: string = 'static'
     chartLineScale: number = 1.5
     time24: boolean = false
     frequencyPrecision: number = 1
@@ -69,20 +69,6 @@ export class DeviceUISettingsDTO {
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
-}
-
-export interface SystemOverviewOptions {
-    selectedTimeRange: {
-        name: string
-        seconds: number
-    }
-    selectedChartType: string
-    temp: boolean
-    duty: boolean
-    load: boolean
-    rpm: boolean
-    freq: boolean
-    timeChartLineScale: number
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>

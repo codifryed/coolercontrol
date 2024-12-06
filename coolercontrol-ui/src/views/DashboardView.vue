@@ -165,10 +165,6 @@ const addScrollEventListener = (): void => {
 const chartKey: Ref<string> = ref(uuidV4())
 onMounted(async () => {
     addScrollEventListener()
-    // todo: pretty sure we don't need this anymore as dashboard options are per Dashboard, no longer global
-    // watch(settingsStore.systemOverviewOptions, () => {
-    //     addScrollEventListener()
-    // })
     watch(chartMinutes, (newValue: number): void => {
         chartMinutesChanged(newValue)
     })
