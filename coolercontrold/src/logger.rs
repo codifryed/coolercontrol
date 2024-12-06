@@ -163,8 +163,15 @@ struct LogBufferActor {
 }
 
 enum CCLogBufferMessage {
-    GetLogs { respond_to: oneshot::Sender<String> },
-    Log { log: String },
+    GetLogs {
+        respond_to: oneshot::Sender<String>,
+    },
+    WarningsErrors {
+        respond_to: oneshot::Sender<(usize, usize)>,
+    },
+    Log {
+        log: String,
+    },
 }
 
 impl LogBufferActor {
@@ -198,6 +205,15 @@ impl LogBufferActor {
                 }
                 self.buf.push_back(log.clone());
                 let _ = self.new_log_broadcaster.send(log);
+            }
+            CCLogBufferMessage::WarningsErrors { respond_to } => {
+                let warnings = self.buf.iter().filter(|line| line.contains("WARN")).count();
+                let errors = self
+                    .buf
+                    .iter()
+                    .filter(|line| line.contains("ERROR"))
+                    .count();
+                let _ = respond_to.send((warnings, errors));
             }
         }
     }
@@ -241,6 +257,13 @@ impl LogBufHandle {
         let msg = CCLogBufferMessage::GetLogs { respond_to: tx };
         let _ = self.msg_sender.send(msg).await;
         rx.await.unwrap_or_default()
+    }
+
+    pub async fn warning_errors(&self) -> (usize, usize) {
+        let (tx, rx) = oneshot::channel();
+        let msg = CCLogBufferMessage::WarningsErrors { respond_to: tx };
+        let _ = self.msg_sender.send(msg).await;
+        rx.await.unwrap_or((0, 0))
     }
 }
 

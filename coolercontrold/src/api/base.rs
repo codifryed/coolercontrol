@@ -16,18 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::api::auth::verify_admin_permissions;
-use crate::api::{AppState, CCError};
+use crate::api::{handle_error, AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::openapi::OpenApi;
 use aide::NoApi;
+use anyhow::Result;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
+use chrono::{DateTime, Local};
 use include_dir::{include_dir, Dir};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tower_serve_static::ServeDir;
 use tower_sessions::Session;
@@ -46,6 +51,21 @@ pub async fn serve_api_doc(Extension(api): Extension<Arc<OpenApi>>) -> impl Into
     Json(api).into_response()
 }
 
+pub async fn health(
+    State(AppState {
+        log_buf_handle,
+        health,
+        ..
+    }): State<AppState>,
+) -> Result<Json<HealthCheck>, CCError> {
+    let (warnings, errors) = log_buf_handle.warning_errors().await;
+    health
+        .check(warnings, errors)
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
 pub async fn logs(State(AppState { log_buf_handle, .. }): State<AppState>) -> impl IntoApiResponse {
     log_buf_handle.get_logs().await
 }
@@ -55,4 +75,24 @@ pub async fn shutdown(NoApi(session): NoApi<Session>) -> Result<(), CCError> {
     signal::kill(Pid::this(), Signal::SIGQUIT).map_err(|err| CCError::InternalError {
         msg: err.to_string(),
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HealthCheck {
+    pub status: String,
+    pub description: String,
+    pub current_timestamp: DateTime<Local>,
+    pub details: HealthDetails,
+    pub links: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HealthDetails {
+    pub uptime: String,
+    pub version: String,
+    pub pid: u32,
+    pub memory_mb: f64,
+    pub warnings: usize,
+    pub errors: usize,
+    pub liquidctl_connected: bool,
 }

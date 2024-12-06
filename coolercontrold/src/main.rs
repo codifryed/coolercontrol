@@ -53,7 +53,7 @@ mod repositories;
 mod setting;
 mod sleep_listener;
 
-const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
+pub const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
 type Repos = Rc<Repositories>;
@@ -129,6 +129,7 @@ fn main() -> Result<()> {
                 api::actor::StatusHandle::new(all_devices.clone(), run_token.clone(), main_scope);
             if let Err(err) = api::start_server(
                 all_devices,
+                Rc::clone(&repos),
                 settings_controller.clone(),
                 config.clone(),
                 custom_sensors_repo,

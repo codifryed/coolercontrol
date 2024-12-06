@@ -30,15 +30,15 @@ mod sse;
 mod status;
 
 use crate::api::actor::{
-    AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, ModeHandle, ProfileHandle,
-    SettingHandle, StatusHandle,
+    AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle, ModeHandle,
+    ProfileHandle, SettingHandle, StatusHandle,
 };
 use crate::config::Config;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::{AllDevices, VERSION};
+use crate::{AllDevices, Repos, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -79,6 +79,7 @@ type Port = u16;
 
 pub async fn start_server<'s>(
     all_devices: AllDevices,
+    repos: Repos,
     settings_controller: Rc<SettingsController>,
     config: Rc<Config>,
     custom_sensors_repo: Rc<CustomSensorsRepo>,
@@ -107,6 +108,7 @@ pub async fn start_server<'s>(
     let compress_enabled = config.get_settings()?.compress;
     let app_state = create_app_state(
         all_devices,
+        repos,
         &settings_controller,
         config,
         &custom_sensors_repo,
@@ -291,6 +293,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
 
 fn create_app_state<'s>(
     all_devices: AllDevices,
+    repos: Repos,
     settings_controller: &Rc<SettingsController>,
     config: Rc<Config>,
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
@@ -300,6 +303,7 @@ fn create_app_state<'s>(
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
+    let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
     let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
@@ -331,6 +335,7 @@ fn create_app_state<'s>(
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     AppState {
+        health,
         auth_handle,
         device_handle,
         status_handle,
@@ -683,6 +688,7 @@ impl OperationOutput for CCError {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub health: HealthHandle,
     pub auth_handle: AuthHandle,
     pub device_handle: DeviceHandle,
     pub status_handle: StatusHandle,

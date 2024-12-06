@@ -35,6 +35,14 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
+            "/health",
+            get_with(base::health, |o| {
+                o.summary("Health Check")
+                    .description("Returns a Health Check Status.")
+                    .tag("base")
+            }),
+        )
+        .api_route(
             "/logs",
             get_with(base::logs, |o| {
                 o.summary("Daemon Logs")
