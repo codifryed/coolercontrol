@@ -17,7 +17,8 @@ export default {
 
             // Color and Background
             'text-text-color',
-            'bg-bg-one',
+            { 'bg-bg-one': props.variant !== 'filled' },
+            { 'bg-bg-two': props.variant === 'filled' },
             'border-2',
             'border-border-one',
             // { 'dark:border-surface-700': parent.instance.$name != 'InputGroup' },
