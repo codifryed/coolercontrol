@@ -226,6 +226,7 @@ const addItems = computed(() => [
             v-tooltip.right="{ value: 'System Info' }"
         >
             <router-link to="/" class="">
+                <!--todo: determine severity from logs-->
                 <OverlayBadge severity="success">
                     <img :src="logoUrl" alt="logo" class="w-9 h-9" />
                 </OverlayBadge>

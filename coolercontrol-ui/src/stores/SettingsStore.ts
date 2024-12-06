@@ -52,7 +52,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
-import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
@@ -229,9 +228,9 @@ export const useSettingsStore = defineStore('settings', () => {
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         showSetupInstructions.value = uiSettings.showSetupInstructions
-        const layout = useLayout()
-        layout.setScale(uiSettings.uiScale)
-        layout.layoutConfig.menuMode.value = uiSettings.menuMode
+        // const layout = useLayout()
+        // layout.setScale(uiSettings.uiScale)
+        // layout.layoutConfig.menuMode.value = uiSettings.menuMode
         if (
             uiSettings.devices != null &&
             uiSettings.deviceSettings != null &&

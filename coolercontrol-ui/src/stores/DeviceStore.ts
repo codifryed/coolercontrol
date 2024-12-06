@@ -22,7 +22,6 @@ import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
-import { useLayout } from '@/layout/composables/layout'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
@@ -64,7 +63,7 @@ export const useDeviceStore = defineStore('device', () => {
 
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
-    const fontScale = ref(useLayout().layoutConfig.scale.value)
+    // const fontScale = ref(useLayout().layoutConfig.scale.value)
     const loggedIn: Ref<boolean> = ref(false)
 
     // Getters ---------------------------------------------------------------------------------------------------------
@@ -107,7 +106,7 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getREMSize(rem: number): number {
-        fontScale.value // used to reactively recalculate the following values:
+        // fontScale.value // used to reactively recalculate the following values:
         const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
         return parseFloat(fontSize) * rem
     }
@@ -543,7 +542,6 @@ export const useDeviceStore = defineStore('device', () => {
         logout,
         setPasswd,
         initializeDevices,
-        fontScale,
         loggedIn,
         loadCompleteStatusHistory,
         updateStatus,
