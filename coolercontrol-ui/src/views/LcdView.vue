@@ -215,7 +215,9 @@ const validateFileType = (file: File): void => {
 
 const saveLCDSetting = async () => {
     if (selectedLcdMode.value.type === LcdModeType.NONE) {
-        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
+        await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
+        contextIsDirty = false
+        return
     }
     const setting = new DeviceSettingWriteLcdDTO(selectedLcdMode.value.name)
     if (selectedLcdMode.value.brightness) {
@@ -238,6 +240,7 @@ const saveLCDSetting = async () => {
     } else {
         await settingsStore.saveDaemonDeviceSettingLcd(props.deviceId, props.channelName, setting)
     }
+    contextIsDirty = false
 }
 
 const updateTemps = () => {
@@ -385,7 +388,7 @@ onUnmounted(() => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="w-full flex flex-col lg:flex-row">
-                <div>
+                <div id="left-side">
                     <div class="mt-0 mr-4 w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
                             LCD Mode
@@ -495,6 +498,7 @@ onUnmounted(() => {
                     </div>
                 </div>
                 <div
+                    id="right-side"
                     v-if="selectedLcdMode.image"
                     class="flex flex-col lg:flex-row mt-4 ml-1 w-96 h-96 min-w-96 min-h-96"
                 >
