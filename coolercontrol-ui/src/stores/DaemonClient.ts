@@ -46,6 +46,7 @@ import {
     ModesDTO,
     UpdateModeDTO,
 } from '@/models/Mode'
+import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -153,6 +154,37 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return false
+        }
+    }
+
+    async health(): Promise<HealthCheck> {
+        try {
+            const response = await this.getClient().get('/health', {
+                'axios-retry': {
+                    retries: 1,
+                },
+            })
+            this.logDaemonResponse(response, 'Health')
+            return response.data
+        } catch (err) {
+            this.logError(err)
+            return defaultHealthCheck()
+        }
+    }
+
+    async logs(): Promise<string> {
+        try {
+            const response = await this.getClient().get('/logs', {
+                responseType: 'text',
+                'axios-retry': {
+                    retries: 1,
+                },
+            })
+            // this.logDaemonResponse(response, 'Logs')
+            return response.data
+        } catch (err) {
+            this.logError(err)
+            return ''
         }
     }
 

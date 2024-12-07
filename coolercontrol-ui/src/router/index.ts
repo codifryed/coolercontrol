@@ -38,6 +38,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: 'app-info',
+                    name: 'app-info',
+                    component: () => import('@/views/AppInfoView.vue'),
+                    props: false,
+                },
+                {
                     path: '/settings',
                     name: 'settings',
                     component: () => import('@/layout/AppSettings.vue'),

@@ -21,13 +21,15 @@ import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
-import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
+import { defineAsyncComponent, Ref, ref, shallowRef, triggerRef } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useDialog } from 'primevue/usedialog'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { plainToInstance } from 'class-transformer'
+import { HealthCheck } from '@/models/HealthCheck.ts'
+import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -65,6 +67,7 @@ export const useDeviceStore = defineStore('device', () => {
     const isThinkPad = ref(false)
     // const fontScale = ref(useLayout().layoutConfig.scale.value)
     const loggedIn: Ref<boolean> = ref(false)
+    const logs: Ref<string> = ref('')
 
     // Getters ---------------------------------------------------------------------------------------------------------
     function allDevices(): IterableIterator<Device> {
@@ -347,6 +350,14 @@ export const useDeviceStore = defineStore('device', () => {
         })
     }
 
+    async function health(): Promise<HealthCheck> {
+        return await daemonClient.health()
+    }
+
+    async function load_logs(): Promise<void> {
+        logs.value = await daemonClient.logs()
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
         const handshakeSuccessful = await daemonClient.handshake()
@@ -472,22 +483,53 @@ export const useDeviceStore = defineStore('device', () => {
 
     async function updateStatusFromSSE(): Promise<void> {
         const thisStore = useDeviceStore()
+        const daemonState = useDaemonState()
         async function startSSE(): Promise<void> {
             await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
+                    daemonState.setConnected(true)
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
+                    daemonState.setConnected(false)
                     await startSSE()
+                },
+                onerror() {
+                    daemonState.setConnected(false)
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startSSE()
+    }
+
+    async function updateLogsFromSSE(): Promise<void> {
+        const daemonState = useDaemonState()
+        async function startLogSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
+                async onmessage(event) {
+                    const newLog = event.data
+                    logs.value = `${logs.value}${newLog}`
+                    if (newLog.includes('ERROR')) {
+                        daemonState.status = DaemonStatus.ERROR
+                    } else if (newLog.includes('WARN')) {
+                        if (daemonState.status !== DaemonStatus.ERROR) {
+                            daemonState.status = DaemonStatus.WARN
+                        }
+                    }
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await startLogSSE()
                 },
                 onerror() {
                     // auto-retry every second
                 },
             })
         }
-        return await startSSE()
+        return await startLogSSE()
     }
 
     function updateRecentDeviceStatus(): void {
@@ -540,12 +582,16 @@ export const useDeviceStore = defineStore('device', () => {
         clearDaemonSslEnabled,
         login,
         logout,
+        health,
+        logs,
+        load_logs,
         setPasswd,
         initializeDevices,
         loggedIn,
         loadCompleteStatusHistory,
         updateStatus,
         updateStatusFromSSE,
+        updateLogsFromSSE,
         currentDeviceStatus,
         round,
         sanitizeString,

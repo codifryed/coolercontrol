@@ -33,12 +33,14 @@ import Checkbox from 'primevue/checkbox'
 import { ElLoading } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
 import { ThemeMode } from '@/models/UISettings.ts'
+import { useDaemonState } from '@/stores/DaemonState.ts'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
 const showSetupInstructions = ref(false)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const daemonState = useDaemonState()
 
 const reloadPage = () => window.location.reload()
 
@@ -77,6 +79,7 @@ const applyCustomTheme = (): void => {
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    await daemonState.init()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -88,7 +91,9 @@ onMounted(async () => {
     loading.close()
     await deviceStore.login()
     applyCustomTheme()
-    await deviceStore.updateStatusFromSSE()
+    await deviceStore.load_logs()
+    // This basically blocks at this point:
+    await Promise.all([deviceStore.updateStatusFromSSE(), deviceStore.updateLogsFromSSE()])
 })
 </script>
 

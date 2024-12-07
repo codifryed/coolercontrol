@@ -17,24 +17,24 @@
   -->
 
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
-    mdiOpenInNew,
-    mdiCogOutline,
-    mdiPower,
-    mdiPlus,
-    mdiChartBoxPlusOutline,
-    mdiPlusBoxMultipleOutline,
-    mdiFlaskPlusOutline,
-    mdiPlusCircleMultipleOutline,
     mdiAccountBadgeOutline,
     mdiAccountOffOutline,
-    mdiBookmarkPlusOutline,
     mdiBookmarkCheckOutline,
     mdiBookmarkOffOutline,
     mdiBookmarkOutline,
+    mdiBookmarkPlusOutline,
+    mdiChartBoxPlusOutline,
+    mdiCogOutline,
+    mdiFlaskPlusOutline,
+    mdiOpenInNew,
+    mdiPlus,
+    mdiPlusBoxMultipleOutline,
+    mdiPlusCircleMultipleOutline,
+    mdiPower,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -46,6 +46,7 @@ import { useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
@@ -57,6 +58,20 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const logoUrl = `/logo.svg`
 
 const settingsStore = useSettingsStore()
+const daemonState = useDaemonState()
+
+const badgeSeverity = computed((): string => {
+    switch (daemonState.status) {
+        case DaemonStatus.OK:
+            return 'success'
+        case DaemonStatus.WARN:
+            return 'warn'
+        case DaemonStatus.ERROR:
+            return 'error'
+        default:
+            return 'error'
+    }
+})
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {
@@ -202,12 +217,10 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
-            class="mt-0.5 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover"
-            v-tooltip.right="{ value: 'System Info' }"
+            class="mt-0.5 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover/15"
         >
-            <router-link to="/" class="">
-                <!--todo: determine severity from logs-->
-                <OverlayBadge severity="success">
+            <router-link :to="{ name: 'app-info' }" class="outline-none">
+                <OverlayBadge :severity="badgeSeverity">
                     <img :src="logoUrl" alt="logo" class="w-9 h-9" />
                 </OverlayBadge>
             </router-link>

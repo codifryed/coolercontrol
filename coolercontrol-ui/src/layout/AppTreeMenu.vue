@@ -79,6 +79,7 @@ import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
 import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
 import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
+import { useDaemonState } from '@/stores/DaemonState.ts'
 
 // interface Tree {
 //     label: string
@@ -91,6 +92,7 @@ interface Tree {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const daemonState = useDaemonState()
 const router = useRouter()
 const route = useRoute()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -668,6 +670,11 @@ watch(
 
 <template>
     <div class="">
+        <div
+            class="text-text-color font-bold text-xl ml-4 mr-6 mb-1 border-b border-border-one pb-1"
+        >
+            {{ daemonState.systemName }}
+        </div>
         <!--<IconField>-->
         <!--    <InputIcon>-->
         <!--        <svg-icon-->
