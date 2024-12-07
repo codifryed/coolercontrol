@@ -131,7 +131,7 @@ pub async fn start_server<'s>(
         config: Arc::new(
             GovernorConfigBuilder::default()
                 // startup has quite a few requests (e.g. per device)
-                .burst_size(20)
+                .burst_size(30)
                 // 10 req/s
                 .per_millisecond(100)
                 .finish()
