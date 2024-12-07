@@ -41,7 +41,7 @@ export default {
                 'bg-success': props.severity === 'success',
                 'bg-info': props.severity === 'info',
                 'bg-warning': props.severity === 'warn',
-                'bg-error': props.severity === 'danger',
+                'bg-error': props.severity === 'error',
                 'text-text-color bg-bg-one': props.severity === 'contrast',
             },
         ],
