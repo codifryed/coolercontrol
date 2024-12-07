@@ -17,7 +17,7 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::api::base::{HealthCheck, HealthDetails};
+use crate::api::base::{HealthCheck, HealthDetails, SystemDetails};
 use crate::{Repos, VERSION};
 use anyhow::Result;
 use chrono::Local;
@@ -88,6 +88,7 @@ impl ApiActor<HealthMessage> for HealthActor {
                     });
                     let version = VERSION.unwrap_or_default().to_string();
                     let liquidctl_connected = self.repos.liquidctl.is_some();
+                    let system_name = sysinfo::System::host_name().unwrap_or_default();
                     HealthCheck {
                         status,
                         description: "Health check for CoolerControl Daemon".to_string(),
@@ -101,6 +102,7 @@ impl ApiActor<HealthMessage> for HealthActor {
                             errors,
                             liquidctl_connected,
                         },
+                        system: SystemDetails { name: system_name },
                         links: HashMap::from([
                             (
                                 "repository".to_string(),

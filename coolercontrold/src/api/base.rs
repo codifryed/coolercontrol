@@ -83,6 +83,7 @@ pub struct HealthCheck {
     pub description: String,
     pub current_timestamp: DateTime<Local>,
     pub details: HealthDetails,
+    pub system: SystemDetails,
     pub links: HashMap<String, String>,
 }
 
@@ -95,4 +96,9 @@ pub struct HealthDetails {
     pub warnings: usize,
     pub errors: usize,
     pub liquidctl_connected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SystemDetails {
+    pub(crate) name: String,
 }
