@@ -352,7 +352,7 @@ onMounted(() => {
                         />
                     </div>
                 </div>
-                <div id="right-side" v-if="selectedMode.max_colors > 0" class="flex mt-4 ml-1">
+                <div id="right-side" v-if="selectedMode.max_colors > 0" class="flex h-full mt-4 ml-1">
                     <div class="content-center flex justify-center">
                         <div class="color-wrapper mt-1">
                             <el-color-picker
