@@ -62,10 +62,10 @@ impl DeviceSupport for MsiAcpiEcSupport {
                 ChannelInfo {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
-                        max_duty: 0,
+                        max_duty: 100,
                         profiles_enabled: false,
-                        fixed_enabled: false,
-                        manual_profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },
@@ -73,20 +73,20 @@ impl DeviceSupport for MsiAcpiEcSupport {
         }
 
         let fan_channel_names = vec![
-            "cpu fan 0".to_string(),
-            "cpu fan 1".to_string(),
-            "cpu fan 2".to_string(),
-            "cpu fan 3".to_string(),
-            "cpu fan 4".to_string(),
-            "cpu fan 5".to_string(),
-            "cpu fan 6".to_string(),
-            "gpu fan 0".to_string(),
-            "gpu fan 1".to_string(),
-            "gpu fan 2".to_string(),
-            "gpu fan 3".to_string(),
-            "gpu fan 4".to_string(),
-            "gpu fan 5".to_string(),
-            "gpu fan 6".to_string(),
+            "cpu fan step 1".to_string(),
+            "cpu fan step 2".to_string(),
+            "cpu fan step 3".to_string(),
+            "cpu fan step 4".to_string(),
+            "cpu fan step 5".to_string(),
+            "cpu fan step 6".to_string(),
+            "cpu fan step 7".to_string(),
+            "gpu fan step 1".to_string(),
+            "gpu fan step 2".to_string(),
+            "gpu fan step 3".to_string(),
+            "gpu fan step 4".to_string(),
+            "gpu fan step 5".to_string(),
+            "gpu fan step 6".to_string(),
+            "gpu fan step 7".to_string(),
         ];
         for channel_name in fan_channel_names {
             channels.insert(
@@ -94,8 +94,8 @@ impl DeviceSupport for MsiAcpiEcSupport {
                 ChannelInfo {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
-                        max_duty: 150,
-                        profiles_enabled: true,
+                        max_duty: 100,
+                        profiles_enabled: false,
                         fixed_enabled: true,
                         manual_profiles_enabled: true,
                     }),
@@ -118,6 +118,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
                 },
             );
         }
+
         DeviceInfo {
             channels,
             lighting_speeds: Vec::new(),
@@ -136,26 +137,29 @@ impl DeviceSupport for MsiAcpiEcSupport {
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
         let color_modes = vec![
             ColorMode::new("off", 0, 0, false, false),
-            ColorMode::new("fixed", 0, 0, false, false),
+            ColorMode::new("on", 0, 0, false, false),
         ];
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        lazy_static! {
-            static ref CPU_TEMP: Regex = Regex::new(r"cpu temp").unwrap();
-            static ref GPU_TEMP: Regex = Regex::new(r"gpu temp").unwrap();
+        let cpu_temp = status_map
+            .get("cpu temp")
+            .and_then(|s| parse_float(s));
+        if let Some(temp) = cpu_temp {
+            temps.push(TempStatus {
+                name: "cpu temp".to_string(),
+                temp,
+            });
         }
-        for (probe_name, value) in status_map {
-            if let Some(temp) = parse_float(value) {
-                if CPU_TEMP.is_match(probe_name) {
-                    let name = "cpu temp".to_string();
-                    temps.push(TempStatus { name, temp });
-                } else if GPU_TEMP.is_match(probe_name) {
-                    let name = "gpu temp".to_string();
-                    temps.push(TempStatus { name, temp });
-                }
-            }
+        let gpu_temp = status_map
+            .get("gpu temp")
+            .and_then(|s| parse_float(s));
+        if let Some(temp) = gpu_temp {
+            temps.push(TempStatus {
+                name: "gpu temp".to_string(),
+                temp,
+            });
         }
     }
 
@@ -164,27 +168,23 @@ impl DeviceSupport for MsiAcpiEcSupport {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        lazy_static! {
-            static ref CPU_FAN_SPEED: Regex = Regex::new(r"cpu fan speed").unwrap();
-            static ref GPU_FAN_SPEED: Regex = Regex::new(r"gpu fan speed").unwrap();
-        }
-        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
-        for (name, value) in status_map {
-            if CPU_FAN_SPEED.is_match(name) {
-                let fan_name = "cpu fan".to_string();
-                let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                *rpm = parse_u32(value);
-            } else if GPU_FAN_SPEED.is_match(name) {
-                let fan_name = "gpu fan".to_string();
-                let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                *rpm = parse_u32(value);
-            }
-        }
-        for (name, (rpm, duty)) in fans_map {
+        let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(|s| parse_u32(s));
+        let cpu_fan_duty = status_map.get("cpu fan duty").and_then(|s| parse_float(s));
+        let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(|s| parse_u32(s));
+        let gpu_fan_duty = status_map.get("gpu fan duty").and_then(|s| parse_float(s));
+        if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
-                name,
-                rpm,
-                duty,
+                name: "cpu fan".to_string(),
+                rpm: cpu_fan_rpm,
+                duty: cpu_fan_duty,
+                ..Default::default()
+            });
+        }
+        if gpu_fan_rpm.is_some() || gpu_fan_duty.is_some() {
+            channel_statuses.push(ChannelStatus {
+                name: "gpu fan".to_string(),
+                rpm: gpu_fan_rpm,
+                duty: gpu_fan_duty,
                 ..Default::default()
             });
         }
@@ -197,10 +197,10 @@ impl DeviceSupport for MsiAcpiEcSupport {
     ) {
         lazy_static! {
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-            static ref CPU_FAN_SPEED: Regex = Regex::new(r"cpu fan \d+ speed").unwrap();
-            static ref GPU_FAN_SPEED: Regex = Regex::new(r"gpu fan \d+ speed").unwrap();
-            static ref CPU_FAN_DUTY: Regex = Regex::new(r"cpu fan \d+ duty").unwrap();
-            static ref GPU_FAN_DUTY: Regex = Regex::new(r"gpu fan \d+ duty").unwrap();
+            static ref CPU_FAN_SPEED: Regex = Regex::new(r"cpu fan speed step \d+").unwrap();
+            static ref GPU_FAN_SPEED: Regex = Regex::new(r"gpu fan speed step \d+").unwrap();
+            static ref CPU_FAN_DUTY: Regex = Regex::new(r"cpu fan duty step \d+").unwrap();
+            static ref GPU_FAN_DUTY: Regex = Regex::new(r"gpu fan duty step \d+").unwrap();
         }
         let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
         for (name, value) in status_map {
@@ -209,19 +209,19 @@ impl DeviceSupport for MsiAcpiEcSupport {
                 .and_then(|number| parse_u32(number.as_str()))
             {
                 if CPU_FAN_SPEED.is_match(name) {
-                    let fan_name = format!("cpu fan {fan_number}");
+                    let fan_name = format!("cpu fan step {fan_number}");
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
                     *rpm = parse_u32(value);
                 } else if GPU_FAN_SPEED.is_match(name) {
-                    let fan_name = format!("gpu fan {fan_number}");
+                    let fan_name = format!("gpu fan step {fan_number}");
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
                     *rpm = parse_u32(value);
                 } else if CPU_FAN_DUTY.is_match(name) {
-                    let fan_name = format!("cpu fan {fan_number}");
+                    let fan_name = format!("cpu fan step {fan_number}");
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
                     *duty = parse_float(value);
                 } else if GPU_FAN_DUTY.is_match(name) {
-                    let fan_name = format!("gpu fan {fan_number}");
+                    let fan_name = format!("gpu fan step {fan_number}");
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
                     *duty = parse_float(value);
                 }
