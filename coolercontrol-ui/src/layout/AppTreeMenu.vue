@@ -645,6 +645,13 @@ const deleteFunction = (functionUID: UID): void => {
     treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
 }
 
+const calcDropdownPosition = (data: any): string => {
+    if (data.id === 'dashboards') {
+        return 'mr-[1.0rem] mb-[-1.9rem]'
+    }
+    return 'mr-[0.2rem] mb-[-1.9rem]'
+}
+
 onMounted(async () => {
     applyFilter('') // at startup this filters hidden items out.
 })
@@ -701,7 +708,7 @@ watch(
                     :hide-timeout="50"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-end"
-                    popper-class="mr-[0.2rem] mb-[-1.9rem]"
+                    :popper-class="calcDropdownPosition(data)"
                     :teleported="true"
                     :hide-on-click="false"
                     :trigger="aSubMenuIsOpen ? 'click' : 'hover'"
