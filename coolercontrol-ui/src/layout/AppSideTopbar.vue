@@ -316,6 +316,7 @@ const addItems = computed(() => [
                         >
                             <svg-icon
                                 type="mdi"
+                                :class="{'text-text-color-secondary/40': !item.isRecentlyActive && !item.isActive }"
                                 :path="item.mdiIcon ?? ''"
                                 :size="getREMSize(1.5)"
                             />
