@@ -21,9 +21,6 @@ import { ref, computed, inject } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
-    // mdiLayersTripleOutline,
-    // mdiLightningBoltOutline,
-    // mdiLightningBolt,
     mdiOpenInNew,
     mdiCogOutline,
     mdiPower,
@@ -73,8 +70,10 @@ const modesItems = computed(() => {
                 ? mdiBookmarkCheckOutline
                 : isRecentlyActive
                   ? mdiBookmarkOffOutline
-                  : null,
+                  : mdiBookmarkOutline,
             command: async () => {
+                const isActive = settingsStore.modesActive.includes(mode.uid)
+                if (isActive) return
                 await settingsStore.activateMode(mode.uid)
                 emitter.emit('active-modes-change-menu')
             },
@@ -83,17 +82,6 @@ const modesItems = computed(() => {
     return menuItems
 })
 
-const settingsMenuRef = ref<DropdownInstance>()
-const settingsItems = computed(() => [
-    {
-        label: 'Settings',
-        icon: 'pi pi-fw pi-sliders-h',
-        command: () => {
-            settingsMenuRef.value?.handleClose()
-            router.push({ name: 'settings' })
-        },
-    },
-])
 const accessMenuRef = ref<DropdownInstance>()
 const accessItems = computed(() => [
     {
@@ -163,14 +151,6 @@ const restartItems = computed(() => [
                 },
             })
         },
-    },
-])
-const externalLinkItems = computed(() => [
-    {
-        label: deviceStore.isTauriApp() ? 'Open in Browser' : 'Open in New Tab',
-        icon: 'pi pi-fw pi-external-link',
-        url: 'http://localhost:11987',
-        target: '_blank',
     },
 ])
 
@@ -269,28 +249,6 @@ const addItems = computed(() => [
             <div class="border-b border-text-color-secondary" />
         </div>
 
-        <!--Settings-->
-        <el-dropdown
-            ref="settingsMenuRef"
-            :show-timeout="50"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.5rem] mt-[-3.4rem]"
-        >
-            <router-link :to="{ name: 'settings' }" class="outline-none">
-                <Button
-                    class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                >
-                    <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
-                </Button>
-            </router-link>
-            <template #dropdown>
-                <Menu :model="settingsItems" append-to="self" />
-            </template>
-        </el-dropdown>
-
         <!--Modes-->
         <el-dropdown
             v-if="modesItems.length > 0"
@@ -316,7 +274,10 @@ const addItems = computed(() => [
                         >
                             <svg-icon
                                 type="mdi"
-                                :class="{'text-text-color-secondary/40': !item.isRecentlyActive && !item.isActive }"
+                                :class="{
+                                    'text-text-color-secondary/40':
+                                        !item.isRecentlyActive && !item.isActive,
+                                }"
                                 :path="item.mdiIcon ?? ''"
                                 :size="getREMSize(1.5)"
                             />
@@ -373,26 +334,29 @@ const addItems = computed(() => [
             </template>
         </el-dropdown>
 
+        <!--Settings-->
+        <router-link :to="{ name: 'settings' }" class="outline-none">
+            <Button
+                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+            >
+                <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
+            </Button>
+        </router-link>
+
         <!--Open In Browser-->
-        <el-dropdown
-            :show-timeout="50"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.5rem] mt-[-3.4rem]"
+        <a
+            v-if="deviceStore.isTauriApp()"
+            href="http://localhost:11987"
+            target="_blank"
+            class="!outline-none"
         >
-            <a href="http://localhost:11987" target="_blank" class="!outline-none">
-                <Button
-                    class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                >
-                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
-                </Button>
-            </a>
-            <template #dropdown>
-                <Menu :model="externalLinkItems" append-to="self" />
-            </template>
-        </el-dropdown>
+            <Button
+                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+            >
+                <!--                v-tooltip.bottom="{ value: 'Open in Browser', class: 'ml-10' }"-->
+                <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
+            </Button>
+        </a>
 
         <!--filler-->
         <div class="flex-1 h-full" />
