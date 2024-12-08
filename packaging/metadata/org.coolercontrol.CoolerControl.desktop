@@ -8,4 +8,4 @@ Categories=Utility;
 Keywords=cooling;fan control;pump control
 Comment=Monitor and control your cooling device
 StartupNotify=true
-StartupWMClass=coolercontrol
+StartupWMClass=org.coolercontrol.CoolerControl

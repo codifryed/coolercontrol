@@ -244,7 +244,7 @@ export const useDeviceStore = defineStore('device', () => {
     function getDaemonPort(): number {
         const defaultPort: string = isTauriApp()
             ? DEFAULT_DAEMON_PORT.toString()
-            : window.location.port
+            : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
         return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
     }
 
