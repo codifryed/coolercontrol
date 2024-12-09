@@ -729,7 +729,7 @@ watch(
                         class="flex h-10 items-center justify-between outline-none"
                         tabindex="0"
                         exact
-                        :exact-active-class="'active-link'"
+                        :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
                         :to="
                             !data.to || deviceChannelHidden(data.deviceUID, data.name).value
                                 ? ''
