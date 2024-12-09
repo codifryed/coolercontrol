@@ -826,9 +826,15 @@ export const useSettingsStore = defineStore('settings', () => {
         if (themeMode.value === ThemeMode.SYSTEM) {
             // considered Alpha and doesn't always work as expected:
             // document.documentElement.classList.add('system-theme')
-            if (window.matchMedia('(prefers-color-scheme: dark) and (prefers-contrast: more)').matches) {
+            if (
+                window.matchMedia('(prefers-color-scheme: dark) and (prefers-contrast: more)')
+                    .matches
+            ) {
                 document.documentElement.classList.add('high-contrast-dark')
-            } else if (window.matchMedia('(prefers-color-scheme: light) and (prefers-contrast: more)').matches) {
+            } else if (
+                window.matchMedia('(prefers-color-scheme: light) and (prefers-contrast: more)')
+                    .matches
+            ) {
                 document.documentElement.classList.add('high-contrast-light')
             } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
                 document.documentElement.classList.add('light-theme')

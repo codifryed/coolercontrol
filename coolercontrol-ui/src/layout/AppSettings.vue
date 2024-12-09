@@ -84,7 +84,9 @@ const customThemeBgOne: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgOne}
 const customThemeBgTwo: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgTwo})`)
 const customThemeBorder: Ref<Color> = ref(`rgb(${settingsStore.customTheme.borderOne})`)
 const customThemeText: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColor})`)
-const customThemeTextSecondary: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColorSecondary})`)
+const customThemeTextSecondary: Ref<Color> = ref(
+    `rgb(${settingsStore.customTheme.textColorSecondary})`,
+)
 const setNewColorAccent = (newColor: Color | null): void => {
     if (newColor == null) {
         customThemeAccent.value = `rgb(${defaultCustomTheme.accent})`
@@ -111,21 +113,33 @@ const setNewColorBorder = (newColor: Color | null): void => {
         customThemeBorder.value = `rgb(${defaultCustomTheme.borderOne})`
     }
     settingsStore.customTheme.borderOne = customThemeBorder.value.replaceAll(/[a-z]|[(),]/g, '')
-    document.documentElement.style.setProperty('--colors-border-one', settingsStore.customTheme.borderOne)
+    document.documentElement.style.setProperty(
+        '--colors-border-one',
+        settingsStore.customTheme.borderOne,
+    )
 }
 const setNewColorText = (newColor: Color | null): void => {
     if (newColor == null) {
         customThemeText.value = `rgb(${defaultCustomTheme.textColor})`
     }
     settingsStore.customTheme.textColor = customThemeText.value.replaceAll(/[a-z]|[(),]/g, '')
-    document.documentElement.style.setProperty('--colors-text-color', settingsStore.customTheme.textColor)
+    document.documentElement.style.setProperty(
+        '--colors-text-color',
+        settingsStore.customTheme.textColor,
+    )
 }
 const setNewColorTextSecondary = (newColor: Color | null): void => {
     if (newColor == null) {
         customThemeTextSecondary.value = `rgb(${defaultCustomTheme.textColorSecondary})`
     }
-    settingsStore.customTheme.textColorSecondary = customThemeTextSecondary.value.replaceAll(/[a-z]|[(),]/g, '')
-    document.documentElement.style.setProperty('--colors-text-color-secondary', settingsStore.customTheme.textColorSecondary)
+    settingsStore.customTheme.textColorSecondary = customThemeTextSecondary.value.replaceAll(
+        /[a-z]|[(),]/g,
+        '',
+    )
+    document.documentElement.style.setProperty(
+        '--colors-text-color-secondary',
+        settingsStore.customTheme.textColorSecondary,
+    )
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
@@ -410,11 +424,7 @@ const resetDaemonSettings = () => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="
-                                        'Change the overall UI color scheme.'
-                                    "
-                                >
+                                <tr v-tooltip.right="'Change the overall UI color scheme.'">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -428,9 +438,7 @@ const resetDaemonSettings = () => {
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">
-                                            Theme Style
-                                        </div>
+                                        <div class="text-right float-right">Theme Style</div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -532,7 +540,9 @@ const resetDaemonSettings = () => {
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1 rounded-lg border-2 border-border-one">
+                                            <div
+                                                class="color-wrapper my-1 rounded-lg border-2 border-border-one"
+                                            >
                                                 <el-color-picker
                                                     v-model="customThemeBgTwo"
                                                     color-format="rgb"
