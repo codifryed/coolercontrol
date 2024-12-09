@@ -5,9 +5,11 @@ authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 # MSRV for all included libraries
 rust-version = "1.81"
+readme = "../README.md"
+categories = ["hardware-support"]
+keywords = ["temperature", "hardware", "cooling", "fan", "monitor"]
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
-readme = false
 homepage = "https://gitlab.com/coolercontrol/coolercontrol"
 repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
