@@ -113,6 +113,11 @@ export const useSettingsStore = defineStore('settings', () => {
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
         accent: defaultCustomTheme.accent,
+        bgOne: defaultCustomTheme.bgOne,
+        bgTwo: defaultCustomTheme.bgTwo,
+        borderOne: defaultCustomTheme.borderOne,
+        textColor: defaultCustomTheme.textColor,
+        textColorSecondary: defaultCustomTheme.textColorSecondary,
     })
     const showSetupInstructions: Ref<boolean> = ref(true)
 
@@ -193,6 +198,11 @@ export const useSettingsStore = defineStore('settings', () => {
         time24.value = uiSettings.time24
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
+        customTheme.bgOne = uiSettings.customTheme.bgOne
+        customTheme.bgTwo = uiSettings.customTheme.bgTwo
+        customTheme.borderOne = uiSettings.customTheme.borderOne
+        customTheme.textColor = uiSettings.customTheme.textColor
+        customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
         showSetupInstructions.value = uiSettings.showSetupInstructions
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
@@ -779,6 +789,11 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.time24 = time24.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
+                    uiSettings.customTheme.bgOne = customTheme.bgOne
+                    uiSettings.customTheme.bgTwo = customTheme.bgTwo
+                    uiSettings.customTheme.borderOne = customTheme.borderOne
+                    uiSettings.customTheme.textColor = customTheme.textColor
+                    uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
                     uiSettings.showSetupInstructions = showSetupInstructions.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },

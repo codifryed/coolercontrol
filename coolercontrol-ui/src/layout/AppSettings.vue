@@ -70,7 +70,7 @@ const changeThemeMode = async (event: ListboxChangeEvent) => {
         return // do not update on unselect
     }
     settingsStore.themeMode = event.value
-    await deviceStore.waitAndReload(1.1)
+    await deviceStore.waitAndReload(1.05)
 }
 const lineThicknessOptions = ref([
     { optionSize: 1, value: 0.5 },
@@ -79,13 +79,53 @@ const lineThicknessOptions = ref([
     { optionSize: 4, value: 2.0 },
     { optionSize: 6, value: 3.0 },
 ])
-const customThemeAccentColor: Ref<Color> = ref(`rgb(${settingsStore.customTheme.accent})`)
-const setNewColor = (newColor: Color | null): void => {
+const customThemeAccent: Ref<Color> = ref(`rgb(${settingsStore.customTheme.accent})`)
+const customThemeBgOne: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgOne})`)
+const customThemeBgTwo: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgTwo})`)
+const customThemeBorder: Ref<Color> = ref(`rgb(${settingsStore.customTheme.borderOne})`)
+const customThemeText: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColor})`)
+const customThemeTextSecondary: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColorSecondary})`)
+const setNewColorAccent = (newColor: Color | null): void => {
     if (newColor == null) {
-        customThemeAccentColor.value = `rgb(${defaultCustomTheme.accent})`
+        customThemeAccent.value = `rgb(${defaultCustomTheme.accent})`
     }
-    settingsStore.customTheme.accent = customThemeAccentColor.value.replaceAll(/[a-z]|[(),]/g, '')
+    settingsStore.customTheme.accent = customThemeAccent.value.replaceAll(/[a-z]|[(),]/g, '')
     document.documentElement.style.setProperty('--colors-accent', settingsStore.customTheme.accent)
+}
+const setNewColorBgOne = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeBgOne.value = `rgb(${defaultCustomTheme.bgOne})`
+    }
+    settingsStore.customTheme.bgOne = customThemeBgOne.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-bg-one', settingsStore.customTheme.bgOne)
+}
+const setNewColorBgTwo = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeBgTwo.value = `rgb(${defaultCustomTheme.bgTwo})`
+    }
+    settingsStore.customTheme.bgTwo = customThemeBgTwo.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-bg-two', settingsStore.customTheme.bgTwo)
+}
+const setNewColorBorder = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeBorder.value = `rgb(${defaultCustomTheme.borderOne})`
+    }
+    settingsStore.customTheme.borderOne = customThemeBorder.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-border-one', settingsStore.customTheme.borderOne)
+}
+const setNewColorText = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeText.value = `rgb(${defaultCustomTheme.textColor})`
+    }
+    settingsStore.customTheme.textColor = customThemeText.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-text-color', settingsStore.customTheme.textColor)
+}
+const setNewColorTextSecondary = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeTextSecondary.value = `rgb(${defaultCustomTheme.textColorSecondary})`
+    }
+    settingsStore.customTheme.textColorSecondary = customThemeTextSecondary.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-text-color-secondary', settingsStore.customTheme.textColorSecondary)
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
@@ -372,14 +412,25 @@ const resetDaemonSettings = () => {
                                 </tr>
                                 <tr
                                     v-tooltip.right="
-                                        'Change the overall UI theme.\nChoose between light, dark, or ' +
-                                        'automatically adjust based on system settings.'
+                                        'Change the overall UI color scheme.'
                                     "
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Theme Style
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a restart of the UI'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Theme Style
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -431,13 +482,39 @@ const resetDaemonSettings = () => {
                                         >
                                             <div class="color-wrapper my-1">
                                                 <el-color-picker
-                                                    v-model="customThemeAccentColor"
+                                                    v-model="customThemeAccent"
                                                     color-format="rgb"
                                                     :predefine="
                                                         settingsStore.predefinedColorOptions
                                                     "
                                                     :validate-event="false"
-                                                    @change="setNewColor"
+                                                    @change="setNewColorAccent"
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2"
+                                    >
+                                        Background One
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1">
+                                                <el-color-picker
+                                                    v-model="customThemeBgOne"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColorBgOne"
                                                 />
                                             </div>
                                         </div>
@@ -447,23 +524,101 @@ const resetDaemonSettings = () => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        ... Color
+                                        Background Two
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center cborder-border-one border-l-2 border-t-2"
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1 rounded-lg border-2 border-border-one">
+                                                <el-color-picker
+                                                    v-model="customThemeBgTwo"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColorBgTwo"
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Border
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
                                             <div class="color-wrapper my-1">
                                                 <el-color-picker
-                                                    v-model="customThemeAccentColor"
+                                                    v-model="customThemeBorder"
                                                     color-format="rgb"
                                                     :predefine="
                                                         settingsStore.predefinedColorOptions
                                                     "
                                                     :validate-event="false"
-                                                    @change="setNewColor"
+                                                    @change="setNewColorBorder"
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Text
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1">
+                                                <el-color-picker
+                                                    v-model="customThemeText"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColorText"
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Text Secondary
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1">
+                                                <el-color-picker
+                                                    v-model="customThemeTextSecondary"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColorTextSecondary"
                                                 />
                                             </div>
                                         </div>

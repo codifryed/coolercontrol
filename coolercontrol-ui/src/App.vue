@@ -66,10 +66,40 @@ const loading = ElLoading.service({
 })
 const applyCustomTheme = (): void => {
     if (settingsStore.themeMode !== ThemeMode.CUSTOM) return
-    if (settingsStore.customTheme.accent != null && settingsStore.customTheme.accent) {
+    if (settingsStore.customTheme.accent) {
         document.documentElement.style.setProperty(
             '--colors-accent',
             settingsStore.customTheme.accent,
+        )
+    }
+    if (settingsStore.customTheme.bgOne) {
+        document.documentElement.style.setProperty(
+            '--colors-bg-one',
+            settingsStore.customTheme.bgOne,
+        )
+    }
+    if (settingsStore.customTheme.bgTwo) {
+        document.documentElement.style.setProperty(
+            '--colors-bg-two',
+            settingsStore.customTheme.bgTwo,
+        )
+    }
+    if (settingsStore.customTheme.borderOne) {
+        document.documentElement.style.setProperty(
+            '--colors-border-one',
+            settingsStore.customTheme.borderOne,
+        )
+    }
+    if (settingsStore.customTheme.textColor) {
+        document.documentElement.style.setProperty(
+            '--colors-text-color',
+            settingsStore.customTheme.textColor,
+        )
+    }
+    if (settingsStore.customTheme.textColorSecondary) {
+        document.documentElement.style.setProperty(
+            '--colors-text-color-secondary',
+            settingsStore.customTheme.textColorSecondary,
         )
     }
 }
@@ -86,11 +116,11 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
+    applyCustomTheme()
     await sleep(300) // give the engine a moment to catch up for a smoother start
     loaded.value = true
     loading.close()
     await deviceStore.login()
-    applyCustomTheme()
     await deviceStore.load_logs()
     // This basically blocks at this point:
     await Promise.all([deviceStore.updateStatusFromSSE(), deviceStore.updateLogsFromSSE()])

@@ -43,6 +43,11 @@ export class UISettingsDTO {
     frequencyPrecision: number = 1
     customTheme: CustomThemeSettings = {
         accent: defaultCustomTheme.accent,
+        bgOne: defaultCustomTheme.bgOne,
+        bgTwo: defaultCustomTheme.bgTwo,
+        borderOne: defaultCustomTheme.borderOne,
+        textColor: defaultCustomTheme.textColor,
+        textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
     showSetupInstructions: boolean = true
 }
@@ -58,9 +63,20 @@ export enum ThemeMode {
 
 export interface CustomThemeSettings {
     accent: Color
+    bgOne: Color
+    bgTwo: Color
+    borderOne: Color
+    textColor: Color
+    textColorSecondary: Color
 }
 export const defaultCustomTheme: CustomThemeSettings = {
-    accent: '86 138 242', // #568af2
+    // default dark-theme
+    accent: '86 138 242', //'#568af2'
+    bgOne: '27 30 35', //'#1b1e23'
+    bgTwo: '44 49 60', //'#2c313c'
+    borderOne: '138 149 170 0.25', //'#8a95aa40'
+    textColor: '220 225 236', //'#dce1ec'
+    textColorSecondary: '138 149 170', //'#8a95aa'
 }
 
 export class DeviceUISettingsDTO {

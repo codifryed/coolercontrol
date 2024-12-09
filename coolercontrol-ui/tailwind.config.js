@@ -26,8 +26,26 @@ module.exports = {
         require('tailwindcss-themer')({
             defaultTheme: {
                 extend: {
+                    // the default theme that appears for a split second on load:
                     colors: {
-                        // setting a 'default' color for all themes seems not to work
+                        // dark-theme copy
+                        accent: '#568af2',
+                        'bg-one': '#1b1e23',
+                        'bg-two': '#2c313c',
+                        'border-one': '#8a95aa40',
+                        'surface-hover': 'rgba(255, 255, 255, 0.05)',
+                        'text-color': '#dce1ec',
+                        'text-color-secondary': '#8a95aa',
+                        white: '#f5f6f9',
+                        pink: '#ff007f',
+                        green: '#00ff7f',
+                        success: '#00ff7f',
+                        red: '#ff5555',
+                        error: '#ff5555',
+                        yellow: '#f1fa8c',
+                        warning: '#f1fa8c',
+                        blue: '#568af2',
+                        info: '#568af2',
                     },
                 },
             },
@@ -202,6 +220,7 @@ module.exports = {
             gray: colors.zinc,
             purple: colors.purple,
         },
+        // This seems to confict with our setup. Don't use:
         // extend: {
         //     colors: {},
         // },
