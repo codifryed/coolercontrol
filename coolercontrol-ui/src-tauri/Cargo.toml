@@ -25,10 +25,10 @@ tauri = { version = "2.1.1", features = [
   "image-png",
 ] }
 tauri-plugin-cli = "2.0.1"
-tauri-plugin-clipboard-manager = "2.0.1"
+tauri-plugin-clipboard-manager = "2.0.2"
 tauri-plugin-shell = "2.0.2"
 # this allows the production build to access http://localhost:
-tauri-plugin-localhost = "2.0.1"
+tauri-plugin-localhost = "2.1.0"
 tauri-plugin-store = "2.1.0"
 tauri-plugin-window-state = "2.0.2"
 # These should follow the versions Tauri uses:
