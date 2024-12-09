@@ -310,7 +310,12 @@ pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
 )]
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = cc_fs::read_txt(device_path(base_path).join("uevent")).await {
+    let mut uevent_content = cc_fs::read_txt(device_path(base_path).join("uevent")).await;
+    if uevent_content.is_err() {
+        // If the `device_path` doesn't exist, try to read it from the `base_path`
+        uevent_content = cc_fs::read_txt(base_path.join("uevent")).await;
+    }
+    if let Ok(content) = uevent_content {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
