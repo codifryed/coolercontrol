@@ -22,12 +22,12 @@ io_uring = ["dep:tokio-uring"]
 log = "0.4.22"
 env_logger = "0.11.5"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.21", features = [
+clap = { version = "4.5.23", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.93"
+anyhow = "1.0.94"
 derive_more = { version = "1.0.0", features = ["display", "error"] }
-tokio = { version = "1.41.1", default-features = false, features = [
+tokio = { version = "1.42.0", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -71,7 +71,7 @@ schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
 axum_typed_multipart = "0.13.2"
 tempfile = "3.14.0"
-tokio-stream = { version = "0.1.16", default-features = false, features = [
+tokio-stream = { version = "0.1.17", default-features = false, features = [
   "sync",
 ] }
 hyper = { version = "1.5.1", default-features = false, features = [
@@ -92,7 +92,7 @@ zbus = { version = "5.1.1", default-features = false, features = [
 sysinfo = { version = "0.33.0", default-features = false, features = [
   "system",
 ] } # gets detailed system info
-chrono = { version = "0.4.38", features = [
+chrono = { version = "0.4.39", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.26.3", features = ["derive"] } # Enum -> String
