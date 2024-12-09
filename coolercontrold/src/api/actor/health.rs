@@ -65,8 +65,8 @@ impl ApiActor<HealthMessage> for HealthActor {
             } => {
                 let response = async {
                     let sys_info = sysinfo::System::new_with_specifics(
-                        sysinfo::RefreshKind::new()
-                            .with_processes(sysinfo::ProcessRefreshKind::new().with_memory()),
+                        sysinfo::RefreshKind::nothing()
+                            .with_processes(sysinfo::ProcessRefreshKind::nothing().with_memory()),
                     );
                     let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
                     let daemon_process = sys_info.process(pid);
