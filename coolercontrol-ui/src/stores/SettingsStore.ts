@@ -807,17 +807,28 @@ export const useSettingsStore = defineStore('settings', () => {
         document.documentElement.classList.remove('high-contrast-dark')
         document.documentElement.classList.remove('high-contrast-light')
         document.documentElement.classList.remove('light-theme')
+        document.documentElement.classList.remove('dark-theme')
         if (themeMode.value === ThemeMode.SYSTEM) {
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            // considered Alpha and doesn't always work as expected:
+            // document.documentElement.classList.add('system-theme')
+            if (window.matchMedia('(prefers-color-scheme: dark) and (prefers-contrast: more)').matches) {
+                document.documentElement.classList.add('high-contrast-dark')
+            } else if (window.matchMedia('(prefers-color-scheme: light) and (prefers-contrast: more)').matches) {
+                document.documentElement.classList.add('high-contrast-light')
+            } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
                 document.documentElement.classList.add('light-theme')
-            } // else dark default
-        } else if (themeMode.value === ThemeMode.LIGHT) {
-            document.documentElement.classList.add('light-theme')
+            } else {
+                document.documentElement.classList.add('dark-theme')
+            }
         } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_DARK) {
             document.documentElement.classList.add('high-contrast-dark')
         } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_LIGHT) {
             document.documentElement.classList.add('high-contrast-light')
-        } // else dark is the default cc color scheme
+        } else if (themeMode.value === ThemeMode.LIGHT) {
+            document.documentElement.classList.add('light-theme')
+        } else {
+            document.documentElement.classList.add('dark-theme')
+        }
     }
 
     async function handleSaveDeviceSettingResponse(
