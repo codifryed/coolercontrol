@@ -110,6 +110,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
+    const collapsedMenuNodeIds: Ref<Array<string>> = ref(['modes', 'profiles', 'functions'])
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
         accent: defaultCustomTheme.accent,
@@ -196,6 +197,7 @@ export const useSettingsStore = defineStore('settings', () => {
         applyThemeMode()
         uiScale.value = uiSettings.uiScale
         time24.value = uiSettings.time24
+        collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -746,6 +748,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 themeMode,
                 uiScale,
                 time24,
+                collapsedMenuNodeIds.value,
                 frequencyPrecision,
                 customTheme,
                 showSetupInstructions,
@@ -787,6 +790,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.themeMode = themeMode.value
                     uiSettings.uiScale = uiScale.value
                     uiSettings.time24 = time24.value
+                    uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
                     uiSettings.customTheme.bgOne = customTheme.bgOne
@@ -1003,6 +1007,7 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode,
         uiScale,
         time24,
+        collapsedMenuNodeIds,
         frequencyPrecision,
         customTheme,
         showSetupInstructions,

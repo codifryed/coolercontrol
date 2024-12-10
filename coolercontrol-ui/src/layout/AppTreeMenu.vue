@@ -493,15 +493,8 @@ const filterNode = (value: string, data: Tree): boolean => {
 }
 
 const expandedNodeIds = (): Array<string> => {
-    // todo: save and load initial expanded IDs. (new setting - probably gut the original setting)
-    // If no saved IDs (first start)
     return data
-        .filter(
-            (node: any) =>
-                !node.id.startsWith('modes') &&
-                !node.id.startsWith('profiles') &&
-                !node.id.startsWith('functions'),
-        )
+        .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
         .map((node: any) => node.id)
 }
 const addDashbaord = (dashboardUID: UID) => {
@@ -704,8 +697,14 @@ watch(
             :indent="deviceStore.getREMSize(0.5)"
             :default-expanded-keys="expandedNodeIds()"
             :render-after-expand="false"
-            @node-collapse=""
-            @node-expand=""
+            @node-collapse="(node) => settingsStore.collapsedMenuNodeIds.push(node.id)"
+            @node-expand="
+                (node) => {
+                    const indexOfNode = settingsStore.collapsedMenuNodeIds.indexOf(node.id)
+                    if (indexOfNode < 0) return
+                    settingsStore.collapsedMenuNodeIds.splice(indexOfNode, 1)
+                }
+            "
         >
             <template #default="{ node, data }">
                 <el-dropdown
