@@ -31,8 +31,8 @@ export default {
             'text-text-color',
             'placeholder:text-text-color-secondary',
             'bg-bg-one',
-            'border',
-            { 'border-text-color-secondary': !props.invalid },
+            'border-2',
+            { 'border-border-one': !props.invalid },
 
             // Invalid State
             'invalid:focus:ring-red-200',
