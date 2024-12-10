@@ -31,14 +31,6 @@ pub type StatusMap = HashMap<String, String>;
 #[derive(Debug)]
 pub struct MsiAcpiEcSupport;
 
-fn parse_float(value: &str) -> Option<f64> {
-    value.parse::<f64>().ok()
-}
-
-fn parse_u32(value: &str) -> Option<u32> {
-    value.parse::<u32>().ok()
-}
-
 impl MsiAcpiEcSupport {
     pub fn new() -> Self {
         Self {}
@@ -145,7 +137,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let cpu_temp = status_map
             .get("cpu temp")
-            .and_then(|s| parse_float(s));
+            .and_then(|s| self.parse_float(s));
         if let Some(temp) = cpu_temp {
             temps.push(TempStatus {
                 name: "cpu temp".to_string(),
@@ -154,7 +146,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
         }
         let gpu_temp = status_map
             .get("gpu temp")
-            .and_then(|s| parse_float(s));
+            .and_then(|s| self.parse_float(s));
         if let Some(temp) = gpu_temp {
             temps.push(TempStatus {
                 name: "gpu temp".to_string(),
@@ -168,10 +160,10 @@ impl DeviceSupport for MsiAcpiEcSupport {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(|s| parse_u32(s));
-        let cpu_fan_duty = status_map.get("cpu fan duty").and_then(|s| parse_float(s));
-        let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(|s| parse_u32(s));
-        let gpu_fan_duty = status_map.get("gpu fan duty").and_then(|s| parse_float(s));
+        let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(|s| self.parse_u32(s));
+        let cpu_fan_duty = status_map.get("cpu fan duty").and_then(|s| self.parse_float(s));
+        let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(|s| self.parse_u32(s));
+        let gpu_fan_duty = status_map.get("gpu fan duty").and_then(|s| self.parse_float(s));
         if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "cpu fan".to_string(),
@@ -206,24 +198,24 @@ impl DeviceSupport for MsiAcpiEcSupport {
         for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
-                .and_then(|number| parse_u32(number.as_str()))
+                .and_then(|number| self.parse_u32(number.as_str()))
             {
                 if CPU_FAN_SPEED.is_match(name) {
                     let fan_name = format!("cpu fan step {fan_number}");
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = parse_u32(value);
+                    *rpm = self.parse_u32(value);
                 } else if GPU_FAN_SPEED.is_match(name) {
                     let fan_name = format!("gpu fan step {fan_number}");
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = parse_u32(value);
+                    *rpm = self.parse_u32(value);
                 } else if CPU_FAN_DUTY.is_match(name) {
                     let fan_name = format!("cpu fan step {fan_number}");
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = parse_float(value);
+                    *duty = self.parse_float(value);
                 } else if GPU_FAN_DUTY.is_match(name) {
                     let fan_name = format!("gpu fan step {fan_number}");
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = parse_float(value);
+                    *duty = self.parse_float(value);
                 }
             }
         }
