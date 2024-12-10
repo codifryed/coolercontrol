@@ -386,7 +386,7 @@ const uOptions: uPlot.Options = {
             label: '%  /  °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
-            labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
+            labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
@@ -420,7 +420,8 @@ const uOptions: uPlot.Options = {
                 settingsStore.frequencyPrecision === 1
                     ? deviceStore.getREMSize(2.9)
                     : deviceStore.getREMSize(1.4),
-            labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
+            // labelFont, unlike font, seems to take rem values properly, and by is 1rem by default:
+            labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
