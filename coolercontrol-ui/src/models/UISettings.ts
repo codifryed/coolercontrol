@@ -50,7 +50,7 @@ export class UISettingsDTO {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
-    showSetupInstructions: boolean = true
+    showOnboarding: boolean = true
 }
 
 export enum ThemeMode {

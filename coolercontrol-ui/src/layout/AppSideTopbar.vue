@@ -217,6 +217,7 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
+            id="logo"
             class="mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
@@ -228,6 +229,7 @@ const addItems = computed(() => [
 
         <!--Add-->
         <el-dropdown
+            id="add"
             ref="addMenuRef"
             :show-timeout="50"
             :hide-timeout="100"
@@ -264,6 +266,7 @@ const addItems = computed(() => [
 
         <!--Modes-->
         <el-dropdown
+            id="modes-quick"
             v-if="modesItems.length > 0"
             :show-timeout="50"
             :hide-timeout="100"
@@ -303,6 +306,7 @@ const addItems = computed(() => [
 
         <!--Access Protection-->
         <el-dropdown
+            id="access"
             ref="accessMenuRef"
             :show-timeout="50"
             :hide-timeout="100"
@@ -350,6 +354,7 @@ const addItems = computed(() => [
         <!--Settings-->
         <router-link :to="{ name: 'settings' }" class="outline-none">
             <Button
+                id="settings"
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
@@ -376,6 +381,7 @@ const addItems = computed(() => [
 
         <!--Reload-->
         <el-dropdown
+            id="restart"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{

@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import 'reflect-metadata'
 import { RouterView } from 'vue-router'
-import { Ref, onMounted, ref } from 'vue'
+import { Ref, onMounted, ref, inject } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -34,13 +34,15 @@ import { ElLoading } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
 import { ThemeMode } from '@/models/UISettings.ts'
 import { useDaemonState } from '@/stores/DaemonState.ts'
+import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboarding'
+import { Emitter, EventType } from 'mitt'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
-const showSetupInstructions = ref(false)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const reloadPage = () => window.location.reload()
 
@@ -104,6 +106,185 @@ const applyCustomTheme = (): void => {
     }
 }
 
+const onboardingWrapper = ref(null)
+const { start, goToStep, finish } = useVOnboarding(onboardingWrapper)
+emitter.on('start-tour', start)
+const steps = [
+    {
+        attachTo: { element: '#logo' },
+        content: {
+            title: 'Welcome to CoolerControl!',
+            description: 'Filled by template - special message',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#system-menu' },
+        content: {
+            title: 'System Menu',
+            description:
+                "This is the main menu where this system's devices and sensors can be viewed and controlled.",
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#dashboards' },
+        content: {
+            title: 'Dashboards',
+            description:
+                "Dashboards are a curated collection of charts to view your system's sensor data.",
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#profiles' },
+        content: {
+            title: 'Profiles',
+            description:
+                'Profiles define customizable settings for controlling fan speeds. ' +
+                'The same Profile can be used for multiple fans and devices.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#functions' },
+        content: {
+            title: 'Functions',
+            description:
+                'Functions are configurable algorithms that can be applied to a ' +
+                "Profile's output. This can be helpful for managing when fan speed changes occur.",
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#custom-sensors' },
+        content: {
+            title: 'Custom Sensors',
+            description:
+                'Custom Sensors allow you to combine existing sensor data in various ways, ' +
+                'and enable you to use your own custom scripted sensor output.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#modes' },
+        content: {
+            title: 'Modes',
+            description:
+                'Modes are saved collections of your settings, allowing you to switch ' +
+                'between silent and performance modes easily',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#logo' },
+        content: {
+            title: 'Application and Daemon Information',
+            description:
+                'Clicking the logo opens the Application Information page, where you can ' +
+                "to get information about the application, the system daemon, and logs. It's a " +
+                "good place to go when troubleshooting issues and there's a small daemon-status " +
+                'badge here to notify you of any potential issues.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#add' },
+        content: {
+            title: 'Quick Add',
+            description:
+                'This is a quick menu to easily add new items like Dashboards, Profiles, etc.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#modes-quick' },
+        content: {
+            title: 'Quick Modes Change',
+            description: 'This is a menu to quickly switch between saved Modes.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#access' },
+        content: {
+            title: 'Access Menu',
+            description: 'This is where you manage your password and verify your access level.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#settings' },
+        content: {
+            title: 'Settings',
+            description:
+                'This button will open up the settings page containing different UI and daemon settings.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#restart' },
+        content: {
+            title: 'Restart Menu',
+            description:
+                'Here you can choose whether to reload the UI or restart the system daemon.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+]
+
 /**
  * Startup procedure for the application.
  */
@@ -122,6 +303,7 @@ onMounted(async () => {
     loading.close()
     await deviceStore.login()
     await deviceStore.load_logs()
+    if (settingsStore.showOnboarding) start()
     // This basically blocks at this point:
     await Promise.all([deviceStore.updateStatusFromSSE(), deviceStore.updateLogsFromSSE()])
 })
@@ -262,56 +444,145 @@ onMounted(async () => {
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
         </template>
     </Dialog>
-    <Dialog
-        :visible="showSetupInstructions"
-        header="Welcome to CoolerControl!"
-        :style="{ width: '75vw' }"
+    <VOnboardingWrapper
+        ref="onboardingWrapper"
+        :steps="steps"
+        :options="{ autoFinishByExit: true }"
+        @finish="settingsStore.showOnboarding = false"
     >
-        <h5>Important Information</h5>
-        <p>
-            CoolerControl depends on open source drivers to communicate with your hardware.<br /><br />
+        <template #default="{ previous, next, step, exit, isFirst, isLast, index }">
+            <VOnboardingStep>
+                <div class="bg-bg-two shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="sm:flex sm:justify-between">
+                            <div v-if="step.content">
+                                <h3
+                                    v-if="step.content.title"
+                                    class="text-2xl leading-6 text-text-color"
+                                >
+                                    {{ step.content.title }}
+                                </h3>
+                                <div
+                                    v-if="step.content.description"
+                                    class="mt-4 max-w-xl text-base text-text-color-secondary"
+                                >
+                                    <div v-if="isFirst">
+                                        <p>
+                                            This is a short introduction to get you started with
+                                            CoolerControl.
+                                        </p>
+                                        <p class="mt-4">
+                                            Before we get started, one of them most important things
+                                            to know about is settings up your hardware drivers.
+                                        </p>
+                                        <br />
+                                        <p>
+                                            If your fans are not showing up or cannot be controlled,
+                                            then likely there is an issue with your currently
+                                            installed kernel drivers.<br /><br />
 
-            If CoolerControl does not list or cannot control your fans, then likely there is an
-            issue with your currently installed kernel drivers.<br /><br />
-
-            Before opening an issue, please confirm that all drivers have been properly loaded by
-            checking
-            <a
-                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
-                style="color: var(--cc-context-color)"
-            >
-                HWMon Support
-            </a>
-            and
-            <a
-                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
-                style="color: var(--cc-context-color)"
-            >
-                Adding Device Support</a
-            >.<br /><br />
-
-            Note that this popup is simply a reminder and does not signify any problems with your
-            system.
-        </p>
-
-        <template #footer>
-            <Button label="Remind me later" @click="() => (showSetupInstructions = false)" />
-            <Button
-                label="Do not show again (I know what I'm doing)"
-                @click="
-                    () => {
-                        showSetupInstructions = false
-                        settingsStore.showSetupInstructions = false
-                    }
-                "
-            />
+                                            Before opening an issue, please confirm that all drivers
+                                            have been properly loaded by checking the
+                                            <a
+                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                                                class="text-accent outline-0"
+                                            >
+                                                HWMon Support
+                                            </a>
+                                            and
+                                            <a
+                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
+                                                class="text-accent outline-0"
+                                            >
+                                                Adding Device Support
+                                            </a>
+                                            pages. <br /><br />
+                                            <span class="italic"
+                                                >Note: you can start this tour again at any time
+                                                from the settings page.</span
+                                            >
+                                            <br /><br />
+                                            Ok, let's get started!
+                                        </p>
+                                    </div>
+                                    <div v-else-if="isLast">
+                                        {{ step.content.description }}
+                                        <br /><br />
+                                        Ok, that's it. You're ready to get started!
+                                    </div>
+                                    <p v-else>{{ step.content.description }}</p>
+                                </div>
+                            </div>
+                            <div
+                                class="mt-5 space-x-4 sm:mt-0 sm:ml-6 sm:flex sm:flex-shrink-0 sm:items-end relative"
+                            >
+                                <!--<span class="absolute right-0 bottom-full mb-2 mr-2 text-text-color-secondary font-medium text-xs">{{ `${index + 1}/${steps.length}` }}</span>-->
+                                <button
+                                    @click="finish"
+                                    class="absolute right-0 bottom-full mb-[-1.0rem] text-text-color-secondary font-medium text-base pi pi-times outline-0"
+                                />
+                                <template v-if="!isFirst">
+                                    <button
+                                        @click="previous"
+                                        type="button"
+                                        class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
+                                    >
+                                        Previous
+                                    </button>
+                                </template>
+                                <button
+                                    @click="next"
+                                    type="button"
+                                    class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
+                                >
+                                    {{ isLast ? 'Finish' : 'Next' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </VOnboardingStep>
         </template>
-    </Dialog>
+    </VOnboardingWrapper>
 </template>
 
 <style>
 :root {
     background-color: rgb(var(--colors-bg-one));
     --el-color-primary: #568af2;
+    --v-onboarding-overlay-z: 60;
+    --v-onboarding-step-z: 70;
+}
+[data-v-onboarding-wrapper] [data-popper-arrow]::before {
+    content: '';
+    background: rgb(var(--colors-bg-two));
+    top: 0;
+    left: 0;
+    transition:
+        transform 0.2s ease-out,
+        visibility 0.2s ease-out;
+    visibility: visible;
+    transform: translateX(0px) rotate(45deg);
+    transform-origin: center;
+    width: 1rem;
+    height: 1rem;
+    position: absolute;
+    z-index: -1;
+}
+
+[data-v-onboarding-wrapper] [data-popper-placement^='top'] > [data-popper-arrow] {
+    bottom: 7px;
+}
+
+[data-v-onboarding-wrapper] [data-popper-placement^='right'] > [data-popper-arrow] {
+    left: -6px;
+}
+
+[data-v-onboarding-wrapper] [data-popper-placement^='bottom'] > [data-popper-arrow] {
+    top: -6px;
+}
+
+[data-v-onboarding-wrapper] [data-popper-placement^='left'] > [data-popper-arrow] {
+    right: -6px;
 }
 </style>

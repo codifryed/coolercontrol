@@ -662,7 +662,7 @@ watch(
 </script>
 
 <template>
-    <div class="">
+    <div id="system-menu" class="">
         <div
             class="text-text-color font-bold text-xl mt-0.5 ml-4 mr-6 mb-1 border-b border-border-one pb-1"
         >
@@ -709,6 +709,7 @@ watch(
             <template #default="{ node, data }">
                 <el-dropdown
                     :ref="(el) => (data.dropdownRef = el)"
+                    :id="data.id"
                     class="ml-0.5 w-full outline-none"
                     :show-timeout="100"
                     :hide-timeout="50"

@@ -120,7 +120,7 @@ export const useSettingsStore = defineStore('settings', () => {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     })
-    const showSetupInstructions: Ref<boolean> = ref(true)
+    const showOnboarding: Ref<boolean> = ref(true)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         await loadCCSettings()
@@ -205,7 +205,7 @@ export const useSettingsStore = defineStore('settings', () => {
         customTheme.borderOne = uiSettings.customTheme.borderOne
         customTheme.textColor = uiSettings.customTheme.textColor
         customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
-        showSetupInstructions.value = uiSettings.showSetupInstructions
+        showOnboarding.value = uiSettings.showOnboarding
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
         if (
@@ -751,7 +751,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 collapsedMenuNodeIds.value,
                 frequencyPrecision,
                 customTheme,
-                showSetupInstructions,
+                showOnboarding,
             ],
             _.debounce(
                 // we debounce to not continuously save changes
@@ -798,7 +798,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.customTheme.borderOne = customTheme.borderOne
                     uiSettings.customTheme.textColor = customTheme.textColor
                     uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
-                    uiSettings.showSetupInstructions = showSetupInstructions.value
+                    uiSettings.showOnboarding = showOnboarding.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
                 1000,
@@ -1010,7 +1010,7 @@ export const useSettingsStore = defineStore('settings', () => {
         collapsedMenuNodeIds,
         frequencyPrecision,
         customTheme,
-        showSetupInstructions,
+        showOnboarding,
         allDaemonDeviceSettings,
         ccSettings,
         ccDeviceSettings,

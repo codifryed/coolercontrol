@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { type Ref, ref } from 'vue'
+import { inject, type Ref, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
@@ -42,11 +42,13 @@ import InputNumber from 'primevue/inputnumber'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import { Color } from '@/models/Device.ts'
+import { Emitter, EventType } from 'mitt'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -466,6 +468,22 @@ const resetDaemonSettings = () => {
                                                     ],
                                                 }),
                                             }"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.right="'Start the application introduction tour.'">
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="float-right">Introduction</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <Button
+                                            label="Start Tour"
+                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                            @click="emitter.emit('start-tour')"
                                         />
                                     </td>
                                 </tr>
