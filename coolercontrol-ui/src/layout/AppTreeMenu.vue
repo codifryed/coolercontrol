@@ -664,7 +664,7 @@ watch(
 <template>
     <div class="">
         <div
-            class="text-text-color font-bold text-xl ml-4 mr-6 mb-1 border-b border-border-one pb-1"
+            class="text-text-color font-bold text-xl mt-0.5 ml-4 mr-6 mb-1 border-b border-border-one pb-1"
         >
             {{ daemonState.systemName }}
         </div>
