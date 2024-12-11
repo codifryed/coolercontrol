@@ -217,11 +217,11 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
-            class="mt-0.5 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover/15"
+            class="mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
                 <OverlayBadge :severity="badgeSeverity">
-                    <img :src="logoUrl" alt="logo" class="w-9 h-9" />
+                    <img :src="logoUrl" alt="logo" class="w-11 h-11" />
                 </OverlayBadge>
             </router-link>
         </Button>
@@ -234,10 +234,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.5rem] mt-[-3.75rem]"
+            popper-class="ml-[3.75rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-3 ml-1 !rounded-lg border-none w-10 h-10 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-3 mx-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
@@ -270,10 +270,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.5rem] mt-[-3.75rem]"
+            popper-class="ml-[3.75rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
             </Button>
@@ -309,10 +309,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.5rem] mt-[-3.75rem]"
+            popper-class="ml-[3.75rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
@@ -350,7 +350,7 @@ const addItems = computed(() => [
         <!--Settings-->
         <router-link :to="{ name: 'settings' }" class="outline-none">
             <Button
-                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
             </Button>
@@ -364,7 +364,7 @@ const addItems = computed(() => [
             class="!outline-none"
         >
             <Button
-                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <!--                v-tooltip.bottom="{ value: 'Open in Browser', class: 'ml-10' }"-->
                 <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
@@ -381,10 +381,10 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.5rem] mb-[-3.5rem]"
+            popper-class="ml-[3.75rem] mb-[-3.75rem]"
         >
             <Button
-                class="mt-4 ml-1 !rounded-lg border-none text-text-color-secondary w-10 h-10 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
