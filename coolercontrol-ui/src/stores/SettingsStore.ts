@@ -106,7 +106,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
-    const displayHiddenItems: Ref<boolean> = ref(true)
+    const displayHiddenItems: Ref<boolean> = ref(false)
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
