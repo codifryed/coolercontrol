@@ -107,7 +107,7 @@ const applyCustomTheme = (): void => {
 }
 
 const onboardingWrapper = ref(null)
-const { start, goToStep, finish } = useVOnboarding(onboardingWrapper)
+const { start, finish } = useVOnboarding(onboardingWrapper)
 emitter.on('start-tour', start)
 const steps = [
     {
@@ -450,7 +450,7 @@ onMounted(async () => {
         :options="{ autoFinishByExit: true }"
         @finish="settingsStore.showOnboarding = false"
     >
-        <template #default="{ previous, next, step, exit, isFirst, isLast, index }">
+        <template #default="{ previous, next, step, isFirst, isLast }">
             <VOnboardingStep>
                 <div class="bg-bg-two shadow rounded-lg">
                     <div class="px-4 py-5 sm:p-6">
