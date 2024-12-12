@@ -18,9 +18,6 @@
 
 use std::collections::HashMap;
 
-use lazy_static::lazy_static;
-use regex::Regex;
-
 use crate::device::{ChannelStatus, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions, TempStatus};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -44,41 +41,9 @@ impl DeviceSupport for MsiAcpiEcSupport {
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        let rt_fan_channel_names = vec![
+        let fan_channel_names = vec![
             "cpu fan".to_string(),
             "gpu fan".to_string(),
-        ];
-        for rt_channel_name in rt_fan_channel_names {
-            channels.insert(
-                rt_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        min_duty: 0,
-                        max_duty: 100,
-                        profiles_enabled: false,
-                        fixed_enabled: true,
-                        manual_profiles_enabled: true,
-                    }),
-                    ..Default::default()
-                },
-            );
-        }
-
-        let fan_channel_names = vec![
-            "cpu fan step 1".to_string(),
-            "cpu fan step 2".to_string(),
-            "cpu fan step 3".to_string(),
-            "cpu fan step 4".to_string(),
-            "cpu fan step 5".to_string(),
-            "cpu fan step 6".to_string(),
-            "cpu fan step 7".to_string(),
-            "gpu fan step 1".to_string(),
-            "gpu fan step 2".to_string(),
-            "gpu fan step 3".to_string(),
-            "gpu fan step 4".to_string(),
-            "gpu fan step 5".to_string(),
-            "gpu fan step 6".to_string(),
-            "gpu fan step 7".to_string(),
         ];
         for channel_name in fan_channel_names {
             channels.insert(
@@ -87,7 +52,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
-                        profiles_enabled: false,
+                        profiles_enabled: true,
                         fixed_enabled: true,
                         manual_profiles_enabled: true,
                     }),
@@ -97,8 +62,8 @@ impl DeviceSupport for MsiAcpiEcSupport {
         }
 
         let color_channels = vec![
-            "tail".to_string(),
-            "mic".to_string(),
+            "tail light".to_string(),
+            "mic light".to_string(),
         ];
         for channel_name in color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
@@ -116,6 +81,8 @@ impl DeviceSupport for MsiAcpiEcSupport {
             lighting_speeds: Vec::new(),
             temp_min: 0,
             temp_max: 110,
+            profile_max_length: 7,
+            profile_min_length: 7,
             driver_info: DriverInfo {
                 drv_type: DriverType::Liquidctl,
                 name: Some(self.supported_driver().to_string()),
@@ -177,53 +144,6 @@ impl DeviceSupport for MsiAcpiEcSupport {
                 name: "gpu fan".to_string(),
                 rpm: gpu_fan_rpm,
                 duty: gpu_fan_duty,
-                ..Default::default()
-            });
-        }
-    }
-
-    fn add_multiple_fans_status(
-        &self,
-        status_map: &StatusMap,
-        channel_statuses: &mut Vec<ChannelStatus>,
-    ) {
-        lazy_static! {
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-            static ref CPU_FAN_SPEED: Regex = Regex::new(r"cpu fan speed step \d+").unwrap();
-            static ref GPU_FAN_SPEED: Regex = Regex::new(r"gpu fan speed step \d+").unwrap();
-            static ref CPU_FAN_DUTY: Regex = Regex::new(r"cpu fan duty step \d+").unwrap();
-            static ref GPU_FAN_DUTY: Regex = Regex::new(r"gpu fan duty step \d+").unwrap();
-        }
-        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
-        for (name, value) in status_map {
-            if let Some(fan_number) = NUMBER_PATTERN
-                .find_at(name, 3)
-                .and_then(|number| self.parse_u32(number.as_str()))
-            {
-                if CPU_FAN_SPEED.is_match(name) {
-                    let fan_name = format!("cpu fan step {fan_number}");
-                    let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = self.parse_u32(value);
-                } else if GPU_FAN_SPEED.is_match(name) {
-                    let fan_name = format!("gpu fan step {fan_number}");
-                    let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = self.parse_u32(value);
-                } else if CPU_FAN_DUTY.is_match(name) {
-                    let fan_name = format!("cpu fan step {fan_number}");
-                    let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = self.parse_float(value);
-                } else if GPU_FAN_DUTY.is_match(name) {
-                    let fan_name = format!("gpu fan step {fan_number}");
-                    let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = self.parse_float(value);
-                }
-            }
-        }
-        for (name, (rpm, duty)) in fans_map {
-            channel_statuses.push(ChannelStatus {
-                name,
-                rpm,
-                duty,
                 ..Default::default()
             });
         }
