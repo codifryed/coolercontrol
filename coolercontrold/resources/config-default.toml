@@ -100,10 +100,6 @@ no_init = false
 # Startup Delay (seconds) is an integer value between 0 and 10
 startup_delay = 2
 
-# Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
-# This only affects the returned values from the /status endpoint, not internal values
-smoothing_level = 0
-
 # For ThinkPads, wheather to use the 'full-speed' option when settings the fan to 100%
 # This option drives the fan as fast as it can go, which might exceed hardware limits,
 # so use this level with caution.
@@ -123,6 +119,11 @@ thinkpad_full_speed = false
 # Whether to compress the response data from the API. This can reduce the size of the response
 # but will increase CPU usage. This is useful if you are running the API over a network.
 compress = false
+
+# The polling rate for sensor data collection. The default is 1.0 second. Limited to values
+# between 0.5 and 5.0 seconds in half-second increments.
+# Note: Caution should be used when using values less than 1.0.
+# poll_rate = 1.0
 
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]

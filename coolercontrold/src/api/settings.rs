@@ -124,6 +124,7 @@ pub struct CoolerControlSettingsDto {
     liquidctl_integration: Option<bool>,
     hide_duplicate_devices: Option<bool>,
     compress: Option<bool>,
+    poll_rate: Option<f64>,
 }
 
 impl CoolerControlSettingsDto {
@@ -163,6 +164,14 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.compress
         };
+        let poll_rate = if let Some(poll_rate) = self.poll_rate {
+            Duration::from_secs_f64(
+                // clamps and rounds to the nearest half-second.
+                (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.,
+            )
+        } else {
+            current_settings.poll_rate
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -174,6 +183,7 @@ impl CoolerControlSettingsDto {
             ipv4_address: current_settings.ipv4_address,
             ipv6_address: current_settings.ipv6_address,
             compress,
+            poll_rate,
         }
     }
 }
@@ -188,6 +198,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
             liquidctl_integration: Some(settings.liquidctl_integration),
             compress: Some(settings.compress),
+            poll_rate: Some(settings.poll_rate.as_secs_f64()),
         }
     }
 }

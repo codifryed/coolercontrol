@@ -87,6 +87,7 @@ impl ApiActor<SettingMessage> for SettingActor {
         &mut self.receiver
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_message(&mut self, msg: SettingMessage) {
         match msg {
             SettingMessage::GetCC { respond_to } => {

@@ -33,10 +33,10 @@ use tokio::time;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-const LOOP_TICK_DURATION_MS: u64 = 1000;
 const SNAPSHOT_WAIT_MS: u64 = 400;
 const WAKE_PAUSE_MINIMUM_S: u64 = 1;
 const LCD_TIMEOUT_S: u64 = 2;
+const LCD_MAX_UPDATE_RATE_S: f64 = 2.0;
 const FULL_SECOND_MS: u64 = 1000;
 
 /// Run the main loop of the application.
@@ -54,16 +54,18 @@ pub async fn run<'s>(
     run_token: CancellationToken,
 ) -> Result<()> {
     let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_WAIT_MS));
-    let mut run_lcd_update = false; // toggle lcd updates every other loop tick
+    let poll_rate = config.get_settings()?.poll_rate;
+    let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate.as_secs_f64());
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone(), scope)
             .await
             .with_context(|| "Creating DBus Sleep Listener")?;
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
-        let mut loop_interval = time::interval(Duration::from_millis(LOOP_TICK_DURATION_MS));
+        let mut loop_interval = time::interval(poll_rate);
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
+            lcd_update_trigger.tick();
             if sleep_listener.is_not_preparing_to_sleep() {
                 let snapshot_timeout_token = CancellationToken::new();
                 fire_preloads(&repos, snapshot_timeout_token.clone(), scope);
@@ -73,8 +75,7 @@ pub async fn run<'s>(
                     () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
-                fire_snapshots_and_processes(&repos, &settings_controller, run_lcd_update, &status_handle, scope).await;
-                run_lcd_update = !run_lcd_update;
+                fire_snapshots_and_processes(&repos, &settings_controller, &mut lcd_update_trigger, &status_handle, scope).await;
             } else if sleep_listener.is_resuming() {
                 wake_from_sleep(
                     &config,
@@ -139,7 +140,7 @@ fn fire_preloads<'s>(
 async fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
     settings_controller: &'s Rc<SettingsController>,
-    run_lcd_update: bool,
+    lcd_update_trigger: &mut LCDUpdateTrigger,
     status_handle: &'s StatusHandle,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
@@ -149,7 +150,7 @@ async fn fire_snapshots_and_processes<'s>(
             error!("Error trying to update status: {err}");
         }
     }
-    fire_lcd_update(settings_controller, run_lcd_update, scope);
+    fire_lcd_update(settings_controller, lcd_update_trigger, scope);
     settings_controller.process_scheduled_speeds().await;
     status_handle.broadcast_status().await;
 }
@@ -162,10 +163,10 @@ async fn fire_snapshots_and_processes<'s>(
 /// Due to the long-running time of this function, it will be called every other loop tick.
 fn fire_lcd_update<'s>(
     settings_controller: &Rc<SettingsController>,
-    run_lcd_update: bool,
+    lcd_update_trigger: &mut LCDUpdateTrigger,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
-    if run_lcd_update.not()
+    if lcd_update_trigger.not_triggered()
         || settings_controller
             .lcd_commander
             .scheduled_settings
@@ -218,4 +219,56 @@ async fn wake_from_sleep(
     sleep_listener.resuming(false);
     sleep_listener.preparing_to_sleep(false);
     Ok(())
+}
+
+/// A helper struct used to limit LCD updates to a maximum frequency.
+///
+/// This is needed because the current LCD driver implementation requires us to send a complete
+/// image to the device on every update, which takes a significant amount of time.
+///
+/// `LCDUpdateTrigger` is used to manage the rate at which LCD updates are performed. It ensures
+/// that LCD updates are not performed too frequently by maintaining a count of main loop
+/// iterations and comparing it to a calculated threshold. The threshold is calculated by
+/// dividing the maximum allowed LCD update rate (2.0 seconds) by the configured poll rate.
+struct LCDUpdateTrigger {
+    loop_count: usize,
+    trigger_count: usize,
+}
+
+impl LCDUpdateTrigger {
+    /// Creates a new `LCDUpdateTrigger` with the given poll rate in seconds.
+    ///
+    /// The `loop_count` is initialized to the calculated `trigger_count` so that the first
+    /// iteration of the main loop will trigger an LCD update.
+    fn new(poll_rate_secs: f64) -> Self {
+        let trigger_count = Self::calc_lcd_update_rate(poll_rate_secs);
+        Self {
+            loop_count: trigger_count,
+            trigger_count,
+        }
+    }
+
+    /// Calculates the number of main loop ticks between LCD updates.
+    ///
+    /// This function returns the number of main loop ticks between LCD updates based on the
+    /// configured poll rate. The calculated value is the ceiling of the division of the
+    /// maximum allowed LCD update rate (2.0 seconds) by the configured poll rate.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn calc_lcd_update_rate(poll_rate: f64) -> usize {
+        let lcd_update_rate = LCD_MAX_UPDATE_RATE_S / poll_rate;
+        lcd_update_rate.ceil() as usize
+    }
+
+    fn tick(&mut self) {
+        self.loop_count += 1;
+    }
+
+    fn not_triggered(&mut self) -> bool {
+        if self.loop_count >= self.trigger_count {
+            self.loop_count = 0;
+            false
+        } else {
+            true
+        }
+    }
 }
