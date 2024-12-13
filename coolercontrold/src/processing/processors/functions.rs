@@ -26,7 +26,7 @@ use yata::methods::TMA;
 use yata::prelude::Method;
 
 use crate::device::Temp;
-use crate::processing::{Processor, SpeedProfileData};
+use crate::processing::{NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileUID};
 use crate::AllDevices;
@@ -35,9 +35,9 @@ pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
 const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
-const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 30;
-const MIN_NO_DUTY_SET_COUNT: u8 = 30;
-const MAX_NO_DUTY_SET_COUNT: u8 = 60;
+const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
+const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
+const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
 
 /// The default function returns the source temp as-is.
@@ -185,6 +185,11 @@ impl FunctionStandardPreProcessor {
         temp_to_verify <= (last_applied_temp + deviance)
             && temp_to_verify >= (last_applied_temp - deviance)
     }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
+        (f64::from(profile.function.response_delay.unwrap()) / profile.poll_rate).ceil() as u8 + 1
+    }
 }
 
 impl Processor for FunctionStandardPreProcessor {
@@ -206,7 +211,6 @@ impl Processor for FunctionStandardPreProcessor {
     }
 
     fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        // In this function impl, there is no async. todo: might want to refactor trait
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -219,9 +223,8 @@ impl Processor for FunctionStandardPreProcessor {
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
-            metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE
-                .max(data.profile.function.response_delay.unwrap() + 1)
-                as usize;
+            metadata.ideal_stack_size =
+                MIN_TEMP_HIST_STACK_SIZE.max(Self::calc_ideal_stack_size(&data.profile)) as usize;
         }
         Self::fill_temp_stack(metadata, data, temp_source_device_option);
 
@@ -509,6 +512,20 @@ impl FunctionSafetyLatchProcessor {
             scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn initial_max_no_duty_set_count(profile: &NormalizedGraphProfile) -> u8 {
+        if profile.function.response_delay.is_some() {
+            let response_delay_secs = f64::from(profile.function.response_delay.unwrap());
+            let response_delay_count = response_delay_secs / profile.poll_rate;
+            // use response_delay but within a reasonable limit
+            let min_count = (MIN_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil();
+            let max_count = (MAX_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil();
+            response_delay_count.clamp(min_count, max_count) as u8
+        } else {
+            (DEFAULT_MAX_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil() as u8
+        }
+    }
 }
 
 impl Processor for FunctionSafetyLatchProcessor {
@@ -536,14 +553,7 @@ impl Processor for FunctionSafetyLatchProcessor {
             // Check whether to trigger the latch at the start of processing
             if metadata.max_no_duty_set_count == 0 {
                 // first run, set the max_count
-                let max_count = if data.profile.function.response_delay.is_some() {
-                    let response_delay = data.profile.function.response_delay.unwrap();
-                    // use response_delay but within a reasonable limit
-                    response_delay.clamp(MIN_NO_DUTY_SET_COUNT, MAX_NO_DUTY_SET_COUNT)
-                } else {
-                    DEFAULT_MAX_NO_DUTY_SET_COUNT
-                };
-                metadata.max_no_duty_set_count = max_count;
+                metadata.max_no_duty_set_count = Self::initial_max_no_duty_set_count(&data.profile);
             }
             if metadata.no_duty_set_counter >= metadata.max_no_duty_set_count {
                 data.safety_latch_triggered = true;
@@ -581,9 +591,9 @@ pub struct SafetyLatchMetadata {
 impl SafetyLatchMetadata {
     pub fn new() -> Self {
         Self {
-            // Settings the default value to max will force the SafetyLatch to trigger on
-            // latch initialization. (such as when applying the profile to a second device channel)
-            no_duty_set_counter: MAX_NO_DUTY_SET_COUNT,
+            // This will force the SafetyLatch to trigger on latch initialization. (such as when
+            // applying the profile to a second device channel)
+            no_duty_set_counter: u8::MAX,
             max_no_duty_set_count: 0,
         }
     }

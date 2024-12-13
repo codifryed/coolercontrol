@@ -16,10 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-
-use serde::{Deserialize, Serialize};
 
 use crate::device::{ChannelName, DeviceUID, Duty, Temp};
 use crate::setting::{Function, ProfileUID, TempSource};
@@ -83,6 +82,7 @@ pub struct NormalizedGraphProfile {
     speed_profile: Vec<(Temp, Duty)>,
     temp_source: TempSource,
     function: Function,
+    poll_rate: f64,
 }
 
 impl Default for NormalizedGraphProfile {
@@ -96,6 +96,7 @@ impl Default for NormalizedGraphProfile {
                 device_uid: String::default(),
             },
             function: Function::default(),
+            poll_rate: 1.0,
         }
     }
 }

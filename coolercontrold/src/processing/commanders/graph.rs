@@ -273,12 +273,14 @@ impl GraphProfileCommander {
         let function = self.get_profiles_function(&profile.function_uid).await?;
         let normalized_speed_profile =
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
+        let poll_rate = self.config.get_settings()?.poll_rate.as_secs_f64();
         Ok(NormalizedGraphProfile {
             profile_uid: profile.uid.clone(),
             profile_name: profile.name.clone(),
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),
             function,
+            poll_rate,
         })
     }
 
