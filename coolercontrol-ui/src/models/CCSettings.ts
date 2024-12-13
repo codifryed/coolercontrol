@@ -30,6 +30,7 @@ export class CoolerControlSettingsDTO {
     hide_duplicate_devices: boolean = true
     liquidctl_integration: boolean = true
     compress: boolean = false
+    poll_rate: number = 1.0
 }
 
 /**

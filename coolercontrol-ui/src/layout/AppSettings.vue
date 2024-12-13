@@ -17,14 +17,14 @@
   -->
 
 <script setup lang="ts">
-import { inject, type Ref, ref } from 'vue'
+import { inject, type Ref, ref, watch } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
-import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiRestartAlert, mdiViewQuiltOutline } from '@mdi/js'
+import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiRestart, mdiViewQuiltOutline } from '@mdi/js'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
@@ -49,6 +49,7 @@ const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+import _ from 'lodash'
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -149,26 +150,31 @@ for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
     blacklistedDevices.value.push(deviceSettings)
 }
 const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
-const applyGenericDaemonChange = () => {
-    confirm.require({
-        message:
-            'Changing this setting requires a daemon and UI restart. ' +
-            'Are you sure want to do this now?',
-        header: 'Apply Setting and Restart',
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        accept: async () => {
-            toast.add({
-                severity: 'success',
-                summary: 'Success',
-                detail: 'Restarting now',
-                life: 6000,
-            })
-            await deviceStore.daemonClient.shutdownDaemon()
-            await deviceStore.waitAndReload(5)
-        },
-    })
-}
+const applyGenericDaemonChange = _.debounce(
+    () =>
+        confirm.require({
+            message:
+                'Changing this setting requires a daemon and UI restart. ' +
+                'Are you sure want to do this now?',
+            header: 'Apply Setting and Restart',
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'accept',
+            accept: async () => {
+                toast.add({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: 'Restarting now',
+                    life: 6000,
+                })
+                await deviceStore.daemonClient.shutdownDaemon()
+                await deviceStore.waitAndReload(5)
+            },
+            reject: () => {
+                return false
+            },
+        }),
+    2000,
+)
 const reEnableSelected = () => {
     if (selectedBlacklistedDevices.value.length === 0) {
         return
@@ -225,6 +231,11 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
+const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
+watch(pollRate, () => {
+    settingsStore.ccSettings.poll_rate = pollRate.value
+    applyGenericDaemonChange()
+})
 </script>
 
 <template>
@@ -432,11 +443,13 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers a restart of the UI'"
+                                            v-tooltip.top="
+                                                'Triggers an automatic restart of the UI'
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -712,6 +725,51 @@ const resetDaemonSettings = () => {
                                 </tr>
                                 <tr
                                     v-tooltip.right="
+                                        'The rate at which sensor data is polled (in seconds).\n' +
+                                        'A higher poll rate will reduce resource usage, and a lower will increase responsiveness.\n' +
+                                        'A rate of less than 1.0 should be used with caution.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestart"
+                                                :size="deviceStore.getREMSize(1.1)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">Polling Rate</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <InputNumber
+                                            v-model="pollRate"
+                                            show-buttons
+                                            :min="0.5"
+                                            :max="5.0"
+                                            suffix=" s"
+                                            :step="0.5"
+                                            :min-fraction-digits="1"
+                                            button-layout="horizontal"
+                                            :input-style="{ width: '5rem' }"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
                                         'Enable response compression to reduce API payload size,\n' +
                                         'but note that this will increase CPU usage.'
                                     "
@@ -721,11 +779,11 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers a daemon restart'"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -755,11 +813,11 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers a daemon restart'"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -815,11 +873,11 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers a daemon restart'"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -848,11 +906,11 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers a daemon restart'"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -974,11 +1032,11 @@ const resetDaemonSettings = () => {
                                     >
                                         <div
                                             class="float-left h-[2.375rem] content-center"
-                                            v-tooltip.top="'Triggers a daemon restart'"
+                                            v-tooltip.top="'Triggers an automatic UI restart'"
                                         >
                                             <svg-icon
                                                 type="mdi"
-                                                :path="mdiRestartAlert"
+                                                :path="mdiRestart"
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
@@ -1125,6 +1183,7 @@ const resetDaemonSettings = () => {
     // switch inactive text color:
     --el-text-color-primary: rgb(var(--colors-text-color));
 }
+
 .color-wrapper {
     line-height: normal;
     height: 2rem;
@@ -1183,6 +1242,7 @@ const resetDaemonSettings = () => {
     height: 0;
     width: 0;
 }
+
 .color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
     display: none;
     height: 0;

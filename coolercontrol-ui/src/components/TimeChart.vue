@@ -89,12 +89,12 @@ const initUSeriesData = () => {
     uLineNames.length = 0
 
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = timeRangeSeconds
-    const uTimeData = new Uint32Array(currentStatusLength)
+    const currentStatusLength = timeRangeSeconds / settingsStore.ccSettings.poll_rate
+    const uTimeData = new Float64Array(currentStatusLength)
     for (const [statusIndex, status] of firstDevice.status_history
         .slice(-currentStatusLength)
         .entries()) {
-        uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
+        uTimeData[statusIndex] = new Date(status.timestamp).getTime() / 1000 // Status' Unix timestamp
     }
 
     // We need to use decimal values for at least temps, so Float32.
@@ -224,11 +224,11 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = timeRangeSeconds
+    const currentStatusLength = timeRangeSeconds / settingsStore.ccSettings.poll_rate
     shiftSeriesData(1)
 
     const newTimestamp = firstDevice.status.timestamp
-    uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
+    uSeriesData[0][currentStatusLength - 1] = new Date(newTimestamp).getTime() / 1000
 
     for (const device of deviceStore.allDevices()) {
         if (!includesDevice(device.uid)) continue
