@@ -80,6 +80,7 @@ import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
 import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
 import { useDaemonState } from '@/stores/DaemonState.ts'
+import TreeIcon from '@/components/TreeIcon.vue'
 
 // interface Tree {
 //     label: string
@@ -647,9 +648,6 @@ const calcDropdownPosition = (data: any): string => {
     return 'mr-[0.2rem] mb-[-1.9rem]'
 }
 
-onMounted(async () => {
-    applyFilter('') // at startup this filters hidden items out.
-})
 watch(settingsStore.allUIDeviceSettings, () => {
     applyFilter('') // update filter if hidden sensors change
 })
@@ -659,6 +657,21 @@ watch(
         applyFilter('') // update filter if show/hide settings changes
     },
 )
+onMounted(async () => {
+    applyFilter('') // at startup this filters hidden items out.
+
+    // custom tree leaf h-line
+    const els = document.getElementsByClassName('el-tree-node__expand-icon is-leaf')
+    if (els.length > 0) {
+        for (const el of els) {
+            el.innerHTML = ''
+            el.classList.add('border-l')
+            el.classList.add('border-border-one/40')
+            el.classList.add('!visible')
+            el.classList.add('!h-[inherit]')
+        }
+    }
+})
 </script>
 
 <template>
@@ -697,6 +710,7 @@ watch(
             :indent="deviceStore.getREMSize(0.5)"
             :default-expanded-keys="expandedNodeIds()"
             :render-after-expand="false"
+            :icon="TreeIcon"
             @node-collapse="(node) => settingsStore.collapsedMenuNodeIds.push(node.id)"
             @node-expand="
                 (node) => {
@@ -1033,5 +1047,9 @@ watch(
 .el-zoom-in-top-leave-to {
     transition-duration: 0ms;
     transition-delay: 0;
+}
+.el-tree-node__expand-icon {
+    font-size: 1rem;
+    padding-left: 1px !important;
 }
 </style>
