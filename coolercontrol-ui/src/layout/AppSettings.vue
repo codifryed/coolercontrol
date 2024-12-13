@@ -831,6 +831,7 @@ watch(pollRate, () => {
                                         <el-switch
                                             v-model="settingsStore.ccSettings.liquidctl_integration"
                                             size="large"
+                                            @change="applyGenericDaemonChange"
                                         />
                                     </td>
                                 </tr>
