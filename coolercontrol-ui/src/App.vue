@@ -127,7 +127,7 @@ const steps = [
         content: {
             title: 'System Menu',
             description:
-                "This is the main menu where this system's devices and sensors can be viewed and controlled.",
+                "This is the start of the main menu where this system's devices and sensors can be viewed and controlled.",
         },
         options: {
             popper: {

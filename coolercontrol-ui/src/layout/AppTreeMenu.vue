@@ -675,8 +675,9 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div id="system-menu" class="">
+    <div class="">
         <div
+            id="system-menu"
             class="text-text-color font-bold text-xl mt-[0.25rem] ml-4 mr-6 mb-1 border-b border-border-one pb-1"
         >
             {{ daemonState.systemName }}
