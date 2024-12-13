@@ -642,7 +642,7 @@ const deleteFunction = (functionUID: UID): void => {
 
 const calcDropdownPosition = (data: any): string => {
     if (data.id === 'dashboards') {
-        return 'mr-[1.0rem] mb-[-1.9rem]'
+        return 'mr-[1.0rem] mb-[-3.0rem]'
     }
     return 'mr-[0.2rem] mb-[-1.9rem]'
 }
