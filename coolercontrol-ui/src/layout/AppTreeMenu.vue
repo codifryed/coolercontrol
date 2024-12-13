@@ -807,7 +807,7 @@ watch(
                             </div>
                             <div
                                 v-else-if="data.rpm != null && data.duty == null"
-                                class="items-end flex tree-data"
+                                class="items-end tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
