@@ -642,7 +642,7 @@ const deleteFunction = (functionUID: UID): void => {
 
 const calcDropdownPosition = (data: any): string => {
     if (data.id === 'dashboards') {
-        return 'mr-[1.0rem] mb-[-3.0rem]'
+        return 'mr-[1.0rem] mb-[-1.9rem]'
     }
     return 'mr-[0.2rem] mb-[-1.9rem]'
 }
@@ -664,7 +664,7 @@ watch(
 <template>
     <div id="system-menu" class="">
         <div
-            class="text-text-color font-bold text-xl mt-0.5 ml-4 mr-6 mb-1 border-b border-border-one pb-1"
+            class="text-text-color font-bold text-xl mt-[0.25rem] ml-4 mr-6 mb-1 border-b border-border-one pb-1"
         >
             {{ daemonState.systemName }}
         </div>
