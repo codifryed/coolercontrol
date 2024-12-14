@@ -1,6 +1,6 @@
 [package]
 name = "coolercontrol"
-version = "1.4.4"
+version = "1.4.5"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 # MSRV for all included libraries

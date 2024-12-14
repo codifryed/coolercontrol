@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.5] - 2024-12-14
+
+### Added
+
+- Support for AMD APU processors (#352)
+- Support for virtual HWMon drivers (#376)
+
+### Changed
+
+- Use versioned NVML system library
+
+### Fixed
+
+- Infer standard http ports from the URL (#378)
+- Incorrect WMClass name in desktop entry (#238)
+
+### Dependency
+
+- Most dependencies updated to latest versions
+
 ## [1.4.4] - 2024-11-02
 
 ### Added

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coolercontrol_liqctld"
-version = "1.4.4"
+version = "1.4.5"
 authors = [{ name = "Guy Boldon", email = "gb@guyboldon.com" }]
 description = "Monitor and control your cooling and other devices"
 readme = "README.md"
