@@ -380,15 +380,14 @@ onMounted(async () => {
         <div class="pl-4 py-2 text-2xl">
             {{ shouldCreateSensor ? `New Sensor: ${currentName}` : currentName }}
         </div>
-        <div class="flex justify-end">
+        <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="
                     chosenViewType === ChannelViewType.Dashboard &&
                     singleDashboard.chartType == ChartType.TIME_CHART
                 "
-                class="border-r-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
+                class="p-2 flex flex-row"
             >
-                <axis-options class="h-[2.375rem] mr-3" :dashboard="singleDashboard" />
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"
@@ -412,10 +411,11 @@ onMounted(async () => {
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
+                <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
             <div
                 v-if="chosenViewType === ChannelViewType.Dashboard"
-                class="border-r-2 pr-4 py-2 pl-4 border-border-one"
+                class="p-2"
             >
                 <Select
                     v-model="singleDashboard.chartType"
@@ -430,12 +430,12 @@ onMounted(async () => {
             </div>
             <div
                 v-if="!shouldCreateSensor"
-                class="border-l-0 px-4 py-2 border-border-one flex flex-row"
+                class="p-2"
             >
                 <Select
                     v-model="chosenViewType"
                     :options="viewTypeOptions"
-                    class="w-32"
+                    class="w-32 h-[2.375rem]"
                     placeholder="View Type"
                     checkmark
                     dropdown-icon="pi pi-sliders-h"
@@ -444,7 +444,7 @@ onMounted(async () => {
                     v-tooltip.bottom="'Control this channel or view its dashboard.'"
                 />
             </div>
-            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+            <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"

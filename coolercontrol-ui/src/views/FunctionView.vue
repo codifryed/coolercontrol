@@ -228,8 +228,8 @@ onMounted(async () => {
         <div class="pl-4 py-2 text-2xl">
             {{ givenName }}
         </div>
-        <div class="flex justify-end">
-            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+        <div class="flex flex-wrap gap-x-1 justify-end">
+            <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"

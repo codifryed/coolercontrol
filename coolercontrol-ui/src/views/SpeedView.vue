@@ -232,10 +232,10 @@ onMounted(() => {
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="pl-4 py-2 text-2xl">{{ props.channelName }}</div>
-        <div class="flex justify-end">
+        <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"
-                class="border-l-0 pr-4 py-2 pl-4 border-border-one"
+                class="p-2"
             >
                 <InputNumber
                     placeholder="Duty"
@@ -269,7 +269,7 @@ onMounted(() => {
             </div>
             <div
                 v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
-                class="border-l-0 pr-4 py-2 pl-4 border-border-one"
+                class="p-2"
             >
                 <Select
                     v-model="selectedProfile"
@@ -288,7 +288,7 @@ onMounted(() => {
                     chosenViewType === ChannelViewType.Dashboard &&
                     singleDashboard.chartType == ChartType.TIME_CHART
                 "
-                class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
+                class="p-2 flex flex-row"
             >
                 <InputNumber
                     placeholder="Minutes"
@@ -317,7 +317,7 @@ onMounted(() => {
             </div>
             <div
                 v-if="chosenViewType === ChannelViewType.Dashboard"
-                class="border-l-2 pr-4 py-2 pl-4 border-border-one"
+                class="p-2"
             >
                 <Select
                     v-model="singleDashboard.chartType"
@@ -330,7 +330,7 @@ onMounted(() => {
                     v-tooltip.bottom="'Chart Type'"
                 />
             </div>
-            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+            <div class="p-2 flex flex-row">
                 <Select
                     v-if="chosenViewType === ChannelViewType.Control"
                     v-model="manualControlEnabled"
@@ -370,7 +370,7 @@ onMounted(() => {
                     v-tooltip.bottom="'Control this channel or view its dashboard.'"
                 />
             </div>
-            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+            <div class="p-2 flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Apply"

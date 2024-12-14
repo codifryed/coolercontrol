@@ -1170,10 +1170,10 @@ onMounted(async () => {
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="pl-4 py-2 text-2xl">{{ currentProfile.name }}</div>
-        <div class="flex justify-end">
+        <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="selectedType === ProfileType.Mix"
-                class="border-l-0 pr-4 py-2 border-border-one flex flex-row"
+                class="p-2 flex flex-row"
             >
                 <Select
                     v-model="chosenProfileMixFunction"
@@ -1197,9 +1197,9 @@ onMounted(async () => {
                     :invalid="chosenMemberProfiles.length < 2"
                 />
             </div>
-            <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-row">
+            <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-wrap justify-end">
                 <div
-                    class="border-l-0 px-4 py-2 border-border-one flex flex-row leading-none items-center"
+                    class="p-2 flex leading-none items-center"
                     v-tooltip.bottom="
                         'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add a point.\n- Right-click on point to remove point.\n- Drag point to move.'
                     "
@@ -1210,7 +1210,7 @@ onMounted(async () => {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </div>
-                <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                <div class="p-2 flex flex-row">
                     <InputNumber
                         placeholder="Duty"
                         v-model="selectedDuty"
@@ -1262,18 +1262,20 @@ onMounted(async () => {
                         </template>
                     </InputNumber>
                 </div>
-                <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                <div class="p-2">
                     <Select
                         v-model="chosenFunction"
                         :options="settingsStore.functions"
                         option-label="name"
                         placeholder="Function"
-                        class="w-44 mr-2"
+                        class="w-44"
                         checkmark
                         dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
                         v-tooltip.bottom="'Function to apply to the Profile'"
                     />
+                </div>
+                <div class="p-2">
                     <Select
                         v-model="chosenTemp"
                         :options="tempSources"
@@ -1319,7 +1321,7 @@ onMounted(async () => {
             </div>
             <div
                 v-else-if="selectedType === ProfileType.Fixed"
-                class="border-l-0 pr-4 py-2 pl-4 border-border-one"
+                class="p-2"
             >
                 <InputNumber
                     placeholder="Duty"
@@ -1346,12 +1348,12 @@ onMounted(async () => {
                     </template>
                 </InputNumber>
             </div>
-            <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
+            <div class="p-2">
                 <Select
                     v-model="selectedType"
                     :options="profileTypes"
                     placeholder="Profile Type"
-                    class="w-24"
+                    class="w-24 h-[2.375rem]"
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
@@ -1364,7 +1366,7 @@ onMounted(async () => {
                     "
                 />
             </div>
-            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+            <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"

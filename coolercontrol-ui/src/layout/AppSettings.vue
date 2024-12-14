@@ -245,7 +245,7 @@ watch(pollRate, () => {
         <ScrollAreaViewport class="pb-16 h-screen w-full">
             <Tabs value="0">
                 <TabList>
-                    <Tab value="0" as="div" class="flex w-60 justify-center items-center gap-2">
+                    <Tab value="0" as="div" class="flex w-1/4 justify-center items-center gap-2">
                         <svg-icon
                             type="mdi"
                             :path="mdiViewQuiltOutline"
@@ -253,7 +253,7 @@ watch(pollRate, () => {
                         />
                         Interface
                     </Tab>
-                    <Tab value="1" as="div" class="flex w-60 justify-center items-center gap-2">
+                    <Tab value="1" as="div" class="flex w-1/4 justify-center items-center gap-2">
                         <svg-icon
                             type="mdi"
                             :path="mdiDnsOutline"
@@ -264,7 +264,7 @@ watch(pollRate, () => {
                     <Tab
                         value="2"
                         as="div"
-                        class="flex w-60 justify-center items-center gap-2"
+                        class="flex w-1/4 justify-center items-center gap-2"
                         :disabled="!deviceStore.isTauriApp()"
                     >
                         <svg-icon
@@ -277,7 +277,7 @@ watch(pollRate, () => {
                     <Tab
                         value="3"
                         as="div"
-                        class="flex w-60 justify-center items-center gap-2"
+                        class="flex w-1/4 justify-center items-center gap-2"
                         :disabled="!deviceStore.isThinkPad"
                     >
                         <svg-icon
