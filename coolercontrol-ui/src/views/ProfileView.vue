@@ -1171,10 +1171,7 @@ onMounted(async () => {
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="pl-4 py-2 text-2xl">{{ currentProfile.name }}</div>
         <div class="flex flex-wrap gap-x-1 justify-end">
-            <div
-                v-if="selectedType === ProfileType.Mix"
-                class="p-2 flex flex-row"
-            >
+            <div v-if="selectedType === ProfileType.Mix" class="p-2 flex flex-row">
                 <Select
                     v-model="chosenProfileMixFunction"
                     :options="mixFunctionTypes"
@@ -1319,10 +1316,7 @@ onMounted(async () => {
                     </Select>
                 </div>
             </div>
-            <div
-                v-else-if="selectedType === ProfileType.Fixed"
-                class="p-2"
-            >
+            <div v-else-if="selectedType === ProfileType.Fixed" class="p-2">
                 <InputNumber
                     placeholder="Duty"
                     v-model="selectedDuty"

@@ -315,10 +315,7 @@ onMounted(() => {
                 </InputNumber>
                 <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
-            <div
-                v-if="chosenViewType === ChannelViewType.Dashboard"
-                class="p-2"
-            >
+            <div v-if="chosenViewType === ChannelViewType.Dashboard" class="p-2">
                 <Select
                     v-model="singleDashboard.chartType"
                     :options="chartTypes"
