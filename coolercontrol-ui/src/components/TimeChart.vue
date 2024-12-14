@@ -484,7 +484,10 @@ const uOptions: uPlot.Options = {
                 if (!hasFrequencyAxis) return [null, null]
                 return props.dashboard.autoScaleFrequency
                     ? uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
-                    : [props.dashboard.frequencyMin, props.dashboard.frequencyMax]
+                    : [
+                          props.dashboard.frequencyMin / settingsStore.frequencyPrecision,
+                          props.dashboard.frequencyMax / settingsStore.frequencyPrecision,
+                      ]
             },
         },
         x: {

@@ -17,8 +17,6 @@
   -->
 
 <script setup lang="ts">
-import { mdiAxisArrow, mdiAxisXArrow, mdiAxisYArrow } from '@mdi/js'
-import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { ElSwitch } from 'element-plus'
@@ -26,13 +24,32 @@ import 'element-plus/es/components/switch/style/css'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import InputNumber from 'primevue/inputnumber'
+import { mdiAxisArrow, mdiAxisXArrow, mdiAxisYArrow } from '@mdi/js'
+import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { ref, Ref, watch } from 'vue'
 
 interface Props {
     dashboard: Dashboard
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
+
+const precision = settingsStore.frequencyPrecision
+const freqIsMhz = precision === 1
+const freqStepSize = 100.0 / precision
+const freqMaxLimit = 100_000 / precision
+const freqScaledMin: Ref<number> = ref(props.dashboard.frequencyMin / precision)
+const freqScaledMax: Ref<number> = ref(props.dashboard.frequencyMax / precision)
+
+watch(freqScaledMin, () => {
+    props.dashboard.frequencyMin = freqScaledMin.value * precision
+})
+watch(freqScaledMax, () => {
+    props.dashboard.frequencyMax = freqScaledMax.value * precision
+})
 </script>
 
 <template>
@@ -74,7 +91,7 @@ const deviceStore = useDeviceStore()
                                 </th>
                                 <th colspan="2" class="w-48 p-2 border-b border-border-one">
                                     <span class="flex flex-row justify-center">
-                                        RPM / Mhz
+                                        {{ freqIsMhz ? 'rpm / Mhz' : 'krpm / Ghz' }}
                                         <svg-icon
                                             class="outline-0 ml-2"
                                             type="mdi"
@@ -132,13 +149,14 @@ const deviceStore = useDeviceStore()
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         placeholder="Max"
-                                        v-model="dashboard.frequencyMax"
+                                        v-model="freqScaledMax"
                                         class="my-1"
                                         show-buttons
                                         :use-grouping="true"
-                                        :step="100"
-                                        :min="dashboard.frequencyMin + 5"
-                                        :max="100_000"
+                                        :step="freqStepSize"
+                                        :min="freqScaledMin + freqStepSize"
+                                        :max="freqMaxLimit"
+                                        :min-fraction-digits="freqIsMhz ? 0 : 1"
                                         button-layout="horizontal"
                                         :allow-empty="false"
                                         :input-style="{ width: '5rem' }"
@@ -182,13 +200,14 @@ const deviceStore = useDeviceStore()
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         placeholder="Min"
-                                        v-model="dashboard.frequencyMin"
+                                        v-model="freqScaledMin"
                                         class="my-1"
                                         show-buttons
-                                        :use-grouping="false"
-                                        :step="100"
+                                        :use-grouping="true"
+                                        :step="freqStepSize"
                                         :min="0"
-                                        :max="dashboard.frequencyMax - 5"
+                                        :max="freqScaledMax - freqStepSize"
+                                        :min-fraction-digits="freqIsMhz ? 0 : 1"
                                         button-layout="horizontal"
                                         :allow-empty="false"
                                         :input-style="{ width: '5rem' }"

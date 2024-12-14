@@ -42,6 +42,7 @@ export class Dashboard {
     degreeMin: number = 0
 
     // These are the scale min & maxes used when using a static Frequency Axis Scale
+    // These values stay in Mhz/rpms units and are not affected by frequency precision
     frequencyMax: number = 10_000
     frequencyMin: number = 0
 
