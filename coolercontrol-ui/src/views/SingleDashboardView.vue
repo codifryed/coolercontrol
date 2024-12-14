@@ -98,7 +98,6 @@ onMounted(async () => {
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"
                 class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
             >
-                <axis-options class="h-[2.375rem] mr-3" :dashboard="singleDashboard" />
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"
@@ -122,13 +121,14 @@ onMounted(async () => {
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
+                <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
             <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
                 <Select
                     v-model="singleDashboard.chartType"
                     :options="chartTypes"
                     placeholder="Select a Chart Type"
-                    class="w-32"
+                    class="h-[2.375rem] w-32"
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"

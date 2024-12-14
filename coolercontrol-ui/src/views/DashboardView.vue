@@ -184,7 +184,7 @@ onMounted(async () => {
                 <MultiSelect
                     v-model="chosenSensorSources"
                     :options="sensorSources"
-                    class="w-36"
+                    class="w-36 h-[2.375rem]"
                     placeholder="Filter Sensors"
                     filter-placeholder="Search"
                     filter
@@ -222,7 +222,7 @@ onMounted(async () => {
                 <MultiSelect
                     v-model="dashboard.dataTypes"
                     :options="dataTypes"
-                    class="ml-3 w-36"
+                    class="ml-3 w-36 h-[2.375rem]"
                     placeholder="Filter Types"
                     :dropdown-icon="
                         dashboard.dataTypes.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
@@ -234,7 +234,6 @@ onMounted(async () => {
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
                 class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
             >
-                <axis-options class="h-[2.375rem] mr-3" :dashboard="dashboard" />
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"
@@ -258,6 +257,7 @@ onMounted(async () => {
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
+                <axis-options class="h-[2.375rem] ml-3" :dashboard="dashboard" />
             </div>
             <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
                 <Select

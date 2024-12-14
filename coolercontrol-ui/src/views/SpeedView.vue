@@ -290,7 +290,6 @@ onMounted(() => {
                 "
                 class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
             >
-                <axis-options class="h-[2.375rem] mr-3" :dashboard="singleDashboard" />
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"
@@ -314,6 +313,7 @@ onMounted(() => {
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
+                <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
             <div
                 v-if="chosenViewType === ChannelViewType.Dashboard"
