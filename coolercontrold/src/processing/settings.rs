@@ -19,7 +19,6 @@
 use std::collections::HashMap;
 use std::ops::Not;
 use std::rc::Rc;
-use std::time::Duration;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
@@ -550,13 +549,13 @@ impl SettingsController {
 
     /// This reinitialized the status history for all devices. This is helpful for example when
     /// waking from sleep, as the status history is no longer sequential.
-    pub fn reinitialize_all_status_histories(&self) {
+    pub fn reinitialize_all_status_histories(&self) -> Result<()> {
+        let poll_rate = self.config.get_settings()?.poll_rate;
         for (_uid, device) in self.all_devices.iter() {
             let most_recent_status = device.borrow().status_current().unwrap();
             let adjusted_recent_status = Status {
-                // next status snapshot after wake timing estimate:
-                //   now + 100ms(main loop delay) + 400ms(snapshot_update_initial_delay)
-                timestamp: Local::now() - Duration::from_millis(500),
+                // The next snapshot will most likely be after another loop interval:
+                timestamp: Local::now(),
                 temps: most_recent_status
                     .temps
                     .into_iter()
@@ -574,8 +573,9 @@ impl SettingsController {
             };
             device
                 .borrow_mut()
-                .initialize_status_history_with(adjusted_recent_status);
+                .initialize_status_history_with(adjusted_recent_status, poll_rate);
         }
+        Ok(())
     }
 
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {

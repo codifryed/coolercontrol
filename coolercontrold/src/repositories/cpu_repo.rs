@@ -491,6 +491,7 @@ impl Repository for CpuRepo {
             ));
         }
 
+        let poll_rate = self.config.get_settings()?.poll_rate;
         let mut cpu_freqs = Self::collect_freq().await;
         for (physical_id, driver) in hwmon_devices {
             let (channels, temps) = self
@@ -552,13 +553,14 @@ impl Repository for CpuRepo {
                     ..Default::default()
                 },
                 None,
+                poll_rate,
             );
             let status = Status {
                 temps,
                 channels,
                 ..Default::default()
             };
-            device.initialize_status_history_with(status);
+            device.initialize_status_history_with(status, poll_rate);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(

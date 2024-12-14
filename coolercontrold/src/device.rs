@@ -30,7 +30,7 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
-pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
+const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of recorded data
 
 #[allow(clippy::upper_case_acronyms)]
 pub type UID = String;
@@ -109,18 +109,24 @@ impl Device {
         lc_info: Option<LcInfo>,
         info: DeviceInfo,
         device_id: Option<String>,
+        poll_rate: f64,
     ) -> Self {
-        let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);
+        let uid = Self::create_uid_from(&name, &d_type, type_index, device_id.as_ref());
+        let status_history = VecDeque::with_capacity(Self::calc_history_stack_size(poll_rate));
         Device {
             name,
             d_type,
             type_index,
             uid,
             device_id,
-            status_history: VecDeque::with_capacity(STATUS_SIZE),
+            status_history,
             lc_info,
             info,
         }
+    }
+
+    fn calc_history_stack_size(poll_rate: f64) -> usize {
+        (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
     }
 
     /// This returns a sha256 hash string of an attempted unique identifier for a device.
@@ -131,7 +137,7 @@ impl Device {
         name: &str,
         d_type: &DeviceType,
         type_index: u8,
-        device_id: &Option<String>,
+        device_id: Option<&String>,
     ) -> UID {
         let mut hasher = Sha256::new();
         hasher.update(d_type.clone().to_string());
@@ -162,7 +168,8 @@ impl Device {
     /// Arguments:
     ///
     /// * `status`: of type `Status`. It represents the current status of a system or device.
-    pub fn initialize_status_history_with(&mut self, status: Status) {
+    #[allow(clippy::cast_precision_loss)]
+    pub fn initialize_status_history_with(&mut self, status: Status, poll_rate: f64) {
         let zeroed_temps = status
             .temps
             .iter()
@@ -182,9 +189,10 @@ impl Device {
             })
             .collect::<Vec<ChannelStatus>>();
         self.status_history.clear();
-        for pos in (1..STATUS_SIZE).rev() {
+        let status_stack_size = Self::calc_history_stack_size(poll_rate);
+        for pos in (1..status_stack_size).rev() {
             let zeroed_status = Status {
-                timestamp: status.timestamp - Duration::from_secs(pos as u64),
+                timestamp: status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };

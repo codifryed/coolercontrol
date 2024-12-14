@@ -490,6 +490,7 @@ impl Repository for CustomSensorsRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
+        let poll_rate = self.config.get_settings()?.poll_rate;
         let custom_sensors = self.config.get_custom_sensors()?;
         let temp_infos = custom_sensors
             .iter()
@@ -523,6 +524,7 @@ impl Repository for CustomSensorsRepo {
                 ..Default::default()
             },
             None,
+            poll_rate,
         )));
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(custom_sensor_device);
@@ -539,7 +541,7 @@ impl Repository for CustomSensorsRepo {
             .as_ref()
             .unwrap()
             .borrow_mut()
-            .initialize_status_history_with(recent_status);
+            .initialize_status_history_with(recent_status, poll_rate);
         if log::max_level() == log::LevelFilter::Debug {
             info!(
                 "Initialized Custom Sensors Device: {:?}",

@@ -215,7 +215,7 @@ async fn wake_from_sleep(
         settings_controller.reinitialize_devices().await;
         mode_controller.apply_all_saved_device_settings().await;
     }
-    settings_controller.reinitialize_all_status_histories();
+    settings_controller.reinitialize_all_status_histories()?;
     sleep_listener.resuming(false);
     sleep_listener.preparing_to_sleep(false);
     Ok(())

@@ -218,6 +218,7 @@ impl GpuAMD {
 
     pub async fn initialize_amd_devices(&mut self) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
+        let poll_rate = self.config.get_settings()?.poll_rate;
         for (index, amd_driver) in self.init_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
@@ -303,13 +304,14 @@ impl GpuAMD {
                     ..Default::default()
                 },
                 Some(amd_driver.hwmon.u_id.clone()),
+                poll_rate,
             );
             let status = Status {
                 channels: amd_status.0,
                 temps: amd_status.1,
                 ..Default::default()
             };
-            device.initialize_status_history_with(status);
+            device.initialize_status_history_with(status, poll_rate);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!(

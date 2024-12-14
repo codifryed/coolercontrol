@@ -229,6 +229,7 @@ impl GpuNVidia {
         starting_nvidia_index: u8,
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
+        let poll_rate = self.config.get_settings()?.poll_rate;
         for (gpu_index, device) in &self.nvidia_nvml_devices {
             let type_index = gpu_index + starting_nvidia_index;
             let name = device
@@ -388,13 +389,14 @@ impl GpuNVidia {
                     ..Default::default()
                 },
                 None,
+                poll_rate,
             );
             let status = Status {
                 channels: channel_status,
                 temps: temp_status,
                 ..Default::default()
             };
-            device_raw.initialize_status_history_with(status);
+            device_raw.initialize_status_history_with(status, poll_rate);
             let uid = device_raw.uid.clone();
             let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -688,6 +690,7 @@ impl GpuNVidia {
         starting_nvidia_index: u8,
     ) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
+        let poll_rate = self.config.get_settings()?.poll_rate;
         {
             let xauthority_path = Self::search_for_xauthority_path().await;
             self.xauthority_path.replace(xauthority_path);
@@ -776,8 +779,9 @@ impl GpuNVidia {
                             ..Default::default()
                         },
                         None,
+                        poll_rate,
                     );
-                    device_raw.initialize_status_history_with(status);
+                    device_raw.initialize_status_history_with(status, poll_rate);
                     let uid = device_raw.uid.clone();
                     let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
                     if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {

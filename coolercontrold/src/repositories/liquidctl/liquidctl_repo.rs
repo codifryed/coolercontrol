@@ -96,6 +96,7 @@ impl LiquidctlRepo {
     pub async fn get_devices(&mut self) -> Result<()> {
         let devices_response = self.liqctld_client.get_all_devices().await?;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
+        let poll_rate = self.config.get_settings()?.poll_rate;
 
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
@@ -125,6 +126,7 @@ impl LiquidctlRepo {
                 }),
                 device_info,
                 unique_device_identifiers.remove(&device_response.id),
+                poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -613,13 +615,15 @@ impl LiquidctlRepo {
 
     /// The function initializes the status history of all devices with their current status.
     /// This is to be called on startup only.
-    pub fn initialize_all_device_status_histories_with_current_status(&self) {
+    pub fn initialize_all_device_status_histories_with_current_status(&self) -> Result<()> {
+        let poll_rate = self.config.get_settings()?.poll_rate;
         for device_lock in self.devices.values() {
             let recent_status = device_lock.borrow().status_current().unwrap();
             device_lock
                 .borrow_mut()
-                .initialize_status_history_with(recent_status);
+                .initialize_status_history_with(recent_status, poll_rate);
         }
+        Ok(())
     }
 }
 

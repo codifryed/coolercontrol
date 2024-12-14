@@ -124,7 +124,11 @@ impl HwmonRepo {
     /// Maps driver infos to our Devices
     /// `ThinkPads` need special handling, see:
     /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
-    async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
+    async fn map_into_our_device_model(
+        &mut self,
+        hwmon_drivers: Vec<HwmonDriverInfo>,
+    ) -> Result<()> {
+        let poll_rate = self.config.get_settings()?.poll_rate;
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
             let temps = driver
                 .channels
@@ -203,13 +207,14 @@ impl HwmonRepo {
                 None,
                 device_info,
                 Some(driver.u_id.clone()),
+                poll_rate,
             );
             let status = Status {
                 channels: channel_statuses,
                 temps: temp_statuses,
                 ..Default::default()
             };
-            device.initialize_status_history_with(status);
+            device.initialize_status_history_with(status, poll_rate);
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device.uid)
@@ -227,6 +232,7 @@ impl HwmonRepo {
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
             );
         }
+        Ok(())
     }
 
     /// Gets the info necessary to apply setting to the device channel
@@ -329,7 +335,7 @@ impl Repository for HwmonRepo {
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
 
-        self.map_into_our_device_model(hwmon_drivers).await;
+        self.map_into_our_device_model(hwmon_drivers).await?;
 
         let mut init_devices = HashMap::new();
         for (uid, (device, hwmon_info)) in &self.devices {
