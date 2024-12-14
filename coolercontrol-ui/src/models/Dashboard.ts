@@ -52,9 +52,6 @@ export class Dashboard {
     @Type(() => DashboardDeviceChannel)
     deviceChannelNames: Array<DashboardDeviceChannel> = []
 
-    // Tags UIDs to filter by
-    tags: Array<UID> = []
-
     constructor(dashboardName: string) {
         this.name = dashboardName
     }

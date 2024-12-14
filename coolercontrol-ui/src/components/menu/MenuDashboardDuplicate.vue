@@ -57,7 +57,6 @@ const duplicateDashboard = (): void => {
     newDashboard.frequencyMin = dashboardToDuplicate.frequencyMin
     newDashboard.dataTypes = dashboardToDuplicate.dataTypes
     newDashboard.deviceChannelNames = dashboardToDuplicate.deviceChannelNames
-    newDashboard.tags = dashboardToDuplicate.tags
     settingsStore.dashboards.push(newDashboard)
     emit('added', newDashboard.uid)
 }
