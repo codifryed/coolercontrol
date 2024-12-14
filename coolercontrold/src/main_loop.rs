@@ -55,14 +55,14 @@ pub async fn run<'s>(
 ) -> Result<()> {
     let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_WAIT_MS));
     let poll_rate = config.get_settings()?.poll_rate;
-    let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate.as_secs_f64());
+    let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone(), scope)
             .await
             .with_context(|| "Creating DBus Sleep Listener")?;
         align_loop_timing_with_clock().await;
         // The sub-second position is set on interval creation:
-        let mut loop_interval = time::interval(poll_rate);
+        let mut loop_interval = time::interval(Duration::from_secs_f64(poll_rate));
         while run_token.is_cancelled().not() {
             loop_interval.tick().await;
             lcd_update_trigger.tick();

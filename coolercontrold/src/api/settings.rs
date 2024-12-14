@@ -165,10 +165,8 @@ impl CoolerControlSettingsDto {
             current_settings.compress
         };
         let poll_rate = if let Some(poll_rate) = self.poll_rate {
-            Duration::from_secs_f64(
-                // clamps and rounds to the nearest half-second.
-                (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.,
-            )
+            // clamps and rounds to the nearest half-second.
+            (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.
         } else {
             current_settings.poll_rate
         };
@@ -198,7 +196,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
             liquidctl_integration: Some(settings.liquidctl_integration),
             compress: Some(settings.compress),
-            poll_rate: Some(settings.poll_rate.as_secs_f64()),
+            poll_rate: Some(settings.poll_rate),
         }
     }
 }

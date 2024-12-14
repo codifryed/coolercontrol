@@ -135,7 +135,7 @@ pub struct CoolerControlSettings {
     pub ipv4_address: Option<String>,
     pub ipv6_address: Option<String>,
     pub compress: bool,
-    pub poll_rate: Duration,
+    pub poll_rate: f64,
 }
 
 /// General Device Settings for `CoolerControl`

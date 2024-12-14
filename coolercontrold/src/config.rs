@@ -777,18 +777,16 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "compress should be a boolean value")?;
-            let poll_rate = Duration::from_secs_f64(
-                (settings
-                    .get("poll_rate")
-                    .unwrap_or(&Item::Value(Value::Float(Formatted::new(1.0))))
-                    .as_float()
-                    .with_context(|| "poll_rate should be an float value")?
-                    // clamps and rounds to the nearest half-second.
-                    .clamp(0.5, 5.0)
-                    * 2.)
-                    .round()
-                    / 2.,
-            );
+            let poll_rate = (settings
+                .get("poll_rate")
+                .unwrap_or(&Item::Value(Value::Float(Formatted::new(1.0))))
+                .as_float()
+                .with_context(|| "poll_rate should be an float value")?
+                // clamps and rounds to the nearest half-second.
+                .clamp(0.5, 5.0)
+                * 2.)
+                .round()
+                / 2.;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -828,9 +826,8 @@ impl Config {
         )));
         base_settings["compress"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));
-        base_settings["poll_rate"] = Item::Value(Value::Float(Formatted::new(
-            cc_settings.poll_rate.as_secs_f64(),
-        )));
+        base_settings["poll_rate"] =
+            Item::Value(Value::Float(Formatted::new(cc_settings.poll_rate)));
     }
 
     /// This gets the `CoolerControl` settings for specific devices
