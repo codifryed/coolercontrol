@@ -160,6 +160,9 @@ const applyGenericDaemonChange = _.debounce(
             icon: 'pi pi-exclamation-triangle',
             defaultFocus: 'accept',
             accept: async () => {
+                settingsStore.ccSettings.poll_rate = pollRate.value
+                // give the system a moment to make sure the pollRate has been saved ^
+                await deviceStore.sleep(50)
                 toast.add({
                     severity: 'success',
                     summary: 'Success',
@@ -168,9 +171,6 @@ const applyGenericDaemonChange = _.debounce(
                 })
                 await deviceStore.daemonClient.shutdownDaemon()
                 await deviceStore.waitAndReload(5)
-            },
-            reject: () => {
-                return false
             },
         }),
     2000,
@@ -233,7 +233,6 @@ const resetDaemonSettings = () => {
 }
 const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 watch(pollRate, () => {
-    settingsStore.ccSettings.poll_rate = pollRate.value
     applyGenericDaemonChange()
 })
 </script>
