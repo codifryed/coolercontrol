@@ -69,6 +69,7 @@ lint:
         - coolercontrol-ui/src-tauri/gen/**
         - .gitlab/images/**
         - .gitlab-ci.yml
+        - openapi/openapi.json
 actions:
   disabled:
     - trunk-announce
