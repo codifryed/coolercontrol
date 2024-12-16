@@ -16,6 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use crate::plugins::port_finder::Port;
+use crate::plugins::{
+    port_finder, single_instance, wayland_ssd, wayland_top_level_icon, webkit_adjustments,
+};
 use serde_json::json;
 use std::env;
 use std::error::Error;
@@ -33,13 +37,7 @@ use tauri_plugin_cli::CliExt;
 use tauri_plugin_store::StoreBuilder;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
-use crate::port_finder::Port;
-
-mod port_finder;
-mod single_instance;
-mod wayland_ssd;
-mod wayland_top_level_icon;
-mod webkit_adjustments;
+mod plugins;
 
 type UID = String;
 
