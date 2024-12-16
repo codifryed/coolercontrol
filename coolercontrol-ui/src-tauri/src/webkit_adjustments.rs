@@ -19,8 +19,17 @@
 use std::env;
 use std::process::Command;
 
-fn is_app_image() -> bool {
-    env::var("APPDIR").is_ok()
+/// Disable DMA Rendering by default for `WebKit`.
+/// This causes an issue with NVIDIA GPUs where the webview is blank.
+/// Many distros have patched the official package and disabled this by default for NVIDIA GPUs.
+pub fn handle_dma_rendering_for_nvidia_gpus() {
+    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
+        // Needed so that the app image works on most all systems (system library dependant)
+        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
 }
 
 fn has_nvidia() -> bool {
@@ -33,15 +42,6 @@ fn has_nvidia() -> bool {
     output_str.to_uppercase().contains("NVIDIA")
 }
 
-/// Disable DMA Rendering by default for webkit2gtk (See #229)
-/// This causes an issue with NVIDIA GPUs where the webview is blank.
-/// Many distros have patched the official package and disabled this by default for NVIDIA GPUs.
-pub fn handle_dma_rendering_for_nvidia_gpus() {
-    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
-        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
-        // Needed so that the app image works on most all systems (system library dependant)
-        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-    }
+fn is_app_image() -> bool {
+    env::var("APPDIR").is_ok()
 }
