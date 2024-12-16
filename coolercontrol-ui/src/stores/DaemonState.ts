@@ -19,6 +19,8 @@
 import { defineStore } from 'pinia'
 import { ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { invoke } from '@tauri-apps/api/core'
+import { useToast } from 'primevue/usetoast'
 
 export enum DaemonStatus {
     OK = 'Ok',
@@ -27,6 +29,7 @@ export enum DaemonStatus {
 }
 
 export const useDaemonState = defineStore('daemonState', () => {
+    const toast = useToast()
     // Reactive properties ------------------------------------------------
     const systemName: Ref<string> = ref('Localhost')
     const warnings: Ref<number> = ref(0)
@@ -43,23 +46,69 @@ export const useDaemonState = defineStore('daemonState', () => {
         errors.value = healthCheck.details.errors
         connected.value = true
         if (errors.value > 0) {
-            status.value = DaemonStatus.ERROR
+            await setStatus(DaemonStatus.ERROR)
         } else if (warnings.value > 0) {
-            status.value = DaemonStatus.WARN
+            await setStatus(DaemonStatus.WARN)
         } else {
-            status.value = DaemonStatus.OK
+            await setStatus(DaemonStatus.OK)
         }
     }
 
-    function setConnected(isConnected: boolean): void {
+    async function setStatus(newStatus: DaemonStatus) {
+        if (status.value === newStatus) return
+        if (newStatus === DaemonStatus.ERROR) {
+            toast.add({
+                severity: 'error',
+                summary: 'Daemon Errors',
+                detail: 'The daemon logs contain errors. You should investigate.',
+                life: 4000,
+            })
+            const deviceStore = useDeviceStore()
+            if (deviceStore.isTauriApp()) {
+                await invoke('send_notification', {
+                    title: 'Daemon Errors',
+                    message: 'The daemon logs contain erros. You should investigate.',
+                })
+            }
+        }
+        status.value = newStatus
+    }
+
+    async function setConnected(isConnected: boolean): Promise<void> {
         if (connected.value === isConnected) return
         if (connected.value) {
             // disconnected
             preDisconnectedStatus.value = status.value
+            toast.add({
+                severity: 'error',
+                summary: 'Daemon Disconnected',
+                detail: 'Connection with the daemon has been lost',
+                life: 4000,
+            })
+            const deviceStore = useDeviceStore()
+            if (deviceStore.isTauriApp()) {
+                await invoke('send_notification', {
+                    title: 'Daemon Disconnected',
+                    message: 'Connection with the daemon has been lost.',
+                })
+            }
             status.value = DaemonStatus.ERROR
         } else {
             // re-connected
             status.value = preDisconnectedStatus.value
+            toast.add({
+                severity: 'success',
+                summary: 'Daemon Connection Restored',
+                detail: 'Connection with the daemon has been restored.',
+                life: 4000,
+            })
+            const deviceStore = useDeviceStore()
+            if (deviceStore.isTauriApp()) {
+                await invoke('send_notification', {
+                    title: 'Daemon Connection Restored',
+                    message: 'Connection with the daemon has been restored.',
+                })
+            }
         }
         connected.value = isConnected
     }
@@ -72,6 +121,7 @@ export const useDaemonState = defineStore('daemonState', () => {
     console.debug(`Daemon State Store created`)
     return {
         init,
+        setStatus,
         setConnected,
         acknowledgeLogIssues,
         systemName,

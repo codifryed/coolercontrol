@@ -20,6 +20,7 @@ use crate::plugins::port_finder::Port;
 use crate::plugins::{
     port_finder, single_instance, wayland_ssd, wayland_top_level_icon, webkit_adjustments,
 };
+use notify_rust::{Hint, Notification};
 use serde_json::json;
 use std::env;
 use std::error::Error;
@@ -43,6 +44,7 @@ type UID = String;
 
 // The store plugin places this in a data_dir, which is located at:
 //  ~/.local/share/org.coolercontrol.CoolerControl/coolercontrol-ui.conf
+const APP_ID: &str = "org.coolercontrol.CoolerControl";
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 const CONFIG_STARTUP_DELAY: &str = "startup_delay";
@@ -143,6 +145,21 @@ async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
     store.save().expect("Failed to save store");
 }
 
+#[command]
+async fn send_notification(title: &str, message: &str) -> Result<(), String> {
+    Notification::new()
+        .appname("CoolerControl")
+        .icon("coolercontrol")
+        .hint(Hint::Resident(true))
+        .hint(Hint::DesktopEntry(APP_ID.to_string()))
+        .summary(title)
+        .body(message)
+        .show_async()
+        .await
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+}
+
 fn main() {
     single_instance::handle_startup();
     webkit_adjustments::handle_dma_rendering_for_nvidia_gpus();
@@ -170,6 +187,7 @@ fn main() {
             set_active_modes,
             get_startup_delay,
             set_startup_delay,
+            send_notification,
         ])
         .setup(move |app: &mut App| {
             handle_cli_arguments(app);

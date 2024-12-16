@@ -489,15 +489,16 @@ export const useDeviceStore = defineStore('device', () => {
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
-                    daemonState.setConnected(true)
+                    await daemonState.setConnected(true)
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
-                    daemonState.setConnected(false)
+                    await daemonState.setConnected(false)
                     await startSSE()
                 },
-                onerror() {
-                    daemonState.setConnected(false)
+                // @ts-ignore
+                async onerror() {
+                    await daemonState.setConnected(false)
                     // auto-retry every second
                 },
             })
@@ -513,10 +514,10 @@ export const useDeviceStore = defineStore('device', () => {
                     const newLog = event.data
                     logs.value = `${logs.value}${newLog}`
                     if (newLog.includes('ERROR')) {
-                        daemonState.status = DaemonStatus.ERROR
+                        await daemonState.setStatus(DaemonStatus.ERROR)
                     } else if (newLog.includes('WARN')) {
                         if (daemonState.status !== DaemonStatus.ERROR) {
-                            daemonState.status = DaemonStatus.WARN
+                            await daemonState.setStatus(DaemonStatus.WARN)
                         }
                     }
                 },
