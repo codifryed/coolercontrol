@@ -131,7 +131,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let plain_temp = status_map.get("temperature").and_then(|s| self.parse_float(s));
+        let plain_temp = status_map
+            .get("temperature")
+            .and_then(|s| self.parse_float(s));
         if let Some(temp) = plain_temp {
             temps.push(TempStatus {
                 name: "temp".to_string(),
@@ -205,7 +207,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     #[allow(dead_code)]
     fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let noise_lvl = status_map.get("noise level").and_then(|s| self.parse_float(s));
+        let noise_lvl = status_map
+            .get("noise level")
+            .and_then(|s| self.parse_float(s));
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
@@ -251,7 +255,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
         let pump_rpm = status_map.get("pump speed").and_then(|s| self.parse_u32(s));
-        let pump_duty = status_map.get("pump duty").and_then(|s| self.parse_float(s));
+        let pump_duty = status_map
+            .get("pump duty")
+            .and_then(|s| self.parse_float(s));
         if pump_rpm.is_some() || pump_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "pump".to_string(),
@@ -332,7 +338,6 @@ pub trait DeviceSupport: Debug + Sync + Send {
     fn parse_u32(&self, value: &str) -> Option<u32> {
         value.parse::<u32>().ok()
     }
-
 }
 
 /// Tests

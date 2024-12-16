@@ -18,7 +18,10 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelStatus, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions, TempStatus};
+use crate::device::{
+    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    TempStatus,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -41,10 +44,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        let fan_channel_names = vec![
-            "cpu fan".to_string(),
-            "gpu fan".to_string(),
-        ];
+        let fan_channel_names = vec!["cpu fan".to_string(), "gpu fan".to_string()];
         for channel_name in fan_channel_names {
             channels.insert(
                 channel_name.clone(),
@@ -61,10 +61,7 @@ impl DeviceSupport for MsiAcpiEcSupport {
             );
         }
 
-        let color_channels = vec![
-            "tail light".to_string(),
-            "mic light".to_string(),
-        ];
+        let color_channels = vec!["tail light".to_string(), "mic light".to_string()];
         for channel_name in color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
@@ -102,18 +99,14 @@ impl DeviceSupport for MsiAcpiEcSupport {
     }
 
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let cpu_temp = status_map
-            .get("cpu temp")
-            .and_then(|s| self.parse_float(s));
+        let cpu_temp = status_map.get("cpu temp").and_then(|s| self.parse_float(s));
         if let Some(temp) = cpu_temp {
             temps.push(TempStatus {
                 name: "cpu temp".to_string(),
                 temp,
             });
         }
-        let gpu_temp = status_map
-            .get("gpu temp")
-            .and_then(|s| self.parse_float(s));
+        let gpu_temp = status_map.get("gpu temp").and_then(|s| self.parse_float(s));
         if let Some(temp) = gpu_temp {
             temps.push(TempStatus {
                 name: "gpu temp".to_string(),
@@ -127,10 +120,18 @@ impl DeviceSupport for MsiAcpiEcSupport {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(|s| self.parse_u32(s));
-        let cpu_fan_duty = status_map.get("cpu fan duty").and_then(|s| self.parse_float(s));
-        let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(|s| self.parse_u32(s));
-        let gpu_fan_duty = status_map.get("gpu fan duty").and_then(|s| self.parse_float(s));
+        let cpu_fan_rpm = status_map
+            .get("cpu fan speed")
+            .and_then(|s| self.parse_u32(s));
+        let cpu_fan_duty = status_map
+            .get("cpu fan duty")
+            .and_then(|s| self.parse_float(s));
+        let gpu_fan_rpm = status_map
+            .get("gpu fan speed")
+            .and_then(|s| self.parse_u32(s));
+        let gpu_fan_duty = status_map
+            .get("gpu fan duty")
+            .and_then(|s| self.parse_float(s));
         if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "cpu fan".to_string(),
