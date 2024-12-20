@@ -16,149 +16,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use crate::commands::daemon_state::DaemonState;
+use crate::commands::modes::ModesState;
+use crate::commands::{daemon_state, modes, notifications};
 use crate::plugins::port_finder::Port;
 use crate::plugins::{
     port_finder, single_instance, wayland_ssd, wayland_top_level_icon, webkit_adjustments,
 };
-use notify_rust::{Hint, Notification};
-use serde_json::json;
 use std::env;
-use std::error::Error;
-use std::sync::{Mutex, MutexGuard};
-use std::thread::sleep;
-use std::time::Duration;
-use tauri::menu::{
-    AboutMetadata, AboutMetadataBuilder, CheckMenuItemBuilder, IconMenuItemBuilder, MenuBuilder,
-    MenuEvent, MenuItemBuilder, SubmenuBuilder,
-};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconEvent};
+use std::sync::Arc;
+use tauri::menu::{AboutMetadata, AboutMetadataBuilder};
 use tauri::utils::config::FrontendDist;
-use tauri::{command, App, AppHandle, Context, Emitter, Manager, Wry};
+use tauri::{App, AppHandle, Context};
 use tauri_plugin_cli::CliExt;
-use tauri_plugin_store::StoreBuilder;
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+mod commands;
 mod plugins;
+mod tray;
 
 type UID = String;
 
-// The store plugin places this in a data_dir, which is located at:
-//  ~/.local/share/org.coolercontrol.CoolerControl/coolercontrol-ui.conf
-const APP_ID: &str = "org.coolercontrol.CoolerControl";
-const CONFIG_FILE: &str = "coolercontrol-ui.conf";
-const CONFIG_START_IN_TRAY: &str = "start_in_tray";
-const CONFIG_STARTUP_DELAY: &str = "startup_delay";
 const SYSTEM_TRAY_ID: &str = "coolercontrol-system-tray";
 const MAIN_WINDOW_ID: &str = "main";
-
-#[command]
-async fn start_in_tray_enable(app_handle: AppHandle) {
-    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
-        return;
-    };
-    store.set(CONFIG_START_IN_TRAY.to_string(), json!(true));
-    store.save().expect("Failed to save store");
-}
-
-#[command]
-async fn start_in_tray_disable(app_handle: AppHandle) {
-    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
-        return;
-    };
-    store.set(CONFIG_START_IN_TRAY.to_string(), json!(false));
-    store.save().expect("Failed to save store");
-}
-
-#[command]
-async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
-    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
-        return Err("Store not found.".to_string());
-    };
-    store
-        .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(json!(false))
-        .as_bool()
-        .ok_or_else(|| "Start in Tray is not a boolean".to_string())
-}
-
-#[command]
-async fn save_window_state(app_handle: AppHandle) {
-    app_handle
-        .save_window_state(StateFlags::all())
-        .unwrap_or_else(|e| {
-            println!("Failed to save window state: {e}");
-        });
-}
-
-#[command]
-async fn set_modes(
-    modes: Vec<ModeTauri>,
-    modes_state: tauri::State<'_, ModesState>,
-    app_handle: AppHandle,
-) -> Result<(), String> {
-    let mut modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-    modes_state_lock.clear();
-    modes_state_lock.extend(modes);
-    let active_modes_lock = modes_state
-        .active_modes
-        .lock()
-        .expect("Active Mode State is poisoned");
-    recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
-    Ok(())
-}
-
-#[command]
-async fn set_active_modes(
-    mut active_mode_uids: Vec<UID>,
-    modes_state: tauri::State<'_, ModesState>,
-    app_handle: AppHandle,
-) -> Result<(), String> {
-    let mut active_modes_lock = modes_state
-        .active_modes
-        .lock()
-        .expect("Active Mode State is poisoned");
-    active_modes_lock.clear();
-    active_modes_lock.append(&mut active_mode_uids);
-    let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-    recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
-    Ok(())
-}
-
-#[command]
-async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
-    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
-        return Err("Store not found".to_string());
-    };
-    store
-        .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(json!(0))
-        .as_u64()
-        .ok_or_else(|| "Startup delay is not a number".to_string())
-}
-
-#[command]
-async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
-    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
-        return;
-    };
-    store.set(CONFIG_STARTUP_DELAY.to_string(), json!(delay));
-    store.save().expect("Failed to save store");
-}
-
-#[command]
-async fn send_notification(title: &str, message: &str) -> Result<(), String> {
-    Notification::new()
-        .appname("CoolerControl")
-        .icon("coolercontrol")
-        .hint(Hint::Resident(true))
-        .hint(Hint::DesktopEntry(APP_ID.to_string()))
-        .summary(title)
-        .body(message)
-        .show_async()
-        .await
-        .map(|_| ())
-        .map_err(|err| err.to_string())
-}
 
 fn main() {
     single_instance::handle_startup();
@@ -169,6 +48,7 @@ fn main() {
     };
     tauri::Builder::default()
         .manage(ModesState::default())
+        .manage(Arc::new(DaemonState::default()))
         .plugin(tauri_plugin_cli::init())
         .plugin(wayland_top_level_icon::init())
         .plugin(wayland_ssd::init())
@@ -179,20 +59,22 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(single_instance::init())
         .invoke_handler(tauri::generate_handler![
-            start_in_tray_enable,
-            start_in_tray_disable,
-            get_start_in_tray,
-            save_window_state,
-            set_modes,
-            set_active_modes,
-            get_startup_delay,
-            set_startup_delay,
-            send_notification,
+            commands::settings::start_in_tray_enable,
+            commands::settings::start_in_tray_disable,
+            commands::settings::get_start_in_tray,
+            commands::settings::save_window_state,
+            commands::settings::get_startup_delay,
+            commands::settings::set_startup_delay,
+            modes::set_modes,
+            modes::set_active_modes,
+            notifications::send_notification,
+            daemon_state::connected_to_daemon,
+            daemon_state::acknowledge_daemon_issues,
         ])
         .setup(move |app: &mut App| {
             handle_cli_arguments(app);
-            setup_system_tray(app)?;
-            setup_config_store(app)?;
+            tray::setup_system_tray(app)?;
+            commands::settings::setup_config_store(app)?;
             Ok(())
         })
         .run(generate_localhost_context(port))
@@ -242,90 +124,6 @@ OPTIONS:
     }
 }
 
-fn setup_system_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
-    let tray_menu_builder = create_starting_tray_menu(app.handle());
-    let tray_menu = add_final_tray_menu_items(app.handle(), tray_menu_builder).build()?;
-    // The TrayIcon is created by tauri with the icon already:
-    let tray_icon = app
-        .handle()
-        .tray_by_id(SYSTEM_TRAY_ID)
-        .expect("Failed to get tray icon");
-    tray_icon.set_menu(Some(tray_menu))?;
-    tray_icon.on_tray_icon_event(handle_sys_tray_event);
-    tray_icon.on_menu_event(handle_tray_menu_event);
-    Ok(())
-}
-
-fn create_starting_tray_menu(app_handle: &AppHandle) -> MenuBuilder<Wry, AppHandle<Wry>> {
-    let tray_menu_item_cc = IconMenuItemBuilder::with_id("cc", "CoolerControl")
-        // Using an icon also creates an icon column in the tray menu for all menu items.
-        // Perhaps that will change in the future and we can use both checked and Icons.
-        // .icon(Image::from_path("icons/icon.png").unwrap()))
-        .icon(
-            app_handle
-                .default_window_icon()
-                .cloned()
-                .expect("Failed to get default icon"),
-        )
-        .enabled(false)
-        .build(app_handle)
-        .expect("Failed to build menu item");
-    MenuBuilder::new(app_handle)
-        .item(&tray_menu_item_cc)
-        .separator()
-}
-
-fn recreate_mode_menu_items(
-    app_handle: &AppHandle,
-    active_modes_lock: &MutexGuard<Vec<UID>>,
-    modes_state_lock: &MutexGuard<Vec<ModeTauri>>,
-) {
-    let modes_submenu_builder = SubmenuBuilder::with_id(app_handle, "modes", "Modes");
-    let modes_submenu = if modes_state_lock.len() > 0 {
-        modes_state_lock
-            .iter()
-            .fold(modes_submenu_builder, |menu, mode| {
-                let mode_is_active = active_modes_lock.contains(&mode.uid);
-                let mode_menu_item =
-                    CheckMenuItemBuilder::with_id(mode.uid.clone(), mode.name.clone())
-                        .checked(mode_is_active)
-                        .build(app_handle)
-                        .expect("Failed to build menu item");
-                menu.item(&mode_menu_item)
-            })
-    } else {
-        modes_submenu_builder.enabled(false)
-    }
-    .build()
-    .expect("Failed to build submenu");
-    let menu_with_modes = create_starting_tray_menu(app_handle).item(&modes_submenu);
-    let tray_menu = add_final_tray_menu_items(app_handle, menu_with_modes)
-        .build()
-        .expect("Failed to build tray menu with modes");
-    app_handle
-        .tray_by_id(SYSTEM_TRAY_ID)
-        .expect("Failed to get tray icon")
-        .set_menu(Some(tray_menu))
-        .expect("Failed to set new tray menu");
-}
-
-fn add_final_tray_menu_items<'m>(
-    app_handle: &AppHandle,
-    tray_menu: MenuBuilder<'m, Wry, AppHandle<Wry>>,
-) -> MenuBuilder<'m, Wry, AppHandle<Wry>> {
-    let tray_menu_item_show = MenuItemBuilder::with_id("show", "Show/Hide")
-        .build(app_handle)
-        .expect("Failed to build menu item");
-    let tray_menu_item_quit = MenuItemBuilder::with_id("quit", "Quit")
-        .build(app_handle)
-        .expect("Failed to build menu item");
-    tray_menu
-        .separator()
-        .about(Some(create_metadata(app_handle)))
-        .item(&tray_menu_item_show)
-        .item(&tray_menu_item_quit)
-}
-
 fn create_metadata(app_handle: &AppHandle) -> AboutMetadata {
     let metadata = AboutMetadataBuilder::new()
         .name(Some("CoolerControl".to_string()))
@@ -363,120 +161,4 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>."
         ))
         .build();
     metadata
-}
-
-/// These events are not currently supported on Linux, but will leave for possible future support:
-fn handle_sys_tray_event(tray_icon: &TrayIcon, tray_icon_event: TrayIconEvent) {
-    if let TrayIconEvent::Click {
-        button: MouseButton::Left,
-        button_state: MouseButtonState::Up,
-        ..
-    } = tray_icon_event
-    {
-        let Some(window) = tray_icon.app_handle().get_webview_window(MAIN_WINDOW_ID) else {
-            return;
-        };
-        window.show().expect("Failed to show window");
-        window.set_focus().expect("Failed to set focus");
-    }
-}
-
-fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
-    match event.id().as_ref() {
-        "quit" => {
-            app.exit(0);
-        }
-        "show" => {
-            let Some(window) = app.get_webview_window(MAIN_WINDOW_ID) else {
-                return;
-            };
-            if window.is_visible().unwrap() {
-                // is_minimized() doesn't seem to work on Linux atm
-                if window.is_minimized().unwrap() {
-                    window.unminimize().unwrap();
-                    window.hide().unwrap();
-                    window.show().unwrap();
-                } else {
-                    window.hide().unwrap();
-                }
-            } else {
-                window.show().unwrap();
-            }
-        }
-        id => {
-            if id.len() == 36 {
-                // Mode UUID
-                // println!("System Tray Menu Item Click with Mode ID: {}", id);
-                let modes_state = app.state::<ModesState>();
-                let active_modes_lock = modes_state
-                    .active_modes
-                    .lock()
-                    .expect("Active Mode State is poisoned");
-                for active_mode_uid in active_modes_lock.iter() {
-                    if active_mode_uid != id {
-                        continue;
-                    }
-                    // this sets the menu item back to selected (since it's deselected it)
-                    let modes_state_lock =
-                        modes_state.modes.lock().expect("Modes State is poisoned");
-                    recreate_mode_menu_items(
-                        app.app_handle(),
-                        &active_modes_lock,
-                        &modes_state_lock,
-                    );
-                    return;
-                }
-                app.emit(
-                    "mode-activated",
-                    EventPayload {
-                        active_mode_uid: id.to_owned(),
-                    },
-                )
-                .unwrap();
-            }
-        }
-    }
-}
-
-fn setup_config_store(app: &mut App) -> Result<(), Box<dyn Error>> {
-    let store = StoreBuilder::new(app.handle(), CONFIG_FILE).build()?;
-    let delay = store
-        .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(json!(0))
-        .as_u64()
-        .unwrap_or(0);
-    if delay > 0 {
-        println!("Delaying startup by {delay} seconds");
-        sleep(Duration::from_secs(delay));
-    }
-    let start_in_tray = store
-        .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(json!(false))
-        .as_bool()
-        .unwrap_or(false);
-    let window = app.get_webview_window(MAIN_WINDOW_ID).unwrap();
-    if start_in_tray {
-        println!("Start in Tray setting is enabled, hiding window. Use the tray icon to show the window.");
-        window.hide().unwrap();
-    } else {
-        window.show().unwrap();
-    }
-    Ok(())
-}
-
-#[derive(Clone, serde::Serialize)]
-struct EventPayload {
-    active_mode_uid: UID,
-}
-
-#[derive(Default)]
-struct ModesState {
-    active_modes: Mutex<Vec<UID>>,
-    modes: Mutex<Vec<ModeTauri>>,
-}
-
-#[derive(Default, serde::Deserialize)]
-struct ModeTauri {
-    uid: UID,
-    name: String,
 }
