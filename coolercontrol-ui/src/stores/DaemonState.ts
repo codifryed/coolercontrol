@@ -52,6 +52,12 @@ export const useDaemonState = defineStore('daemonState', () => {
         } else {
             await setStatus(DaemonStatus.OK)
         }
+        if (deviceStore.isTauriApp()) {
+            await invoke('connected_to_daemon', {
+                daemonAddress: deviceStore.daemonClient.daemonURL,
+                hasErrors: errors.value > 0,
+            })
+        }
     }
 
     async function setStatus(newStatus: DaemonStatus) {
@@ -63,13 +69,6 @@ export const useDaemonState = defineStore('daemonState', () => {
                 detail: 'The daemon logs contain errors. You should investigate.',
                 life: 4000,
             })
-            const deviceStore = useDeviceStore()
-            if (deviceStore.isTauriApp()) {
-                await invoke('send_notification', {
-                    title: 'Daemon Errors',
-                    message: 'The daemon logs contain erros. You should investigate.',
-                })
-            }
         }
         status.value = newStatus
     }
@@ -85,13 +84,6 @@ export const useDaemonState = defineStore('daemonState', () => {
                 detail: 'Connection with the daemon has been lost',
                 life: 4000,
             })
-            const deviceStore = useDeviceStore()
-            if (deviceStore.isTauriApp()) {
-                await invoke('send_notification', {
-                    title: 'Daemon Disconnected',
-                    message: 'Connection with the daemon has been lost.',
-                })
-            }
             status.value = DaemonStatus.ERROR
         } else {
             // re-connected
@@ -103,12 +95,8 @@ export const useDaemonState = defineStore('daemonState', () => {
                 life: 4000,
             })
             const deviceStore = useDeviceStore()
-            if (deviceStore.isTauriApp()) {
-                await invoke('send_notification', {
-                    title: 'Daemon Connection Restored',
-                    message: 'Connection with the daemon has been restored.',
-                })
-            }
+            // re-load the logs in case the daemon has restarted
+            await deviceStore.load_logs()
         }
         connected.value = isConnected
     }
@@ -116,6 +104,10 @@ export const useDaemonState = defineStore('daemonState', () => {
     async function acknowledgeLogIssues(): Promise<void> {
         if (!connected.value) return
         status.value = DaemonStatus.OK
+        const deviceStore = useDeviceStore()
+        if (deviceStore.isTauriApp()) {
+            await invoke('acknowledge_daemon_issues')
+        }
     }
 
     console.debug(`Daemon State Store created`)
