@@ -54,3 +54,18 @@ pub async fn status(
         });
     NoApi(Sse::new(status_stream))
 }
+
+pub async fn modes(
+    State(AppState { mode_handle, .. }): State<AppState>,
+) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    let cancel_token = mode_handle.cancel_token();
+    let modes_stream = BroadcastStream::new(mode_handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await })
+        .map(|mode_activated| {
+            Ok(Event::default()
+                .event("mode")
+                .json_data(mode_activated.unwrap_or_default())
+                .unwrap())
+        });
+    NoApi(Sse::new(modes_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(30))))
+}

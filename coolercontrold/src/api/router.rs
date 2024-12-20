@@ -521,6 +521,14 @@ pub fn init(app_state: AppState) -> ApiRouter {
                     .tag("sse")
             })
         )
+        .api_route(
+            "/sse/modes",
+            get_with(sse::modes, |o| {
+                o.summary("Activated Mode Events")
+                    .description("Subscribes and returns the Server Sent Events for a ModeActivated stream")
+                    .tag("sse")
+            })
+        )
         ///////////////////////////////////////////////////////////////////////////////////////////
         .route("/api.json", get(base::serve_api_doc))
         .with_state(app_state);

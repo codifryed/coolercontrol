@@ -28,6 +28,7 @@ use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::api::actor::ModeHandle;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
@@ -46,6 +47,7 @@ pub struct ModeController {
     modes: RefCell<HashMap<UID, Mode>>,
     mode_order: RefCell<Vec<UID>>,
     active_modes: RefCell<Vec<UID>>,
+    mode_handle: RefCell<Option<ModeHandle>>,
 }
 
 impl ModeController {
@@ -62,9 +64,17 @@ impl ModeController {
             modes: RefCell::new(HashMap::new()),
             mode_order: RefCell::new(Vec::new()),
             active_modes: RefCell::new(Vec::new()),
+            mode_handle: RefCell::new(None),
         };
         mode_controller.fill_data_from_mode_config_file().await?;
         Ok(mode_controller)
+    }
+
+    /// Sets the `ModeHandle` for the `ModeController`.
+    ///
+    /// The `ModeHandle` is used to broadcast notifications when a mode is activated.
+    pub fn set_mode_handle(&self, mode_handle: ModeHandle) {
+        self.mode_handle.replace(Some(mode_handle));
     }
 
     /// Apply all saved device settings to the devices if the `apply_on_boot` setting is true
@@ -271,6 +281,9 @@ impl ModeController {
         };
         if self.active_modes.borrow().contains(mode_uid) {
             debug!("Mode already active: {} ID:{mode_uid}", mode.name);
+            if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
+                mode_handle.broadcast_mode_activated(&mode.name, true);
+            }
             return Ok(());
         }
 
@@ -304,6 +317,9 @@ impl ModeController {
         })
         .await?;
         self.config.save_config_file().await?;
+        if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
+            mode_handle.broadcast_mode_activated(&mode.name, false);
+        }
         debug!("Mode applied: {}", mode.name);
         Ok(())
     }

@@ -17,12 +17,13 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
+use crate::api::modes::ModeActivated;
 use crate::device::UID;
 use crate::modes::{Mode, ModeController};
 use anyhow::Result;
 use moro_local::Scope;
 use std::rc::Rc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 struct ModeActor {
@@ -170,6 +171,8 @@ impl ApiActor<ModeMessage> for ModeActor {
 #[derive(Clone)]
 pub struct ModeHandle {
     sender: mpsc::Sender<ModeMessage>,
+    broadcaster: broadcast::Sender<ModeActivated>,
+    cancel_token: CancellationToken,
 }
 
 impl ModeHandle {
@@ -179,9 +182,16 @@ impl ModeHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
+        let (broadcaster, _) = broadcast::channel::<ModeActivated>(2);
+        let mode_handle = Self {
+            sender: sender.clone(),
+            broadcaster: broadcaster.clone(),
+            cancel_token: cancel_token.clone(),
+        };
+        modes_controller.set_mode_handle(mode_handle.clone());
         let actor = ModeActor::new(receiver, modes_controller);
         main_scope.spawn(run_api_actor(actor, cancel_token));
-        Self { sender }
+        mode_handle
     }
 
     pub async fn get(&self, mode_uid: UID) -> Result<Option<Mode>> {
@@ -277,5 +287,25 @@ impl ModeHandle {
         };
         let _ = self.sender.send(msg).await;
         rx.await?
+    }
+
+    pub fn broadcaster(&self) -> &broadcast::Sender<ModeActivated> {
+        &self.broadcaster
+    }
+
+    pub fn broadcast_mode_activated(&self, mode_name: &str, already_active: bool) {
+        // only create messages if we have listeners:
+        if self.broadcaster.receiver_count() == 0 {
+            return;
+        }
+        let msg = ModeActivated {
+            name: mode_name.to_string(),
+            already_active,
+        };
+        let _ = self.broadcaster.send(msg);
+    }
+
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
     }
 }

@@ -774,7 +774,6 @@ onMounted(async () => {
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
-                                    'text-accent': data.isActive,
                                 }"
                             >
                                 {{ node.label }}

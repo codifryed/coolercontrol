@@ -205,3 +205,18 @@ pub struct ActiveModesDto {
 pub struct ModePath {
     mode_uid: UID,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModeActivated {
+    pub name: String,
+    pub already_active: bool,
+}
+
+impl Default for ModeActivated {
+    fn default() -> Self {
+        Self {
+            name: "Unknown".to_string(),
+            already_active: false,
+        }
+    }
+}
