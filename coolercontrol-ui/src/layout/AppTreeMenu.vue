@@ -666,7 +666,7 @@ onMounted(async () => {
         for (const el of els) {
             el.innerHTML = ''
             el.classList.add('border-l')
-            el.classList.add('border-border-one/40')
+            el.classList.add('border-border-one/70')
             el.classList.add('!visible')
             el.classList.add('!h-[inherit]')
         }
