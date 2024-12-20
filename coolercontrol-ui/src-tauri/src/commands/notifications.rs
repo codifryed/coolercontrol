@@ -22,10 +22,17 @@ use tauri::command;
 const APP_ID: &str = "org.coolercontrol.CoolerControl";
 
 #[command]
-pub async fn send_notification(title: &str, message: &str) -> Result<(), String> {
+pub async fn send_notification(
+    title: &str,
+    message: &str,
+    icon_name: Option<&str>,
+) -> Result<(), String> {
+    // default to our own icon (generally better that than no icon)
+    // standard set: https://specifications.freedesktop.org/icon-naming-spec/0.8.90/
+    let icon = icon_name.unwrap_or("coolercontrol");
     Notification::new()
         .appname("CoolerControl")
-        .icon("coolercontrol")
+        .icon(icon)
         .hint(Hint::Resident(true))
         .hint(Hint::DesktopEntry(APP_ID.to_string()))
         .summary(title)
