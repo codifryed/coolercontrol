@@ -58,7 +58,7 @@ export const useDeviceStore = defineStore('device', () => {
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
     const dialog = useDialog()
     const toast = useToast()
-    const reloadAllStatusesThreshold: number = 30_000 // 30 seconds to better handle network latency
+    const reloadAllStatusesThreshold: number = 10_000 // 10 seconds to better handle network latency and long polling rates
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
