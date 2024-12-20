@@ -19,6 +19,7 @@
 use crate::commands::notifications::send_notification;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::command;
@@ -44,16 +45,27 @@ pub async fn connected_to_daemon(
         let _ = send_notification(
             "Daemon Errors",
             "The daemon logs contain errors. You should investigate.",
+            Some("dialog-error"),
         )
         .await;
     }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
+    watch_connection_and_logs(daemon_address.clone(), Arc::clone(&*daemon_state_init));
+    watch_mode_activation(daemon_address);
+    Ok(())
+}
 
-    // Log & Connection watch
-    let dsc = Arc::clone(&*daemon_state_init);
+/// Watches the SSE stream of the daemon logs, checks for errors and updates the state accordingly.
+/// When the connection is lost, it sends a notification.
+/// When the connection is restored, it sends a notification.
+/// When a log contains an error, it sends a notification if the state is not already in an error state.
+/// The SSE connection is retried every second if it fails.
+///
+/// The `daemon_state` is used to sync frontend state.
+/// The address is the url of the daemon api, witch is determined on a successful connection.
+fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
     tauri::async_runtime::spawn(async move {
-        let daemon_state = dsc.clone();
-        let mut es = EventSource::get(format!("{daemon_address}sse/logs"));
+        let mut es = EventSource::get(format!("{address}sse/logs"));
         es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(1), None)));
         let mut is_connected = true;
         while let Some(event) = es.next().await {
@@ -64,6 +76,7 @@ pub async fn connected_to_daemon(
                         let _ = send_notification(
                             "Daemon Connection Restored",
                             "Connection with the daemon has been restored.",
+                            Some("dialog-information"),
                         )
                         .await;
                         is_connected = true;
@@ -74,6 +87,7 @@ pub async fn connected_to_daemon(
                         let _ = send_notification(
                             "Daemon Connection Restored",
                             "Connection with the daemon has been restored.",
+                            Some("dialog-information"),
                         )
                         .await;
                         is_connected = true;
@@ -84,6 +98,7 @@ pub async fn connected_to_daemon(
                         let _ = send_notification(
                             "Daemon Errors",
                             "The daemon logs contain errors. You should investigate.",
+                            Some("dialog-error"),
                         )
                         .await;
                     }
@@ -93,6 +108,7 @@ pub async fn connected_to_daemon(
                         let _ = send_notification(
                             "Daemon Disconnected",
                             "Connection with the daemon has been lost",
+                            Some("dialog-error"),
                         )
                         .await;
                         is_connected = false;
@@ -101,10 +117,41 @@ pub async fn connected_to_daemon(
             }
         }
     });
-    Ok(())
+}
+
+/// Watches SSE endpoint for mode activations and sends a notification.
+/// Retries/Reconnection attempts are automatic with retry policy.
+fn watch_mode_activation(address: String) {
+    tauri::async_runtime::spawn(async move {
+        let mut es = EventSource::get(format!("{address}sse/modes"));
+        es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(1), None)));
+        while let Some(event) = es.next().await {
+            if let Ok(Event::Message(msg)) = event {
+                let mode_activated = match serde_json::from_str::<ModeActivated>(&msg.data) {
+                    Ok(mode_activated) => mode_activated,
+                    Err(err) => {
+                        println!("Modes Activated Serialization Error: {err}");
+                        return;
+                    }
+                };
+                let title = if mode_activated.already_active {
+                    format!("Mode {} Already Active", mode_activated.name)
+                } else {
+                    format!("Mode {} Activated", mode_activated.name)
+                };
+                let _ = send_notification(&title, "", Some("dialog-information")).await;
+            }
+        }
+    });
 }
 
 #[derive(Default)]
 pub struct DaemonState {
     has_errors: Mutex<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModeActivated {
+    pub name: String,
+    pub already_active: bool,
 }
