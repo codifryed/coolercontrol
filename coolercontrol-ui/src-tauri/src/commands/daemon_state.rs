@@ -67,6 +67,7 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
     tauri::async_runtime::spawn(async move {
         let mut es = EventSource::get(format!("{address}sse/logs"));
         es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(1), None)));
+        let mut first_run = true;
         let mut is_connected = true;
         while let Some(event) = es.next().await {
             match event {
@@ -80,6 +81,14 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
                         )
                         .await;
                         is_connected = true;
+                    } else if first_run {
+                        let _ = send_notification(
+                            "Daemon Connection Established",
+                            "The connection with the daemon has been established.",
+                            Some("dialog-information"),
+                        )
+                        .await;
+                        first_run = false;
                     }
                 }
                 Ok(Event::Message(msg)) => {
