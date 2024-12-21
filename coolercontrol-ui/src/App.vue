@@ -290,7 +290,6 @@ const steps = [
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-    await daemonState.init()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -299,6 +298,7 @@ onMounted(async () => {
     await settingsStore.initializeSettings(deviceStore.allDevices())
     applyCustomTheme()
     await sleep(300) // give the engine a moment to catch up for a smoother start
+    await daemonState.init()
     loaded.value = true
     loading.close()
     await deviceStore.login()
