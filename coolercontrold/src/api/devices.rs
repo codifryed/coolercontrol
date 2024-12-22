@@ -39,7 +39,7 @@ use tower_sessions::Session;
 
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
-pub async fn devices_get(
+pub async fn get(
     State(AppState { device_handle, .. }): State<AppState>,
 ) -> Result<Json<DevicesResponse>, CCError> {
     let all_devices = device_handle.devices_get().await?;

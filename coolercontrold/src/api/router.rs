@@ -115,7 +115,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         )
         .api_route(
             "/devices",
-            get_with(devices::devices_get, |o| {
+            get_with(devices::get, |o| {
                 o.summary("All Devices")
                     .description(
                         "Returns a list of all detected devices and their associated information.",
