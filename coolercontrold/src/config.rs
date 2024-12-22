@@ -293,7 +293,6 @@ impl Config {
         }
         channel_setting["lcd"]["colors"] = Item::Value(Value::Array(color_array));
         if let Some(temp_source) = &lcd.temp_source {
-            channel_setting["temp_source"] = Item::None;
             channel_setting["lcd"]["temp_source"]["temp_name"] =
                 Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
             channel_setting["lcd"]["temp_source"]["device_uid"] = Item::Value(Value::String(
