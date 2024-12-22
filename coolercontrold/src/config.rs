@@ -267,6 +267,7 @@ impl Config {
         channel_setting["lighting"]["colors"] = Item::Value(Value::Array(color_array));
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] =
@@ -429,6 +430,7 @@ impl Config {
         Ok(mix_function_type)
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
@@ -704,6 +706,7 @@ impl Config {
     }
 
     /// Returns `CoolerControl` general settings
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     pub fn get_settings(&self) -> Result<CoolerControlSettings> {
         if let Some(settings_item) = self.document.borrow().get("settings") {
             let settings = settings_item
@@ -805,6 +808,7 @@ impl Config {
     }
 
     /// Sets `CoolerControl` settings
+    #[allow(clippy::cast_possible_wrap)]
     pub fn set_settings(&self, cc_settings: &CoolerControlSettings) {
         let mut doc = self.document.borrow_mut();
         let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
@@ -1140,6 +1144,7 @@ impl Config {
         Ok(functions)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn get_current_functions(&self) -> Result<Vec<Function>> {
         let mut functions = Vec::new();
         if let Some(functions_item) = self.document.borrow().get("functions") {
