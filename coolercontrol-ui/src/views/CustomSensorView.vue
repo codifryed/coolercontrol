@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
+import { mdiContentSaveOutline, mdiFolderSearchOutline, mdiMemory } from '@mdi/js'
 import {
     CustomSensor,
     CustomSensorMixFunctionType,
@@ -50,6 +50,8 @@ import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
+import { open } from '@tauri-apps/plugin-dialog'
+import { homeDir } from '@tauri-apps/api/path'
 
 interface Props {
     customSensorID?: string
@@ -353,6 +355,16 @@ const viewTypeChanged = () =>
     (deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.viewType =
         chosenViewType.value)
 
+const fileBrowse = async (): Promise<void> => {
+    filePath.value =
+        (await open({
+            directory: false,
+            multiple: false,
+            defaultPath: await homeDir(),
+            title: 'Select Custom Sensor File',
+        })) ?? undefined
+}
+
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
         updateTemps()
@@ -511,14 +523,14 @@ onMounted(async () => {
                 </div>
                 <div
                     v-else-if="selectedSensorType === CustomSensorType.File"
-                    class="flex flex-col w-96 mt-5"
+                    class="flex flex-col w-96 mt-1"
                 >
-                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                    <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
                         Temp File Location
                     </small>
                     <InputText
                         v-model="filePath"
-                        class="w-full"
+                        class="w-full h-12"
                         placeholder="/tmp/your_temp_file"
                         :invalid="!filePath"
                         v-tooltip.bottom="
@@ -529,6 +541,22 @@ onMounted(async () => {
                             'The file is verified upon submission.'
                         "
                     />
+                    <div v-if="deviceStore.isTauriApp()">
+                        <Button
+                            class="mt-2 w-full h-12"
+                            label="Browse"
+                            v-tooltip.right="'Browse for a custom sensor file'"
+                            @click="fileBrowse"
+                        >
+                            <svg-icon
+                                class="outline-0 mt-[-0.25rem]"
+                                type="mdi"
+                                :path="mdiFolderSearchOutline"
+                                :size="deviceStore.getREMSize(1.5)"
+                            />
+                            Browse
+                        </Button>
+                    </div>
                 </div>
             </div>
             <div
