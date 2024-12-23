@@ -498,8 +498,9 @@ export const useDeviceStore = defineStore('device', () => {
                     await startSSE()
                 },
                 // @ts-ignore
-                async onerror() {
-                    await daemonState.setConnected(false)
+                // changing onerror to async causes spam retry loop
+                onerror() {
+                    daemonState.setConnected(false)
                     thisStore.loggedIn = false
                     // auto-retry every second
                 },
