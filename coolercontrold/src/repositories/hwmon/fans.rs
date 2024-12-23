@@ -301,7 +301,7 @@ async fn get_current_pwm_enable(base_path: &Path, channel_number: &u8) -> Option
         .and_then(check_parsing_8)
         .ok();
     if current_pwm_enable.is_none() {
-        warn!("No pwm_enable found for fan#{channel_number} at location:{pwm_enable_path:?}");
+        debug!("No pwm_enable found for fan#{channel_number} at location:{pwm_enable_path:?}");
     }
     current_pwm_enable
 }
