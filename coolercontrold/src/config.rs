@@ -36,9 +36,9 @@ use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID,
-    DEFAULT_PROFILE_UID,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdCarouselSettings,
+    LcdSettings, LightingSettings, Profile, ProfileMixFunctionType, ProfileType, Setting,
+    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -284,6 +284,15 @@ impl Config {
             channel_setting["lcd"]["image_file_processed"] =
                 Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
         }
+        if let Some(carousel_settings) = &lcd.carousel {
+            channel_setting["lcd"]["carousel"]["interval"] = Item::Value(Value::Integer(
+                Formatted::new(carousel_settings.interval as i64),
+            ));
+            if let Some(images_path) = &carousel_settings.images_path {
+                channel_setting["lcd"]["carousel"]["images_path"] =
+                    Item::Value(Value::String(Formatted::new(images_path.clone())));
+            }
+        }
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lcd.colors.clone() {
             let mut rgb_array = toml_edit::Array::new();
@@ -504,6 +513,42 @@ impl Config {
         Ok(temp_source)
     }
 
+    fn get_carousel(setting_table: &Table) -> Result<Option<LcdCarouselSettings>> {
+        let carousel = if let Some(value) = setting_table.get("carousel") {
+            let carousel_table = value
+                .as_inline_table()
+                .with_context(|| "carousel should be an inline table")?;
+            let images_path = if let Some(images_path_value) = carousel_table.get("images_path") {
+                Some(
+                    images_path_value
+                        .as_str()
+                        .with_context(|| "images_path should be a String")?
+                        .to_string(),
+                )
+            } else {
+                None
+            };
+            let interval = if let Some(interval_value) = carousel_table.get("interval") {
+                let interval: u64 = interval_value
+                    .as_integer()
+                    .with_context(|| "interval should be an integer")?
+                    .try_into()
+                    .ok()
+                    .with_context(|| "interval should be a value between 5-900")?;
+                interval.clamp(5, 900)
+            } else {
+                10
+            };
+            Some(LcdCarouselSettings {
+                images_path,
+                interval,
+            })
+        } else {
+            None
+        };
+        Ok(carousel)
+    }
+
     fn get_lighting(setting_table: &Table) -> Result<Option<LightingSettings>> {
         let lighting = if let Some(value) = setting_table.get("lighting") {
             let lighting_table = value
@@ -626,6 +671,7 @@ impl Config {
                 } else {
                     None
                 };
+            let carousel = Self::get_carousel(&lcd_table.clone().into_table())?;
             let mut colors = Vec::new();
             let colors_array = lcd_table
                 .get("colors")
@@ -668,6 +714,7 @@ impl Config {
                 brightness,
                 orientation,
                 image_file_processed,
+                carousel,
                 colors,
                 temp_source,
             })

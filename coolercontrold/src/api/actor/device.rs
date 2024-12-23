@@ -196,6 +196,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         brightness,
                         orientation,
                         image_file_processed: Some(image_path),
+                        carousel: None,
                         temp_source: None,
                         colors: Vec::with_capacity(0),
                     };

@@ -521,6 +521,10 @@ export default class DaemonClient {
             const response = await this.getClient().put(
                 `/devices/${deviceUID}/settings/${channelName}/lcd`,
                 instanceToPlain(setting),
+                {
+                    timeout: this.daemonTimeoutExtended,
+                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+                },
             )
             this.logDaemonResponse(response, 'Apply Device Setting LCD')
             return true

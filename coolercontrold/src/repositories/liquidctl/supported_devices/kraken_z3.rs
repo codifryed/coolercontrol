@@ -40,6 +40,7 @@ impl DeviceSupport for KrakenZ3Support {
         BaseDriver::KrakenZ3
     }
 
+    #[allow(clippy::too_many_lines)]
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
         channels.insert(
@@ -111,6 +112,16 @@ impl DeviceSupport for KrakenZ3Support {
                     LcdMode {
                         name: "temp".to_string(),
                         frontend_name: "Single Temp".to_string(),
+                        brightness: true,
+                        orientation: true,
+                        image: false,
+                        colors_min: 0, // for custom types
+                        colors_max: 0,
+                        type_: LcdModeType::Custom,
+                    },
+                    LcdMode {
+                        name: "carousel".to_string(),
+                        frontend_name: "Carousel".to_string(),
                         brightness: true,
                         orientation: true,
                         image: false,

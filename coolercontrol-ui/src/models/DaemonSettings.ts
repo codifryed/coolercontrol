@@ -187,6 +187,12 @@ export class LcdSettings {
     image_file_processed?: string
 
     /**
+     * Settings for the Carousel LCD Mode.
+     */
+    @Type(() => LcdCarouselSettings)
+    carousel?: LcdCarouselSettings
+
+    /**
      * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
      */
     colors: Array<[number, number, number]> = []
@@ -199,6 +205,30 @@ export class LcdSettings {
 
     constructor(mode: string) {
         this.mode = mode
+    }
+}
+
+/**
+ * Settings for the LCD Carousel.
+ *
+ * This can be used to have a carousel of images (static or gif), of sensor data,
+ * or a combination of both.
+ */
+export class LcdCarouselSettings {
+    /**
+     * The interval in seconds (2-900) in which to change images in the carousel.
+     */
+    interval: number
+
+    /**
+     * The absolute path directory location for images for the carousel. All applicable images
+     * present are processed when the setting is applied.
+     */
+    images_path?: string
+
+    constructor(interval: number, images_path?: string) {
+        this.interval = interval
+        this.images_path = images_path
     }
 }
 

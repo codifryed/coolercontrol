@@ -598,6 +598,7 @@ impl LiquidctlRepo {
                     brightness: None,
                     orientation: None,
                     image_file_processed: None,
+                    carousel: None,
                     colors: Vec::new(),
                     temp_source: None,
                 };

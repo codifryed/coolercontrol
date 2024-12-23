@@ -325,7 +325,7 @@ impl SettingsController {
         }
     }
 
-    /// Sets LCD Settings for all `LcdModes` except Image.
+    /// Handles applying LCD Settings for all `LcdModes`.
     pub async fn set_lcd(
         &self,
         device_uid: &UID,
@@ -352,7 +352,11 @@ impl SettingsController {
                 return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
             }
             self.lcd_commander
-                .schedule_setting(device_uid, channel_name, lcd_settings)
+                .schedule_single_temp(device_uid, channel_name, lcd_settings)
+        } else if lcd_settings.mode == "carousel" {
+            self.lcd_commander
+                .schedule_carousel(device_uid, channel_name, lcd_settings)
+                .await
         } else {
             self.lcd_commander
                 .clear_channel_setting(device_uid, channel_name);

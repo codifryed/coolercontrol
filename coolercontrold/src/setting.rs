@@ -111,8 +111,10 @@ pub struct LcdSettings {
     /// The LCD Image orientation (0,90,180,270)
     pub orientation: Option<u16>,
 
-    /// The LCD Image tmp file path location, where the preprocessed image is located
+    /// The LCD Image processed file path location, where the preprocessed image is located.
     pub image_file_processed: Option<String>,
+
+    pub carousel: Option<LcdCarouselSettings>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(R, G, B)>,
@@ -120,6 +122,46 @@ pub struct LcdSettings {
     /// A temp source for displaying a temperature.
     pub temp_source: Option<TempSource>,
 }
+
+/// Settings for the LCD Carousel.
+///
+/// This can be used to have a carousel of images (static or gif), of sensor data,
+/// or a combination of both.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LcdCarouselSettings {
+    /// The absolute path directory location for images for the carousel. All applicable images
+    /// present are processed when the setting is applied.
+    pub images_path: Option<String>,
+
+    /// The interval in seconds (2-900) in which to change images in the carousel.
+    pub interval: u64,
+    // The list of channel sources to display.
+    // pub channel_sources: Vec<ChannelSource>,
+}
+
+impl Default for LcdCarouselSettings {
+    fn default() -> Self {
+        Self {
+            images_path: None,
+            interval: 4,
+            // channel_sources: Vec::new(),
+        }
+    }
+}
+
+// A source for displaying sensor data that is related to a particular channel.
+// This is like `TempSource` but not limited to temperature sensors. (Load, Duty, etc.)
+// #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+// pub struct ChannelSource {
+//     /// The associated device uid containing current values
+//     pub device_uid: DeviceUID,
+//
+//     /// The internal name for this channel source. NOT the Label.
+//     pub channel_name: ChannelName,
+//
+//     // This is a future possibility that could be used to specify even more data to display:
+//     // pub sensor_type: Option<SensorType>
+// }
 
 /// General Settings for `CoolerControl`
 #[allow(clippy::struct_excessive_bools)]

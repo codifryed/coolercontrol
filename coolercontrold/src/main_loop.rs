@@ -23,7 +23,7 @@ use crate::processing::settings::SettingsController;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};
-use log::{error, info, trace};
+use log::{error, info, trace, warn};
 use moro_local::Scope;
 use std::cell::LazyCell;
 use std::ops::Not;
@@ -35,7 +35,8 @@ use tokio_util::sync::CancellationToken;
 
 const SNAPSHOT_WAIT_MS: u64 = 400;
 const WAKE_PAUSE_MINIMUM_S: u64 = 1;
-const LCD_TIMEOUT_S: u64 = 2;
+// setting (temp) images is pretty quick, <2s, but gifs can take significantly longer >3-4s
+const LCD_TIMEOUT_S: u64 = 5;
 const LCD_MAX_UPDATE_RATE_S: f64 = 2.0;
 const FULL_SECOND_MS: u64 = 1000;
 
@@ -184,7 +185,10 @@ fn fire_lcd_update<'s>(
         .await
         .is_err()
         {
-            error!("LCD Scheduler timed out after {LCD_TIMEOUT_S}s");
+            warn!(
+                "LCD Scheduler timed out after {LCD_TIMEOUT_S}s. \
+                 LCD communication is taking longer than expected"
+            );
         };
     });
 }

@@ -19,7 +19,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiContentSaveOutline, mdiFileImageOutline, mdiMemory } from '@mdi/js'
+import {
+    mdiContentSaveOutline,
+    mdiFileImageOutline,
+    mdiFolderSearchOutline,
+    mdiMemory,
+} from '@mdi/js'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
@@ -27,9 +32,14 @@ import FileUpload, { type FileUploadUploaderEvent } from 'primevue/fileupload'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import type { UID } from '@/models/Device'
-import { nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { computed, ComputedRef, nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import { LcdMode, LcdModeType } from '@/models/LcdMode'
-import { DeviceSettingReadDTO, DeviceSettingWriteLcdDTO, TempSource } from '@/models/DaemonSettings'
+import {
+    DeviceSettingReadDTO,
+    DeviceSettingWriteLcdDTO,
+    LcdCarouselSettings,
+    TempSource,
+} from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { storeToRefs } from 'pinia'
@@ -37,6 +47,10 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
+import InputText from 'primevue/inputtext'
+import { open } from '@tauri-apps/plugin-dialog'
+import { pictureDir } from '@tauri-apps/api/path'
+import { ElLoading } from 'element-plus'
 
 interface Props {
     deviceId: UID
@@ -126,6 +140,8 @@ let startingBrightness: number = 50
 let startingOrientation: number = 0
 let startingTempSource: AvailableTemp | undefined = undefined
 let startingImagePath: string | undefined = undefined
+let startingImagesPath: string = ''
+let startingInterval: number = 10
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
     settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.channelName)
 if (startingDeviceSetting?.lcd != null) {
@@ -135,6 +151,8 @@ if (startingDeviceSetting?.lcd != null) {
     startingBrightness = startingDeviceSetting.lcd.brightness ?? startingBrightness
     startingOrientation = startingDeviceSetting.lcd.orientation ?? startingOrientation
     startingImagePath = startingDeviceSetting.lcd.image_file_processed
+    startingImagesPath = startingDeviceSetting.lcd.carousel?.images_path ?? ''
+    startingInterval = startingDeviceSetting.lcd.carousel?.interval ?? 10
     const savedTempSource: TempSource | undefined = startingDeviceSetting.lcd.temp_source
     if (savedTempSource != null) {
         outer: for (const tempDevice of tempSources.value) {
@@ -157,6 +175,8 @@ const selectedOrientation: Ref<number> = ref(startingOrientation)
 const chosenTemp: Ref<AvailableTemp | undefined> = ref(startingTempSource)
 const files: Array<File> = []
 const fileDataURLs: Ref<Array<string>> = ref([])
+const imagesPath: Ref<string> = ref(startingImagesPath)
+const imagesDelayInterval: Ref<number> = ref(startingInterval)
 
 /**
  * We intercept the automatic uploader to handle our custom logic here
@@ -173,11 +193,19 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
         validateFileSize(chosenFile)
         validateFileType(chosenFile)
     }
+    const processing = ElLoading.service({
+        target: '#lcd-control-pane',
+        lock: true,
+        fullscreen: false,
+        text: 'Processing...',
+        background: 'rgba(var(--colors-bg-one) / 0.8)',
+    })
     const response: File | ErrorResponse = await deviceStore.daemonClient.processLcdImageFiles(
         props.deviceId,
         props.channelName,
         event.files,
     )
+    processing.close()
     if (response instanceof ErrorResponse) {
         console.error(response.error)
         toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 10_000 })
@@ -229,7 +257,17 @@ const saveLCDSetting = async () => {
     if (setting.mode === 'temp' && chosenTemp.value != null) {
         setting.temp_source = new TempSource(chosenTemp.value.deviceUID, chosenTemp.value.tempName)
     }
+    if (setting.mode === 'carousel' && imagesPath.value.length > 0) {
+        setting.carousel = new LcdCarouselSettings(imagesDelayInterval.value, imagesPath.value)
+    }
 
+    const uploading = ElLoading.service({
+        target: '#lcd-control-pane',
+        lock: true,
+        fullscreen: false,
+        text: 'Applying...',
+        background: 'rgba(var(--colors-bg-one) / 0.8)',
+    })
     if (setting.mode === 'image' && files.length > 0) {
         await settingsStore.saveDaemonDeviceSettingLcdImages(
             props.deviceId,
@@ -240,6 +278,7 @@ const saveLCDSetting = async () => {
     } else {
         await settingsStore.saveDaemonDeviceSettingLcd(props.deviceId, props.channelName, setting)
     }
+    uploading.close()
     contextIsDirty = false
 }
 
@@ -265,6 +304,22 @@ const changeTempSource = (event: ListboxChangeEvent): void => {
         return // do not update on unselect
     }
     chosenTemp.value = event.value
+}
+
+const delayIntervalFormatted: ComputedRef<string> = computed((): string => {
+    const minutes: number = Math.floor(imagesDelayInterval.value / 60)
+    const seconds: number = imagesDelayInterval.value % 60
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+})
+
+const pathBrowse = async (): Promise<void> => {
+    imagesPath.value =
+        (await open({
+            directory: true,
+            multiple: false,
+            defaultPath: await pictureDir(),
+            title: 'Select Images Directory',
+        })) ?? ''
 }
 
 const brightnessScrolled = (event: WheelEvent): void => {
@@ -344,7 +399,15 @@ onMounted(async () => {
         fillTempSources()
     })
     watch(
-        [fileDataURLs.value, selectedLcdMode, selectedBrightness, selectedOrientation, chosenTemp],
+        [
+            fileDataURLs.value,
+            selectedLcdMode,
+            selectedBrightness,
+            selectedOrientation,
+            chosenTemp,
+            imagesPath,
+            imagesDelayInterval,
+        ],
         () => {
             contextIsDirty = true
         },
@@ -385,7 +448,7 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
-    <ScrollAreaRoot style="--scrollbar-size: 10px">
+    <ScrollAreaRoot id="lcd-control-pane" style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="w-full flex flex-col lg:flex-row">
                 <div id="left-side">
@@ -512,7 +575,7 @@ onUnmounted(() => {
                         <svg-icon
                             v-else
                             id="lcd-image"
-                            class="text-text-color-secondary"
+                            class="text-text-color-secondary h-96"
                             style="padding: 40px"
                             type="mdi"
                             :path="mdiFileImageOutline"
@@ -570,6 +633,87 @@ onUnmounted(() => {
                             </div>
                         </template>
                     </Listbox>
+                </div>
+                <div
+                    v-if="
+                        selectedLcdMode.type === LcdModeType.CUSTOM &&
+                        selectedLcdMode.name === 'carousel'
+                    "
+                    class="mt-0 mr-4 w-96"
+                >
+                    <div class="flex flex-col">
+                        <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
+                            Images Path
+                        </small>
+                        <InputText
+                            v-model="imagesPath"
+                            class="w-full mt-0 h-12"
+                            placeholder="/tmp/your_images_path"
+                            :invalid="!imagesPath"
+                            v-tooltip.right="
+                                'Enter the absolute path to the directory containing images.\n' +
+                                'The directory must contain at least one image file, ' +
+                                'and they\nmay be static images or gifs. The Carousel will cycle\n' +
+                                'through them with the selected delay. All files are processed\n' +
+                                'upon submission to ensure maximum compatibility.'
+                            "
+                        />
+                        <div v-if="deviceStore.isTauriApp()">
+                            <Button
+                                class="mt-2 w-full h-12"
+                                label="Browse"
+                                v-tooltip.right="'Browse for a image directory'"
+                                @click="pathBrowse"
+                            >
+                                <svg-icon
+                                    class="outline-0 mt-[-0.25rem]"
+                                    type="mdi"
+                                    :path="mdiFolderSearchOutline"
+                                    :size="deviceStore.getREMSize(1.5)"
+                                />
+                                Browse
+                            </Button>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Delay Interval:
+                            <span class="font-extrabold">{{ delayIntervalFormatted }}</span
+                            ><br />
+                        </small>
+                        <InputNumber
+                            placeholder="Delay Interval"
+                            v-model="imagesDelayInterval"
+                            mode="decimal"
+                            class="mt-0.5 w-full"
+                            showButtons
+                            :min="5"
+                            :max="900"
+                            :use-grouping="false"
+                            :step="1"
+                            suffix=" sec"
+                            button-layout="horizontal"
+                            :input-style="{ width: '8rem' }"
+                            v-tooltip.bottom="
+                                'Minimum number of seconds of delay between image changes.\n' +
+                                'Note that the actual delay may be longer due to the daemon polling rate.'
+                            "
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                        <Slider
+                            v-model="imagesDelayInterval"
+                            class="!w-[23.25rem] ml-1.5"
+                            :step="1"
+                            :min="2"
+                            :max="900"
+                        />
+                    </div>
                 </div>
             </div>
         </ScrollAreaViewport>
