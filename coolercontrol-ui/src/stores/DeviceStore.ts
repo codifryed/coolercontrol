@@ -494,11 +494,13 @@ export const useDeviceStore = defineStore('device', () => {
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
                     await daemonState.setConnected(false)
+                    thisStore.loggedIn = false
                     await startSSE()
                 },
                 // @ts-ignore
                 async onerror() {
                     await daemonState.setConnected(false)
+                    thisStore.loggedIn = false
                     // auto-retry every second
                 },
             })

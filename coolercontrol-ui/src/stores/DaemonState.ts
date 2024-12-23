@@ -97,6 +97,8 @@ export const useDaemonState = defineStore('daemonState', () => {
             const deviceStore = useDeviceStore()
             // re-load the logs in case the daemon has restarted
             await deviceStore.load_logs()
+            // re-check if the session if valid, in case the daemon has restarted
+            await deviceStore.login()
         }
         connected.value = isConnected
     }
