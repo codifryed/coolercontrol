@@ -42,6 +42,7 @@ tauri-plugin-shell = "2.0.2"
 tauri-plugin-localhost = "2.1.0"
 tauri-plugin-store = "2.1.0"
 tauri-plugin-window-state = "2.0.2"
+tauri-plugin-dialog = "2.2.0"
 # These should follow the versions Tauri uses:
 glib = "=0.18.5"
 gtk = "=0.18.1"

@@ -31,6 +31,8 @@
         "clipboard-manager:allow-read-text",
         "clipboard-manager:allow-write-text",
         "cli:default",
+        "dialog:allow-open",
+        "dialog:allow-save",
         "shell:default",
         "store:default",
         "window-state:default"
