@@ -63,7 +63,7 @@ const resetDaemonSettings = () => {
 }
 const loading = ElLoading.service({
     lock: true,
-    text: 'Connecting...',
+    text: 'Initializing...',
     background: 'rgb(var(--colors-bg-one))',
 })
 const applyCustomTheme = (): void => {
