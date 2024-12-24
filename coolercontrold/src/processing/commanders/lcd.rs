@@ -17,7 +17,7 @@
  */
 
 use anyhow::{anyhow, bail, Context, Result};
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 use moro_local::Scope;
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use std::cell::RefCell;
@@ -361,7 +361,7 @@ impl LcdCommander {
                 .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
                 .await
             {
-                error!("Error applying scheduled lcd setting for single-temp: {err}");
+                warn!("Error applying scheduled lcd setting for single-temp: {err}");
             }
         }
         trace!(
@@ -721,7 +721,7 @@ impl LcdCommander {
                             .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
                             .await
                         {
-                            error!("Error applying scheduled lcd setting for carousel: {err}");
+                            warn!("Error applying scheduled lcd setting for carousel: {err}");
                         }
                     }
                 });
