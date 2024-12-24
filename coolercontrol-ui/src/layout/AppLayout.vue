@@ -98,7 +98,7 @@ onMounted(async () => {
             <SplitterPanel
                 ref="menuPanelRef"
                 class="bg-bg-one border border-border-one rounded-lg"
-                :class="{ 'hidden': isCollapsed }"
+                :class="{ invisible: isCollapsed }"
                 collapsible
                 :default-size="menuPanelWidth"
                 :min-size="menuPanelMinWidth"
@@ -120,7 +120,10 @@ onMounted(async () => {
                     </ScrollAreaScrollbar>
                 </ScrollAreaRoot>
             </SplitterPanel>
-            <SplitterResizeHandle class="bg-bg-two" :class="{ 'w-2.5': !isCollapsed, 'w-0': isCollapsed }">
+            <SplitterResizeHandle
+                class="bg-bg-two"
+                :class="{ 'w-2.5': !isCollapsed, 'w-0': isCollapsed }"
+            >
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
                 <Button
                     class="absolute mt-[2.625rem] bg-bg-two !rounded-none !border !px-1 !py-1 hover:!bg-bg-two !text-text-color-secondary hover:!text-text-color z-50"
