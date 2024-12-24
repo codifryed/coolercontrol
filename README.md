@@ -32,9 +32,13 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 
 <h4 align="center">
 
+<!-- trunk-ignore-begin(markdownlint/MD051): links with emojis -->
+
 [Install](#-installation) · [Hardware Support](#-hardware-support) ·
 [Docs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) ·
 [Discord](https://discord.gg/MbcgUFAfhV)
+
+<!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
 </h4>
 
