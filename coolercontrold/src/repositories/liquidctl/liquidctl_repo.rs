@@ -483,7 +483,7 @@ impl LiquidctlRepo {
                 .await
             {
                 error!(
-                    "Error setting lcd/screen brightness {} | {}",
+                    "Error setting lcd/screen brightness {} | {}. Check coolercontrol-liqctld log for details.",
                     brightness, err
                 );
             }
@@ -501,7 +501,7 @@ impl LiquidctlRepo {
                 .await
             {
                 error!(
-                    "Error setting lcd/screen orientation {} | {}",
+                    "Error setting lcd/screen orientation {} | {}. Check coolercontrol-liqctld log for details.",
                     orientation, err
                 );
             }
@@ -523,7 +523,7 @@ impl LiquidctlRepo {
                     Some(image_file.clone()),
                 )
                 .await
-                .with_context(|| "Setting lcd/screen 'image/gif'")?;
+                .with_context(|| "Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details.")?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -534,7 +534,7 @@ impl LiquidctlRepo {
                 None,
             )
             .await
-            .with_context(|| "Setting lcd/screen 'liquid' mode")?;
+            .with_context(|| "Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details.")?;
         }
         Ok(())
     }
