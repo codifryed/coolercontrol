@@ -523,7 +523,9 @@ impl LiquidctlRepo {
                     Some(image_file.clone()),
                 )
                 .await
-                .with_context(|| "Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details.")?;
+                .with_context(|| {
+                    "Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details."
+                })?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -534,7 +536,9 @@ impl LiquidctlRepo {
                 None,
             )
             .await
-            .with_context(|| "Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details.")?;
+            .with_context(|| {
+                "Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details."
+            })?;
         }
         Ok(())
     }
