@@ -30,6 +30,8 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { plainToInstance } from 'class-transformer'
 import { HealthCheck } from '@/models/HealthCheck.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { ElLoading } from 'element-plus'
+import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -79,6 +81,13 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function waitAndReload(secs: number = 3): Promise<void> {
+        ElLoading.service({
+            lock: true,
+            text: 'Restarting...',
+            background: svgLoaderBackground,
+            svg: svgLoader,
+            svgViewBox: svgLoaderViewBox,
+        })
         await sleep(secs * 1000)
         reloadUI()
     }

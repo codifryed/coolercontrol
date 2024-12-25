@@ -36,6 +36,7 @@ import { ThemeMode } from '@/models/UISettings.ts'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboarding'
 import { Emitter, EventType } from 'mitt'
+import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -64,7 +65,9 @@ const resetDaemonSettings = () => {
 const loading = ElLoading.service({
     lock: true,
     text: 'Initializing...',
-    background: 'rgb(var(--colors-bg-one))',
+    background: svgLoaderBackground,
+    svg: svgLoader,
+    svgViewBox: svgLoaderViewBox,
 })
 const applyCustomTheme = (): void => {
     if (settingsStore.themeMode !== ThemeMode.CUSTOM) return

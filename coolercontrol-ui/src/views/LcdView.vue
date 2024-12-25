@@ -51,6 +51,7 @@ import InputText from 'primevue/inputtext'
 import { open } from '@tauri-apps/plugin-dialog'
 import { pictureDir } from '@tauri-apps/api/path'
 import { ElLoading } from 'element-plus'
+import { svgLoader, svgLoaderViewBox } from '@/models/Loader.ts'
 
 interface Props {
     deviceId: UID
@@ -199,6 +200,8 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
         fullscreen: false,
         text: 'Processing...',
         background: 'rgba(var(--colors-bg-one) / 0.8)',
+        svgViewBox: svgLoaderViewBox,
+        svg: svgLoader,
     })
     const response: File | ErrorResponse = await deviceStore.daemonClient.processLcdImageFiles(
         props.deviceId,
@@ -267,6 +270,8 @@ const saveLCDSetting = async () => {
         fullscreen: false,
         text: 'Applying...',
         background: 'rgba(var(--colors-bg-one) / 0.8)',
+        svgViewBox: svgLoaderViewBox,
+        svg: svgLoader,
     })
     if (setting.mode === 'image' && files.length > 0) {
         await settingsStore.saveDaemonDeviceSettingLcdImages(
