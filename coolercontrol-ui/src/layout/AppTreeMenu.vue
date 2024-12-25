@@ -661,7 +661,8 @@ onMounted(async () => {
     applyFilter('') // at startup this filters hidden items out.
 
     // custom tree leaf h-line
-    const els = document.getElementsByClassName('el-tree-node__expand-icon is-leaf')
+    const mainMenu = document.getElementById('main-menu')
+    const els = mainMenu!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
     if (els.length > 0) {
         for (const el of els) {
             el.innerHTML = ''
@@ -702,6 +703,7 @@ onMounted(async () => {
         <!--</IconField>-->
         <el-tree
             ref="treeRef"
+            id="main-menu"
             class="w-full"
             :data="data"
             :props="nodeProps"
