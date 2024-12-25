@@ -549,7 +549,7 @@ onMounted(async () => {
 <style>
 :root {
     background-color: rgb(var(--colors-bg-one));
-    --el-color-primary: #568af2;
+    --el-color-primary: rgb(var(--colors-accent));
     --v-onboarding-overlay-z: 60;
     --v-onboarding-step-z: 70;
 }

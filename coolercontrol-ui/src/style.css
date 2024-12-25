@@ -45,6 +45,7 @@
 ::-webkit-scrollbar-corner {
     background: rgb(var(--colors-bg-one) / 0);
 }
+
 /* Buttons */
 /*::-webkit-scrollbar-button:single-button {*/
 /*background-color: #bbbbbb;*/
@@ -78,99 +79,5 @@
     :root {
         --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
             sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
-        --primary-50: 236 253 245;
-        --primary-100: 209 250 229;
-        --primary-200: 167 243 208;
-        --primary-300: 110 231 183;
-        --primary-400: 52 211 153;
-        --primary-500: 16 185 129;
-        --primary-600: 5 150 105;
-        --primary-700: 4 120 87;
-        --primary-800: 6 95 70;
-        --primary-900: 4 78 56;
-        --primary-950: 2 44 34;
-        --surface-0: 255 255 255;
-        --surface-50: 249 250 251;
-        --surface-100: 243 244 246;
-        --surface-200: 229 231 235;
-        --surface-300: 209 213 219;
-        --surface-400: 156 163 175;
-        --surface-500: 107 114 128;
-        --surface-600: 75 85 99;
-        --surface-700: 55 65 81;
-        --surface-800: 31 41 55;
-        --surface-900: 17 24 39;
-        --surface-950: 8 8 8;
-        /*--cc-white: #f5f6f9;*/
-        /*--cc-pink: #ff007f;*/
-        /*--cc-green: #00ff7f;*/
-        /*--cc-red: #ff5555;*/
-        /*--cc-yellow: #f1fa8c;*/
-        /*--cc-blue: #568af2;*/
     }
 }
-
-/* Primary and Surface Palettes */
-:root {
-    --p-primary-50: var(--p-surface-50);
-    --p-primary-100: var(--p-surface-100);
-    --p-primary-200: var(--p-surface-200);
-    --p-primary-300: var(--p-surface-300);
-    --p-primary-400: var(--p-surface-400);
-    --p-primary-500: var(--p-surface-500);
-    --p-primary-600: var(--p-surface-600);
-    --p-primary-700: var(--p-surface-700);
-    --p-primary-800: var(--p-surface-800);
-    --p-primary-900: var(--p-surface-900);
-    --p-primary-950: var(--p-surface-950);
-    --p-surface-0: #ffffff;
-    --p-surface-50: #f8fafc;
-    --p-surface-100: #f1f5f9;
-    --p-surface-200: #e2e8f0;
-    --p-surface-300: #cbd5e1;
-    --p-surface-400: #94a3b8;
-    --p-surface-500: #64748b;
-    --p-surface-600: #475569;
-    --p-surface-700: #334155;
-    --p-surface-800: #1e293b;
-    --p-surface-900: #0f172a;
-    --p-surface-950: #020617;
-    --p-content-border-radius: 6px;
-}
-
-/*!* Light Mode *!*/
-/*:root {*/
-/*    --p-primary-color: var(--p-primary-500);*/
-/*    --p-primary-contrast-color: var(--p-surface-0);*/
-/*    --p-primary-hover-color: var(--p-primary-600);*/
-/*    --p-primary-active-color: var(--p-primary-700);*/
-/*    --p-content-border-color: var(--p-surface-200);*/
-/*    --p-content-hover-background: var(--p-surface-100);*/
-/*    --p-content-hover-color: var(--p-surface-800);*/
-/*    --p-highlight-background: var(--p-primary-50);*/
-/*    --p-highlight-color: var(--p-primary-700);*/
-/*    --p-highlight-focus-background: var(--p-primary-100);*/
-/*    --p-highlight-focus-color: var(--p-primary-800);*/
-/*    --p-text-color: var(--p-surface-700);*/
-/*    --p-text-hover-color: var(--p-surface-800);*/
-/*    --p-text-muted-color: var(--p-surface-500);*/
-/*    --p-text-hover-muted-color: var(--p-surface-600);*/
-/*}*/
-
-/*:root.dark-theme {*/
-/*    --p-primary-color: var(--p-primary-400);*/
-/*    --p-primary-contrast-color: var(--p-surface-900);*/
-/*    --p-primary-hover-color: var(--p-primary-300);*/
-/*    --p-primary-active-color: var(--p-primary-200);*/
-/*    --p-content-border-color: var(--p-surface-700);*/
-/*    --p-content-hover-background: var(--p-surface-800);*/
-/*    --p-content-hover-color: var(--p-surface-0);*/
-/*    --p-highlight-background: color-mix(in srgb, var(--p-primary-400), transparent 84%);*/
-/*    --p-highlight-color: rgba(255,255,255,.87);*/
-/*    --p-highlight-focus-background: color-mix(in srgb, var(--p-primary-400), transparent 76%);*/
-/*    --p-highlight-focus-color: rgba(255,255,255,.87);*/
-/*    --p-text-color: var(--p-surface-0);*/
-/*    --p-text-hover-color: var(--p-surface-0);*/
-/*    --p-text-muted-color: var(--p-surface-400);*/
-/*    --p-text-hover-muted-color: var(--p-surface-300);*/
-/*}*/
