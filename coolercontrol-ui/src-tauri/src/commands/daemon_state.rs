@@ -15,11 +15,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
-
 use crate::commands::notifications::send_notification;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
+use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::command;
@@ -49,6 +49,9 @@ pub async fn connected_to_daemon(
         )
         .await;
     }
+    if daemon_state_init.first_run.lock().unwrap().not() {
+        return Ok(());
+    }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
     watch_connection_and_logs(daemon_address.clone(), Arc::clone(&*daemon_state_init));
     watch_mode_activation(daemon_address);
@@ -67,7 +70,6 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
     tauri::async_runtime::spawn(async move {
         let mut es = EventSource::get(format!("{address}sse/logs"));
         es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(1), None)));
-        let mut first_run = true;
         let mut is_connected = true;
         while let Some(event) = es.next().await {
             match event {
@@ -81,14 +83,14 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
                         )
                         .await;
                         is_connected = true;
-                    } else if first_run {
+                    } else if *daemon_state.first_run.lock().unwrap() {
                         let _ = send_notification(
                             "Daemon Connection Established",
                             "The connection with the daemon has been established.",
                             Some("dialog-information"),
                         )
                         .await;
-                        first_run = false;
+                        *daemon_state.first_run.lock().unwrap() = false;
                     }
                 }
                 Ok(Event::Message(msg)) => {
@@ -154,9 +156,18 @@ fn watch_mode_activation(address: String) {
     });
 }
 
-#[derive(Default)]
 pub struct DaemonState {
     has_errors: Mutex<bool>,
+    first_run: Mutex<bool>,
+}
+
+impl Default for DaemonState {
+    fn default() -> Self {
+        Self {
+            has_errors: Mutex::new(false),
+            first_run: Mutex::new(true),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
