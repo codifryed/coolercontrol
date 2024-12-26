@@ -122,10 +122,7 @@ const initTableData = () => {
         if (!includesDevice(device.uid)) continue
         for (const temp of device.status.temps) {
             const channelSettings = deviceSettings.sensorsAndChannels.get(temp.name)
-            if (
-                !includesDeviceChannel(device.uid, temp.name) ||
-                !includesTemps
-            ) {
+            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) {
                 continue
             }
             const [min, max, avg, count] = calcMinMaxAvg(

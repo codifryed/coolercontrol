@@ -19,21 +19,17 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {
-    mdiBookmarkCheckOutline,
-    mdiInformationSlabCircleOutline,
-    mdiMemory
-} from '@mdi/js'
+import { mdiBookmarkCheckOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import {computed, inject, onMounted, type Ref, ref, watch} from 'vue'
+import { computed, inject, onMounted, type Ref, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Mode } from '@/models/Mode.ts'
 import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
-import Button from "primevue/button";
-import {Emitter, EventType} from "mitt";
+import Button from 'primevue/button'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     modeUID: UID
@@ -147,7 +143,8 @@ initTableData()
 const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
 const activateMode = async (): Promise<void> => {
     const successful = await settingsStore.activateMode(props.modeUID)
-    if (successful) emitter.emit('active-modes-change-menu')}
+    if (successful) emitter.emit('active-modes-change-menu')
+}
 
 onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, () => {
@@ -171,8 +168,8 @@ onMounted(async () => {
                 :size="deviceStore.getREMSize(1.25)"
             />
         </div>
-        <div class="w-full"/>
-        <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated}">
+        <div class="w-full" />
+        <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated }">
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                 label="Save"
