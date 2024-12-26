@@ -72,13 +72,35 @@ impl GpuAMD {
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
+            let u_id = devices::get_device_unique_id(&path, &device_name).await;
+            let device_uid =
+                Device::create_uid_from(&device_name, &DeviceType::GPU, 0, Some(&u_id));
+            let cc_device_setting = self
+                .config
+                .get_cc_settings_for_device(&device_uid)
+                .unwrap_or(None);
+            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+                info!("Skipping disabled device: {device_name} with UID: {device_uid}");
+                continue;
+            }
+            let disabled_channels =
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
-                Ok(fans) => channels.extend(fans),
+                Ok(fans) => channels.extend(
+                    fans.into_iter()
+                        .filter(|fan| disabled_channels.contains(&fan.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
                 Err(err) => error!("Error initializing AMD Hwmon Fans: {err}"),
             };
             match temps::init_temps(&path, &device_name).await {
-                Ok(temps) => channels.extend(temps),
+                Ok(temps) => channels.extend(
+                    temps
+                        .into_iter()
+                        .filter(|temp| disabled_channels.contains(&temp.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {err}"),
             };
             let device_path = path
@@ -86,10 +108,17 @@ impl GpuAMD {
                 .canonicalize()
                 .unwrap_or_else(|_| path.join("device"));
             if let Some(load_channel) = Self::init_load(&device_path).await {
-                channels.push(load_channel);
+                if disabled_channels.contains(&load_channel.name).not() {
+                    channels.push(load_channel);
+                }
             }
             match freqs::init_freqs(&path).await {
-                Ok(freqs) => channels.extend(freqs),
+                Ok(freqs) => channels.extend(
+                    freqs
+                        .into_iter()
+                        .filter(|freq| disabled_channels.contains(&freq.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
             };
             let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
@@ -99,7 +128,6 @@ impl GpuAMD {
                 .await
                 .or(drm_device_name)
                 .or_else(|| pci_device_names.and_then(|names| names.device_name));
-            let u_id = devices::get_device_unique_id(&path, &device_name).await;
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -216,6 +244,7 @@ impl GpuAMD {
         })
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub async fn initialize_amd_devices(&mut self) -> Result<HashMap<UID, DeviceLock>> {
         let mut devices = HashMap::new();
         let poll_rate = self.config.get_settings()?.poll_rate;
@@ -312,14 +341,6 @@ impl GpuAMD {
                 ..Default::default()
             };
             device.initialize_status_history_with(status, poll_rate);
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!(
-                    "Skipping disabled device: {} with UID: {}",
-                    device.name, device.uid
-                );
-                continue; // skip loading this device into the device list
-            }
             self.amd_driver_infos
                 .insert(device.uid.clone(), Rc::new(amd_driver.clone()));
             devices.insert(device.uid.clone(), Rc::new(RefCell::new(device)));

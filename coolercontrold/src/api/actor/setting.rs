@@ -19,7 +19,7 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::settings::{CoolerControlDeviceSettingsDto, CoolerControlSettingsDto};
 use crate::api::CCError;
 use crate::config::Config;
-use crate::device::DeviceUID;
+use crate::device::{DeviceType, DeviceUID};
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 use crate::AllDevices;
 use anyhow::Result;
@@ -109,14 +109,19 @@ impl ApiActor<SettingMessage> for SettingActor {
                     let settings_map = self.config.get_all_cc_devices_settings()?;
                     let mut devices_settings = HashMap::new();
                     for (device_uid, device_lock) in self.all_devices.iter() {
+                        if device_lock.borrow().d_type == DeviceType::CustomSensors {
+                            // custom sensors is handled differently than hardware devices
+                            continue;
+                        }
                         let name = device_lock.borrow().name.clone();
-                        // first fill with the default
+                        // first fill with the default settings
                         devices_settings.insert(
                             device_uid.clone(),
                             CoolerControlDeviceSettingsDto {
                                 uid: device_uid.to_string(),
                                 name,
                                 disable: false,
+                                disable_channels: Vec::with_capacity(0),
                             },
                         );
                     }
@@ -132,6 +137,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                                 uid: device_uid,
                                 name: setting.name,
                                 disable: setting.disable,
+                                disable_channels: setting.disable_channels,
                             },
                         );
                     }
@@ -154,6 +160,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                             uid: device_uid,
                             name: settings.name,
                             disable: settings.disable,
+                            disable_channels: settings.disable_channels,
                         }
                     } else {
                         // Default settings for a device: (Same as None)
@@ -170,6 +177,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                             uid: device_uid,
                             name: device_name,
                             disable: false,
+                            disable_channels: Vec::with_capacity(0),
                         }
                     };
                     Ok(dto)

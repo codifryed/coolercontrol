@@ -57,6 +57,7 @@ const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
 
+/// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
 // Arc is proper here as we're using tokio::spawn (Send+Sync) for our hyper connection pool.
 type SocketConnectionLock = Rc<RefCell<SocketConnection>>;

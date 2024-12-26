@@ -40,10 +40,12 @@ export class CoolerControlDeviceSettingsDTO {
     uid: UID
     name: string
     disable: boolean = false
+    disable_channels: Array<string> = []
 
-    constructor(uid: UID, name: string) {
+    constructor(uid: UID, name: string, disable_channels: Array<string> = []) {
         this.uid = uid
         this.name = name
+        this.disable_channels = disable_channels
     }
 }
 

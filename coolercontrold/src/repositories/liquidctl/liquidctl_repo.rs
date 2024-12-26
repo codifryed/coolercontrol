@@ -34,7 +34,7 @@ use regex::Regex;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
-use crate::device::{DeviceType, LcInfo, Status, TempInfo, TypeIndex, UID};
+use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -54,6 +54,7 @@ pub struct LiquidctlRepo {
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
 }
 
 impl LiquidctlRepo {
@@ -90,6 +91,7 @@ impl LiquidctlRepo {
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            disabled_channels: RefCell::new(HashMap::new()),
         })
     }
 
@@ -129,13 +131,23 @@ impl LiquidctlRepo {
                 poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
                     device.name, device.uid
                 );
-                continue; // skip loading this device into the device list
+                continue;
             }
+            let disabled_channels =
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+            // remove disabled lighting and lcd channels:
+            device
+                .info
+                .channels
+                .retain(|channel_name, _| disabled_channels.contains(channel_name).not());
+            self.disabled_channels
+                .borrow_mut()
+                .insert(device.uid.clone(), disabled_channels);
             self.check_for_legacy_690(&mut device).await?;
             self.devices
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
@@ -174,6 +186,7 @@ impl LiquidctlRepo {
         driver_locations
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn update_temp_infos(&self) {
         for device_lock in self.devices.values() {
             let status = {
@@ -193,6 +206,7 @@ impl LiquidctlRepo {
                         .as_ref()
                         .expect("Should always be present for LC devices")
                         .driver_type,
+                    &device.uid,
                     status,
                     device.type_index,
                 )
@@ -236,12 +250,24 @@ impl LiquidctlRepo {
     fn map_status(
         &self,
         driver_type: &BaseDriver,
+        device_uid: &DeviceUID,
         lc_statuses: &LCStatus,
         device_index: u8,
     ) -> Status {
         let status_map = Self::create_status_map(lc_statuses);
-        self.device_mapper
-            .extract_status(driver_type, &status_map, device_index)
+        let mut status = self
+            .device_mapper
+            .extract_status(driver_type, &status_map, device_index);
+        // Due to how liquidctl statuses work, we have to remove disabled channels every status update:
+        let disabled_channels_lock = self.disabled_channels.borrow();
+        let disabled_channels = disabled_channels_lock.get(device_uid).unwrap();
+        status
+            .channels
+            .retain(|channel| disabled_channels.contains(&channel.name).not());
+        status
+            .temps
+            .retain(|channel| disabled_channels.contains(&channel.name).not());
+        status
     }
 
     async fn call_initialize_concurrently(&self) {
@@ -732,6 +758,7 @@ impl Repository for LiquidctlRepo {
                         .as_ref()
                         .expect("Should always be present for LC devices")
                         .driver_type,
+                    &device.uid,
                     lc_status.unwrap(),
                     device.type_index,
                 );

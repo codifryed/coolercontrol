@@ -188,6 +188,9 @@ pub struct CoolerControlDeviceSettings {
 
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
+
+    /// A list of channels to disable communication with.
+    pub disable_channels: Vec<ChannelName>,
 }
 
 /// Profile Settings

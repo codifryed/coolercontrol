@@ -181,8 +181,9 @@ impl CpuRepo {
     }
 
     /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
+    #[allow(clippy::cast_possible_truncation)]
     fn parse_amd_physical_id(&self, index: usize) -> Result<PhysicalID> {
-        // todo: not currently used due to an apparent bug in the amd hwmon kernel driver:
+        // NOTE: not currently used due to an apparent bug in the amd hwmon kernel driver:
         // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
         // for (physical_id, processor_list) in &self.cpu_infos {
         //     if cpu_list.iter().eq(processor_list.iter()) {
@@ -206,6 +207,7 @@ impl CpuRepo {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
         let percent_per_processor = self
@@ -241,6 +243,7 @@ impl CpuRepo {
     }
 
     /// Collects the average frequency per Physical CPU.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     async fn collect_freq() -> HashMap<PhysicalID, Mhz> {
         // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
         // cpuinfo not only will return which frequency belongs to which physical CPU,
@@ -418,6 +421,7 @@ impl CpuRepo {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {}", err),
                 };
+                // requires temp channels beforehand
                 let physical_id = match self.match_physical_id(device_name, &channels, index) {
                     Ok(id) => id,
                     Err(err) => {
@@ -425,18 +429,37 @@ impl CpuRepo {
                         continue;
                     }
                 };
+                let type_index = physical_id + 1;
+                // cpu_info is set first, filling in model names:
+                let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
+                let device_uid =
+                    Device::create_uid_from(&cpu_name, &DeviceType::CPU, type_index, None);
+                let cc_device_setting = self
+                    .config
+                    .get_cc_settings_for_device(&device_uid)
+                    .unwrap_or(None);
+                if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+                    info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
+                    continue;
+                }
+                let disabled_channels =
+                    cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
                 match self.init_cpu_load(physical_id) {
                     Ok(load) => channels.push(load),
                     Err(err) => {
-                        error!("Error matching cpu load percents to processors: {}", err);
+                        error!("Error matching cpu load percents to processors: {err}");
                     }
                 }
                 match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
                     Ok(freq) => channels.push(freq),
                     Err(err) => {
-                        error!("Error matching cpu frequencies to processors: {}", err);
+                        error!("Error matching cpu frequencies to processors: {err}");
                     }
                 }
+                let channels = channels
+                    .into_iter()
+                    .filter(|channel| disabled_channels.contains(&channel.name).not())
+                    .collect::<Vec<HwmonChannelInfo>>();
                 let pci_device_names = devices::get_device_pci_names(path).await;
                 let model = devices::get_device_model_name(path).await.or_else(|| {
                     pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -477,6 +500,7 @@ impl Repository for CpuRepo {
         DeviceType::CPU
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -486,8 +510,8 @@ impl Repository for CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.len() != num_of_cpus {
-            return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {} hwmon devices found: {}",
-                num_of_cpus, hwmon_devices.len()
+            return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {num_of_cpus} hwmon devices found: {}",
+                hwmon_devices.len()
             ));
         }
 
@@ -561,18 +585,10 @@ impl Repository for CpuRepo {
                 ..Default::default()
             };
             device.initialize_status_history_with(status, poll_rate);
-            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!(
-                    "Skipping disabled device: {} with UID: {}",
-                    device.name, device.uid
-                );
-            } else {
-                self.devices.insert(
-                    device.uid.clone(),
-                    (Rc::new(RefCell::new(device)), Rc::new(driver)),
-                );
-            }
+            self.devices.insert(
+                device.uid.clone(),
+                (Rc::new(RefCell::new(device)), Rc::new(driver)),
+            );
         }
 
         let mut init_devices = HashMap::new();
@@ -668,11 +684,7 @@ impl Repository for CpuRepo {
                 channels,
                 ..Default::default()
             };
-            trace!(
-                "CPU device #{} status was updated with: {:?}",
-                device_id,
-                status
-            );
+            trace!("CPU device #{device_id} status was updated with: {status:?}");
             device.borrow_mut().set_status(status);
         }
         Ok(())

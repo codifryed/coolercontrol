@@ -133,7 +133,7 @@ impl Device {
     /// Unique in the sense, that we try to follow the same device even if, for example:
     ///     - another device has been removed and the order has changed.
     ///     - the device has been swapped with another device plugged into the system
-    fn create_uid_from(
+    pub fn create_uid_from(
         name: &str,
         d_type: &DeviceType,
         type_index: u8,

@@ -19,7 +19,7 @@
 use crate::api::auth::verify_admin_permissions;
 use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
-use crate::device::UID;
+use crate::device::{ChannelName, UID};
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 use aide::NoApi;
 use axum::extract::{Path, State};
@@ -187,6 +187,7 @@ impl CoolerControlSettingsDto {
 }
 
 impl From<CoolerControlSettings> for CoolerControlSettingsDto {
+    #[allow(clippy::cast_possible_truncation)]
     fn from(settings: CoolerControlSettings) -> Self {
         Self {
             apply_on_boot: Some(settings.apply_on_boot),
@@ -206,6 +207,7 @@ pub struct CoolerControlDeviceSettingsDto {
     pub uid: UID,
     pub name: String,
     pub disable: bool,
+    pub disable_channels: Vec<ChannelName>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

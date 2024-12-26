@@ -904,7 +904,28 @@ impl Config {
                 .as_str()
                 .with_context(|| "name should be a string")?
                 .to_string();
-            Ok(Some(CoolerControlDeviceSettings { name, disable }))
+            let disable_channels =
+                if let Some(value) = device_settings_table.get("disable_channels") {
+                    let mut disable_channels = Vec::new();
+                    let channels = value
+                        .as_array()
+                        .with_context(|| "channels should be an array")?;
+                    for channel in channels {
+                        let channel_str = channel
+                            .as_str()
+                            .with_context(|| "channel should be a string")?
+                            .to_string();
+                        disable_channels.push(channel_str);
+                    }
+                    disable_channels
+                } else {
+                    Vec::new()
+                };
+            Ok(Some(CoolerControlDeviceSettings {
+                name,
+                disable,
+                disable_channels,
+            }))
         } else {
             Ok(None)
         }
@@ -924,6 +945,11 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
+        let mut channel_array = toml_edit::Array::new();
+        for channel_name in &cc_device_settings.disable_channels {
+            channel_array.push(Value::String(Formatted::new(channel_name.clone())));
+        }
+        device_settings_table["disable_channels"] = Item::Value(Value::Array(channel_array));
     }
 
     /*

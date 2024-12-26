@@ -330,6 +330,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     async function loadCCAllDeviceSettings(): Promise<void> {
+        // The daemon returns all devices, both enabled and disabled.
         for (const deviceSetting of (await deviceStore.daemonClient.loadCCAllDeviceSettings())
             .devices) {
             ccDeviceSettings.value.set(deviceSetting.uid, deviceSetting)

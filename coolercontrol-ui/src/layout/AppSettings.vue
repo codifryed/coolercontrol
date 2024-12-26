@@ -24,7 +24,14 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
-import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiRestart, mdiViewQuiltOutline } from '@mdi/js'
+import {
+    mdiDnsOutline,
+    mdiFormatListBulleted,
+    mdiLaptop,
+    mdiMonitor,
+    mdiRestart,
+    mdiViewQuiltOutline,
+} from '@mdi/js'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
@@ -50,6 +57,7 @@ const confirm = useConfirm()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
+import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -170,7 +178,7 @@ const applyGenericDaemonChange = _.debounce(
                     life: 6000,
                 })
                 await deviceStore.daemonClient.shutdownDaemon()
-                await deviceStore.waitAndReload(5)
+                await deviceStore.waitAndReload(10)
             },
         }),
     2000,
@@ -245,7 +253,7 @@ watch(pollRate, () => {
         <ScrollAreaViewport class="pb-16 h-screen w-full">
             <Tabs value="0">
                 <TabList>
-                    <Tab value="0" as="div" class="flex w-1/4 justify-center items-center gap-2">
+                    <Tab value="0" as="div" class="flex w-1/5 justify-center items-center gap-2">
                         <svg-icon
                             type="mdi"
                             :path="mdiViewQuiltOutline"
@@ -253,7 +261,20 @@ watch(pollRate, () => {
                         />
                         Interface
                     </Tab>
-                    <Tab value="1" as="div" class="flex w-1/4 justify-center items-center gap-2">
+                    <Tab
+                        value="4"
+                        as="div"
+                        class="flex w-1/5 justify-center items-center gap-2"
+                        :disabled="false"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiFormatListBulleted"
+                            :size="deviceStore.getREMSize(1.5)"
+                        />
+                        Devices
+                    </Tab>
+                    <Tab value="1" as="div" class="flex w-1/5 justify-center items-center gap-2">
                         <svg-icon
                             type="mdi"
                             :path="mdiDnsOutline"
@@ -264,7 +285,7 @@ watch(pollRate, () => {
                     <Tab
                         value="2"
                         as="div"
-                        class="flex w-1/4 justify-center items-center gap-2"
+                        class="flex w-1/5 justify-center items-center gap-2"
                         :disabled="!deviceStore.isTauriApp()"
                     >
                         <svg-icon
@@ -277,7 +298,7 @@ watch(pollRate, () => {
                     <Tab
                         value="3"
                         as="div"
-                        class="flex w-1/4 justify-center items-center gap-2"
+                        class="flex w-1/5 justify-center items-center gap-2"
                         :disabled="!deviceStore.isThinkPad"
                     >
                         <svg-icon
@@ -287,12 +308,6 @@ watch(pollRate, () => {
                         />
                         ThinkPad
                     </Tab>
-                    <Tab
-                        value="4"
-                        as="div"
-                        class="flex w-full justify-center items-center"
-                        :disabled="true"
-                    />
                 </TabList>
                 <TabPanels class="mt-2">
                     <TabPanel value="0" class="flex flex-col lg:flex-row">
@@ -1158,6 +1173,9 @@ watch(pollRate, () => {
                                 </tr>
                             </tbody>
                         </table>
+                    </TabPanel>
+                    <TabPanel value="4" class="flex flex-col lg:flex-row">
+                        <AppSettingsDevices />
                     </TabPanel>
                 </TabPanels>
             </Tabs>

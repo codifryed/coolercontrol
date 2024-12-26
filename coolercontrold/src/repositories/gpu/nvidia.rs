@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
-use std::cell::RefCell;
+use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::{Add, Not, Sub};
 use std::rc::Rc;
@@ -37,8 +37,8 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
-    SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
+    DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
@@ -72,6 +72,7 @@ const PATTERN_FAN_CHANNEL_INDEX: &str = r"^fan(?P<index>\d+)";
 const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DisplayId = u8;
+/// The index used by the drivers:
 type GpuIndex = u8;
 type FanIndex = u8;
 
@@ -82,6 +83,8 @@ pub struct GpuNVidia {
     pub nvidia_preloaded_statuses: RefCell<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
     nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
     xauthority_path: RefCell<Option<String>>,
+    nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
+    nvidia_nvml_load_enabled: Cell<bool>,
 }
 
 impl GpuNVidia {
@@ -93,6 +96,8 @@ impl GpuNVidia {
             nvidia_preloaded_statuses: RefCell::new(HashMap::new()),
             nvidia_nvml_devices: HashMap::new(),
             xauthority_path: RefCell::new(None),
+            nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
+            nvidia_nvml_load_enabled: Cell::new(false),
         }
     }
 
@@ -182,10 +187,11 @@ impl GpuNVidia {
         }
     }
 
-    /// --------------------------------------------------------------------------------------------
-    /// NVML
-    /// --------------------------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------
+    // NVML
+    // --------------------------------------------------------------------------------------------
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn init_nvml_devices(&mut self) -> Option<u8> {
         let nvml = Nvml::init()
             .inspect_err(|err| {
@@ -224,6 +230,7 @@ impl GpuNVidia {
         }
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub fn retrieve_nvml_devices(
         &mut self,
         starting_nvidia_index: u8,
@@ -235,37 +242,54 @@ impl GpuNVidia {
             let name = device
                 .name()
                 .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
+            let device_uid = Device::create_uid_from(&name, &DeviceType::GPU, type_index, None);
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
+            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+                info!("Skipping disabled device: {name} with UID: {device_uid}");
+                continue;
+            }
+            let disabled_channels =
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+            self.nvidia_nvml_load_enabled
+                .set(disabled_channels.contains(&GPU_LOAD_NAME.to_string()).not());
             let mut nvidia_temp_infos = Vec::new();
             let mut nvidia_freq_infos = Vec::new();
             let mut temp_infos = HashMap::new();
             let mut temp_status = Vec::new();
-            if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
-                temp_infos.insert(
-                    GPU_TEMP_NAME.to_string(),
-                    TempInfo {
-                        label: GPU_TEMP_NAME.to_string(),
-                        number: 1,
-                    },
-                );
-                temp_status.push(TempStatus {
-                    name: GPU_TEMP_NAME.to_string(),
-                    temp: f64::from(temp),
-                });
-                nvidia_temp_infos.push(GPU_TEMP_NAME.to_string());
+
+            let temp_name = GPU_TEMP_NAME.to_string();
+            if disabled_channels.contains(&temp_name).not() {
+                if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
+                    temp_infos.insert(
+                        temp_name.clone(),
+                        TempInfo {
+                            label: temp_name.clone(),
+                            number: 1,
+                        },
+                    );
+                    temp_status.push(TempStatus {
+                        name: temp_name.clone(),
+                        temp: f64::from(temp),
+                    });
+                    nvidia_temp_infos.push(temp_name);
+                }
             }
-            if let Some(mem_temp) = Self::get_memory_temp(device) {
-                temp_infos.insert(
-                    GPU_TEMP_MEMORY_NAME.to_string(),
-                    TempInfo {
-                        label: GPU_TEMP_MEMORY_NAME.to_string(),
-                        number: 2,
-                    },
-                );
-                temp_status.push(TempStatus {
-                    name: GPU_TEMP_MEMORY_NAME.to_string(),
-                    temp: mem_temp,
-                });
-                nvidia_temp_infos.push(GPU_TEMP_MEMORY_NAME.to_string());
+            let mem_temp_name = GPU_TEMP_MEMORY_NAME.to_string();
+            if disabled_channels.contains(&mem_temp_name).not() {
+                if let Some(mem_temp) = Self::get_memory_temp(device) {
+                    temp_infos.insert(
+                        mem_temp_name.clone(),
+                        TempInfo {
+                            label: mem_temp_name.clone(),
+                            number: 2,
+                        },
+                    );
+                    temp_status.push(TempStatus {
+                        name: mem_temp_name.clone(),
+                        temp: mem_temp,
+                    });
+                    nvidia_temp_infos.push(mem_temp_name);
+                }
             }
             let mut channel_infos = HashMap::new();
             let mut channel_status = Vec::new();
@@ -275,92 +299,122 @@ impl GpuNVidia {
                 let Ok(fan_speed) = device.fan_speed(u32::from(fan_index)) else {
                     continue;
                 };
-                fan_indices.push(fan_index);
                 let fan_name = format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1);
-                channel_infos.insert(
-                    fan_name.clone(),
-                    ChannelInfo {
-                        label: Some(fan_name.clone()),
-                        speed_options: Some(SpeedOptions {
-                            profiles_enabled: false,
-                            fixed_enabled: true,
-                            manual_profiles_enabled: true,
+                if disabled_channels.contains(&fan_name).not() {
+                    fan_indices.push(fan_index);
+                    channel_infos.insert(
+                        fan_name.clone(),
+                        ChannelInfo {
+                            label: Some(fan_name.clone()),
+                            speed_options: Some(SpeedOptions {
+                                profiles_enabled: false,
+                                fixed_enabled: true,
+                                manual_profiles_enabled: true,
+                                ..Default::default()
+                            }),
                             ..Default::default()
-                        }),
+                        },
+                    );
+                    channel_status.push(ChannelStatus {
+                        name: fan_name,
+                        duty: Some(f64::from(fan_speed)),
                         ..Default::default()
-                    },
-                );
-                channel_status.push(ChannelStatus {
-                    name: fan_name,
-                    duty: Some(f64::from(fan_speed)),
-                    ..Default::default()
-                });
+                    });
+                }
             }
-            if let Ok(util_rates) = device.utilization_rates() {
-                channel_infos.insert(
-                    GPU_LOAD_NAME.to_string(),
-                    ChannelInfo {
-                        label: Some(GPU_LOAD_NAME.to_string()),
+            if self.nvidia_nvml_load_enabled.get() {
+                let load_name = GPU_LOAD_NAME.to_string();
+                if let Ok(util_rates) = device.utilization_rates() {
+                    channel_infos.insert(
+                        load_name.clone(),
+                        ChannelInfo {
+                            label: Some(load_name.clone()),
+                            ..Default::default()
+                        },
+                    );
+                    channel_status.push(ChannelStatus {
+                        name: load_name,
+                        duty: Some(f64::from(util_rates.gpu)),
                         ..Default::default()
-                    },
-                );
-                channel_status.push(ChannelStatus {
-                    name: GPU_LOAD_NAME.to_string(),
-                    duty: Some(f64::from(util_rates.gpu)),
-                    ..Default::default()
-                });
+                    });
+                }
             }
-            Self::add_nvml_clock_label(
-                device,
-                Clock::Graphics,
-                NVIDIA_CLOCK_GRAPHICS,
-                format!("{NVIDIA_FREQ_PREFIX} Graphics"),
-                &mut channel_infos,
-                &mut nvidia_freq_infos,
-            );
-            Self::add_nvml_clock_status(
-                device,
-                Clock::Graphics,
-                NVIDIA_CLOCK_GRAPHICS,
-                &mut channel_status,
-            );
-            Self::add_nvml_clock_label(
-                device,
-                Clock::SM,
-                NVIDIA_CLOCK_SM,
-                format!("{NVIDIA_FREQ_PREFIX} SM"),
-                &mut channel_infos,
-                &mut nvidia_freq_infos,
-            );
-            Self::add_nvml_clock_status(device, Clock::SM, NVIDIA_CLOCK_SM, &mut channel_status);
-            Self::add_nvml_clock_label(
-                device,
-                Clock::Memory,
-                NVIDIA_CLOCK_MEMORY,
-                format!("{NVIDIA_FREQ_PREFIX} Memory"),
-                &mut channel_infos,
-                &mut nvidia_freq_infos,
-            );
-            Self::add_nvml_clock_status(
-                device,
-                Clock::Memory,
-                NVIDIA_CLOCK_MEMORY,
-                &mut channel_status,
-            );
-            Self::add_nvml_clock_label(
-                device,
-                Clock::Video,
-                NVIDIA_CLOCK_VIDEO,
-                format!("{NVIDIA_FREQ_PREFIX} Video"),
-                &mut channel_infos,
-                &mut nvidia_freq_infos,
-            );
-            Self::add_nvml_clock_status(
-                device,
-                Clock::Video,
-                NVIDIA_CLOCK_VIDEO,
-                &mut channel_status,
-            );
+            if disabled_channels
+                .contains(&NVIDIA_CLOCK_GRAPHICS.to_string())
+                .not()
+            {
+                Self::add_nvml_clock_label(
+                    device,
+                    Clock::Graphics,
+                    NVIDIA_CLOCK_GRAPHICS,
+                    format!("{NVIDIA_FREQ_PREFIX} Graphics"),
+                    &mut channel_infos,
+                    &mut nvidia_freq_infos,
+                );
+                Self::add_nvml_clock_status(
+                    device,
+                    Clock::Graphics,
+                    NVIDIA_CLOCK_GRAPHICS,
+                    &mut channel_status,
+                );
+            }
+            if disabled_channels
+                .contains(&NVIDIA_CLOCK_SM.to_string())
+                .not()
+            {
+                Self::add_nvml_clock_label(
+                    device,
+                    Clock::SM,
+                    NVIDIA_CLOCK_SM,
+                    format!("{NVIDIA_FREQ_PREFIX} SM"),
+                    &mut channel_infos,
+                    &mut nvidia_freq_infos,
+                );
+                Self::add_nvml_clock_status(
+                    device,
+                    Clock::SM,
+                    NVIDIA_CLOCK_SM,
+                    &mut channel_status,
+                );
+            }
+            if disabled_channels
+                .contains(&NVIDIA_CLOCK_MEMORY.to_string())
+                .not()
+            {
+                Self::add_nvml_clock_label(
+                    device,
+                    Clock::Memory,
+                    NVIDIA_CLOCK_MEMORY,
+                    format!("{NVIDIA_FREQ_PREFIX} Memory"),
+                    &mut channel_infos,
+                    &mut nvidia_freq_infos,
+                );
+                Self::add_nvml_clock_status(
+                    device,
+                    Clock::Memory,
+                    NVIDIA_CLOCK_MEMORY,
+                    &mut channel_status,
+                );
+            }
+            if disabled_channels
+                .contains(&NVIDIA_CLOCK_VIDEO.to_string())
+                .not()
+            {
+                Self::add_nvml_clock_label(
+                    device,
+                    Clock::Video,
+                    NVIDIA_CLOCK_VIDEO,
+                    format!("{NVIDIA_FREQ_PREFIX} Video"),
+                    &mut channel_infos,
+                    &mut nvidia_freq_infos,
+                );
+                Self::add_nvml_clock_status(
+                    device,
+                    Clock::Video,
+                    NVIDIA_CLOCK_VIDEO,
+                    &mut channel_status,
+                );
+            }
 
             let driver_version = device.nvml().sys_driver_version().ok();
             let driver_name = format!(
@@ -398,14 +452,6 @@ impl GpuNVidia {
             };
             device_raw.initialize_status_history_with(status, poll_rate);
             let uid = device_raw.uid.clone();
-            let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!(
-                    "Skipping disabled device: {} with UID: {}",
-                    device_raw.name, uid
-                );
-                continue; // skip loading this device into the device list
-            }
 
             let device = Rc::new(RefCell::new(device_raw));
             self.nvidia_devices.insert(type_index, Rc::clone(&device));
@@ -459,6 +505,7 @@ impl GpuNVidia {
         }
     }
 
+    #[allow(clippy::cast_precision_loss)]
     fn get_memory_temp(nvml_device: &nvml_wrapper::Device) -> Option<Temp> {
         let field_values = nvml_device
             .field_values_for(&[FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP)])
@@ -495,12 +542,14 @@ impl GpuNVidia {
                 ..Default::default()
             });
         }
-        if let Ok(util_rates) = nvml_device.utilization_rates() {
-            channel_status.push(ChannelStatus {
-                name: GPU_LOAD_NAME.to_string(),
-                duty: Some(f64::from(util_rates.gpu)),
-                ..Default::default()
-            });
+        if self.nvidia_nvml_load_enabled.get() {
+            if let Ok(util_rates) = nvml_device.utilization_rates() {
+                channel_status.push(ChannelStatus {
+                    name: GPU_LOAD_NAME.to_string(),
+                    duty: Some(f64::from(util_rates.gpu)),
+                    ..Default::default()
+                });
+            }
         }
         Self::get_nvml_freq_status(nvml_device, nv_info, &mut channel_status);
         StatusNvidiaDeviceNvml {
@@ -632,9 +681,9 @@ impl GpuNVidia {
         }
     }
 
-    /// --------------------------------------------------------------------------------------------
-    /// NVidia-SMI
-    /// --------------------------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------
+    // NVidia-SMI
+    // --------------------------------------------------------------------------------------------
 
     /// Retrieve sensor data for all `NVidia` cards using `nvidia-smi`.
     /// Calling `nvidia-smi` is a relatively safe operation and will let us know if there is a
@@ -685,6 +734,7 @@ impl GpuNVidia {
         nvidia_statuses
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     pub async fn init_nvidia_smi_devices(
         &mut self,
         starting_nvidia_index: u8,
@@ -706,12 +756,39 @@ impl GpuNVidia {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
                     let type_index = nv_status.index + starting_nvidia_index;
+                    let device_uid = Device::create_uid_from(
+                        &nv_status.name,
+                        &DeviceType::GPU,
+                        type_index,
+                        None,
+                    );
+                    let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
+                    if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+                        info!(
+                            "Skipping disabled device: {} with UID: {device_uid}",
+                            nv_status.name
+                        );
+                        continue;
+                    }
+                    let disabled_channels =
+                        cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                    self.nvidia_smi_disabled_channels
+                        .borrow_mut()
+                        .insert(nv_status.index, disabled_channels.clone());
                     self.nvidia_preloaded_statuses
                         .borrow_mut()
                         .insert(type_index, nv_status.clone());
                     let status = Status {
-                        channels: nv_status.channels,
-                        temps: nv_status.temps,
+                        channels: nv_status
+                            .channels
+                            .into_iter()
+                            .filter(|channel| disabled_channels.contains(&channel.name).not())
+                            .collect::<Vec<ChannelStatus>>(),
+                        temps: nv_status
+                            .temps
+                            .into_iter()
+                            .filter(|temp| disabled_channels.contains(&temp.name).not())
+                            .collect::<Vec<TempStatus>>(),
                         ..Default::default()
                     };
                     let temps = status
@@ -783,14 +860,6 @@ impl GpuNVidia {
                     );
                     device_raw.initialize_status_history_with(status, poll_rate);
                     let uid = device_raw.uid.clone();
-                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid)?;
-                    if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                        info!(
-                            "Skipping disabled device: {} with UID: {}",
-                            device_raw.name, uid
-                        );
-                        continue; // skip loading this device into the device list
-                    }
                     let device = Rc::new(RefCell::new(device_raw));
                     self.nvidia_devices.insert(type_index, Rc::clone(&device));
                     let (display_id, fan_indices) = nvidia_infos
@@ -823,7 +892,7 @@ impl GpuNVidia {
     /// `nvidia-settings` to work correctly. If it is not found, fan control is disabled.
     /// Often the cookie is not immediately available at boot time and extra time is needed to let
     /// the display-manager and Xorg to fully come up.
-    /// See https://gitlab.com/coolercontrol/coolercontrol/-/issues/156
+    /// See [issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/156)
     async fn search_for_xauthority_path() -> Option<String> {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
@@ -862,7 +931,7 @@ impl GpuNVidia {
     /// For most cases it seems that the display id doesn't really matter, as each id will
     /// give the same output. But that is not true for all systems. Some systems are sensitive
     /// to the display id, and will only give the proper output when using the correct one.
-    /// See: https://gitlab.com/coolercontrol/coolercontrol/-/issues/104
+    /// See: [issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/104)
     /// Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
     async fn get_nvidia_device_infos(
         &self,
@@ -917,26 +986,41 @@ impl GpuNVidia {
         for nvidia_status in &nvidia_statuses {
             let mut temps = vec![];
             let mut channels = vec![];
-            if let Some(temp) = nvidia_status.temp {
-                let standard_temp_name = GPU_TEMP_NAME.to_string();
-                temps.push(TempStatus {
-                    name: standard_temp_name.clone(),
-                    temp,
-                });
-            }
-            if let Some(load) = nvidia_status.load {
-                channels.push(ChannelStatus {
-                    name: GPU_LOAD_NAME.to_string(),
-                    duty: Some(f64::from(load)),
-                    ..Default::default()
-                });
-            }
-            if let Some(fan_duty) = nvidia_status.fan_duty {
-                channels.push(ChannelStatus {
-                    name: NVIDIA_FAN_NAME.to_string(),
-                    duty: Some(f64::from(fan_duty)),
-                    ..Default::default()
-                });
+            {
+                let disabled_channels_lock = self.nvidia_smi_disabled_channels.borrow();
+                // on first run this is empty:
+                let disabled_channels = disabled_channels_lock
+                    .get(&nvidia_status.index)
+                    .map_or_else(|| Cow::Owned(Vec::new()), Cow::Borrowed);
+                let temp_name = GPU_TEMP_NAME.to_string();
+                if disabled_channels.contains(&temp_name).not() {
+                    if let Some(temp) = nvidia_status.temp {
+                        temps.push(TempStatus {
+                            name: temp_name,
+                            temp,
+                        });
+                    }
+                }
+                let load_name = GPU_LOAD_NAME.to_string();
+                if disabled_channels.contains(&load_name).not() {
+                    if let Some(load) = nvidia_status.load {
+                        channels.push(ChannelStatus {
+                            name: load_name,
+                            duty: Some(f64::from(load)),
+                            ..Default::default()
+                        });
+                    }
+                }
+                let fan_name = NVIDIA_FAN_NAME.to_string();
+                if disabled_channels.contains(&fan_name).not() {
+                    if let Some(fan_duty) = nvidia_status.fan_duty {
+                        channels.push(ChannelStatus {
+                            name: fan_name,
+                            duty: Some(f64::from(fan_duty)),
+                            ..Default::default()
+                        });
+                    }
+                }
             }
             statuses.push(StatusNvidiaDeviceSMI {
                 index: nvidia_status.index,
@@ -1076,7 +1160,7 @@ impl GpuNVidia {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusNvidia {
-    pub index: u8,
+    pub index: GpuIndex,
     pub name: String,
     pub temp: Option<f64>,
     pub load: Option<u8>,
@@ -1085,7 +1169,7 @@ pub struct StatusNvidia {
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusNvidiaDeviceSMI {
-    pub index: u8,
+    pub index: GpuIndex,
     pub name: String,
     pub channels: Vec<ChannelStatus>,
     pub temps: Vec<TempStatus>,

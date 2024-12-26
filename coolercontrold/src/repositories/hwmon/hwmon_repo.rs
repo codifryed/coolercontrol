@@ -17,6 +17,7 @@
  */
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -124,6 +125,7 @@ impl HwmonRepo {
     /// Maps driver infos to our Devices
     /// `ThinkPads` need special handling, see:
     /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+    #[allow(clippy::too_many_lines)]
     async fn map_into_our_device_model(
         &mut self,
         hwmon_drivers: Vec<HwmonDriverInfo>,
@@ -215,18 +217,6 @@ impl HwmonRepo {
                 ..Default::default()
             };
             device.initialize_status_history_with(status, poll_rate);
-            let cc_device_setting = self
-                .config
-                .get_cc_settings_for_device(&device.uid)
-                .ok()
-                .flatten();
-            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!(
-                    "Skipping disabled device: {} with UID: {}",
-                    device.name, device.uid
-                );
-                continue; // skip loading this device into the device list
-            }
             self.devices.insert(
                 device.uid.clone(),
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
@@ -275,6 +265,7 @@ impl Repository for HwmonRepo {
         DeviceType::Hwmon
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -302,13 +293,37 @@ impl Repository for HwmonRepo {
                 );
                 continue;
             }
+            let u_id = devices::get_device_unique_id(&path, &device_name).await;
+            debug!("Detected UID: {u_id}");
+            let device_uid =
+                Device::create_uid_from(&device_name, &DeviceType::Hwmon, 0, Some(&u_id));
+            let cc_device_setting = self
+                .config
+                .get_cc_settings_for_device(&device_uid)
+                .ok()
+                .flatten();
+            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+                info!("Skipping disabled device: {device_name} with UID: {device_uid}");
+                continue;
+            }
+            let disabled_channels =
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
-                Ok(fans) => channels.extend(fans),
+                Ok(fans) => channels.extend(
+                    fans.into_iter()
+                        .filter(|fan| disabled_channels.contains(&fan.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
                 Err(err) => error!("Error initializing Hwmon Fans: {}", err),
             };
             match temps::init_temps(&path, &device_name).await {
-                Ok(temps) => channels.extend(temps),
+                Ok(temps) => channels.extend(
+                    temps
+                        .into_iter()
+                        .filter(|temp| disabled_channels.contains(&temp.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
                 Err(err) => error!("Error initializing Hwmon Temps: {}", err),
             };
             if channels.is_empty() {
@@ -320,8 +335,6 @@ impl Repository for HwmonRepo {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
             });
             debug!("Detected Device Model: {model:?}");
-            let u_id = devices::get_device_unique_id(&path, &device_name).await;
-            debug!("Detected UID: {u_id}");
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
