@@ -152,6 +152,7 @@ const option = {
         splitLine: {
             lineStyle: {
                 color: colors.themeColors.border,
+                width: 0.5,
                 type: 'dotted',
             },
         },
@@ -174,6 +175,7 @@ const option = {
         splitLine: {
             lineStyle: {
                 color: colors.themeColors.border,
+                width: 0.5,
                 type: 'dotted',
             },
         },

@@ -75,7 +75,7 @@ for (const device of deviceStore.allDevices()) {
             </popover-trigger>
             <popover-content side="right" class="z-10">
                 <div
-                    class="w-full bg-bg-two border-2 border-border-one p-4 rounded-lg text-text-color"
+                    class="w-full bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
                     <table>
                         <tbody>
@@ -139,6 +139,6 @@ for (const device of deviceStore.allDevices()) {
 <style scoped lang="scss">
 .table-data {
     padding: 0.5rem;
-    border: 1px solid rgba(var(--colors-border-one));
+    border: 1px solid rgb(var(--colors-border-one));
 }
 </style>

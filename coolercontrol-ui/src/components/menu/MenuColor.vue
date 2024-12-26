@@ -171,7 +171,7 @@ onMounted(async () => {
 }
 
 .el-color-picker__panel.el-popper {
-    border: 1px solid rgba(var(--colors-border-one) / 0.4);
+    border: 1px solid rgb(var(--colors-border-one));
 }
 
 .el-color-svpanel {
@@ -193,20 +193,20 @@ onMounted(async () => {
     font-size: 1rem;
     color: rgb(var(--colors-text-color) / 0.5);
     border-radius: 0.5rem;
-    border-color: rgba(var(--colors-border-one));
+    border-color: rgb(var(--colors-border-one));
     background-color: rgb(var(--colors-accent) / 0.8);
 }
 
 el-button:focus,
 .el-button:hover {
     color: rgb(var(--colors-text-color));
-    border-color: rgba(var(--colors-border-one));
+    border-color: rgb(var(--colors-border-one));
     background-color: rgb(var(--colors-accent));
 }
 
 .el-button.is-text:not(.is-disabled) {
     font-size: 1rem;
-    border: 1px solid rgba(var(--colors-border-one));
+    border: 1px solid rgb(var(--colors-border-one));
     border-radius: 0.5rem;
 }
 

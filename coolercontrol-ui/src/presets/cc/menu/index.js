@@ -36,7 +36,7 @@ export default {
             'transition-shadow',
             'duration-200',
             // States
-            'hover:bg-border-one',
+            'hover:bg-surface-hover',
             'hover:text-text-color',
         ],
     }),

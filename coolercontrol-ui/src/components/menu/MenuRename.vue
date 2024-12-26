@@ -114,7 +114,7 @@ const nameInvalid = computed(() => {
             </popover-trigger>
             <popover-content side="right" class="z-10">
                 <div
-                    class="w-80 bg-bg-two border-2 border-border-one p-4 rounded-lg text-text-color"
+                    class="w-80 bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
                     <span class="text-xl font-bold">Edit Name</span>
                     <FloatLabel class="mt-8">

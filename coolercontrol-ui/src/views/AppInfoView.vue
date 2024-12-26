@@ -324,6 +324,6 @@ onMounted(() => {
 <style scoped lang="scss">
 .table-data {
     padding: 0.5rem;
-    border: 1px solid rgba(var(--colors-border-one));
+    border: 1px solid rgb(var(--colors-border-one));
 }
 </style>

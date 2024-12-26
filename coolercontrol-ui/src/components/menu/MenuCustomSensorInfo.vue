@@ -45,7 +45,7 @@ const deviceStore = useDeviceStore()
             </popover-trigger>
             <popover-content side="right" class="z-10">
                 <div
-                    class="w-full max-w-prose bg-bg-two border-2 border-border-one p-4 rounded-lg text-text-color"
+                    class="w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
                     <span class="font-bold text-lg">Custom Sensors Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
