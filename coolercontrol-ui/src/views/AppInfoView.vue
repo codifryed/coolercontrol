@@ -21,7 +21,7 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { mdiBookOpenVariantOutline, mdiCircle, mdiGit } from '@mdi/js'
 import Button from 'primevue/button'
@@ -62,6 +62,12 @@ const downloadLogDatasetURL = computed((): string => {
     // used for a.dataset.downloadurl
     return ['text/plain', downloadLogFileName, downloadLogHref].join(':')
 })
+
+onMounted(() => {
+    const logOutput = document.getElementById('log-output')!
+    // scroll to bottom:
+    logOutput.scrollTop = logOutput.scrollHeight
+})
 </script>
 
 <template>
@@ -78,11 +84,25 @@ const downloadLogDatasetURL = computed((): string => {
             </h3>
             <p class="text-sm italic">This program comes with absolutely no warranty.</p>
             <div class="mt-8">
-                <span class="ml-3 font-semibold text-lg text-text-color"> Daemon Status </span>
                 <div class="flex flex-row">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                         <table class="w-96">
                             <tbody>
+                                <tr>
+                                    <td
+                                        class="mb-4 p-2 flex justify-end items-center font-semibold text-xl text-text-color"
+                                    >
+                                        Daemon Status
+                                    </td>
+                                    <td class="pl-2">
+                                        <Button
+                                            label="Acknowledge Issues"
+                                            class="mb-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                                            :disabled="daemonState.status === DaemonStatus.OK"
+                                            @click="daemonState.acknowledgeLogIssues()"
+                                        />
+                                    </td>
+                                </tr>
                                 <tr>
                                     <td class="table-data font-bold text-lg text-end">Status</td>
                                     <td class="table-data">
@@ -144,86 +164,103 @@ const downloadLogDatasetURL = computed((): string => {
                     <div class="w-full" />
                 </div>
             </div>
-            <Button
-                label="Acknowledge Issues"
-                class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                :disabled="daemonState.status === DaemonStatus.OK"
-                @click="daemonState.acknowledgeLogIssues()"
-            />
             <div class="mt-8">
-                <span class="ml-3 font-semibold text-lg text-text-color">
-                    Current Daemon Logs
-                </span>
-                <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
+                <div
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                >
+                    <span class="pb-2 ml-1 font-semibold text-xl text-text-color">
+                        Current Daemon Logs
+                    </span>
                     <div
+                        id="log-output"
                         class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
                         v-html="convertLogsToHtml"
                     />
+                    <a
+                        :download="downloadLogFileName"
+                        :href="downloadLogHref"
+                        :data-downloadurl="downloadLogDatasetURL"
+                    >
+                        <Button
+                            label="Download Current Logs"
+                            class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                        />
+                    </a>
                 </div>
             </div>
-            <a
-                :download="downloadLogFileName"
-                :href="downloadLogHref"
-                :data-downloadurl="downloadLogDatasetURL"
-            >
-                <Button
-                    label="Download Current Logs"
-                    class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                />
-            </a>
             <div class="mt-8">
-                <span class="ml-3 font-semibold text-lg text-text-color"> Getting More Logs </span>
-                <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
+                <div
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                >
+                    <span class="mb-4 font-semibold text-xl text-text-color">More Logs</span>
                     <p class="text-wrap">
-                        The CoolerControl daemons normally run as systemd services in the
-                        background. The journal system collects all logs from your system services
-                        and you can collect and view those logs using the
-                        <code>journalctl</code> command.<br /><br />
-                        If you want to see more than just the most recent logs or collect logs to
-                        fill out a bug report, you can use the following commands in your terminal:
+                        The CoolerControl daemons normally run as systemd system-level services. The
+                        journal system collects all logs from your system services and you can
+                        collect and view those logs using the
+                        <code>journalctl</code> command.
                     </p>
-                    <p class="mt-2">To output logs to a file in your current directory:</p>
+                    <p class="text-wrap mt-4">
+                        To see more logs, or to collect logs to fill out a bug report, use the
+                        following commands in your terminal:
+                    </p>
+                    <p class="mt-4">To output logs to a file in your current directory:</p>
                     <div
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
                     >
                         <span class="font-semibold">
                             journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n
                             10000 > coolercontrol-daemons.log
                         </span>
                     </div>
-                    <p class="mt-2">To follow current log output live in your terminal:</p>
+                    <p class="mt-4">To follow current log output live in your terminal:</p>
                     <div
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
                     >
                         <span class="font-semibold">
                             journalctl -u coolercontrold -u coolercontrol-liqctld -f -n 100
                         </span>
                     </div>
+                    <p class="mt-4">
+                        To change the current log level, for example for debug output:
+                    </p>
+                    <p class="mt-0 italic text-sm">Note: debug logs produces a lot of output</p>
+                    <div
+                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                    >
+                        <span class="font-semibold">
+                            sudo sed -i -E 's|COOLERCONTROL_LOG=INFO|COOLERCONTROL_LOG=DEBUG|'
+                            /lib/systemd/system/coolercontrold.service<br />
+                            sudo systemctl daemon-reload<br />
+                            sudo systemctl restart coolercontrold
+                        </span>
+                    </div>
                 </div>
             </div>
             <div class="mt-8">
-                <span class="ml-3 font-semibold text-lg text-text-color">
-                    Configuration Files
-                </span>
-                <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
+                <div
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                >
+                    <span class="mb-4 font-semibold text-xl text-text-color">
+                        Backup/Import Configuration Files
+                    </span>
                     <p class="text-wrap">
-                        Like most *nix system services, the daemon configuration files are stored
-                        under <code>/etc</code>, and for CoolerControl specifically under
-                        <code>/etc/coolercontrol/</code>.
+                        Like most *nix <span class="font-bold">system-level</span> services, the
+                        daemon configuration files are stored under <code>/etc</code>, and for
+                        CoolerControl specifically under <code>/etc/coolercontrol/</code>.
                     </p>
-                    <p class="mt-2">To create a complete backup:</p>
+                    <p class="mt-4">To create a complete backup:</p>
                     <div
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
                     >
                         <span class="font-semibold">
                             sudo tar -czvf coolercontrol-backup.tgz /etc/coolercontrol
                         </span>
                     </div>
-                    <p class="mt-2">
+                    <p class="mt-4">
                         To import and overwrite the current settings from a complete backup:
                     </p>
                     <div
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
                     >
                         <span class="font-semibold">
                             sudo systemctl stop coolercontrold<br />
@@ -234,9 +271,9 @@ const downloadLogDatasetURL = computed((): string => {
                 </div>
             </div>
             <div class="mt-8 mb-6">
-                <span class="ml-3 font-semibold text-lg text-text-color"> Links </span>
                 <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
-                    <p class="text-wrap flex flex-row items-center">
+                    <span class="mb-4 font-semibold text-xl text-text-color"> Links </span>
+                    <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.wiki" class="text-accent">
                             <div class="flex flex-row items-center">
                                 <svg-icon
@@ -249,7 +286,7 @@ const downloadLogDatasetURL = computed((): string => {
                             </div> </a
                         >&nbsp;- Get more information about CoolerControl and how to use it.
                     </p>
-                    <p class="mt-2 text-wrap flex flex-row items-center">
+                    <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.repository" class="text-accent">
                             <div class="flex flex-row items-center">
                                 <svg-icon
@@ -262,7 +299,7 @@ const downloadLogDatasetURL = computed((): string => {
                             </div> </a
                         >&nbsp;- Submit Issues or Feature Requests.
                     </p>
-                    <p class="mt-2 text-wrap flex flex-row items-center">
+                    <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
                             <div class="flex flex-row items-center">
                                 <span class="mr-2 pi pi-discord text-[2.0rem]" />
