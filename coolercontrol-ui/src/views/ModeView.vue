@@ -19,21 +19,28 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
+import {
+    mdiBookmarkCheckOutline,
+    mdiInformationSlabCircleOutline,
+    mdiMemory
+} from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, onMounted, type Ref, ref, watch } from 'vue'
+import {computed, inject, onMounted, type Ref, ref, watch} from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Mode } from '@/models/Mode.ts'
 import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
+import Button from "primevue/button";
+import {Emitter, EventType} from "mitt";
 
 interface Props {
     modeUID: UID
 }
 
 const props = defineProps<Props>()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -137,6 +144,11 @@ const initTableData = () => {
 }
 initTableData()
 
+const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
+const activateMode = async (): Promise<void> => {
+    const successful = await settingsStore.activateMode(props.modeUID)
+    if (successful) emitter.emit('active-modes-change-menu')}
+
 onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, () => {
         initTableData()
@@ -158,6 +170,23 @@ onMounted(async () => {
                 :path="mdiInformationSlabCircleOutline"
                 :size="deviceStore.getREMSize(1.25)"
             />
+        </div>
+        <div class="w-full"/>
+        <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated}">
+            <Button
+                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                label="Save"
+                v-tooltip.bottom="'Activate Mode'"
+                :disabled="isActivated"
+                @click="activateMode"
+            >
+                <svg-icon
+                    class="outline-0"
+                    type="mdi"
+                    :path="mdiBookmarkCheckOutline"
+                    :size="deviceStore.getREMSize(1.5)"
+                />
+            </Button>
         </div>
     </div>
     <div class="h-full pb-14">

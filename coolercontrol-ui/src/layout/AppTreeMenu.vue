@@ -68,7 +68,6 @@ import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
 import MenuModeRename from '@/components/menu/MenuModeRename.vue'
 import MenuModeDelete from '@/components/menu/MenuModeDelete.vue'
 import MenuModeDuplicate from '@/components/menu/MenuModeDuplicate.vue'
-import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuModeUpdate from '@/components/menu/MenuModeUpdate.vue'
 import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
 import MenuModeInfo from '@/components/menu/MenuModeInfo.vue'
@@ -210,7 +209,6 @@ const modesTree = (): any => {
                 isRecentlyActive: isRecentlyActive,
                 to: { name: 'modes', params: { modeUID: mode.uid } },
                 options: [
-                    { modeActivate: true },
                     { modeRename: true },
                     { modeUpdate: true },
                     { modeDuplicate: true },
@@ -556,7 +554,6 @@ const addMode = (modeUID: UID): void => {
             isRecentlyActive: isRecentlyActive,
             to: { name: 'modes', params: { modeUID: newMode.uid } },
             options: [
-                { modeActivate: true },
                 { modeRename: true },
                 { modeUpdate: true },
                 { modeDuplicate: true },
@@ -805,11 +802,6 @@ onMounted(async () => {
                                     v-else-if="option.dashboardDelete"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
-                                />
-                                <menu-mode-activate
-                                    v-else-if="option.modeActivate"
-                                    :mode-u-i-d="data.uid"
-                                    @activated="activeModesChange"
                                 />
                                 <menu-mode-info v-else-if="option.modeInfo" />
                                 <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
