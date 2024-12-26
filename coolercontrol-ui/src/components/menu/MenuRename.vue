@@ -45,18 +45,6 @@ const settingsStore = useSettingsStore()
 const inputArea = ref()
 const saveButton = ref()
 
-const deviceChannelHidden = computed((): boolean => {
-    const isDeviceName = props.channelName == null
-    if (isDeviceName) {
-        return false
-    } else {
-        return (
-            settingsStore.allUIDeviceSettings
-                .get(props.deviceUID)
-                ?.sensorsAndChannels.get(props.channelName)?.hide ?? false
-        )
-    }
-})
 const deviceSettings = useSettingsStore().allUIDeviceSettings.get(props.deviceUID)!
 const sensorName: string | null = props.channelName
 const isDeviceName: boolean = sensorName == null
@@ -112,16 +100,13 @@ const nameInvalid = computed(() => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Rename', disabled: deviceChannelHidden }">
+    <div v-tooltip.top="{ value: 'Rename' }">
         <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
-                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex"
-                :class="{ 'hover:text-text-color hover:bg-surface-hover': !deviceChannelHidden }"
-                :disabled="deviceChannelHidden"
+                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
             >
                 <svg-icon
                     class="outline-0"
-                    :class="{ 'cursor-default opacity-50': deviceChannelHidden }"
                     type="mdi"
                     :path="mdiRenameOutline"
                     :size="deviceStore.getREMSize(1.5)"

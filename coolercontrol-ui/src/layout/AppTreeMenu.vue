@@ -39,7 +39,7 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, ComputedRef, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { inject, onMounted, reactive, Reactive, ref, Ref } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
@@ -47,10 +47,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
 import MenuRename from '@/components/menu/MenuRename.vue'
-import MenuHide from '@/components/menu/MenuHide.vue'
 import MenuColor from '@/components/menu/MenuColor.vue'
-import MenuHideAll from '@/components/menu/MenuHideAll.vue'
-import MenuDisable from '@/components/menu/MenuDisable.vue'
 import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
@@ -100,12 +97,6 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
-const deviceChannelHidden = (deviceUID: UID, channelName: string): ComputedRef<boolean> =>
-    computed(
-        () =>
-            settingsStore.allUIDeviceSettings.get(deviceUID)?.sensorsAndChannels.get(channelName)
-                ?.hide ?? false,
-    )
 const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => {
     let color = ref('')
     if (
@@ -158,10 +149,10 @@ const createTreeMenu = (): void => {
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {
 //     // todo: only add pinned node if there are pins
-//     // todo: perhaps the children should be added after the tree is created and "we link to the already created child ID"? (copy-ish)
+//     //  perhaps the children should be added after the tree is created and "we link to the already created child ID"? (copy-ish)
 //
-//     // todo: pull saved "pinned" node IDs from settingsStore
-//     // todo: copy those nodes from the data array and add them to the pinned tree
+//     // pull saved "pinned" node IDs from settingsStore
+//     // copy those nodes from the data array and add them to the pinned tree
 //     return {
 //         id: 'pinned',
 //         label: 'Pinned',
@@ -337,7 +328,7 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ deviceInfo: true }, { rename: true }, { hideAll: true }, { disable: true }],
+            options: [{ deviceInfo: true }, { rename: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -354,7 +345,7 @@ const devicesTreeArray = (): any[] => {
                 },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ rename: true }, { color: true }, { hide: true }],
+                options: [{ rename: true }, { color: true }],
             })
         }
         for (const channel of device.status.channels) {
@@ -373,7 +364,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
-                    options: [{ rename: true }, { color: true }, { hide: true }],
+                    options: [{ rename: true }, { color: true }],
                 })
             }
         }
@@ -394,7 +385,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
-                    options: [{ rename: true }, { color: true }, { hide: true }],
+                    options: [{ rename: true }, { color: true }],
                 })
             }
         }
@@ -428,7 +419,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: duty,
                     rpm: rpm,
-                    options: [{ rename: true }, { color: true }, { hide: true }],
+                    options: [{ rename: true }, { color: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -447,7 +438,7 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }, { hide: true }],
+                    options: [{ rename: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -466,7 +457,7 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }, { hide: true }],
+                    options: [{ rename: true }],
                 })
             }
         }
@@ -481,17 +472,6 @@ const formatFrequency = (value: string): string =>
     settingsStore.frequencyPrecision === 1
         ? value
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
-
-const applyFilter = (val: string | undefined) => {
-    if (val == null) return
-    treeRef.value!.filter(val.toLowerCase())
-}
-const filterNode = (value: string, data: Tree): boolean => {
-    if (!settingsStore.displayHiddenItems && deviceChannelHidden(data.deviceUID, data.name).value)
-        return false
-    if (!value) return true
-    return data.label.toLowerCase().includes(value)
-}
 
 const expandedNodeIds = (): Array<string> => {
     return data
@@ -648,18 +628,7 @@ const calcDropdownPosition = (data: any): string => {
     return 'mr-[0.2rem] mb-[-1.9rem]'
 }
 
-watch(settingsStore.allUIDeviceSettings, () => {
-    applyFilter('') // update filter if hidden sensors change
-})
-watch(
-    () => settingsStore.displayHiddenItems,
-    () => {
-        applyFilter('') // update filter if show/hide settings changes
-    },
-)
 onMounted(async () => {
-    applyFilter('') // at startup this filters hidden items out.
-
     // custom tree leaf h-line
     const mainMenu = document.getElementById('main-menu')
     const els = mainMenu!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
@@ -683,31 +652,12 @@ onMounted(async () => {
         >
             {{ daemonState.systemName }}
         </div>
-        <!--<IconField>-->
-        <!--    <InputIcon>-->
-        <!--        <svg-icon-->
-        <!--            class="mt-[-0.75rem] ml-[-0.25rem] text-text-color-secondary"-->
-        <!--            type="mdi"-->
-        <!--            :path="mdiMagnify"-->
-        <!--            :size="deviceStore.getREMSize(1.5)"-->
-        <!--        />-->
-        <!--    </InputIcon>-->
-        <!--    <InputText-->
-        <!--        v-model="filterText"-->
-        <!--        class="mb-4 bg-bg-one !border-border-one"-->
-        <!--        size="small"-->
-        <!--        fluid-->
-        <!--        placeholder="search"-->
-        <!--        @update:modelValue="applyFilter"-->
-        <!--    />-->
-        <!--</IconField>-->
         <el-tree
             ref="treeRef"
             id="main-menu"
             class="w-full"
             :data="data"
             :props="nodeProps"
-            :filter-node-method="filterNode"
             node-key="id"
             empty-text="No Matches"
             :indent="deviceStore.getREMSize(0.5)"
@@ -747,21 +697,13 @@ onMounted(async () => {
                         tabindex="0"
                         exact
                         :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
-                        :to="
-                            !data.to || deviceChannelHidden(data.deviceUID, data.name).value
-                                ? ''
-                                : data.to
-                        "
+                        :to="!data.to ? '' : data.to"
                     >
                         <div class="flex flex-row items-center min-w-0">
                             <svg-icon
                                 v-if="data.icon"
                                 class="mr-1.5 min-w-6"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                    'text-accent': data.isActive,
-                                }"
+                                :class="{ 'text-accent': data.isActive }"
                                 type="mdi"
                                 :path="data.icon ?? ''"
                                 :style="{
@@ -771,36 +713,16 @@ onMounted(async () => {
                                     deviceStore.getREMSize(deviceChannelIconSize(data.deviceUID))
                                 "
                             />
-                            <div
-                                class="tree-text"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
-                            >
+                            <div class="tree-text">
                                 {{ node.label }}
                             </div>
                         </div>
                         <div class="ml-2">
-                            <div
-                                v-if="data.temp != null"
-                                class="items-end tree-data"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
-                            >
+                            <div v-if="data.temp != null" class="items-end tree-data">
                                 {{ deviceChannelValues(data.deviceUID, data.name)!.temp }}
                                 <span>°&nbsp;&nbsp;&nbsp;</span>
                             </div>
-                            <div
-                                v-else-if="data.freq != null"
-                                class="items-end tree-data"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
-                            >
+                            <div v-else-if="data.freq != null" class="items-end tree-data">
                                 {{
                                     formatFrequency(
                                         deviceChannelValues(data.deviceUID, data.name)!.freq!,
@@ -813,10 +735,6 @@ onMounted(async () => {
                             <div
                                 v-else-if="data.duty != null && data.rpm == null"
                                 class="content-end tree-data"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
                             >
                                 {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
                                 <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
@@ -824,10 +742,6 @@ onMounted(async () => {
                             <div
                                 v-else-if="data.rpm != null && data.duty == null"
                                 class="items-end tree-data"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
                             >
                                 {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
                                 <span style="font-size: 0.7rem">rpm</span>
@@ -835,10 +749,6 @@ onMounted(async () => {
                             <div
                                 v-else-if="data.duty != null && data.rpm != null"
                                 class="items-end flex flex-col leading-none tree-data"
-                                :class="{
-                                    'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
-                                        .value,
-                                }"
                             >
                                 <span>
                                     {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
@@ -856,17 +766,8 @@ onMounted(async () => {
                             class="border border-border-one bg-bg-two/95 rounded-lg flex content-center items-center justify-center p-[1px]"
                         >
                             <div v-for="option in data.options">
-                                <menu-hide
-                                    v-if="option.hide"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                />
-                                <menu-hide-all
-                                    v-else-if="option.hideAll"
-                                    :device-u-i-d="data.deviceUID"
-                                />
                                 <menu-rename
-                                    v-else-if="option.rename"
+                                    v-if="option.rename"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                     @name-change="(value: string) => (data.label = value)"
@@ -879,10 +780,6 @@ onMounted(async () => {
                                     :color="data.color"
                                     @color-reset="(newColor: Color) => (data.color = newColor)"
                                     @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-disable
-                                    v-else-if="option.disable"
-                                    :device-u-i-d="data.deviceUID"
                                 />
                                 <menu-device-info
                                     v-else-if="option.deviceInfo"
@@ -1027,10 +924,6 @@ onMounted(async () => {
 //    align-items: center;
 //    justify-content: space-between;
 //}
-
-.disabled-text {
-    opacity: 0.2;
-}
 </style>
 <style lang="scss">
 /******************************************************************************************

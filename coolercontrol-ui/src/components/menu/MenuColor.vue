@@ -21,7 +21,7 @@ import { ElColorPicker } from 'element-plus'
 import 'element-plus/es/components/color-picker/style/css'
 import { Color, UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, onMounted, ref, Ref } from 'vue'
+import { onMounted, ref, Ref } from 'vue'
 
 interface Props {
     deviceUID: UID
@@ -38,12 +38,6 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore()
 const currentColor: Ref<Color> = ref(props.color)
-const deviceChannelHidden = computed(
-    (): boolean =>
-        settingsStore.allUIDeviceSettings
-            .get(props.deviceUID)
-            ?.sensorsAndChannels.get(props.channelName)?.hide ?? false,
-)
 
 const setNewColor = (newColor: Color | null): void => {
     if (newColor == null) {
@@ -83,7 +77,7 @@ onMounted(async () => {
 <template>
     <div
         class="rounded-lg w-8 h-8 p-2 !ml-[-1px] text-center justify-center items-center flex"
-        v-tooltip.top="{ value: 'Choose Color', disabled: deviceChannelHidden }"
+        v-tooltip.top="{ value: 'Choose Color' }"
     >
         <div class="color-wrapper">
             <el-color-picker
@@ -91,7 +85,6 @@ onMounted(async () => {
                 v-model="currentColor"
                 color-format="hex"
                 :predefine="settingsStore.predefinedColorOptions"
-                :disabled="deviceChannelHidden"
                 @change="setNewColor"
                 :validate-event="false"
                 @focus="emit('open', true)"

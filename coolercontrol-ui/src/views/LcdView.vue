@@ -118,9 +118,6 @@ const fillTempSources = () => {
             temps: [],
         }
         for (const temp of device.status.temps) {
-            if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
-                continue
-            }
             deviceSource.temps.push({
                 deviceUID: device.uid,
                 tempName: temp.name,

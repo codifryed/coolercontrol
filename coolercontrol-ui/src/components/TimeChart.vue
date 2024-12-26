@@ -118,7 +118,6 @@ const initUSeriesData = () => {
                 if (!allDevicesLineProperties.has(lineName)) {
                     allDevicesLineProperties.set(lineName, {
                         color: tempSettings.color,
-                        hidden: tempSettings.hide,
                         name: tempSettings.name,
                     })
                 }
@@ -146,7 +145,6 @@ const initUSeriesData = () => {
                         if (!allDevicesLineProperties.has(lineName)) {
                             allDevicesLineProperties.set(lineName, {
                                 color: channelSettings.color,
-                                hidden: channelSettings.hide,
                                 name: channelSettings.name,
                             })
                         }
@@ -169,7 +167,6 @@ const initUSeriesData = () => {
                     if (!allDevicesLineProperties.has(lineName)) {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
-                            hidden: channelSettings.hide,
                             name: channelSettings.name,
                         })
                     }
@@ -191,7 +188,6 @@ const initUSeriesData = () => {
                     if (!allDevicesLineProperties.has(lineName)) {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
-                            hidden: channelSettings.hide,
                             name: channelSettings.name,
                         })
                     }
@@ -300,7 +296,6 @@ for (const lineName of uLineNames) {
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
         hasFrequencyAxis = true
         uPlotSeries.push({
-            show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
             scale: SCALE_KEY_RPM,
             auto: props.dashboard.autoScaleFrequency,
@@ -324,7 +319,6 @@ for (const lineName of uLineNames) {
     } else {
         hasDegreeAxis = true
         uPlotSeries.push({
-            show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
             scale: SCALE_KEY_PERCENT,
             auto: props.dashboard.autoScaleDegree,

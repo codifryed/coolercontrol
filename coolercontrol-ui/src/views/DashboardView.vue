@@ -94,7 +94,6 @@ const fillSensorSources = (): void => {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         device.info.temps.forEach((_: TempInfo, key: string) => {
             const sensorSettings = deviceSettings.sensorsAndChannels.get(key)!
-            if (sensorSettings.hide) return
             sensors.push({
                 name: key,
                 deviceUID: device.uid,
@@ -105,7 +104,6 @@ const fillSensorSources = (): void => {
         device.info.channels.forEach((value: ChannelInfo, key: string) => {
             if (value.lcd_modes.length > 0 || value.lighting_modes.length > 0) return
             const sensorSettings = deviceSettings.sensorsAndChannels.get(key)!
-            if (sensorSettings.hide) return
             sensors.push({
                 name: key,
                 deviceUID: device.uid,

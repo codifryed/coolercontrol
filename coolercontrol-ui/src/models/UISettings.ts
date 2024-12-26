@@ -35,7 +35,6 @@ export class UISettingsDTO {
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
     closeToSystemTray: boolean = false
-    displayHiddenItems: boolean = false
     themeMode: ThemeMode = ThemeMode.SYSTEM
     uiScale: number = 100
     chartLineScale: number = 1.5
@@ -115,7 +114,6 @@ export class SensorAndChannelSettings {
     @Exclude() // we don't want to persist this, it should be generated anew on each start
     defaultColor: Color
     userColor?: Color
-    hide: boolean
 
     @Exclude() // we don't want to persist this
     channelLabel: string = ''
@@ -125,9 +123,8 @@ export class SensorAndChannelSettings {
     @Type(() => Dashboard)
     channelDashboard?: Dashboard
 
-    constructor(defaultColor: Color = '#568af2', hide: boolean = false) {
+    constructor(defaultColor: Color = '#568af2') {
         this.defaultColor = defaultColor
-        this.hide = hide
     }
 
     get color(): Color {

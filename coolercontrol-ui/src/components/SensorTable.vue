@@ -123,7 +123,6 @@ const initTableData = () => {
         for (const temp of device.status.temps) {
             const channelSettings = deviceSettings.sensorsAndChannels.get(temp.name)
             if (
-                channelSettings?.hide ||
                 !includesDeviceChannel(device.uid, temp.name) ||
                 !includesTemps
             ) {
@@ -161,9 +160,6 @@ const initTableData = () => {
                 continue
             }
             const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
-            if (channelSettings?.hide) {
-                continue
-            }
             for (const channel of device.status.channels) {
                 if (channel.name !== channelName) {
                     continue

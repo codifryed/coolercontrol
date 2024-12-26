@@ -106,7 +106,6 @@ export const useSettingsStore = defineStore('settings', () => {
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
-    const displayHiddenItems: Ref<boolean> = ref(false)
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
@@ -192,7 +191,6 @@ export const useSettingsStore = defineStore('settings', () => {
             }
         }
         closeToSystemTray.value = uiSettings.closeToSystemTray
-        displayHiddenItems.value = uiSettings.displayHiddenItems
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
         uiScale.value = uiSettings.uiScale
@@ -745,7 +743,6 @@ export const useSettingsStore = defineStore('settings', () => {
                 startInSystemTray,
                 closeToSystemTray,
                 desktopStartupDelay,
-                displayHiddenItems,
                 themeMode,
                 uiScale,
                 time24,
@@ -787,7 +784,6 @@ export const useSettingsStore = defineStore('settings', () => {
                     if (deviceStore.isTauriApp()) {
                         await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
                     }
-                    uiSettings.displayHiddenItems = displayHiddenItems.value
                     uiSettings.themeMode = themeMode.value
                     uiSettings.uiScale = uiScale.value
                     uiSettings.time24 = time24.value
@@ -1004,7 +1000,6 @@ export const useSettingsStore = defineStore('settings', () => {
         startInSystemTray,
         closeToSystemTray,
         desktopStartupDelay,
-        displayHiddenItems,
         themeMode,
         uiScale,
         time24,

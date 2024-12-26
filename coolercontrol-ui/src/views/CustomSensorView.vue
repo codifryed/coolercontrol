@@ -171,9 +171,6 @@ const fillTempSources = async (): Promise<void> => {
             temps: [],
         }
         for (const temp of device.status.temps) {
-            if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
-                continue
-            }
             // if (
             //     device.type === DeviceType.CUSTOM_SENSORS &&
             //     customSensors.find(

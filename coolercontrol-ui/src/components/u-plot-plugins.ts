@@ -24,7 +24,6 @@ export const SCALE_KEY_RPM: string = 'rpm'
 
 export interface DeviceLineProperties {
     color: Color
-    hidden: boolean
     name: string
 }
 

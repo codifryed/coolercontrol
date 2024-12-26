@@ -157,7 +157,6 @@ const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
     blacklistedDevices.value.push(deviceSettings)
 }
-const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 const applyGenericDaemonChange = _.debounce(
     () =>
         confirm.require({
@@ -183,46 +182,6 @@ const applyGenericDaemonChange = _.debounce(
         }),
     2000,
 )
-const reEnableSelected = () => {
-    if (selectedBlacklistedDevices.value.length === 0) {
-        return
-    }
-    confirm.require({
-        message:
-            'Re-enabling these devices requires a daemon and UI restart. ' +
-            'Are you sure want to do this now?',
-        header: 'Enable Devices',
-        icon: 'pi pi-exclamation-triangle',
-        accept: async () => {
-            let successful: boolean = true
-            for (const ccSetting of selectedBlacklistedDevices.value) {
-                ccSetting.disable = false
-                successful =
-                    (await deviceStore.daemonClient.saveCCDeviceSettings(
-                        ccSetting.uid,
-                        ccSetting,
-                    )) && successful
-            }
-            if (successful) {
-                toast.add({
-                    severity: 'success',
-                    summary: 'Success',
-                    detail: 'Devices Enabled. Restarting now',
-                    life: 6000,
-                })
-                await deviceStore.daemonClient.shutdownDaemon()
-                await deviceStore.waitAndReload(5)
-            } else {
-                toast.add({
-                    severity: 'error',
-                    summary: 'Error',
-                    detail: 'Unknown error trying to set re-enable devices. See logs for details.',
-                    life: 4000,
-                })
-            }
-        },
-    })
-}
 
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
 const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
@@ -427,28 +386,6 @@ watch(pollRate, () => {
                                                 </div>
                                             </template>
                                         </Select>
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-tooltip.right="
-                                        'Control the visibility of menu items.\nYou can choose to show them ' +
-                                        'greyed out, or hide them altogether.'
-                                    "
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
-                                    >
-                                        Hidden Menu Items
-                                    </td>
-                                    <td
-                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <el-switch
-                                            v-model="settingsStore.displayHiddenItems"
-                                            size="large"
-                                            active-text="show"
-                                            inactive-text="&nbsp;&nbsp;hide"
-                                        />
                                     </td>
                                 </tr>
                                 <tr v-tooltip.right="'Change the overall UI color scheme.'">
@@ -913,60 +850,6 @@ watch(pollRate, () => {
                                             size="large"
                                             @change="applyGenericDaemonChange"
                                         />
-                                    </td>
-                                </tr>
-                                <tr v-tooltip.right="'Re-enable selected devices.'">
-                                    <td
-                                        class="py-5 px-4 w-60 leading-none border-border-one border-r-2 border-t-2"
-                                    >
-                                        <div
-                                            class="float-left"
-                                            v-tooltip.top="'Triggers an automatic daemon restart'"
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestart"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
-                                        <div class="text-right float-right">Disabled Devices</div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <div v-if="blacklistedDevices.length">
-                                            <Listbox
-                                                v-model="selectedBlacklistedDevices"
-                                                :options="blacklistedDevices"
-                                                class="w-full"
-                                                multiple
-                                                checkmark
-                                                list-style="max-height: 100%"
-                                                option-label="name"
-                                                option-value="uid"
-                                                :pt="{
-                                                    // @ts-ignore
-                                                    root: ({ props }) => ({
-                                                        class: [
-                                                            'min-w-[12rem]',
-                                                            'rounded-lg',
-                                                            'bg-bg-one',
-                                                            'text-text-color',
-                                                            'border-2',
-                                                            { 'border-border-one': !props.invalid },
-                                                            { 'border-red': props.invalid },
-                                                        ],
-                                                    }),
-                                                }"
-                                            />
-                                            <Button
-                                                label="Enable"
-                                                class="mt-4 bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
-                                                :disabled="selectedBlacklistedDevices.length === 0"
-                                                @click="reEnableSelected"
-                                            />
-                                        </div>
-                                        <div v-else class="text-center italic">None</div>
                                     </td>
                                 </tr>
                             </tbody>
