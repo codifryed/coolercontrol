@@ -25,7 +25,7 @@ use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{info, trace, warn};
+use log::{debug, trace, warn};
 use regex::Regex;
 use zbus::export::futures_util::future::join_all;
 
@@ -138,12 +138,12 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
         .await
         .and_then(check_parsing_32)
         .map(|degrees| f64::from(degrees) / 1000.0f64)
-        .inspect_err(|err| warn!("Error reading temperature value from: {temp_path:?} ; {err}"))
+        .inspect_err(|err| debug!("Error reading temperature value from: {temp_path:?} ; {err}"))
         .ok();
     if let Some(degrees) = possible_degrees {
         let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
         if !has_sane_value {
-            info!(
+            debug!(
                 "Ignoring temperature sensor at {temp_path:?} as value: {degrees} is outside of \
                 usable range"
             );
