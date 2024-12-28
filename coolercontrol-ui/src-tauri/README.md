@@ -4,7 +4,7 @@ The desktop application is written in Rust and uses the [Tauri](https://v2.tauri
 create a native GTK application which renders the UI assets using the system's
 [WebKit](https://webkit.org/) browser engine.
 
-## Requirements:
+## Requirements
 
 - make
 - cargo/rust >= 1.81.0

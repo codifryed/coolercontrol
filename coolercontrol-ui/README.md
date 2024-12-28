@@ -14,7 +14,7 @@ The UI is a javascript SPA using the Vue framework. It communicates with the `co
 using a REST API. Cosmetic-specific features are handled completely by the UI, whereas core logic
 and processes are handled by the daemon.
 
-## Requirements:
+## Requirements
 
 - make
 - nodejs >= 18.0.0
