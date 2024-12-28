@@ -9,6 +9,9 @@ dist:
 
 build: dist
 
+dev:
+	@npm run dev
+
 offline:
 	@npm run build --offline
 
