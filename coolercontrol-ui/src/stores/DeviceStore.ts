@@ -32,6 +32,7 @@ import { HealthCheck } from '@/models/HealthCheck.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -196,42 +197,49 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function requestPasswd(retryCount: number = 1): Promise<void> {
-        dialog.open(passwordDialog, {
-            props: {
-                header: 'Enter Your Password',
-                position: 'center',
-                modal: true,
-                dismissableMask: false,
-            },
-            data: {
-                setPasswd: false,
-            },
-            onClose: async (options: any) => {
-                if (options.data && options.data.passwd) {
-                    const passwdSuccess = await daemonClient.login(options.data.passwd)
-                    if (passwdSuccess) {
+        setTimeout(async () => {
+            // wait until the Onboarding dialog isn't open without blocking:
+            const settingsStore = useSettingsStore()
+            while (settingsStore.showOnboarding) {
+                await sleep(1000)
+            }
+            dialog.open(passwordDialog, {
+                props: {
+                    header: 'Enter Your Password',
+                    position: 'center',
+                    modal: true,
+                    dismissableMask: false,
+                },
+                data: {
+                    setPasswd: false,
+                },
+                onClose: async (options: any) => {
+                    if (options.data && options.data.passwd) {
+                        const passwdSuccess = await daemonClient.login(options.data.passwd)
+                        if (passwdSuccess) {
+                            toast.add({
+                                severity: 'success',
+                                summary: 'Success',
+                                detail: 'Login successful.',
+                                life: 3000,
+                            })
+                            loggedIn.value = true
+                            console.info('Login successful')
+                            return
+                        }
                         toast.add({
-                            severity: 'success',
-                            summary: 'Success',
-                            detail: 'Login successful.',
+                            severity: 'error',
+                            summary: 'Login Failed',
+                            detail: 'Invalid Password',
                             life: 3000,
                         })
-                        loggedIn.value = true
-                        console.info('Login successful')
-                        return
+                        if (retryCount > 2) {
+                            return
+                        }
+                        await requestPasswd(++retryCount)
                     }
-                    toast.add({
-                        severity: 'error',
-                        summary: 'Login Failed',
-                        detail: 'Invalid Password',
-                        life: 3000,
-                    })
-                    if (retryCount > 2) {
-                        return
-                    }
-                    await requestPasswd(++retryCount)
-                }
-            },
+                },
+            })
         })
     }
 
@@ -383,21 +391,28 @@ export const useDeviceStore = defineStore('device', () => {
                 isThinkPad.value = true
             }
             if (device.lc_info?.unknown_asetek) {
-                confirm.require({
-                    group: 'AseTek690',
-                    message: `${device.type_index}`,
-                    header: 'Unknown Device Detected',
-                    icon: 'pi pi-exclamation-triangle',
-                    acceptLabel: "Yes, It's a legacy Kraken Device",
-                    rejectLabel: "No, It's a EVGA CLC Device",
-                    accept: async () => {
-                        console.debug(`Setting device ${device.uid} as a Legacy 690`)
-                        await handleAseTekResponse(device.uid, true)
-                    },
-                    reject: async () => {
-                        console.debug(`Setting device ${device.uid} as a EVGA CLC`)
-                        await handleAseTekResponse(device.uid, false)
-                    },
+                // wait until the Onboarding dialog isn't open without blocking:
+                setTimeout(async () => {
+                    const settingsStore = useSettingsStore()
+                    while (settingsStore.showOnboarding) {
+                        await sleep(1000)
+                    }
+                    confirm.require({
+                        group: 'AseTek690',
+                        message: `${device.type_index}`,
+                        header: 'Unknown Device Detected',
+                        icon: 'pi pi-exclamation-triangle',
+                        acceptLabel: "Yes, It's a legacy Kraken Device",
+                        rejectLabel: "No, It's a EVGA CLC Device",
+                        accept: async () => {
+                            console.debug(`Setting device ${device.uid} as a Legacy 690`)
+                            await handleAseTekResponse(device.uid, true)
+                        },
+                        reject: async () => {
+                            console.debug(`Setting device ${device.uid} as a EVGA CLC`)
+                            await handleAseTekResponse(device.uid, false)
+                        },
+                    })
                 })
             }
             sortChannels(device)

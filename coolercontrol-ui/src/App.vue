@@ -306,6 +306,7 @@ onMounted(async () => {
     loading.close()
     await deviceStore.login()
     await deviceStore.load_logs()
+    // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
     // This basically blocks at this point:
     await Promise.all([deviceStore.updateStatusFromSSE(), deviceStore.updateLogsFromSSE()])
