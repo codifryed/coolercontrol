@@ -299,7 +299,6 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                             default-expand-all
                             show-checkbox
                             check-on-click-node
-                            draggable
                             :highlight-current="false"
                             :expand-on-click-node="false"
                             :indent="deviceStore.getREMSize(0.5)"
