@@ -227,8 +227,20 @@ const steps = [
         attachTo: { element: '#add' },
         content: {
             title: 'Quick Add',
+            description: 'This is a menu to easily add new items like Dashboards, Profiles, etc.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#dashboard-quick' },
+        content: {
+            title: 'Dashboard Quick Menu',
             description:
-                'This is a quick menu to easily add new items like Dashboards, Profiles, etc.',
+                'This is a menu to quickly jump to your dashboards, even if the main menu is collapsed.',
         },
         options: {
             popper: {
@@ -239,8 +251,8 @@ const steps = [
     {
         attachTo: { element: '#modes-quick' },
         content: {
-            title: 'Quick Modes Change',
-            description: 'This is a menu to quickly switch between saved Modes.',
+            title: 'Modes Quick Menu',
+            description: 'This is a menu to quickly switch between your saved Modes.',
         },
         options: {
             popper: {

@@ -27,6 +27,7 @@ import {
     mdiBookmarkOffOutline,
     mdiBookmarkOutline,
     mdiBookmarkPlusOutline,
+    mdiChartBoxOutline,
     mdiChartBoxPlusOutline,
     mdiCogOutline,
     mdiFlaskPlusOutline,
@@ -71,6 +72,22 @@ const badgeSeverity = computed((): string => {
         default:
             return 'error'
     }
+})
+
+const dashboardMenuRef = ref<DropdownInstance>()
+const dashboardItems = computed(() => {
+    const dashboardItems = []
+    for (const dashboard of settingsStore.dashboards) {
+        dashboardItems.push({
+            label: dashboard.name,
+            mdiIcon: mdiChartBoxOutline,
+            command: async () => {
+                dashboardMenuRef.value?.handleClose()
+                await router.push({ name: 'dashboards', params: { dashboardUID: dashboard.uid } })
+            },
+        })
+    }
+    return dashboardItems
 })
 const modesItems = computed(() => {
     const menuItems = []
@@ -264,7 +281,42 @@ const addItems = computed(() => [
             <div class="border-b border-text-color-secondary" />
         </div>
 
-        <!--Modes-->
+        <!--Dashboards Quick Menu-->
+        <el-dropdown
+            id="dashboard-quick"
+            ref="dashboardMenuRef"
+            :show-timeout="50"
+            :hide-timeout="100"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
+            popper-class="ml-[3.75rem] mt-[-3.75rem]"
+        >
+            <Button
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+            >
+                <svg-icon type="mdi" :path="mdiChartBoxOutline" :size="getREMSize(1.75)" />
+            </Button>
+            <template #dropdown>
+                <Menu :model="dashboardItems" append-to="self">
+                    <template #item="{ item, props }">
+                        <a
+                            v-bind="props.action"
+                            class="inline-flex items-center px-0.5 w-full h-full"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="item.mdiIcon ?? ''"
+                                :size="getREMSize(1.25)"
+                            />
+                            <span class="ml-1.5">{{ item.label }}</span>
+                        </a>
+                    </template>
+                </Menu>
+            </template>
+        </el-dropdown>
+
+        <!--Modes Quick Menu-->
         <el-dropdown
             id="modes-quick"
             v-if="modesItems.length > 0"
