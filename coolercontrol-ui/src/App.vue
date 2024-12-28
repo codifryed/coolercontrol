@@ -344,9 +344,7 @@ onMounted(async () => {
         }"
     >
         <template #message="slotProps">
-            <div
-                class="flex flex-column align-items-left w-30rem gap-3 border-bottom-1 surface-border"
-            >
+            <div class="flex flex-col w-[34rem] gap-3 text-wrap">
                 <p>
                     The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and
                     CoolerControl can not determine which device is connected. This is required for
