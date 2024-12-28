@@ -29,9 +29,9 @@ export default {
             'p-1.5',
             // Colors
             'text-text-color-secondary',
-            {
-                'bg-border-one': context.focused,
-            },
+            // {
+            //     'bg-border-one': context.focused,
+            // },
             // Transitions
             'transition-shadow',
             'duration-200',
