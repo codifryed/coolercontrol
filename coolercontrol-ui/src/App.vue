@@ -377,6 +377,7 @@ onMounted(async () => {
             Check the
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/"
+                target="_blank"
                 style="color: rgb(var(--colors-accent))"
             >
                 project page</a
@@ -488,6 +489,7 @@ onMounted(async () => {
                                             have been properly loaded by checking the
                                             <a
                                                 href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                                                target="_blank"
                                                 class="text-accent outline-0"
                                             >
                                                 HWMon Support
@@ -495,6 +497,7 @@ onMounted(async () => {
                                             and
                                             <a
                                                 href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
+                                                target="_blank"
                                                 class="text-accent outline-0"
                                             >
                                                 Adding Device Support
