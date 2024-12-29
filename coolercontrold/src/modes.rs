@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use const_format::concatcp;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -125,7 +125,7 @@ impl ModeController {
     async fn fill_data_from_mode_config_file(&self) -> Result<()> {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
-            warn!(
+            info!(
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );

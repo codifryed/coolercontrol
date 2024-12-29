@@ -60,7 +60,7 @@ impl Config {
     pub async fn load_config_file() -> Result<Self> {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
-            warn!(
+            info!(
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );
