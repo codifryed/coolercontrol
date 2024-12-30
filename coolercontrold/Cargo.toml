@@ -20,12 +20,12 @@ io_uring = ["dep:tokio-uring"]
 
 [dependencies]
 log = "0.4.22"
-env_logger = "0.11.5"
+env_logger = "0.11.6"
 systemd-journal-logger = "2.2.0"
 clap = { version = "4.5.23", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.94"
+anyhow = "1.0.95"
 derive_more = { version = "1.0.0", features = ["display", "error"] }
 tokio = { version = "1.42.0", default-features = false, features = [
   "rt",
@@ -61,7 +61,7 @@ tower_governor = { git = "https://github.com/codifryed/tower-governor", features
 ] }
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
-aide = { version = "0.13.4", features = [
+aide = { version = "0.13.5", features = [
   "axum",
   "axum-extra",
   "axum-multipart",
@@ -69,12 +69,12 @@ aide = { version = "0.13.4", features = [
 headers = "0.4.0"
 schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
-axum_typed_multipart = "0.13.2"
+axum_typed_multipart = "0.14.0"
 tempfile = "3.14.0"
 tokio-stream = { version = "0.1.17", default-features = false, features = [
   "sync",
 ] }
-hyper = { version = "1.5.1", default-features = false, features = [
+hyper = { version = "1.5.2", default-features = false, features = [
   "http1",
   "client",
 ] }
@@ -84,12 +84,12 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1.2"
-serde = { version = "1.0.215", features = ["derive"] }
-serde_json = "1.0.133"
-zbus = { version = "5.1.1", default-features = false, features = [
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.134"
+zbus = { version = "5.2.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
-sysinfo = { version = "0.33.0", default-features = false, features = [
+sysinfo = { version = "0.33.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.39", features = [
@@ -105,11 +105,11 @@ cached = { version = "0.54.0", default-features = false, features = [
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 const_format = "0.2.33" # allows combining string constants
-psutil = { version = "3.3.0", default-features = false, features = [
+psutil = { version = "4.0.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.100.0"
+nu-glob = "0.101.0"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol" }
 sha2 = "0.10.8"
@@ -121,7 +121,9 @@ nix = { version = "0.29.0", default-features = false, features = [
   "sched",
 ] }
 pciid-parser = "0.7.2"
-libdrm_amdgpu_sys = "0.7.6"
+libdrm_amdgpu_sys = "0.7.7"
+hashlink = "0.10.0"
+lazy_format = "2.0.3"
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.3", default-features = false, features = [
