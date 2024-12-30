@@ -51,7 +51,6 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
-import { AlertState } from '@/models/Alert.ts'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
