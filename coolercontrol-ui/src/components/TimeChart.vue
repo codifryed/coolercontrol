@@ -371,7 +371,7 @@ const uOptions: uPlot.Options = {
             grid: {
                 show: true,
                 stroke: colors.themeColors.border,
-                width: 0.5,
+                width: 1,
                 dash: [1, 2],
             },
         },
@@ -401,7 +401,7 @@ const uOptions: uPlot.Options = {
             grid: {
                 show: true,
                 stroke: colors.themeColors.border,
-                width: 0.5,
+                width: 1,
                 dash: [1, 2],
             },
         },
@@ -456,7 +456,7 @@ const uOptions: uPlot.Options = {
             grid: {
                 show: !hasDegreeAxis && hasFrequencyAxis,
                 stroke: colors.themeColors.border,
-                width: 0.5,
+                width: 1,
                 dash: [1, 2],
             },
         },
