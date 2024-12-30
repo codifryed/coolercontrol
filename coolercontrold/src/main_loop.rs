@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::modes::ModeController;
@@ -51,6 +52,7 @@ pub async fn run<'s>(
     repos: Repos,
     settings_controller: Rc<SettingsController>,
     mode_controller: Rc<ModeController>,
+    alert_controller: Rc<AlertController>,
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
@@ -77,6 +79,7 @@ pub async fn run<'s>(
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
                 fire_snapshots_and_processes(&repos, &settings_controller, &mut lcd_update_trigger, &status_handle, scope).await;
+                alert_controller.process_alerts();
             } else if sleep_listener.is_resuming() {
                 wake_from_sleep(
                     &config,

@@ -33,6 +33,7 @@ import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { AlertLog, AlertState } from '@/models/Alert.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -538,6 +539,7 @@ export const useDeviceStore = defineStore('device', () => {
         async function startLogSSE(): Promise<void> {
             await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
                 async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
                     const newLog = event.data
                     logs.value = `${logs.value}${newLog}`
                     if (newLog.includes('ERROR')) {
@@ -558,6 +560,58 @@ export const useDeviceStore = defineStore('device', () => {
             })
         }
         return await startLogSSE()
+    }
+
+    async function updateAlertsFromSSE(): Promise<void> {
+        const settingsStore = useSettingsStore()
+        async function startAlertSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/alerts`, {
+                async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
+                    const alertMessage = plainToInstance(AlertLog, JSON.parse(event.data) as object)
+                    console.debug('Received Alert: ', alertMessage)
+                    settingsStore.alertLogs.push(alertMessage)
+                    let foundAlert = settingsStore.alerts.find(
+                        (alert) => alert.uid === alertMessage.uid,
+                    )
+                    if (foundAlert) {
+                        foundAlert.state = alertMessage.state
+                    }
+                    if (alertMessage.state === AlertState.Active) {
+                        if (!settingsStore.alertsActive.includes(alertMessage.uid)) {
+                            settingsStore.alertsActive.push(alertMessage.uid)
+                        }
+                        toast.add({
+                            severity: 'error',
+                            summary: 'Alert Triggered',
+                            detail: `${alertMessage.name} - ${alertMessage.message}`,
+                            life: 5000,
+                        })
+                    } else {
+                        const activeIndex = settingsStore.alertsActive.findIndex(
+                            (uid) => uid === alertMessage.uid,
+                        )
+                        if (activeIndex > -1) {
+                            settingsStore.alertsActive.splice(activeIndex, 1)
+                        }
+                        toast.add({
+                            severity: 'info',
+                            summary: 'Alert Recovered',
+                            detail: `${alertMessage.name} - ${alertMessage.message}`,
+                            life: 3000,
+                        })
+                    }
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await startAlertSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startAlertSSE()
     }
 
     function updateRecentDeviceStatus(): void {
@@ -620,6 +674,7 @@ export const useDeviceStore = defineStore('device', () => {
         updateStatus,
         updateStatusFromSSE,
         updateLogsFromSSE,
+        updateAlertsFromSSE,
         currentDeviceStatus,
         round,
         sanitizeString,

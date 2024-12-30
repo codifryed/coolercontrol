@@ -20,6 +20,9 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
+    mdiBellCircleOutline,
+    mdiBellOutline,
+    mdiBellRingOutline,
     mdiBookmarkCheckOutline,
     mdiBookmarkMultipleOutline,
     mdiBookmarkOffOutline,
@@ -39,7 +42,7 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { inject, onMounted, reactive, Reactive, ref, Ref } from 'vue'
+import { inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
@@ -77,6 +80,11 @@ import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import TreeIcon from '@/components/TreeIcon.vue'
+import { AlertState } from '@/models/Alert.ts'
+import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
+import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
+import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
+import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
 
 // interface Tree {
 //     label: string
@@ -142,6 +150,7 @@ const createTreeMenu = (): void => {
     data.push(modesTree())
     data.push(profilesTree())
     data.push(functionsTree())
+    data.push(alertsTree())
     data.push(customSensorsTree())
     data.push(...devicesTreeArray())
     // data.unshift(pinnedTree(data)) // needs to be done at the end
@@ -270,6 +279,29 @@ const functionsTree = (): any => {
                     ],
                 }
             }),
+    }
+}
+
+const alertsTree = (): any => {
+    return {
+        id: 'alerts',
+        label: 'Alerts',
+        name: null, // devices should not have names
+        icon: mdiBellCircleOutline,
+        options: [{ alertInfo: true }, { alertAdd: true }],
+        children: settingsStore.alerts.map((alert) => {
+            const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
+            return {
+                id: `alerts_${alert.uid}`,
+                label: alert.name,
+                icon: isActive ? mdiBellRingOutline : mdiBellOutline,
+                deviceUID: 'Alerts',
+                uid: alert.uid,
+                alertIsActive: isActive,
+                to: { name: 'alerts', params: { alertUID: alert.uid } },
+                options: [{ alertRename: true }, { alertDelete: true }],
+            }
+        }),
     }
 }
 const customSensorsTree = (): any => {
@@ -618,6 +650,51 @@ const deleteFunction = (functionUID: UID): void => {
     treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
 }
 
+interface AlertUIDObj {
+    alertUID: UID
+}
+const addAlert = (alertUIDObj: AlertUIDObj): void => {
+    const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUIDObj.alertUID)
+    if (newAlert == null) {
+        console.error('Alert with UID: ' + alertUIDObj.alertUID + ' not found')
+        return
+    }
+    const isActive = newAlert.state === AlertState.Active
+    treeRef.value!.append(
+        {
+            id: `alerts_${newAlert.uid}`,
+            label: newAlert.name,
+            icon: isActive ? mdiBellRingOutline : mdiBellOutline,
+            deviceUID: 'Alerts',
+            uid: newAlert.uid,
+            alertIsActive: isActive,
+            to: { name: 'alerts', params: { alertUID: newAlert.uid } },
+            options: [{ alertRename: true }, { alertDelete: true }],
+        },
+        'alerts',
+    )
+}
+emitter.on('alert-add', addAlert)
+
+const deleteAlert = (alertUID: UID): void => {
+    if (route.params != null && route.params.alertUID === alertUID) {
+        router.push({ name: 'system-overview' })
+    }
+    treeRef.value!.remove(treeRef.value!.getNode(`alerts_${alertUID}`))
+}
+
+const alertStateChange = (): void => {
+    treeRef
+        .value!.getNode('alerts')
+        .getChildren()
+        .forEach((data: TreeNodeData) => {
+            const isActive = settingsStore.alertsActive.includes(data.uid)
+            data.alertIsActive = isActive
+            data.icon = isActive ? mdiBellRingOutline : mdiBellOutline
+        })
+}
+emitter.on('alert-state-change', alertStateChange)
+
 const calcDropdownPosition = (data: any): string => {
     if (data.id === 'dashboards') {
         return 'mr-[1.0rem] mb-[-1.9rem]'
@@ -625,17 +702,21 @@ const calcDropdownPosition = (data: any): string => {
     return 'mr-[0.2rem] mb-[-1.9rem]'
 }
 
+watch(settingsStore.alertsActive, alertStateChange)
 onMounted(async () => {
     // custom tree leaf h-line
     const mainMenu = document.getElementById('main-menu')
-    const els = mainMenu!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
-    if (els.length > 0) {
-        for (const el of els) {
-            el.innerHTML = ''
-            el.classList.add('border-l')
-            el.classList.add('border-border-one/70')
-            el.classList.add('!visible')
-            el.classList.add('!h-[inherit]')
+    const children = mainMenu!.getElementsByClassName('el-tree-node__children')
+    for (const child of children) {
+        const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
+        if (els.length > 0) {
+            for (const el of els) {
+                el.innerHTML = ''
+                el.classList.add('border-l')
+                el.classList.add('border-border-one/70')
+                el.classList.add('!visible')
+                el.classList.add('!h-[inherit]')
+            }
         }
     }
 })
@@ -700,7 +781,10 @@ onMounted(async () => {
                             <svg-icon
                                 v-if="data.icon"
                                 class="mr-1.5 min-w-6"
-                                :class="{ 'text-accent': data.isActive }"
+                                :class="{
+                                    'text-accent': data.isActive,
+                                    'text-error': data.alertIsActive,
+                                }"
                                 type="mdi"
                                 :path="data.icon ?? ''"
                                 :style="{
@@ -867,6 +951,19 @@ onMounted(async () => {
                                     v-else-if="option.functionDelete"
                                     :function-u-i-d="data.uid"
                                     @deleted="deleteFunction"
+                                />
+                                <menu-alert-info v-else-if="option.alertInfo" />
+                                <menu-alert-add v-else-if="option.alertAdd" />
+                                <menu-alert-rename
+                                    v-else-if="option.alertRename"
+                                    :alert-u-i-d="data.uid"
+                                    @name-change="(name: string) => (data.label = name)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
+                                <menu-alert-delete
+                                    v-else-if="option.alertDelete"
+                                    :alert-u-i-d="data.uid"
+                                    @deleted="deleteAlert"
                                 />
                                 <menu-custom-sensor-info v-else-if="option.customSensorInfo" />
                                 <menu-custom-sensor-add v-else-if="option.customSensorAdd" />

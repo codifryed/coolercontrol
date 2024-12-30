@@ -208,6 +208,18 @@ const steps = [
         },
     },
     {
+        attachTo: { element: '#alerts' },
+        content: {
+            title: 'Alerts',
+            description: 'Alerts will notify you when sensors values exceed chosen thresholds',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
         attachTo: { element: '#logo' },
         content: {
             title: 'Application and Daemon Information',
@@ -273,6 +285,18 @@ const steps = [
         },
     },
     {
+        attachTo: { element: '#alerts-quick' },
+        content: {
+            title: 'Alerts Overview',
+            description: 'This is where you can view all the alert statuses and logs.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
         attachTo: { element: '#settings' },
         content: {
             title: 'Settings',
@@ -321,7 +345,11 @@ onMounted(async () => {
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
     // This basically blocks at this point:
-    await Promise.all([deviceStore.updateStatusFromSSE(), deviceStore.updateLogsFromSSE()])
+    await Promise.all([
+        deviceStore.updateStatusFromSSE(),
+        deviceStore.updateLogsFromSSE(),
+        deviceStore.updateAlertsFromSSE(),
+    ])
 })
 </script>
 

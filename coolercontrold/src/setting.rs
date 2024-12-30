@@ -149,20 +149,6 @@ impl Default for LcdCarouselSettings {
     }
 }
 
-// A source for displaying sensor data that is related to a particular channel.
-// This is like `TempSource` but not limited to temperature sensors. (Load, Duty, etc.)
-// #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-// pub struct ChannelSource {
-//     /// The associated device uid containing current values
-//     pub device_uid: DeviceUID,
-//
-//     /// The internal name for this channel source. NOT the Label.
-//     pub channel_name: ChannelName,
-//
-//     // This is a future possibility that could be used to specify even more data to display:
-//     // pub sensor_type: Option<SensorType>
-// }
-
 /// General Settings for `CoolerControl`
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -345,4 +331,26 @@ pub struct CustomSensor {
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
     pub file_path: Option<PathBuf>,
+}
+
+/// A source for displaying sensor data that is related to a particular channel.
+/// This is like `TempSource` but not limited to temperature sensors. (Load, Duty, etc.)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelSource {
+    /// The associated device uid containing current values
+    pub device_uid: DeviceUID,
+
+    /// The internal name for this channel source. NOT the Label.
+    pub channel_name: ChannelName,
+
+    pub channel_metric: ChannelMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
+pub enum ChannelMetric {
+    Temp,
+    Duty,
+    Load,
+    RPM,
+    Freq,
 }

@@ -74,6 +74,18 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: '/alerts/:alertUID?',
+                    name: 'alerts',
+                    component: () => import('@/views/AlertView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/alerts-overview',
+                    name: 'alerts-overview',
+                    component: () => import('@/views/AlertsOverView.vue'),
+                    props: true,
+                },
+                {
                     path: '/custom-sensors/:customSensorID?',
                     name: 'custom-sensors',
                     component: () => import('@/views/CustomSensorView.vue'),

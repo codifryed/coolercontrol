@@ -56,6 +56,7 @@ import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.
 import { Dashboard } from '@/models/Dashboard.ts'
 import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
+import { Alert, AlertLog, AlertState } from '@/models/Alert.ts'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
@@ -83,6 +84,10 @@ export const useSettingsStore = defineStore('settings', () => {
     const modesActiveLast: Ref<Array<UID>> = ref([])
 
     const modeInEdit: Ref<UID | undefined> = ref()
+
+    const alerts: Ref<Array<Alert>> = ref([])
+    const alertLogs: Ref<Array<AlertLog>> = ref([])
+    const alertsActive: Ref<Array<UID>> = ref([])
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -247,6 +252,7 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadDaemonDeviceSettings()
         await loadCCAllDeviceSettings()
 
+        await loadAlertsAndLogs()
         await loadFunctions()
         await loadProfiles()
         await loadModes()
@@ -705,7 +711,7 @@ export const useSettingsStore = defineStore('settings', () => {
      * The function `deleteCustomSensor` is an asynchronous function that deletes a custom sensor
      * and refreshed the UI if successful.
      * @param {UID} deviceUID - The deviceUID parameter is the unique identifier of the custom
-     * sensors device. Used to remove any associated user UI settings as well.
+     * sensor's device. Used to remove any associated user UI settings as well.
      * @param {string} customSensorID - The `customSensorID` parameter is a string that represents
      * the unique identifier of the custom sensor that you want to delete.
      */
@@ -728,6 +734,91 @@ export const useSettingsStore = defineStore('settings', () => {
             await deviceStore.waitAndReload()
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+        }
+    }
+
+    async function loadAlertsAndLogs(): Promise<void> {
+        console.debug('Loading Alerts')
+        const alertsDTO = await deviceStore.daemonClient.loadAlertsAndLogs()
+        alertsActive.value.length = 0
+        alertsDTO.alerts
+            .filter((alert) => alert.state === AlertState.Active)
+            .forEach((alert) => {
+                alertsActive.value.push(alert.uid)
+            })
+        alerts.value.length = 0
+        alerts.value = alertsDTO.alerts
+        alertLogs.value.length = 0
+        alertLogs.value = alertsDTO.logs
+    }
+
+    async function createAlert(alert: Alert): Promise<boolean> {
+        console.debug('Creating Alert')
+        const response = await deviceStore.daemonClient.createAlert(alert)
+        if (response == null) {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Saved',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
+    async function updateAlert(alertUID: UID): Promise<boolean> {
+        console.debug('Updating Alert')
+        const alert_to_update = alerts.value.find((alert) => alert.uid === alertUID)
+        if (alert_to_update == null) {
+            console.error('Alert to update not found: ' + alertUID)
+            toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Alert not found to Update',
+                life: 4000,
+            })
+            return false
+        }
+        const response = await deviceStore.daemonClient.updateAlert(alert_to_update)
+        if (response == null) {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Updated',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
+    async function deleteAlert(alertUID: UID): Promise<boolean> {
+        console.debug('Deleting Alert')
+        const response = await deviceStore.daemonClient.deleteAlert(alertUID)
+        if (response == null) {
+            const index = alerts.value.findIndex((alert) => alert.uid === alertUID)
+            if (index > -1) {
+                alerts.value.splice(index, 1)
+            }
+            const activeIndex = alertsActive.value.findIndex((uid) => uid === alertUID)
+            if (activeIndex > -1) {
+                alertsActive.value.splice(activeIndex, 1)
+            }
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Deleted',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
         }
     }
 
@@ -1041,5 +1132,12 @@ export const useSettingsStore = defineStore('settings', () => {
         saveCustomSensor,
         updateCustomSensor,
         deleteCustomSensor,
+        alerts,
+        alertLogs,
+        alertsActive,
+        loadAlertsAndLogs,
+        createAlert,
+        updateAlert,
+        deleteAlert,
     }
 })

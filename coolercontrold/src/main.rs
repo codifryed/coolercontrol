@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::alerts::AlertController;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::modes::ModeController;
@@ -41,6 +42,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 mod admin;
+mod alerts;
 mod api;
 mod cc_fs;
 mod config;
@@ -127,6 +129,8 @@ fn main() -> Result<()> {
             mode_controller.handle_settings_at_boot().await;
             let status_handle =
                 api::actor::StatusHandle::new(all_devices.clone(), run_token.clone(), main_scope);
+            let alert_controller = Rc::new(AlertController::init(all_devices.clone()).await?);
+            AlertController::watch_for_shutdown(&alert_controller, run_token.clone(), main_scope);
             if let Err(err) = api::start_server(
                 all_devices,
                 Rc::clone(&repos),
@@ -134,6 +138,7 @@ fn main() -> Result<()> {
                 config.clone(),
                 custom_sensors_repo,
                 mode_controller.clone(),
+                alert_controller.clone(),
                 log_buf_handle,
                 status_handle.clone(),
                 run_token.clone(),
@@ -153,6 +158,7 @@ fn main() -> Result<()> {
                 Rc::clone(&repos),
                 settings_controller,
                 mode_controller,
+                alert_controller,
                 status_handle,
                 run_token,
             )

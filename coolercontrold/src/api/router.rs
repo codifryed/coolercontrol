@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::{auth, base, custom_sensors, functions, modes, profiles, settings, sse, status};
+use crate::api::{
+    alerts, auth, base, custom_sensors, functions, modes, profiles, settings, sse, status,
+};
 use crate::api::{devices, AppState};
 use aide::axum::routing::{delete_with, get, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
@@ -506,6 +508,39 @@ pub fn init(app_state: AppState) -> ApiRouter {
         )
         ///////////////////////////////////////////////////////////////////////////////////////////
         .api_route(
+            "/alerts",
+            get_with(alerts::get_all, |o| {
+                o.summary("Retrieve Alert List")
+                    .description("Returns a list of all the persisted Alerts.")
+                    .tag("alert")
+            })
+                .post_with(alerts::create, |o| {
+                    o.summary("Create Alert")
+                        .description("Creates the given Alert")
+                        .tag("alert")
+                        .security_requirement("CookieAuth")
+                })
+                .put_with(alerts::update, |o| {
+                    o.summary("Update Alert")
+                        .description(
+                            "Updates the Alert with the given properties. \
+                        Dependent on the Alert UID.",
+                        )
+                        .tag("alert")
+                        .security_requirement("CookieAuth")
+                }),
+        )
+        .api_route(
+            "/alerts/:alert_uid",
+            delete_with(alerts::delete, |o| {
+                o.summary("Delete Alert")
+                    .description("Deletes the Alert with the given Alert UID")
+                    .tag("alert")
+                    .security_requirement("CookieAuth")
+            }),
+        )
+        ///////////////////////////////////////////////////////////////////////////////////////////
+        .api_route(
             "/sse/logs",
             get_with(sse::logs, |o| {
                 o.summary("Log Server Sent Events")
@@ -526,6 +561,14 @@ pub fn init(app_state: AppState) -> ApiRouter {
             get_with(sse::modes, |o| {
                 o.summary("Activated Mode Events")
                     .description("Subscribes and returns the Server Sent Events for a ModeActivated stream")
+                    .tag("sse")
+            })
+        )
+        .api_route(
+            "/sse/alerts",
+            get_with(sse::alerts, |o| {
+                o.summary("Alert Events")
+                    .description("Subscribes and returns Events for when an Alert State has changed")
                     .tag("sse")
             })
         )

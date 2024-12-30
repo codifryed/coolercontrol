@@ -21,8 +21,11 @@ import { computed, inject, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
-    mdiAccountBadgeOutline,
     mdiAccountOffOutline,
+    mdiAccountOutline,
+    mdiBellOutline,
+    mdiBellPlusOutline,
+    mdiBellRingOutline,
     mdiBookmarkCheckOutline,
     mdiBookmarkOffOutline,
     mdiBookmarkOutline,
@@ -48,6 +51,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { AlertState } from '@/models/Alert.ts'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
@@ -61,7 +65,7 @@ const logoUrl = `/logo.svg`
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
 
-const badgeSeverity = computed((): string => {
+const daemonBadgeSeverity = computed((): string => {
     switch (daemonState.status) {
         case DaemonStatus.OK:
             return 'success'
@@ -73,6 +77,7 @@ const badgeSeverity = computed((): string => {
             return 'error'
     }
 })
+const numberOfActiveAlerts = computed((): number => settingsStore.alertsActive.length)
 
 const dashboardMenuRef = ref<DropdownInstance>()
 const dashboardItems = computed(() => {
@@ -221,6 +226,14 @@ const addItems = computed(() => [
         },
     },
     {
+        label: 'Alert',
+        mdiIcon: mdiBellPlusOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+            router.push({ name: 'alerts' })
+        },
+    },
+    {
         label: 'Custom Sensor',
         mdiIcon: mdiPlusCircleMultipleOutline,
         command: () => {
@@ -238,7 +251,7 @@ const addItems = computed(() => [
             class="mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
-                <OverlayBadge :severity="badgeSeverity">
+                <OverlayBadge :severity="daemonBadgeSeverity">
                     <img :src="logoUrl" alt="logo" class="w-11 h-11" />
                 </OverlayBadge>
             </router-link>
@@ -372,11 +385,13 @@ const addItems = computed(() => [
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
-                <svg-icon
-                    type="mdi"
-                    :path="deviceStore.loggedIn ? mdiAccountBadgeOutline : mdiAccountOffOutline"
-                    :size="getREMSize(1.75)"
-                />
+                <OverlayBadge :severity="deviceStore.loggedIn ? 'info' : 'error'">
+                    <svg-icon
+                        type="mdi"
+                        :path="deviceStore.loggedIn ? mdiAccountOutline : mdiAccountOffOutline"
+                        :size="getREMSize(1.75)"
+                    />
+                </OverlayBadge>
             </Button>
             <template #dropdown>
                 <Menu :model="accessItems" append-to="self">
@@ -402,6 +417,26 @@ const addItems = computed(() => [
                 </Menu>
             </template>
         </el-dropdown>
+
+        <!--Alerts-->
+        <router-link :to="{ name: 'alerts-overview' }" class="outline-none">
+            <Button
+                id="alerts-quick"
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+            >
+                <OverlayBadge
+                    :severity="numberOfActiveAlerts > 0 ? 'error' : 'info'"
+                    :value="numberOfActiveAlerts > 0 ? numberOfActiveAlerts : undefined"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :class="{ 'text-error': numberOfActiveAlerts > 0 }"
+                        :path="numberOfActiveAlerts > 0 ? mdiBellRingOutline : mdiBellOutline"
+                        :size="getREMSize(1.75)"
+                    />
+                </OverlayBadge>
+            </Button>
+        </router-link>
 
         <!--Settings-->
         <router-link :to="{ name: 'settings' }" class="outline-none">

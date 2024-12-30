@@ -28,6 +28,8 @@ use tokio_stream::wrappers::BroadcastStream;
 use zbus::export::futures_core::Stream;
 use zbus::export::futures_util::StreamExt;
 
+const DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS: u64 = 30;
+
 pub async fn logs(
     State(AppState { log_buf_handle, .. }): State<AppState>,
 ) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
@@ -35,7 +37,9 @@ pub async fn logs(
     let log_stream = BroadcastStream::new(log_buf_handle.broadcaster().subscribe())
         .take_until(async move { cancel_token.cancelled().await })
         .map(|log| Ok(Event::default().event("log").data(log.unwrap_or_default())));
-    NoApi(Sse::new(log_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(30))))
+    NoApi(Sse::new(log_stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
+    ))
 }
 
 pub async fn status(
@@ -67,5 +71,24 @@ pub async fn modes(
                 .json_data(mode_activated.unwrap_or_default())
                 .unwrap())
         });
-    NoApi(Sse::new(modes_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(30))))
+    NoApi(Sse::new(modes_stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
+    ))
+}
+
+pub async fn alerts(
+    State(AppState { alert_handle, .. }): State<AppState>,
+) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    let cancel_token = alert_handle.cancel_token();
+    let alert_stream = BroadcastStream::new(alert_handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await })
+        .map(|alert_state| {
+            Ok(Event::default()
+                .event("alert")
+                .json_data(alert_state.unwrap_or_default())
+                .unwrap())
+        });
+    NoApi(Sse::new(alert_stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
+    ))
 }

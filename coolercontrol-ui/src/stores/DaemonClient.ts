@@ -47,6 +47,7 @@ import {
     UpdateModeDTO,
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
+import { Alert, AlertsDTO } from '@/models/Alert.ts'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -1095,6 +1096,62 @@ export default class DaemonClient {
             const response = await this.getClient().delete(`/custom-sensors/${customSensorID}`)
             this.logDaemonResponse(response, 'Delete Custom Sensor')
             return
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async loadAlertsAndLogs(): Promise<AlertsDTO> {
+        try {
+            const response = await this.getClient().get('/alerts')
+            this.logDaemonResponse(response, 'Load Alerts')
+            return plainToInstance(AlertsDTO, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return new AlertsDTO()
+        }
+    }
+
+    async createAlert(alert: Alert): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/alerts', instanceToPlain(alert))
+            this.logDaemonResponse(response, 'Create Alert')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async updateAlert(alert: Alert): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().put('/alerts', instanceToPlain(alert))
+            this.logDaemonResponse(response, 'Update Alert')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async deleteAlert(alertUID: UID): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(`/alerts/${alertUID}`)
+            this.logDaemonResponse(response, 'Delete Alert')
+            return undefined
         } catch (err: any) {
             this.logError(err)
             if (err.response) {

@@ -17,6 +17,7 @@
  */
 
 pub mod actor;
+mod alerts;
 mod auth;
 mod base;
 mod custom_sensors;
@@ -29,9 +30,10 @@ mod settings;
 mod sse;
 mod status;
 
+use crate::alerts::AlertController;
 use crate::api::actor::{
-    AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle, ModeHandle,
-    ProfileHandle, SettingHandle, StatusHandle,
+    AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
+    ModeHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
 use crate::config::Config;
 use crate::logger::LogBufHandle;
@@ -84,6 +86,7 @@ pub async fn start_server<'s>(
     config: Rc<Config>,
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     modes_controller: Rc<ModeController>,
+    alert_controller: Rc<AlertController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
     cancel_token: CancellationToken,
@@ -113,6 +116,7 @@ pub async fn start_server<'s>(
         config,
         &custom_sensors_repo,
         &modes_controller,
+        &alert_controller,
         log_buf_handle,
         status_handle,
         &cancel_token,
@@ -285,6 +289,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             ..Tag::default()
         })
         .tag(Tag {
+            name: "alert".to_string(),
+            description: Some("Alerts".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
             name: "sse".to_string(),
             description: Some("Server Side Events".to_string()),
             ..Tag::default()
@@ -298,6 +307,7 @@ fn create_app_state<'s>(
     config: Rc<Config>,
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
     modes_controller: &Rc<ModeController>,
+    alert_controller: &Rc<AlertController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
     cancel_token: &CancellationToken,
@@ -334,6 +344,7 @@ fn create_app_state<'s>(
     );
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
+    let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
     AppState {
         health,
         auth_handle,
@@ -344,6 +355,7 @@ fn create_app_state<'s>(
         custom_sensor_handle,
         mode_handle,
         setting_handle,
+        alert_handle,
         log_buf_handle,
     }
 }
@@ -697,5 +709,6 @@ pub struct AppState {
     pub custom_sensor_handle: CustomSensorHandle,
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
+    pub alert_handle: AlertHandle,
     pub log_buf_handle: LogBufHandle,
 }

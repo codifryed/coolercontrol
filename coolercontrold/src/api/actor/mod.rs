@@ -30,6 +30,7 @@ mod auth;
 use log::trace;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+mod alert;
 mod custom_sensor;
 mod device;
 mod function;
@@ -39,6 +40,7 @@ mod profile;
 mod setting;
 mod status;
 
+pub use self::alert::*;
 pub use self::auth::*;
 pub use self::custom_sensor::*;
 pub use self::device::*;

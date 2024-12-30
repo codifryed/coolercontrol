@@ -15,10 +15,11 @@ export default {
             'text-center inline-block',
 
             // Size
-            'p-0 px-1',
+            'p-0',
             {
                 'w-2.5 h-2.5': props.value === null,
-                'min-w-[1.5rem] h-[1.5rem]': props.value !== null && props.size === null,
+                // 'min-w-[1.5rem] h-[1.5rem]': props.value !== null && props.size === null,
+                'w-5 h-5': props.value !== null && props.size === null,
                 'min-w-[1.25rem] h-[1.25rem]': props.size === 'small',
                 'min-w-[2.25rem] h-[2.25rem]': props.size === 'large',
                 'min-w-[3rem] h-[3rem]': props.size === 'xlarge',
@@ -31,7 +32,7 @@ export default {
             },
 
             // Color
-            'text-success',
+            'text-bg-one',
             // 'outline-none',
             {
                 'bg-accent':

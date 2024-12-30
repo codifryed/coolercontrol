@@ -19,6 +19,7 @@ use crate::commands::notifications::send_notification;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
+use std::cmp::PartialEq;
 use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -54,7 +55,8 @@ pub async fn connected_to_daemon(
     }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
     watch_connection_and_logs(daemon_address.clone(), Arc::clone(&*daemon_state_init));
-    watch_mode_activation(daemon_address);
+    watch_mode_activation(daemon_address.clone());
+    watch_alerts(daemon_address);
     Ok(())
 }
 
@@ -156,6 +158,37 @@ fn watch_mode_activation(address: String) {
     });
 }
 
+/// Watches SSE endpoint for daemon alerts and sends a notification.
+fn watch_alerts(address: String) {
+    tauri::async_runtime::spawn(async move {
+        let mut es = EventSource::get(format!("{address}sse/alerts"));
+        es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(2), None)));
+        while let Some(event) = es.next().await {
+            if let Ok(Event::Message(msg)) = event {
+                let alert_log = match serde_json::from_str::<AlertLog>(&msg.data) {
+                    Ok(alert_log) => alert_log,
+                    Err(err) => {
+                        println!("Alert Log Serialization Error: {err}");
+                        return;
+                    }
+                };
+                let (title, icon) = if alert_log.state == AlertState::Active {
+                    (
+                        format!("Alert: {} Triggered", alert_log.name),
+                        Some("dialog-error"),
+                    )
+                } else {
+                    (
+                        format!("Alert: {} Resolved", alert_log.name),
+                        Some("dialog-information"),
+                    )
+                };
+                let _ = send_notification(&title, &alert_log.message, icon).await;
+            }
+        }
+    });
+}
+
 pub struct DaemonState {
     has_errors: Mutex<bool>,
     first_run: Mutex<bool>,
@@ -174,4 +207,19 @@ impl Default for DaemonState {
 pub struct ModeActivated {
     pub name: String,
     pub already_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertLog {
+    pub uid: String,
+    pub name: String,
+    pub state: AlertState,
+    pub message: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AlertState {
+    Active,
+    Inactive,
 }
