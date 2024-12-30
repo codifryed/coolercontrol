@@ -55,13 +55,6 @@ const deleteCustomSensor = (): void => {
         accept: async () => {
             await settingsStore.deleteCustomSensor(props.deviceUID, props.customSensorID)
             emit('deleted', props.deviceUID)
-            // todo: no toast needed I think
-            // toast.add({
-            //     severity: 'success',
-            //     summary: 'Success',
-            //     detail: 'Dashboard Deleted',
-            //     life: 3000,
-            // })
         },
     })
 }
