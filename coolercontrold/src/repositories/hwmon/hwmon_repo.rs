@@ -45,6 +45,7 @@ pub enum HwmonChannelType {
     Temp,
     Load,
     Freq,
+    Power,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

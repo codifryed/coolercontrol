@@ -39,6 +39,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 pub const GPU_FREQ_NAME: &str = "GPU Freq";
 pub const GPU_LOAD_NAME: &str = "GPU Load";
+pub const GPU_POWER_NAME: &str = "GPU Power";
 pub const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 

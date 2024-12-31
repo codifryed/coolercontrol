@@ -47,6 +47,7 @@ pub type Duty = u8;
 #[allow(clippy::upper_case_acronyms)]
 pub type RPM = u32;
 pub type Mhz = u32;
+pub type Watts = f64;
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Device {
@@ -228,6 +229,8 @@ pub struct ChannelStatus {
     pub duty: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub freq: Option<Mhz>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watts: Option<Watts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
 }

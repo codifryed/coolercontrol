@@ -29,9 +29,11 @@ use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
     SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
-use crate::repositories::gpu::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_NAME};
+use crate::repositories::gpu::gpu_repo::{
+    GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
+};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
-use crate::repositories::hwmon::{devices, fans, freqs, temps};
+use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
@@ -120,6 +122,15 @@ impl GpuAMD {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
+            };
+            match power::init_power(&path).await {
+                Ok(power) => channels.extend(
+                    power
+                        .into_iter()
+                        .filter(|power| disabled_channels.contains(&power.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
+                Err(err) => error!("Error initializing AMD Hwmon Power: {err}"),
             };
             let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
             let drm_device_name = Self::get_drm_device_name(&path).await;
@@ -286,7 +297,18 @@ impl GpuAMD {
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    HwmonChannelType::Temp => continue,
+                    HwmonChannelType::Power => {
+                        let label_ext = channel
+                            .label
+                            .as_ref()
+                            .map(|l| format!(" {l}"))
+                            .unwrap_or_default();
+                        let channel_info = ChannelInfo {
+                            label: Some(format!("{GPU_POWER_NAME}{label_ext}")),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
                 }
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
@@ -391,6 +413,7 @@ impl GpuAMD {
         let mut status_channels = fans::extract_fan_statuses(&amd_driver.hwmon).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
         status_channels.extend(freqs::extract_freq_statuses(&amd_driver.hwmon).await);
+        status_channels.extend(power::extract_power_status(&amd_driver.hwmon).await);
         let temps = temps::extract_temp_statuses(&amd_driver.hwmon)
             .await
             .iter()
