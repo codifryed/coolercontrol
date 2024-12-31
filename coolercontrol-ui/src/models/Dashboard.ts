@@ -36,6 +36,7 @@ export class Dashboard {
     // auto-scale or static scale...
     autoScaleDegree: boolean = false
     autoScaleFrequency: boolean = true
+    autoScaleWatts: boolean = true
 
     // These are the scale min & maxes used when using a static Degree Axis Scale
     degreeMax: number = 100
@@ -45,6 +46,9 @@ export class Dashboard {
     // These values stay in Mhz/rpms units and are not affected by frequency precision
     frequencyMax: number = 10_000
     frequencyMin: number = 0
+
+    wattsMax: number = 800
+    wattsMin: number = 0
 
     // Selected data types to filter by
     dataTypes: Array<DataType> = []
@@ -73,6 +77,7 @@ export enum DataType {
     LOAD = 'Load',
     RPM = 'RPM',
     FREQ = 'Freq',
+    WATTS = 'Watts',
 }
 
 export class DashboardDeviceChannel {

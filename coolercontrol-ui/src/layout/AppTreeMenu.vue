@@ -36,6 +36,7 @@ import {
     mdiFlask,
     mdiFlaskOutline,
     mdiLedOn,
+    mdiLightningBoltCircle,
     mdiMemory,
     mdiSineWave,
     mdiSpeedometer,
@@ -394,6 +395,26 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
+                    options: [{ rename: true }, { color: true }],
+                })
+            }
+        }
+        for (const channel of device.status.channels) {
+            if (channel.name.toLowerCase().includes('power')) {
+                // @ts-ignore
+                deviceItem.children.push({
+                    id: `${device.uid}_${channel.name}`,
+                    label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
+                    name: channel.name,
+                    hasColor: true,
+                    color: deviceChannelColor(device.uid, channel.name),
+                    icon: mdiLightningBoltCircle,
+                    to: {
+                        name: 'single-dashboard',
+                        params: { deviceUID: device.uid, channelName: channel.name },
+                    },
+                    deviceUID: device.uid,
+                    watts: channel.watts,
                     options: [{ rename: true }, { color: true }],
                 })
             }
@@ -812,6 +833,10 @@ onMounted(async () => {
                                 <span style="font-size: 0.62rem">
                                     {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
                                 </span>
+                            </div>
+                            <div v-else-if="data.watts != null" class="items-end tree-data">
+                                {{ deviceChannelValues(data.deviceUID, data.name)!.watts }}
+                                <span style="font-size: 0.62rem">W&nbsp;&nbsp;&nbsp;</span>
                             </div>
                             <div
                                 v-else-if="data.duty != null && data.rpm == null"

@@ -72,7 +72,7 @@ watch(freqScaledMax, () => {
                     <table>
                         <thead>
                             <tr>
-                                <th colspan="4" class="pb-2">Axis Options</th>
+                                <th colspan="6" class="pb-2">Axis Options</th>
                             </tr>
                             <tr>
                                 <th
@@ -100,6 +100,20 @@ watch(freqScaledMax, () => {
                                         />
                                     </span>
                                 </th>
+                                <th
+                                    colspan="2"
+                                    class="w-48 p-2 border-l border-b border-border-one"
+                                >
+                                    <span class="flex flex-row justify-center">
+                                        watts
+                                        <svg-icon
+                                            class="outline-0 ml-2"
+                                            type="mdi"
+                                            :path="mdiAxisYArrow"
+                                            :size="deviceStore.getREMSize(1.25)"
+                                        />
+                                    </span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -118,6 +132,12 @@ watch(freqScaledMax, () => {
                                         v-model="dashboard.autoScaleFrequency"
                                         size="large"
                                     />
+                                </td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">
+                                    AutoScale
+                                </td>
+                                <td class="w-24 px-2 text-center">
+                                    <el-switch v-model="dashboard.autoScaleWatts" size="large" />
                                 </td>
                             </tr>
                             <tr>
@@ -170,6 +190,31 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">Max</td>
+                                <td class="w-24 px-2 text-center">
+                                    <InputNumber
+                                        placeholder="Max"
+                                        v-model="dashboard.wattsMax"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="true"
+                                        :step="dashboard.wattsMax >= 10 ? 10 : 1"
+                                        :min="dashboard.wattsMin + 1"
+                                        :max="800"
+                                        :min-fraction-digits="0"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '3rem' }"
+                                        :disabled="dashboard.autoScaleWatts"
+                                    >
+                                        <template #incrementicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
                             </tr>
                             <tr>
                                 <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
@@ -212,6 +257,31 @@ watch(freqScaledMax, () => {
                                         :allow-empty="false"
                                         :input-style="{ width: '5rem' }"
                                         :disabled="dashboard.autoScaleFrequency"
+                                    >
+                                        <template #incrementicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">Min</td>
+                                <td class="w-24 px-2 text-center">
+                                    <InputNumber
+                                        placeholder="Min"
+                                        v-model="dashboard.wattsMin"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="true"
+                                        :step="dashboard.wattsMax >= 10 ? 10 : 1"
+                                        :min="0"
+                                        :max="dashboard.wattsMax - 1"
+                                        :min-fraction-digits="0"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '3rem' }"
+                                        :disabled="dashboard.autoScaleWatts"
                                     >
                                         <template #incrementicon>
                                             <span class="pi pi-plus" />

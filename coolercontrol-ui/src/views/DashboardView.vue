@@ -225,6 +225,7 @@ onMounted(async () => {
                     :dropdown-icon="
                         dashboard.dataTypes.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
                     "
+                    scroll-height="16rem"
                     v-tooltip.bottom="'Filter by Data Type'"
                 />
             </div>

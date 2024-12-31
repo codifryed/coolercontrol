@@ -29,6 +29,7 @@ import {
     mouseWheelZoomPlugin,
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
+    SCALE_KEY_WATTS,
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
@@ -58,6 +59,8 @@ const includesFreqs: boolean =
     props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.FREQ)
 const includesRPMs: boolean =
     props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.RPM)
+const includesWatts: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.WATTS)
 const includesDevice = (deviceUID: UID): boolean =>
     props.dashboard.deviceChannelNames.length === 0 ||
     props.dashboard.deviceChannelNames.some(
@@ -198,6 +201,27 @@ const initUSeriesData = () => {
                     }
                     floatArray[statusIndex] = channelStatus.freq / settingsStore.frequencyPrecision
                 }
+                if (includesWatts && channelStatus.watts != null) {
+                    const channelSettings = deviceSettings.sensorsAndChannels.get(
+                        channelStatus.name,
+                    )!
+                    const lineName = createLineName(device, channelStatus.name + '_watts')
+                    if (!uLineNames.includes(lineName)) {
+                        uLineNames.push(lineName)
+                    }
+                    if (!allDevicesLineProperties.has(lineName)) {
+                        allDevicesLineProperties.set(lineName, {
+                            color: channelSettings.color,
+                            name: channelSettings.name,
+                        })
+                    }
+                    let floatArray = uLineData.get(lineName)
+                    if (floatArray == null) {
+                        floatArray = new Float32Array(currentStatusLength)
+                        uLineData.set(lineName, floatArray)
+                    }
+                    floatArray[statusIndex] = channelStatus.watts
+                }
             }
         }
     }
@@ -257,6 +281,11 @@ const updateUSeriesData = () => {
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.freq / settingsStore.frequencyPrecision
             }
+            if (includesWatts && channelStatus.watts != null) {
+                const lineName = createLineName(device, channelStatus.name + '_watts')
+                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
+                    channelStatus.watts
+            }
         }
     }
     console.debug('Updated uPlot Data')
@@ -285,6 +314,8 @@ const getLineStyle = (lineName: string): Array<number> => {
         return [6, 3]
     } else if (lineLower.endsWith('duty')) {
         return [10, 3, 2, 3]
+    } else if (lineLower.endsWith('watts')) {
+        return [6, 3, 2, 6]
     } else {
         return []
     }
@@ -292,6 +323,7 @@ const getLineStyle = (lineName: string): Array<number> => {
 
 let hasDegreeAxis: boolean = false
 let hasFrequencyAxis: boolean = false
+let hasWattsAxis: boolean = false
 for (const lineName of uLineNames) {
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
         hasFrequencyAxis = true
@@ -315,6 +347,20 @@ for (const lineName of uLineNames) {
             //     // else
             //         return rawValue != null ? (rawValue / 1000).toFixed(1) : rawValue
             // },
+        })
+    } else if (lineName.endsWith('_watts')) {
+        hasWattsAxis = true
+        uPlotSeries.push({
+            label: lineName,
+            scale: SCALE_KEY_WATTS,
+            auto: props.dashboard.autoScaleWatts,
+            stroke: allDevicesLineProperties.get(lineName)?.color,
+            points: {
+                show: false,
+            },
+            dash: getLineStyle(lineName),
+            spanGaps: true,
+            width: settingsStore.chartLineScale,
         })
     } else {
         hasDegreeAxis = true
@@ -409,11 +455,13 @@ const uOptions: uPlot.Options = {
             side: 1,
             scale: SCALE_KEY_RPM,
             label: settingsStore.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
-            labelGap: settingsStore.frequencyPrecision === 1 ? deviceStore.getREMSize(1.6) : 0,
+            labelGap: settingsStore.frequencyPrecision === 1 ? deviceStore.getREMSize(1.0) : 0,
             labelSize:
                 settingsStore.frequencyPrecision === 1
                     ? deviceStore.getREMSize(2.9)
-                    : deviceStore.getREMSize(1.4),
+                    : hasWattsAxis
+                      ? deviceStore.getREMSize(2.25)
+                      : deviceStore.getREMSize(1.4),
             // labelFont, unlike font, seems to take rem values properly, and by is 1rem by default:
             labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
@@ -460,6 +508,49 @@ const uOptions: uPlot.Options = {
                 dash: [1, 2],
             },
         },
+        {
+            side: 1,
+            scale: SCALE_KEY_WATTS,
+            label: 'watts',
+            labelGap: 0,
+            labelSize: deviceStore.getREMSize(1.4),
+            labelFont: `sans-serif`,
+            stroke: colors.themeColors.text_color,
+            size: deviceStore.getREMSize(2.5),
+            font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            gap: 3,
+            ticks: {
+                show: true,
+                stroke: colors.themeColors.text_color_secondary,
+                width: 1,
+                size: 5,
+            },
+
+            incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
+                if (scaleMax > 130) {
+                    return [20]
+                } else if (scaleMax > 70) {
+                    return [10]
+                } else if (scaleMax > 30) {
+                    return [5]
+                } else if (scaleMax > 7) {
+                    return [1]
+                }
+                return [0.5]
+            },
+            // values: (_, ticks) => ticks.map((rawValue) => rawValue + ' W'),
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors.text_color_secondary,
+            },
+            grid: {
+                show: !hasDegreeAxis && !hasFrequencyAxis && hasWattsAxis,
+                stroke: colors.themeColors.border,
+                width: 1,
+                dash: [1, 2],
+            },
+        },
     ],
     scales: {
         '%': {
@@ -482,6 +573,15 @@ const uOptions: uPlot.Options = {
                           props.dashboard.frequencyMin / settingsStore.frequencyPrecision,
                           props.dashboard.frequencyMax / settingsStore.frequencyPrecision,
                       ]
+            },
+        },
+        W: {
+            auto: props.dashboard.autoScaleWatts,
+            range: (_self, _dataMin, dataMax) => {
+                if (!hasWattsAxis) return [null, null]
+                return props.dashboard.autoScaleWatts
+                    ? uPlot.rangeNum(0, dataMax || 10.5, 0.1, true)
+                    : [props.dashboard.wattsMin, props.dashboard.wattsMax]
             },
         },
         x: {

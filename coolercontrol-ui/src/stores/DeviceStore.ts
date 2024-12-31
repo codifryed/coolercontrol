@@ -34,6 +34,7 @@ import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
+import { TempInfo } from '@/models/TempInfo.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -43,6 +44,7 @@ export interface ChannelValues {
     rpm?: string
     duty?: string
     freq?: string
+    watts?: string
 }
 
 export const DEFAULT_NAME_STRING_LENGTH: number = 40
@@ -633,11 +635,13 @@ export const useDeviceStore = defineStore('device', () => {
                     deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(0)
                     deviceStatuses.get(channel.name)!.rpm = channel.rpm?.toFixed(0)
                     deviceStatuses.get(channel.name)!.freq = channel.freq?.toFixed(0)
+                    deviceStatuses.get(channel.name)!.watts = channel.watts?.toFixed(1)
                 } else {
                     deviceStatuses.set(channel.name, {
                         duty: channel.duty?.toFixed(0),
                         rpm: channel.rpm?.toFixed(0),
                         freq: channel.freq?.toFixed(0),
+                        watts: channel.watts?.toFixed(1),
                     })
                 }
             }

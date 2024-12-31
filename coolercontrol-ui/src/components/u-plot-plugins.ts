@@ -21,6 +21,7 @@ import type { Color } from '@/models/Device.ts'
 
 export const SCALE_KEY_PERCENT: string = '%'
 export const SCALE_KEY_RPM: string = 'rpm'
+export const SCALE_KEY_WATTS: string = 'W'
 
 export interface DeviceLineProperties {
     color: Color
@@ -95,6 +96,10 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                     const rpmScaleMin: undefined | number = u.scales[SCALE_KEY_RPM]?.min
                     let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
                     let upperRpmLimit: number = -1
+                    const wattScaleMax: undefined | number = u.scales[SCALE_KEY_WATTS]?.max
+                    const wattScaleMin: undefined | number = u.scales[SCALE_KEY_WATTS]?.min
+                    let lowerWattLimit: number = 4_294_967_295 // Max u32 value from daemon
+                    let upperWattLimit: number = -1
                     for (const [i, series] of u.series.entries()) {
                         if (i == 0) {
                             // time series
@@ -108,6 +113,8 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 continue
                             }
                             const isPercentScale: boolean = series.scale == SCALE_KEY_PERCENT
+                            const isRpmScale: boolean = series.scale == SCALE_KEY_RPM
+                            const isWattScale: boolean = series.scale == SCALE_KEY_WATTS
                             // Calculate Cursor values once for all series:
                             if (
                                 upperPercentLimit == -1 &&
@@ -140,7 +147,7 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 }
                             } else if (
                                 upperRpmLimit == -1 &&
-                                !isPercentScale &&
+                                isRpmScale &&
                                 rpmScaleMax != null &&
                                 rpmScaleMin != null
                             ) {
@@ -159,6 +166,30 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                     lowerRpmLimit = rpmScaleMax - rpmSeriesValueRange
                                     upperRpmLimit = rpmScaleMax
                                 }
+                            } else if (
+                                upperWattLimit == -1 &&
+                                isWattScale &&
+                                wattScaleMax != null &&
+                                wattScaleMin != null
+                            ) {
+                                // Calculate Watt series' value range once for all series
+                                const wattCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_WATTS)
+                                const wattScaleRange = wattScaleMax - wattScaleMin
+                                const wattSeriesValueRange = wattScaleRange * 0.04
+                                const wattSeriesValueRangeSplit = wattSeriesValueRange / 2
+                                lowerWattLimit = wattCursorValue - wattSeriesValueRangeSplit
+                                upperWattLimit = wattCursorValue + wattSeriesValueRangeSplit
+                                // keeps upper and lower boundaries within the canvas area:
+                                if (lowerWattLimit < wattScaleMin + wattSeriesValueRangeSplit) {
+                                    lowerWattLimit = wattScaleMin
+                                    upperWattLimit = wattScaleMin + wattSeriesValueRange
+                                } else if (
+                                    upperWattLimit >
+                                    wattScaleMax - wattSeriesValueRangeSplit
+                                ) {
+                                    lowerWattLimit = wattScaleMax - wattSeriesValueRange
+                                    upperWattLimit = wattScaleMax
+                                }
                             }
                             // Check if series is in range of the cursor
                             if (
@@ -169,10 +200,17 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 continue
                             }
                             if (
-                                !isPercentScale &&
+                                isRpmScale &&
                                 (seriesValue < lowerRpmLimit || seriesValue > upperRpmLimit)
                             ) {
                                 // out of range for the rpm scale
+                                continue
+                            }
+                            if (
+                                isWattScale &&
+                                (seriesValue < lowerWattLimit || seriesValue > upperWattLimit)
+                            ) {
+                                // out of range for the watt scale
                                 continue
                             }
                             const lineName = allDevicesLineProperties.get(series.label!)?.name
@@ -204,6 +242,9 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                     : 1
                                 suffix = 'rpm'
                                 lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                            } else if (series.label!.endsWith('watts')) {
+                                lineValue = seriesValue.toFixed(1)
+                                suffix = 'W'
                             }
                             const lineColor = allDevicesLineProperties.get(series.label!)?.color
                             seriesTexts.push(
@@ -285,7 +326,12 @@ export const columnHighlightPlugin = () => {
                     highlightEl2.style.width = Math.round(Math.max(width, 5)) + 'px'
 
                     const hasPercentScale: boolean = u.series[1].scale == SCALE_KEY_PERCENT
-                    const scale_key = hasPercentScale ? SCALE_KEY_PERCENT : SCALE_KEY_RPM
+                    const hasRpmScale: boolean = u.series[1].scale == SCALE_KEY_RPM
+                    const scale_key = hasPercentScale
+                        ? SCALE_KEY_PERCENT
+                        : hasRpmScale
+                          ? SCALE_KEY_RPM
+                          : SCALE_KEY_WATTS
                     const scale_max = u.scales[scale_key].max!
                     const scale_min = u.scales[scale_key].min!
                     const scale_range = scale_max - scale_min

@@ -47,6 +47,8 @@ const includesFreqs: boolean =
     props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.FREQ)
 const includesRPMs: boolean =
     props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.RPM)
+const includesWatts: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.WATTS)
 const includesDevice = (deviceUID: UID): boolean =>
     props.dashboard.deviceChannelNames.length === 0 ||
     props.dashboard.deviceChannelNames.some(
@@ -84,6 +86,8 @@ const getData = (status: Status, channel_name: string, dataType: DataType): numb
             return status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
         case DataType.FREQ:
             return status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
+        case DataType.WATTS:
+            return status.channels.find((channel) => channel.name === channel_name)?.watts ?? 0
         case DataType.TEMP:
             return status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
         default:
@@ -232,6 +236,27 @@ const initTableData = () => {
                         count: count,
                     })
                 }
+                if (includesWatts && channel.watts != null) {
+                    let [min, max, avg, count] = calcMinMaxAvg(
+                        channel.name,
+                        device.status_history,
+                        DataType.WATTS,
+                    )
+                    deviceTableData.value.push({
+                        rowID: device.uid + channel.name,
+                        deviceUID: device.uid,
+                        deviceName: deviceSettings.name,
+                        channelID: channel.name,
+                        channelColor: channelSettings?.color ?? 'white',
+                        channelLabel: channelSettings?.name ?? channel.name,
+                        dataType: DataType.WATTS,
+                        value: channel.watts,
+                        min: min,
+                        max: max,
+                        avg: avg,
+                        count: count,
+                    })
+                }
             }
         }
     }
@@ -269,6 +294,11 @@ const updateTableData = () => {
                             .freq,
                     ) / settingsStore.frequencyPrecision
                 break
+            case DataType.WATTS:
+                newValue = Number(
+                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.watts,
+                )
+                break
             default:
                 newValue = 0
         }
@@ -282,7 +312,7 @@ const updateTableData = () => {
 }
 
 const format = (value: number, dataType: DataType): string => {
-    if (dataType === DataType.TEMP) {
+    if (dataType === DataType.TEMP || dataType === DataType.WATTS) {
         return value.toFixed(1)
     } else if (dataType === DataType.FREQ && settingsStore.frequencyPrecision > 1) {
         return value.toFixed(2)
@@ -300,6 +330,8 @@ const suffix = (dataType: DataType): string => {
             return ' rpm'
         case DataType.FREQ:
             return settingsStore.frequencyPrecision === 1 ? ' Mhz' : ' Ghz'
+        case DataType.WATTS:
+            return ' W'
         default:
             return ' %'
     }
@@ -309,6 +341,7 @@ const suffixStyle = (dataType: DataType): string => {
         case DataType.TEMP:
             return ''
         case DataType.FREQ:
+        case DataType.WATTS:
             return 'font-size: 0.62rem'
         default:
             return 'font-size: 0.7rem'
