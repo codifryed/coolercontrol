@@ -251,7 +251,7 @@ impl GpuAMD {
         for (index, amd_driver) in self.init_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
-            let (min_duty, max_duty) = Self::get_min_max_duty(&amd_driver.fan_curve_info);
+            let (min_duty, max_duty) = Self::get_min_max_duty(amd_driver.fan_curve_info.as_ref());
             for channel in &amd_driver.hwmon.channels {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
@@ -312,7 +312,7 @@ impl GpuAMD {
                     )
                 })
                 .collect();
-            let (temp_min, temp_max) = Self::get_min_max_temps(&amd_driver.fan_curve_info);
+            let (temp_min, temp_max) = Self::get_min_max_temps(amd_driver.fan_curve_info.as_ref());
             let mut device = Device::new(
                 amd_driver.hwmon.name.clone(),
                 DeviceType::GPU,
@@ -352,7 +352,7 @@ impl GpuAMD {
         Ok(devices)
     }
 
-    fn get_min_max_duty(fan_curve_info: &Option<FanCurveInfo>) -> (Duty, Duty) {
+    fn get_min_max_duty(fan_curve_info: Option<&FanCurveInfo>) -> (Duty, Duty) {
         if let Some(fan_curve_info) = fan_curve_info {
             (
                 fan_curve_info.speed_range.start().to_owned(),
@@ -363,7 +363,7 @@ impl GpuAMD {
         }
     }
 
-    fn get_min_max_temps(fan_curve_info: &Option<FanCurveInfo>) -> (CurveTemp, CurveTemp) {
+    fn get_min_max_temps(fan_curve_info: Option<&FanCurveInfo>) -> (CurveTemp, CurveTemp) {
         if let Some(fan_curve_info) = fan_curve_info {
             (
                 fan_curve_info.temperature_range.start().to_owned(),
