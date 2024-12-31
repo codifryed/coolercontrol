@@ -49,7 +49,7 @@ async fn find_power(base_path: &PathBuf, suffix: &str) -> Result<HwmonChannelInf
     for entry in cc_fs::read_dir(base_path)? {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        if file_name != &power_channel_name {
+        if file_name != power_channel_name {
             continue;
         }
         if sensor_is_not_usable(base_path, suffix).await {
