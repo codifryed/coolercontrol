@@ -395,7 +395,7 @@ onMounted(async () => {
                     <!--                        />-->
                     <!--                    </div>-->
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Thresholds
+                        Trigger Conditions
                     </small>
                     <table class="bg-bg-two rounded-lg mb-4">
                         <tbody>
@@ -403,7 +403,7 @@ onMounted(async () => {
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2"
                                 >
-                                    <div class="text-right float-right">Maximum</div>
+                                    <div class="text-right float-right">greater than</div>
                                 </td>
                                 <td class="py-4 px-4 w-60 leading-none items-center text-center">
                                     <InputNumber
@@ -453,7 +453,7 @@ onMounted(async () => {
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
-                                    <div class="text-right float-right">Minimum</div>
+                                    <div class="text-right float-right">less than</div>
                                 </td>
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
