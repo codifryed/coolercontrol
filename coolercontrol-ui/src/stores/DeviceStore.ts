@@ -175,17 +175,35 @@ export const useDeviceStore = defineStore('device', () => {
                 }),
             )
         }
+        if (device.info?.temps) {
+            device.info.temps = new Map<string, TempInfo>(
+                [...device.info.temps.entries()].sort(([c1name], [c2name]) => {
+                    return c1name.localeCompare(c2name, undefined, {
+                        numeric: true,
+                        sensitivity: 'base',
+                    })
+                }),
+            )
+        }
     }
 
     function getChannelPrio(channelInfo: ChannelInfo): number {
+        // freq, power, load, fans, lightings, lcds, others by name only
+        // multiple channels of the same type are sorted by name numerically
         if (channelInfo.speed_options != null) {
-            return 1
+            return 11
         } else if (channelInfo.lighting_modes.length > 0) {
-            return 2
+            return 12
         } else if (channelInfo.lcd_info != null) {
+            return 13
+        } else if (channelInfo.label?.toLowerCase().includes('freq')) {
+            return 1
+        } else if (channelInfo.label?.toLowerCase().includes('power')) {
+            return 2
+        } else if (channelInfo.label?.toLowerCase().includes('load')) {
             return 3
         }
-        return 4
+        return 14
     }
 
     async function unauthorizedCallback(error: any): Promise<void> {
