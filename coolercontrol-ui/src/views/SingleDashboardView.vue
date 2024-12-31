@@ -46,6 +46,8 @@ const channelLabel =
 const createNewDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel)
     dash.timeRangeSeconds = 300
+    // needed due to reduced default data type range:
+    dash.dataTypes = []
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID, props.channelName))
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)!

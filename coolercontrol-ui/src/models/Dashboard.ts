@@ -51,7 +51,7 @@ export class Dashboard {
     wattsMin: number = 0
 
     // Selected data types to filter by
-    dataTypes: Array<DataType> = []
+    dataTypes: Array<DataType> = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
 
     // Selected Raw deviceUID and channel names to filter by (not user-level names)
     @Type(() => DashboardDeviceChannel)
