@@ -41,7 +41,8 @@ use crate::device::{
     DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
-    COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
+    COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_POWER_NAME,
+    GPU_TEMP_NAME,
 };
 use crate::repositories::repository::DeviceLock;
 use crate::repositories::utils::ShellCommand;
@@ -254,6 +255,7 @@ impl GpuNVidia {
                 .set(disabled_channels.contains(&GPU_LOAD_NAME.to_string()).not());
             let mut nvidia_temp_infos = Vec::new();
             let mut nvidia_freq_infos = Vec::new();
+            let mut nvidia_power_supported = false;
             let mut temp_infos = HashMap::new();
             let mut temp_status = Vec::new();
 
@@ -415,6 +417,27 @@ impl GpuNVidia {
                     &mut channel_status,
                 );
             }
+            if disabled_channels
+                .contains(&GPU_POWER_NAME.to_string())
+                .not()
+            {
+                let power_name = GPU_POWER_NAME.to_string();
+                if let Ok(milli_watts) = device.power_usage() {
+                    channel_infos.insert(
+                        power_name.clone(),
+                        ChannelInfo {
+                            label: Some(power_name.clone()),
+                            ..Default::default()
+                        },
+                    );
+                    channel_status.push(ChannelStatus {
+                        name: power_name,
+                        watts: Some(Self::convert_milliwatts_to_watts(milli_watts)),
+                        ..Default::default()
+                    });
+                    nvidia_power_supported = true;
+                }
+            }
 
             let driver_version = device.nvml().sys_driver_version().ok();
             let driver_name = format!(
@@ -463,6 +486,7 @@ impl GpuNVidia {
                     fan_indices,
                     temps: nvidia_temp_infos,
                     freqs: nvidia_freq_infos,
+                    power: nvidia_power_supported,
                 }),
             );
             devices.insert(uid, device);
@@ -503,6 +527,10 @@ impl GpuNVidia {
                 ..Default::default()
             });
         }
+    }
+
+    fn convert_milliwatts_to_watts(milli_watts: u32) -> f64 {
+        f64::from(milli_watts / 1_000)
     }
 
     #[allow(clippy::cast_precision_loss)]
@@ -547,6 +575,15 @@ impl GpuNVidia {
                 channel_status.push(ChannelStatus {
                     name: GPU_LOAD_NAME.to_string(),
                     duty: Some(f64::from(util_rates.gpu)),
+                    ..Default::default()
+                });
+            }
+        }
+        if nv_info.power {
+            if let Ok(milli_watts) = nvml_device.power_usage() {
+                channel_status.push(ChannelStatus {
+                    name: GPU_POWER_NAME.to_string(),
+                    watts: Some(Self::convert_milliwatts_to_watts(milli_watts)),
                     ..Default::default()
                 });
             }
@@ -879,6 +916,7 @@ impl GpuNVidia {
                             fan_indices,
                             temps: Vec::new(),
                             freqs: Vec::new(),
+                            power: false,
                         }),
                     );
                     devices.insert(uid, device);
@@ -1190,4 +1228,6 @@ pub struct NvidiaDeviceInfo {
     pub temps: Vec<String>,
     /// The Clock type sensors that have been successfully found (NVML)
     pub freqs: Vec<Clock>,
+    /// Whether power is supported
+    pub power: bool,
 }

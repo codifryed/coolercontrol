@@ -20,5 +20,5 @@ pub mod devices;
 pub mod fans;
 pub mod freqs;
 pub mod hwmon_repo;
-pub mod temps;
 pub mod power;
+pub mod temps;
