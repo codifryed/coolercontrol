@@ -46,6 +46,7 @@ pub enum HwmonChannelType {
     Load,
     Freq,
     Power,
+    PowerCap, // RAPL
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

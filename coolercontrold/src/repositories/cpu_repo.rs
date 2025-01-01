@@ -15,7 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-use std::cell::RefCell;
+
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -28,7 +29,7 @@ use crate::device::{
     Status, TempInfo, TempStatus, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
-use crate::repositories::hwmon::{devices, temps};
+use crate::repositories::hwmon::{devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
@@ -40,10 +41,11 @@ use regex::Regex;
 use tokio::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
+pub const CPU_POWER_NAME: &str = "CPU Power";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const SINGLE_CPU_FREQ_NAME: &str = "CPU Freq";
 const INTEL_DEVICE_NAME: &str = "coretemp";
-// cpu_device_names have a priority and we want to return the first match
+// cpu_device_names have a priority, and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
@@ -59,6 +61,8 @@ pub struct CpuRepo {
     cpu_model_names: HashMap<PhysicalID, String>,
     cpu_percent_collector: RefCell<CpuPercentCollector>,
     preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    energy_counters: HashMap<PhysicalID, Cell<f64>>,
+    poll_rate: f64,
 }
 
 impl CpuRepo {
@@ -70,6 +74,8 @@ impl CpuRepo {
             cpu_model_names: HashMap::new(),
             cpu_percent_collector: RefCell::new(CpuPercentCollector::new()?),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            energy_counters: HashMap::new(),
+            poll_rate: 0.,
         })
     }
 
@@ -377,6 +383,25 @@ impl CpuRepo {
                     };
                     status_channels.push(freq_status);
                 }
+                HwmonChannelType::PowerCap => {
+                    let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
+                    let previous_joule_count = self
+                        .energy_counters
+                        .get(&phys_cpu_id)
+                        .expect("Energy Counters should be initialized")
+                        .replace(joule_count);
+                    let watts = power_cap::calculate_power_watts(
+                        joule_count,
+                        previous_joule_count,
+                        self.poll_rate,
+                    );
+                    let power_status = ChannelStatus {
+                        name: channel.name.clone(),
+                        watts: Some(watts),
+                        ..Default::default()
+                    };
+                    status_channels.push(power_status);
+                }
                 _ => continue,
             }
         }
@@ -419,13 +444,13 @@ impl CpuRepo {
                 let mut channels = Vec::new();
                 match Self::init_cpu_temp(path).await {
                     Ok(temps) => channels.extend(temps),
-                    Err(err) => error!("Error initializing CPU Temps: {}", err),
+                    Err(err) => error!("Error initializing CPU Temps: {err}"),
                 };
                 // requires temp channels beforehand
                 let physical_id = match self.match_physical_id(device_name, &channels, index) {
                     Ok(id) => id,
                     Err(err) => {
-                        error!("Error matching CPU physical ID: {}", err);
+                        error!("Error matching CPU physical ID: {err}");
                         continue;
                     }
                 };
@@ -454,6 +479,19 @@ impl CpuRepo {
                     Ok(freq) => channels.push(freq),
                     Err(err) => {
                         error!("Error matching cpu frequencies to processors: {err}");
+                    }
+                }
+                match power_cap::find_power_cap_paths().await {
+                    Ok(power_channels) => {
+                        if let Some(channel) = power_channels
+                            .into_iter()
+                            .find(|channel| channel.number == physical_id)
+                        {
+                            channels.push(channel);
+                        }
+                    }
+                    Err(err) => {
+                        debug!("Error finding power cap paths: {err}");
                     }
                 }
                 let channels = channels
@@ -504,6 +542,7 @@ impl Repository for CpuRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
+        self.poll_rate = self.config.get_settings()?.poll_rate;
         self.set_cpu_infos().await?;
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
@@ -515,9 +554,16 @@ impl Repository for CpuRepo {
             ));
         }
 
-        let poll_rate = self.config.get_settings()?.poll_rate;
         let mut cpu_freqs = Self::collect_freq().await;
         for (physical_id, driver) in hwmon_devices {
+            for channel in driver.channels.iter().filter(|channel| {
+                channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
+            }) {
+                // fill initial joule_count with a real count (Needed before request_status)
+                let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
+                self.energy_counters
+                    .insert(physical_id, Cell::new(joule_count));
+            }
             let (channels, temps) = self
                 .request_status(physical_id, &driver, &mut cpu_freqs)
                 .await;
@@ -547,7 +593,9 @@ impl Repository for CpuRepo {
             let mut channel_infos = HashMap::new();
             for channel in &driver.channels {
                 match channel.hwmon_type {
-                    HwmonChannelType::Load | HwmonChannelType::Freq => {
+                    HwmonChannelType::Load
+                    | HwmonChannelType::Freq
+                    | HwmonChannelType::PowerCap => {
                         channel_infos.insert(
                             channel.name.clone(),
                             ChannelInfo {
@@ -577,14 +625,14 @@ impl Repository for CpuRepo {
                     ..Default::default()
                 },
                 None,
-                poll_rate,
+                self.poll_rate,
             );
             let status = Status {
                 temps,
                 channels,
                 ..Default::default()
             };
-            device.initialize_status_history_with(status, poll_rate);
+            device.initialize_status_history_with(status, self.poll_rate);
             self.devices.insert(
                 device.uid.clone(),
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
