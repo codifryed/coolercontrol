@@ -21,7 +21,7 @@ use crate::device::Watts;
 use crate::repositories::cpu_repo::CPU_POWER_NAME;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{Context, Result};
-use log::{info, trace};
+use log::{debug, info, trace};
 use nu_glob::glob;
 use regex::Regex;
 use std::io::{Error, ErrorKind};
@@ -56,9 +56,11 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
     let regex_package_number = Regex::new(PATTERN_RAPL_PACKAGE_NUMBER)?;
     for path in base_paths {
         let rapl_name = get_rapl_name(&path).await;
-        let package_number: u8 = regex_package_number
-            .captures(&rapl_name)
-            .context("Package Number should exist")?
+        let Some(captures) = regex_package_number.captures(&rapl_name) else {
+            debug!("PowerCap driver Name at location: {path:?} is not a package, skipping");
+            continue;
+        };
+        let package_number: u8 = captures
             .name("number")
             .context("Number Group should exist")?
             .as_str()
