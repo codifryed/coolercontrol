@@ -71,7 +71,7 @@ pub async fn extract_freq_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatu
         let freq = cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
             .await
             .and_then(check_parsing_64)
-            .map(|hertz| (hertz / 1_000_000) as Mhz)
+            .map(hertz_to_megahertz)
             .unwrap_or_default();
         freqs.push(ChannelStatus {
             name: channel.name.clone(),
@@ -95,7 +95,7 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
                     cc_fs::read_sysfs(driver.path.join(format!("freq{}_input", channel.number)))
                         .await
                         .and_then(check_parsing_64)
-                        .map(|hertz| (hertz / 1_000_000) as Mhz)
+                        .map(hertz_to_megahertz)
                         .unwrap_or_default();
                 ChannelStatus {
                     name: channel.name.clone(),
@@ -114,13 +114,18 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
     cc_fs::read_sysfs(base_path.join(format!("freq{channel_number}_input")))
         .await
         .and_then(check_parsing_64)
-        .map(|hertz| (hertz / 1_000_000) as Mhz)
+        .map(hertz_to_megahertz)
         .inspect_err(|err| {
             info!(
                 "Error reading frequency value from: {base_path:?}/freq{channel_number}_input - {err}"
             );
         })
         .is_ok()
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn hertz_to_megahertz(hertz: u64) -> Mhz {
+    (hertz / 1_000_000) as Mhz
 }
 
 fn check_parsing_64(content: String) -> Result<u64> {
