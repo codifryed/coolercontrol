@@ -447,6 +447,9 @@ const addItems = computed(() => [
             </Button>
         </router-link>
 
+        <!--filler-->
+        <div class="flex-1 h-full" />
+
         <!--Open In Browser-->
         <a
             v-if="deviceStore.isTauriApp()"
@@ -461,9 +464,6 @@ const addItems = computed(() => [
                 <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
             </Button>
         </a>
-
-        <!--filler-->
-        <div class="flex-1 h-full" />
 
         <!--Reload-->
         <el-dropdown
