@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
+
 use crate::commands::notifications::send_notification;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
@@ -50,7 +51,7 @@ pub async fn connected_to_daemon(
         )
         .await;
     }
-    if daemon_state_init.first_run.lock().unwrap().not() {
+    if daemon_state_init.is_first_connection.lock().unwrap().not() {
         return Ok(());
     }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
@@ -85,14 +86,9 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
                         )
                         .await;
                         is_connected = true;
-                    } else if *daemon_state.first_run.lock().unwrap() {
-                        let _ = send_notification(
-                            "Daemon Connection Established",
-                            "The connection with the daemon has been established.",
-                            Some("dialog-information"),
-                        )
-                        .await;
-                        *daemon_state.first_run.lock().unwrap() = false;
+                    }
+                    if *daemon_state.is_first_connection.lock().unwrap() {
+                        *daemon_state.is_first_connection.lock().unwrap() = false;
                     }
                 }
                 Ok(Event::Message(msg)) => {
@@ -118,12 +114,21 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
                 }
                 Err(_) => {
                     if is_connected {
-                        let _ = send_notification(
-                            "Daemon Disconnected",
-                            "Connection with the daemon has been lost",
-                            Some("dialog-error"),
-                        )
-                        .await;
+                        if *daemon_state.is_first_connection.lock().unwrap() {
+                            let _ = send_notification(
+                                "Daemon Connection Error",
+                                "Connection with the daemon could not be established",
+                                Some("dialog-error"),
+                            )
+                            .await;
+                        } else {
+                            let _ = send_notification(
+                                "Daemon Disconnected",
+                                "Connection with the daemon has been lost",
+                                Some("dialog-error"),
+                            )
+                            .await;
+                        }
                         is_connected = false;
                     }
                 }
@@ -191,14 +196,15 @@ fn watch_alerts(address: String) {
 
 pub struct DaemonState {
     has_errors: Mutex<bool>,
-    first_run: Mutex<bool>,
+    /// This is true until we have a successful connection
+    is_first_connection: Mutex<bool>,
 }
 
 impl Default for DaemonState {
     fn default() -> Self {
         Self {
             has_errors: Mutex::new(false),
-            first_run: Mutex::new(true),
+            is_first_connection: Mutex::new(true),
         }
     }
 }
