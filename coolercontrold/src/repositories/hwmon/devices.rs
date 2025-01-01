@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use cached::proc_macro::cached;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use nu_glob::{glob, GlobResult};
 use pciid_parser::Database;
 use regex::Regex;
@@ -120,7 +120,7 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
             .unwrap();
         let hwmon_number = captures.name("number").unwrap().as_str().to_string();
         let hwmon_name = format!("Hwmon#{hwmon_number}");
-        warn!(
+        info!(
             "Hwmon driver at location: {:?} has no name set, using default: {}",
             base_path, &hwmon_name
         );
@@ -261,7 +261,7 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
         .inspect_err(|err| {
-            warn!("Could not read PCI ID database: {err}, device name information will be limited");
+            info!("Could not read PCI ID database: {err}, device name information will be limited");
         })
         .ok()?;
     let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);

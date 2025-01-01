@@ -377,7 +377,7 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
         .and_then(|label| {
             let fan_label = label.trim();
             if fan_label.is_empty() {
-                warn!(
+                info!(
                     "Fan label is empty for {:?}/fan{}_label",
                     base_path, channel_number
                 );
@@ -435,7 +435,7 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
         )
         .await
         {
-            warn!(
+            info!(
                 "PWM Modes are not writable: original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
                 &pwm_mode, base_path, channel_number, err
             );

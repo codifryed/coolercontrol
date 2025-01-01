@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{trace, warn};
+use log::{info, trace};
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
@@ -58,11 +58,7 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
         }
     }
     freqs.sort_by(|f1, f2| f1.number.cmp(&f2.number));
-    trace!(
-        "Hwmon Frequencies detected: {:?} for {:?}",
-        freqs,
-        base_path
-    );
+    trace!("Hwmon Frequencies detected: {freqs:?} for {base_path:?}");
     Ok(freqs)
 }
 
@@ -120,7 +116,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
         .and_then(check_parsing_64)
         .map(|hertz| (hertz / 1_000_000) as Mhz)
         .inspect_err(|err| {
-            warn!(
+            info!(
                 "Error reading frequency value from: {base_path:?}/freq{channel_number}_input - {err}"
             );
         })
@@ -141,10 +137,7 @@ async fn get_freq_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
         .and_then(|label| {
             let freq_label = label.trim();
             if freq_label.is_empty() {
-                warn!(
-                    "Freq label is empty: {:?}/freq{}_label",
-                    base_path, channel_number
-                );
+                info!("Freq label is empty: {base_path:?}/freq{channel_number}_label");
                 None
             } else {
                 Some(freq_label.to_string())

@@ -25,7 +25,7 @@ use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{debug, trace, warn};
+use log::{debug, info, trace};
 use regex::Regex;
 use zbus::export::futures_util::future::join_all;
 
@@ -181,7 +181,7 @@ async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
         .and_then(|label| {
             let temp_label = label.trim();
             if temp_label.is_empty() {
-                warn!(
+                info!(
                     "Temp label is empty: {:?}/temp{}_label",
                     base_path, channel_number
                 );
