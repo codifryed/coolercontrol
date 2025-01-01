@@ -309,6 +309,7 @@ impl GpuAMD {
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
+                    HwmonChannelType::Temp => continue,
                 }
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
