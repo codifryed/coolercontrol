@@ -33,11 +33,13 @@ import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed, onMounted, Ref, ref } from 'vue'
+import { computed, inject, onMounted, Ref, ref } from 'vue'
+import { Emitter, EventType } from 'mitt'
 
 const deviceStore = useDeviceStore()
 const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
 const splitterGroupRef = ref<InstanceType<typeof SplitterGroup>>()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const minMenuWidthRem: number = 14
 const minViewWidthRem: number = 18
 const splitterGroupWidthPx: Ref<number> = ref(1900)
@@ -62,6 +64,10 @@ const viewPanelMinWidth = computed((): number =>
 let onResize = (_: number): void => {
     // overridden after being mounted to avoid pre-mount issues
 }
+
+const toggleSideMenu = (): void =>
+    menuPanelRef.value?.isCollapsed ? menuPanelRef.value?.expand() : menuPanelRef.value?.collapse()
+emitter.on('toggle-side-menu', toggleSideMenu)
 
 onMounted(async () => {
     const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
@@ -132,12 +138,7 @@ onMounted(async () => {
                             menuPanelRef?.isExpanded,
                         'ml-0 !rounded-l-0 !rounded-r-lg !border-l-0': menuPanelRef?.isCollapsed,
                     }"
-                    @click="
-                        () =>
-                            menuPanelRef?.isCollapsed
-                                ? menuPanelRef?.expand()
-                                : menuPanelRef?.collapse()
-                    "
+                    @click="toggleSideMenu"
                 >
                     <svg-icon
                         class="outline-0"

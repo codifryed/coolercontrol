@@ -448,7 +448,7 @@ const addItems = computed(() => [
         </router-link>
 
         <!--filler-->
-        <div class="flex-1 h-full" />
+        <div class="flex-1 h-full cursor-pointer" @click="emitter.emit('toggle-side-menu')" />
 
         <!--Open In Browser-->
         <a
