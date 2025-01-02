@@ -271,7 +271,6 @@ const addItems = computed(() => [
         <el-dropdown
             id="add"
             ref="addMenuRef"
-            :trigger="'click'"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
@@ -310,7 +309,6 @@ const addItems = computed(() => [
         <el-dropdown
             id="dashboard-quick"
             ref="dashboardMenuRef"
-            :trigger="'click'"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
@@ -348,7 +346,6 @@ const addItems = computed(() => [
         <el-dropdown
             id="modes-quick"
             v-if="modesItems.length > 0"
-            :trigger="'click'"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
@@ -390,7 +387,6 @@ const addItems = computed(() => [
         <el-dropdown
             id="access"
             ref="accessMenuRef"
-            :trigger="'click'"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
@@ -491,7 +487,6 @@ const addItems = computed(() => [
         <!--Power-->
         <el-dropdown
             id="restart"
-            :trigger="'click'"
             :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
