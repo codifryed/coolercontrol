@@ -901,6 +901,7 @@ onMounted(async () => {
                                     v-else-if="option.dashboardRename"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @name-change="(name: string) => (data.label = name)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-dashboard-duplicate
                                     v-else-if="option.dashboardDuplicate"
