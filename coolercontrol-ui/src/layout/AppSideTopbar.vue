@@ -251,7 +251,7 @@ const addItems = computed(() => [
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
                 <OverlayBadge :severity="daemonBadgeSeverity">
-                    <img :src="logoUrl" alt="logo" class="w-11 h-11" />
+                    <img :src="logoUrl" alt="logo" class="w-10 h-10" />
                 </OverlayBadge>
             </router-link>
         </Button>

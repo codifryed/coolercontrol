@@ -17,7 +17,7 @@ export default {
             // Size
             'p-0',
             {
-                'w-2.5 h-2.5': props.value === null,
+                'w-2 h-2': props.value === null,
                 // 'min-w-[1.5rem] h-[1.5rem]': props.value !== null && props.size === null,
                 'w-5 h-5': props.value !== null && props.size === null,
                 'min-w-[1.25rem] h-[1.25rem]': props.size === 'small',
@@ -26,10 +26,11 @@ export default {
             },
 
             // Shape
-            {
-                'rounded-full': props.value?.length === 1,
-                'rounded-[0.71rem]': props.value?.length !== 1,
-            },
+            // {
+                // 'rounded-full': props.value?.length === 1,
+                // 'rounded-[0.71rem]': props.value?.length !== 1,
+            // },
+            'rounded-full',
 
             // Color
             'text-bg-one',
