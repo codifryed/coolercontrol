@@ -27,8 +27,8 @@ export default {
 
             // Shape
             // {
-                // 'rounded-full': props.value?.length === 1,
-                // 'rounded-[0.71rem]': props.value?.length !== 1,
+            // 'rounded-full': props.value?.length === 1,
+            // 'rounded-[0.71rem]': props.value?.length !== 1,
             // },
             'rounded-full',
 
