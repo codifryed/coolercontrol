@@ -51,6 +51,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
@@ -149,9 +150,9 @@ const accessItems = computed(() => [
     },
 ])
 
-const restartItems = computed(() => [
+const restartItems = ref([
     {
-        label: 'Restart Web UI',
+        label: 'Restart UI',
         icon: 'pi pi-fw pi-refresh',
         command: () => {
             deviceStore.reloadUI()
@@ -189,6 +190,15 @@ const restartItems = computed(() => [
         },
     },
 ])
+if (deviceStore.isTauriApp()) {
+    restartItems.value.push({
+        label: 'Quit Desktop App',
+        icon: 'pi pi-fw pi-power-off',
+        command: async () => {
+            await getCurrentWindow().destroy()
+        },
+    })
+}
 
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
@@ -465,7 +475,7 @@ const addItems = computed(() => [
             </Button>
         </a>
 
-        <!--Reload-->
+        <!--Power-->
         <el-dropdown
             id="restart"
             :show-timeout="50"
