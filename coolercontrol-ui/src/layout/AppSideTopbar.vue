@@ -321,6 +321,7 @@ const addItems = computed(() => [
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 v-tooltip.right="'Dashboards'"
+                @click="router.push({ name: 'system-overview'})"
             >
                 <svg-icon type="mdi" :path="mdiChartBoxOutline" :size="getREMSize(1.75)" />
             </Button>
