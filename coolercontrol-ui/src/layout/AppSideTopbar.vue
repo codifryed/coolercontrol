@@ -282,7 +282,6 @@ const addItems = computed(() => [
                 class="mt-3 mx-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
-                v-tooltip.right="'Quick Add'"
             >
                 <svg-icon type="mdi" :path="mdiPlus" :size="getREMSize(2.0)" />
             </Button>
@@ -318,7 +317,6 @@ const addItems = computed(() => [
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Dashboards'"
                 @click="router.push({ name: 'system-overview' })"
             >
                 <svg-icon type="mdi" :path="mdiChartBoxOutline" :size="getREMSize(1.75)" />
@@ -355,7 +353,6 @@ const addItems = computed(() => [
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Modes'"
             >
                 <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
             </Button>
@@ -398,7 +395,6 @@ const addItems = computed(() => [
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
-                v-tooltip.right="'Access Protection'"
             >
                 <OverlayBadge :severity="deviceStore.loggedIn ? 'info' : 'error'">
                     <svg-icon
@@ -479,7 +475,6 @@ const addItems = computed(() => [
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 v-tooltip.right="'Open in Browser'"
             >
-                <!--                v-tooltip.bottom="{ value: 'Open in Browser', class: 'ml-10' }"-->
                 <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
             </Button>
         </a>
@@ -496,7 +491,6 @@ const addItems = computed(() => [
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Power Menu'"
             >
                 <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
