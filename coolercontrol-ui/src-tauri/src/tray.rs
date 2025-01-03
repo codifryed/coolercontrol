@@ -19,7 +19,7 @@
 use crate::commands::modes::{EventPayload, ModeTauri, ModesState};
 use crate::{create_metadata, MAIN_WINDOW_ID, SYSTEM_TRAY_ID, UID};
 use std::error::Error;
-use std::sync::MutexGuard;
+use std::sync::{Arc, MutexGuard};
 use tauri::menu::{
     CheckMenuItemBuilder, IconMenuItemBuilder, MenuBuilder, MenuEvent, MenuItemBuilder,
     SubmenuBuilder,
@@ -153,7 +153,7 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
             if id.len() == 36 {
                 // Mode UUID
                 // println!("System Tray Menu Item Click with Mode ID: {}", id);
-                let modes_state = app.state::<ModesState>();
+                let modes_state = app.state::<Arc<ModesState>>();
                 let active_modes_lock = modes_state
                     .active_modes
                     .lock()
