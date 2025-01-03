@@ -318,6 +318,7 @@ fn create_app_state<'s>(
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         settings_controller.clone(),
+        modes_controller.clone(),
         config.clone(),
         cancel_token.clone(),
         main_scope,

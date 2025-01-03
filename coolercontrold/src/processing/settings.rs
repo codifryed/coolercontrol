@@ -91,7 +91,7 @@ impl SettingsController {
     }
 
     /// This is used to set the config Setting model configuration.
-    /// Currently used at startup to apply saved settings.
+    /// Currently used at startup to apply saved settings and by Modes.
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
         if let Some(true) = setting.reset_to_default {
             self.set_reset(device_uid, &setting.channel_name).await

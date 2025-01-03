@@ -109,8 +109,9 @@ const modesItems = computed(() => {
                   ? mdiBookmarkOffOutline
                   : mdiBookmarkOutline,
             command: async () => {
-                const isActive = settingsStore.modesActive.includes(mode.uid)
-                if (isActive) return
+                // disable for now:
+                // const isActive = settingsStore.modesActive.includes(mode.uid)
+                // if (isActive) return
                 await settingsStore.activateMode(mode.uid)
                 emitter.emit('active-modes-change-menu')
             },

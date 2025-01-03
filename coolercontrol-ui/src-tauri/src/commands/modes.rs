@@ -18,13 +18,13 @@
 
 use crate::tray::recreate_mode_menu_items;
 use crate::UID;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle};
 
 #[command]
 pub async fn set_modes(
     modes: Vec<ModeTauri>,
-    modes_state: tauri::State<'_, ModesState>,
+    modes_state: tauri::State<'_, Arc<ModesState>>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
     let mut modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
@@ -41,7 +41,7 @@ pub async fn set_modes(
 #[command]
 pub async fn set_active_modes(
     mut active_mode_uids: Vec<UID>,
-    modes_state: tauri::State<'_, ModesState>,
+    modes_state: tauri::State<'_, Arc<ModesState>>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
     let mut active_modes_lock = modes_state

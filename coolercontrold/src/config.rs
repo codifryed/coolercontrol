@@ -221,10 +221,11 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if let Some(pwm_mode) = setting.pwm_mode {
-            channel_setting["pwm_mode"] =
-                Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
-        }
+        // don't save anymore:
+        // if let Some(pwm_mode) = setting.pwm_mode {
+        //     channel_setting["pwm_mode"] =
+        //         Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
+        // }
         if setting.reset_to_default.unwrap_or(false) {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
@@ -724,19 +725,21 @@ impl Config {
         Ok(lcd)
     }
 
-    fn get_pwm_mode(setting_table: &Table) -> Result<Option<u8>> {
-        let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
-            let p_mode: u8 = value
-                .as_integer()
-                .with_context(|| "pwm_mode should be an integer")?
-                .try_into()
-                .ok()
-                .with_context(|| "pwm_mode should be a value between 0-2")?;
-            Some(p_mode.clamp(0, 2))
-        } else {
-            None
-        };
-        Ok(pwm_mode)
+    fn get_pwm_mode(_setting_table: &Table) -> Result<Option<u8>> {
+        Ok(None)
+        // disabled:
+        // let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
+        //     let p_mode: u8 = value
+        //         .as_integer()
+        //         .with_context(|| "pwm_mode should be an integer")?
+        //         .try_into()
+        //         .ok()
+        //         .with_context(|| "pwm_mode should be a value between 0-2")?;
+        //     Some(p_mode.clamp(0, 2))
+        // } else {
+        //     None
+        // };
+        // Ok(pwm_mode)
     }
 
     fn get_profile_uid(setting_table: &Table) -> Result<Option<String>> {

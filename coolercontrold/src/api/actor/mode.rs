@@ -293,12 +293,13 @@ impl ModeHandle {
         &self.broadcaster
     }
 
-    pub fn broadcast_mode_activated(&self, mode_name: &str, already_active: bool) {
+    pub fn broadcast_mode_activated(&self, mode_uid: &str, mode_name: &str, already_active: bool) {
         // only create messages if we have listeners:
         if self.broadcaster.receiver_count() == 0 {
             return;
         }
         let msg = ModeActivated {
+            uid: mode_uid.to_string(),
             name: mode_name.to_string(),
             already_active,
         };

@@ -208,6 +208,7 @@ pub struct ModePath {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ModeActivated {
+    pub uid: UID,
     pub name: String,
     pub already_active: bool,
 }
@@ -215,6 +216,7 @@ pub struct ModeActivated {
 impl Default for ModeActivated {
     fn default() -> Self {
         Self {
+            uid: "Unknown".to_string(),
             name: "Unknown".to_string(),
             already_active: false,
         }

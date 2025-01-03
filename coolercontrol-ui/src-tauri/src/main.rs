@@ -47,7 +47,7 @@ fn main() {
         std::process::exit(1);
     };
     tauri::Builder::default()
-        .manage(ModesState::default())
+        .manage(Arc::new(ModesState::default()))
         .manage(Arc::new(DaemonState::default()))
         .plugin(tauri_plugin_cli::init())
         .plugin(wayland_top_level_icon::init())
