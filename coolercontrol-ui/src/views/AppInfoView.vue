@@ -37,8 +37,8 @@ const convertLogsToHtml = computed((): string => {
         .replaceAll('INFO', '<span class="text-success">INFO</span>')
         .replaceAll('ERROR', '<span class="text-error">ERROR</span>')
         .replaceAll('WARN', '<span class="text-warning">WARN</span>')
-        .replaceAll('DEBUG', '<span class="text-info">WARN</span>')
-        .replaceAll('TRACE', '<span class="text-pink">WARN</span>')
+        .replaceAll('DEBUG', '<span class="text-info">DEBUG</span>')
+        .replaceAll('TRACE', '<span class="text-pink">TRACE</span>')
 })
 const badgeColor = computed((): string => {
     switch (daemonState.status) {
