@@ -521,7 +521,7 @@ pub async fn set_pwm_enable(
 
 /// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
 /// for `ThinkPads` where this means "full-speed". See:
-/// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+/// [Kernel Doc](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
 pub async fn set_thinkpad_to_full_speed(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
@@ -582,6 +582,7 @@ fn pwm_value_to_duty(pwm_value: u8) -> f64 {
 }
 
 /// Converts a duty value (0-100%) to a pwm value (0-255)
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn duty_to_pwm_value(speed_duty: u8) -> u8 {
     let clamped_duty = f64::from(speed_duty.clamp(0, 100));
     // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.

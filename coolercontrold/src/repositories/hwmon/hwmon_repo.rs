@@ -126,7 +126,7 @@ impl HwmonRepo {
 
     /// Maps driver infos to our Devices
     /// `ThinkPads` need special handling, see:
-    /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+    /// [Kernel Docs](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
     #[allow(clippy::too_many_lines)]
     async fn map_into_our_device_model(
         &mut self,
