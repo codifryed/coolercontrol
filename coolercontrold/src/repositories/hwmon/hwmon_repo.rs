@@ -537,16 +537,19 @@ impl Repository for HwmonRepo {
 
     async fn apply_setting_pwm_mode(
         &self,
-        device_uid: &UID,
-        channel_name: &str,
-        pwm_mode: u8,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _pwm_mode: u8,
     ) -> Result<()> {
-        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
-        info!(
-            "Applying HWMON device: {} channel: {}; PWM Mode: {}",
-            device_uid, channel_name, pwm_mode
-        );
-        fans::set_pwm_mode(&hwmon_driver.path, channel_info, Some(pwm_mode)).await
+        Err(anyhow!(
+            "Applying pwm_mode setting is no longer supported for HWMON devices"
+        ))
+        // let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
+        // info!(
+        //     "Applying HWMON device: {} channel: {}; PWM Mode: {}",
+        //     device_uid, channel_name, pwm_mode
+        // );
+        // fans::set_pwm_mode(&hwmon_driver.path, channel_info, Some(pwm_mode)).await
     }
 
     async fn reinitialize_devices(&self) {
