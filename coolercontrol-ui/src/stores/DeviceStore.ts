@@ -21,7 +21,7 @@ import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
-import { defineAsyncComponent, Ref, ref, shallowRef, triggerRef } from 'vue'
+import { defineAsyncComponent, inject, Ref, ref, shallowRef, triggerRef } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
@@ -35,6 +35,9 @@ import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loade
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
+import _ from 'lodash'
+import { Emitter, EventType } from 'mitt'
+import { ModeActivated } from '@/models/Mode.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -64,6 +67,7 @@ export const useDeviceStore = defineStore('device', () => {
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
     const dialog = useDialog()
     const toast = useToast()
+    const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
     const reloadAllStatusesThreshold: number = 10_000 // 10 seconds to better handle network latency and long polling rates
     // -----------------------------------------------------------------------------------------------------------------
 
@@ -582,6 +586,37 @@ export const useDeviceStore = defineStore('device', () => {
         return await startLogSSE()
     }
 
+    async function updateActiveModeFromSSE(): Promise<void> {
+        const settingsStore = useSettingsStore()
+        async function startModeSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
+                async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
+                    if (
+                        settingsStore.modesActive.length !== 0 &&
+                        !_.isEqual(settingsStore.modesActiveLast, settingsStore.modesActive)
+                    ) {
+                        settingsStore.modesActiveLast = settingsStore.modesActive
+                    }
+                    const modeMessage = plainToInstance(
+                        ModeActivated,
+                        JSON.parse(event.data) as object,
+                    )
+                    settingsStore.modesActive = [modeMessage.uid]
+                    emitter.emit('active-modes-change-menu')
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await startModeSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startModeSSE()
+    }
+
     async function updateAlertsFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startAlertSSE(): Promise<void> {
@@ -697,6 +732,7 @@ export const useDeviceStore = defineStore('device', () => {
         updateStatusFromSSE,
         updateLogsFromSSE,
         updateAlertsFromSSE,
+        updateActiveModeFromSSE,
         currentDeviceStatus,
         round,
         sanitizeString,
