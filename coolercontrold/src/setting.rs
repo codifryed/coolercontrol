@@ -72,7 +72,6 @@ impl PartialEq for Setting {
             && self.speed_fixed == other.speed_fixed
             && self.lighting == other.lighting
             && self.lcd == other.lcd
-            // && self.pwm_mode == other.pwm_mode
             && self.profile_uid == other.profile_uid
     }
 }

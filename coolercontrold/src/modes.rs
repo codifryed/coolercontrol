@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
@@ -89,7 +90,6 @@ impl ModeController {
             if !all_successful {
                 self.clear_active_modes().await;
             }
-            // self.determine_active_modes();
         }
     }
 
@@ -194,7 +194,6 @@ impl ModeController {
 
     /// Returns the currently active Modes.
     pub fn determine_active_modes_uids(&self) -> Vec<UID> {
-        // self.determine_active_modes();
         self.active_modes.borrow().clone()
     }
 
@@ -204,85 +203,6 @@ impl ModeController {
             error!("Error saving mode data: {err}");
         }
     }
-
-    // Determines the active modes and sets them.
-    // fn determine_active_modes(&self) {
-    //     let mut active_modes = Vec::new();
-    //     let modes = self.modes.borrow();
-    //     'modes: for (mode_uid, mode) in modes.iter() {
-    //         'currently_present_devices: for device_uid in self.all_devices.keys() {
-    //             let current_channel_settings = self.config.get_device_settings(device_uid).unwrap();
-    //             if mode.all_device_settings.contains_key(device_uid).not() {
-    //                 if current_channel_settings.is_empty() {
-    //                     // No ModeSetting and no saved device settings for this device, ignore.
-    //                     continue 'currently_present_devices;
-    //                 }
-    //                 // There are applied settings for this device, but no ModeSetting present.
-    //                 debug!(
-    //                     "Mode {} contains no setting for device UID: {device_uid}.",
-    //                     mode.name
-    //                 );
-    //                 continue 'modes;
-    //             };
-    //             let mode_channel_settings = mode.all_device_settings.get(device_uid).unwrap();
-    //             if mode_channel_settings.iter().any(|(channel_name, setting)| {
-    //                 current_channel_settings
-    //                     .iter()
-    //                     .any(|setting| &setting.channel_name == channel_name)
-    //                     .not()
-    //                     &&
-    //                     // If it's not present in the current settings, but the Mode's setting
-    //                     // is to the default profile, then there's no issue.
-    //                     Self::is_default_profile(setting.profile_uid.as_ref()).not()
-    //             }) {
-    //                 // Make sure to compare Mode channel settings that have been reset - which
-    //                 // don't exist anymore in the current_channel_settings
-    //                 continue 'modes;
-    //             }
-    //             for channel_setting in &current_channel_settings {
-    //                 if mode_channel_settings
-    //                     .get(&channel_setting.channel_name)
-    //                     .is_none()
-    //                 {
-    //                     if Self::is_default_profile(channel_setting.profile_uid.as_ref()) {
-    //                         // if the Mode doesn't have anything set but the channel is set to
-    //                         // the Default Profile, then it's a match. (none == default)
-    //                         continue;
-    //                     }
-    //                     // This shouldn't happen after applying a Mode, as empty is set to default,
-    //                     // but can happen after changing a setting for a channel for which the Mode
-    //                     // has no setting.
-    //                     debug!(
-    //                         "Mode {} contains no setting for channel {} device UID: {}.",
-    //                         mode.name, channel_setting.channel_name, device_uid
-    //                     );
-    //                     continue 'modes;
-    //                 }
-    //                 if channel_setting
-    //                     != mode_channel_settings
-    //                         .get(&channel_setting.channel_name)
-    //                         .unwrap()
-    //                 {
-    //                     // If any channel setting doesn't match, move on to the next mode.
-    //                     continue 'modes;
-    //                 }
-    //             }
-    //         }
-    //         // All applicable device & channel settings are a match
-    //         active_modes.push(mode_uid.clone());
-    //     }
-    //     if active_modes.is_empty() {
-    //         self.active_modes.borrow_mut().clear();
-    //         debug!("No mode is currently active");
-    //         return;
-    //     }
-    //     debug!("Active modes determined: {active_modes:?}");
-    //     self.update_active_modes(active_modes);
-    // }
-
-    // fn is_default_profile(profile_uid: Option<&ProfileUID>) -> bool {
-    //     profile_uid.map_or(false, |uid| uid == DEFAULT_PROFILE_UID)
-    // }
 
     fn update_active_modes(&self, mut active_modes: Vec<UID>) {
         let mut active_modes_lock = self.active_modes.borrow_mut();
