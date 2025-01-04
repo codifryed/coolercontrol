@@ -535,6 +535,7 @@ impl ModeController {
             mode.all_device_settings = self.get_all_device_settings()?;
             mode.clone()
         };
+        self.update_active_modes(vec![mode_uid.to_string()]);
         self.save_modes_data().await?;
         Ok(mode)
     }
