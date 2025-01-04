@@ -221,9 +221,10 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if let Some(pwm_mode) = setting.pwm_mode {
-            channel_setting["pwm_mode"] =
-                Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
+        if let Some(_pwm_mode) = setting.pwm_mode {
+            // don't save anymore:
+            channel_setting["pwm_mode"] = Item::None;
+            // Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
         }
         if setting.reset_to_default.unwrap_or(false) {
             *channel_setting = Item::None; // removes channel from settings
@@ -351,7 +352,9 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(&setting_table)?;
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
-                let pwm_mode = Self::get_pwm_mode(&setting_table)?;
+                // deprecated:
+                let pwm_mode = None;
+                // Self::get_pwm_mode(&setting_table)?;
                 let profile_uid = Self::get_profile_uid(&setting_table)?;
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
@@ -724,20 +727,21 @@ impl Config {
         Ok(lcd)
     }
 
-    fn get_pwm_mode(setting_table: &Table) -> Result<Option<u8>> {
-        let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
-            let p_mode: u8 = value
-                .as_integer()
-                .with_context(|| "pwm_mode should be an integer")?
-                .try_into()
-                .ok()
-                .with_context(|| "pwm_mode should be a value between 0-2")?;
-            Some(p_mode.clamp(0, 2))
-        } else {
-            None
-        };
-        Ok(pwm_mode)
-    }
+    // deprecated
+    // fn get_pwm_mode(_setting_table: &Table) -> Result<Option<u8>> {
+    // let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
+    //     let p_mode: u8 = value
+    //         .as_integer()
+    //         .with_context(|| "pwm_mode should be an integer")?
+    //         .try_into()
+    //         .ok()
+    //         .with_context(|| "pwm_mode should be a value between 0-2")?;
+    //     Some(p_mode.clamp(0, 2))
+    // } else {
+    //     None
+    // };
+    // Ok(pwm_mode)
+    // }
 
     fn get_profile_uid(setting_table: &Table) -> Result<Option<String>> {
         let profile_uid = if let Some(value) = setting_table.get("profile_uid") {

@@ -349,6 +349,7 @@ onMounted(async () => {
         deviceStore.updateStatusFromSSE(),
         deviceStore.updateLogsFromSSE(),
         deviceStore.updateAlertsFromSSE(),
+        deviceStore.updateActiveModeFromSSE(),
     ])
 })
 </script>

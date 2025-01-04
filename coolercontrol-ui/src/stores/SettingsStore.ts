@@ -471,7 +471,6 @@ export const useSettingsStore = defineStore('settings', () => {
             const modeUID = response.uid
             modes.value.push(response)
             await setTauriModes()
-            await getActiveModes() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -491,7 +490,6 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response instanceof Mode) {
             modes.value.push(response)
             await setTauriModes()
-            await getActiveModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -536,7 +534,6 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.device_settings = response.device_settings
             }
-            await getActiveModes() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -592,7 +589,6 @@ export const useSettingsStore = defineStore('settings', () => {
             return false
         } else {
             await loadDaemonDeviceSettings() // need to reload all settings after applying mode
-            await getActiveModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',

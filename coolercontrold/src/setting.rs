@@ -56,6 +56,7 @@ pub struct Setting {
     pub lcd: Option<LcdSettings>,
 
     /// the current `pwm_mode` to set for hwmon devices, eg: 1
+    // #[deprecated]
     pub pwm_mode: Option<u8>,
 
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
@@ -71,7 +72,6 @@ impl PartialEq for Setting {
             && self.speed_fixed == other.speed_fixed
             && self.lighting == other.lighting
             && self.lcd == other.lcd
-            && self.pwm_mode == other.pwm_mode
             && self.profile_uid == other.profile_uid
     }
 }

@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
@@ -33,7 +34,7 @@ use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
 use crate::processing::settings::SettingsController;
-use crate::setting::{ProfileUID, Setting, DEFAULT_PROFILE_UID};
+use crate::setting::{ProfileUID, Setting};
 use crate::{cc_fs, AllDevices};
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
@@ -85,16 +86,19 @@ impl ModeController {
             .expect("config settings should be verified by this point")
             .apply_on_boot
         {
-            self.apply_all_saved_device_settings().await;
-            self.determine_active_modes();
+            let all_successful = self.apply_all_saved_device_settings().await;
+            if !all_successful {
+                self.clear_active_modes().await;
+            }
         }
     }
 
     /// Apply all saved device settings to the devices
-    pub async fn apply_all_saved_device_settings(&self) {
+    pub async fn apply_all_saved_device_settings(&self) -> bool {
         info!("Applying all saved device settings");
         // we loop through all currently present devices so that we don't apply settings
         //  to devices that are no longer there.
+        let mut all_successful = true;
         for uid in self.all_devices.keys() {
             match self.config.get_device_settings(uid) {
                 Ok(settings) => {
@@ -110,15 +114,17 @@ impl ModeController {
                             .await
                         {
                             error!("Error setting device setting: {}", err);
+                            all_successful = false;
                         }
                     }
                 }
-                Err(err) => error!(
-                    "Error trying to read device settings from config file: {}",
-                    err
-                ),
+                Err(err) => {
+                    error!("Error trying to read device settings from config file: {err}");
+                    all_successful = false;
+                }
             }
         }
+        all_successful
     }
 
     /// Reads the Mode configuration file and fills the Modes `HashMap` and Mode Order Vec.
@@ -139,6 +145,7 @@ impl ModeController {
             let default_mode_config = serde_json::to_string(&ModeConfigFile {
                 modes: Vec::new(),
                 order: Vec::new(),
+                active_mode: None,
             })?;
             cc_fs::write_string(&path, default_mode_config)
                 .await
@@ -162,6 +169,13 @@ impl ModeController {
             mode_order_lock.clear();
             mode_order_lock.extend(mode_config.order);
         }
+        {
+            let mut active_mode_lock = self.active_modes.borrow_mut();
+            active_mode_lock.clear();
+            if let Some(uid) = mode_config.active_mode {
+                active_mode_lock.push(uid);
+            }
+        }
         Ok(())
     }
 
@@ -180,87 +194,14 @@ impl ModeController {
 
     /// Returns the currently active Modes.
     pub fn determine_active_modes_uids(&self) -> Vec<UID> {
-        self.determine_active_modes();
         self.active_modes.borrow().clone()
     }
 
-    /// Determines the active modes and sets them.
-    fn determine_active_modes(&self) {
-        let mut active_modes = Vec::new();
-        let modes = self.modes.borrow();
-        'modes: for (mode_uid, mode) in modes.iter() {
-            'currently_present_devices: for device_uid in self.all_devices.keys() {
-                let current_channel_settings = self.config.get_device_settings(device_uid).unwrap();
-                if mode.all_device_settings.contains_key(device_uid).not() {
-                    if current_channel_settings.is_empty() {
-                        // No ModeSetting and no saved device settings for this device, ignore.
-                        continue 'currently_present_devices;
-                    }
-                    // There are applied settings for this device, but no ModeSetting present.
-                    debug!(
-                        "Mode {} contains no setting for device UID: {device_uid}.",
-                        mode.name
-                    );
-                    continue 'modes;
-                };
-                let mode_channel_settings = mode.all_device_settings.get(device_uid).unwrap();
-                if mode_channel_settings.iter().any(|(channel_name, setting)| {
-                    current_channel_settings
-                        .iter()
-                        .any(|setting| &setting.channel_name == channel_name)
-                        .not()
-                        &&
-                        // If it's not present in the current settings, but the Mode's setting
-                        // is to the default profile, then there's no issue.
-                        Self::is_default_profile(setting.profile_uid.as_ref()).not()
-                }) {
-                    // Make sure to compare Mode channel settings that have been reset - which
-                    // don't exist anymore in the current_channel_settings
-                    continue 'modes;
-                }
-                for channel_setting in &current_channel_settings {
-                    if mode_channel_settings
-                        .get(&channel_setting.channel_name)
-                        .is_none()
-                    {
-                        if Self::is_default_profile(channel_setting.profile_uid.as_ref()) {
-                            // if the Mode doesn't have anything set but the channel is set to
-                            // the Default Profile, then it's a match. (none == default)
-                            continue;
-                        }
-                        // This shouldn't happen after applying a Mode, as empty is set to default,
-                        // but can happen after changing a setting for a channel for which the Mode
-                        // has no setting.
-                        debug!(
-                            "Mode {} contains no setting for channel {} device UID: {}.",
-                            mode.name, channel_setting.channel_name, device_uid
-                        );
-                        continue 'modes;
-                    }
-                    if channel_setting
-                        != mode_channel_settings
-                            .get(&channel_setting.channel_name)
-                            .unwrap()
-                    {
-                        // If any channel setting doesn't match, move on to the next mode.
-                        continue 'modes;
-                    }
-                }
-            }
-            // All applicable device & channel settings are a match
-            active_modes.push(mode_uid.clone());
+    pub async fn clear_active_modes(&self) {
+        self.active_modes.borrow_mut().clear();
+        if let Err(err) = self.save_modes_data().await {
+            error!("Error saving mode data: {err}");
         }
-        if active_modes.is_empty() {
-            self.active_modes.borrow_mut().clear();
-            debug!("No mode is currently active");
-            return;
-        }
-        debug!("Active modes determined: {active_modes:?}");
-        self.update_active_modes(active_modes);
-    }
-
-    fn is_default_profile(profile_uid: Option<&ProfileUID>) -> bool {
-        profile_uid.map_or(false, |uid| uid == DEFAULT_PROFILE_UID)
     }
 
     fn update_active_modes(&self, mut active_modes: Vec<UID>) {
@@ -282,11 +223,11 @@ impl ModeController {
         if self.active_modes.borrow().contains(mode_uid) {
             debug!("Mode already active: {} ID:{mode_uid}", mode.name);
             if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-                mode_handle.broadcast_mode_activated(&mode.name, true);
+                mode_handle.broadcast_mode_activated(&mode.uid, &mode.name, true);
             }
             return Ok(());
         }
-
+        debug!("Activating mode: {} ID:{mode_uid}", mode.name);
         moro_local::async_scope!(|scope| -> Result<()> {
             for device_uid in self.all_devices.keys() {
                 if mode.all_device_settings.contains_key(device_uid).not() {
@@ -317,8 +258,10 @@ impl ModeController {
         })
         .await?;
         self.config.save_config_file().await?;
+        self.update_active_modes(vec![mode_uid.to_string()]);
+        self.save_modes_data().await?;
         if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-            mode_handle.broadcast_mode_activated(&mode.name, false);
+            mode_handle.broadcast_mode_activated(&mode.uid, &mode.name, false);
         }
         debug!("Mode applied: {}", mode.name);
         Ok(())
@@ -512,6 +455,7 @@ impl ModeController {
             mode.all_device_settings = self.get_all_device_settings()?;
             mode.clone()
         };
+        self.update_active_modes(vec![mode_uid.to_string()]);
         self.save_modes_data().await?;
         Ok(mode)
     }
@@ -544,6 +488,7 @@ impl ModeController {
         {
             self.modes.borrow_mut().remove(mode_uid);
             self.mode_order.borrow_mut().retain(|uid| uid != mode_uid);
+            self.active_modes.borrow_mut().retain(|uid| uid != mode_uid);
         }
         self.save_modes_data().await?;
         Ok(())
@@ -554,6 +499,7 @@ impl ModeController {
         let mode_config = ModeConfigFile {
             modes: self.modes.borrow().values().cloned().collect(),
             order: self.mode_order.borrow().clone(),
+            active_mode: self.active_modes.borrow().first().cloned(),
         };
         let mode_config_json = serde_json::to_string(&mode_config)?;
         cc_fs::write_string(DEFAULT_MODE_CONFIG_FILE_PATH, mode_config_json)
@@ -673,4 +619,5 @@ pub struct Mode {
 struct ModeConfigFile {
     modes: Vec<Mode>,
     order: Vec<UID>,
+    active_mode: Option<UID>,
 }

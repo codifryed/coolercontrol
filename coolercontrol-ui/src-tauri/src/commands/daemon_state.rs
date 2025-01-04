@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use crate::commands::modes::ModesState;
 use crate::commands::notifications::send_notification;
+use crate::tray::recreate_mode_menu_items;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
@@ -24,7 +26,7 @@ use std::cmp::PartialEq;
 use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::command;
+use tauri::{command, AppHandle};
 use zbus::export::futures_util::StreamExt;
 
 #[command]
@@ -42,6 +44,8 @@ pub async fn connected_to_daemon(
     daemon_address: String,
     has_errors: bool,
     daemon_state_init: tauri::State<'_, Arc<DaemonState>>,
+    modes_state: tauri::State<'_, Arc<ModesState>>,
+    app_handle: AppHandle,
 ) -> Result<(), ()> {
     if has_errors {
         let _ = send_notification(
@@ -56,7 +60,11 @@ pub async fn connected_to_daemon(
     }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
     watch_connection_and_logs(daemon_address.clone(), Arc::clone(&*daemon_state_init));
-    watch_mode_activation(daemon_address.clone());
+    watch_mode_activation(
+        daemon_address.clone(),
+        Arc::clone(&*modes_state),
+        app_handle.clone(),
+    );
     watch_alerts(daemon_address);
     Ok(())
 }
@@ -139,7 +147,7 @@ fn watch_connection_and_logs(address: String, daemon_state: Arc<DaemonState>) {
 
 /// Watches SSE endpoint for mode activations and sends a notification.
 /// Retries/Reconnection attempts are automatic with retry policy.
-fn watch_mode_activation(address: String) {
+fn watch_mode_activation(address: String, modes_state: Arc<ModesState>, app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut es = EventSource::get(format!("{address}sse/modes"));
         es.set_retry_policy(Box::new(Constant::new(Duration::from_secs(1), None)));
@@ -158,6 +166,15 @@ fn watch_mode_activation(address: String) {
                     format!("Mode {} Activated", mode_activated.name)
                 };
                 let _ = send_notification(&title, "", Some("dialog-information")).await;
+                // update system tray:
+                let mut active_modes_lock = modes_state
+                    .active_modes
+                    .lock()
+                    .expect("Active Mode State is poisoned");
+                active_modes_lock.clear();
+                active_modes_lock.push(mode_activated.uid);
+                let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
+                recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
             }
         }
     });
@@ -211,6 +228,7 @@ impl Default for DaemonState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModeActivated {
+    pub uid: String,
     pub name: String,
     pub already_active: bool,
 }

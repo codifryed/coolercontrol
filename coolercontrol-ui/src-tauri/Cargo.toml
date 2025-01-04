@@ -34,6 +34,7 @@ tauri = { version = "2.1.1", features = [
   "tray-icon",
   "image-ico",
   "image-png",
+  #"devtools",
 ] }
 tauri-plugin-cli = "2.0.1"
 tauri-plugin-clipboard-manager = "2.0.2"

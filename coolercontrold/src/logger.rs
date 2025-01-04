@@ -99,8 +99,8 @@ impl CCLogger {
         let log_filter = env_logger::Builder::from_env(LOG_ENV)
             .filter_level(max_level)
             .filter_module("zbus", lib_log_level)
-            .filter_module("tracing", lib_log_level)
-            .filter_module("aide", lib_log_level)
+            .filter_module("tracing", lib_disabled_level)
+            .filter_module("aide", lib_disabled_level)
             .filter_module("tower_http", lib_disabled_level)
             // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
             .filter_module("hyper", lib_log_level)

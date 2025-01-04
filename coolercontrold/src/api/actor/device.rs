@@ -19,6 +19,7 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::devices::DeviceDto;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
+use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
@@ -34,6 +35,7 @@ struct DeviceActor {
     receiver: mpsc::Receiver<DeviceMessage>,
     all_devices: AllDevices,
     settings_controller: Rc<SettingsController>,
+    modes_controller: Rc<ModeController>,
     config: Rc<Config>,
 }
 
@@ -116,12 +118,14 @@ impl DeviceActor {
         receiver: mpsc::Receiver<DeviceMessage>,
         all_devices: AllDevices,
         settings_controller: Rc<SettingsController>,
+        modes_controller: Rc<ModeController>,
         config: Rc<Config>,
     ) -> Self {
         Self {
             receiver,
             all_devices,
             settings_controller,
+            modes_controller,
             config,
         }
     }
@@ -238,6 +242,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     };
                     self.config
                         .set_device_setting(&device_uid, &config_settings);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -259,6 +264,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -280,6 +286,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -301,6 +308,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -322,6 +330,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -342,6 +351,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         ..Default::default()
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
+                    self.modes_controller.clear_active_modes().await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -379,12 +389,19 @@ impl DeviceHandle {
     pub fn new<'s>(
         all_devices: AllDevices,
         settings_controller: Rc<SettingsController>,
+        modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = DeviceActor::new(receiver, all_devices, settings_controller, config);
+        let actor = DeviceActor::new(
+            receiver,
+            all_devices,
+            settings_controller,
+            modes_controller,
+            config,
+        );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }
