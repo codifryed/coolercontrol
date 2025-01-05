@@ -29,14 +29,14 @@ import Dialog from 'primevue/dialog'
 import DynamicDialog from 'primevue/dynamicdialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
-import Checkbox from 'primevue/checkbox'
-import { ElLoading } from 'element-plus'
+import { ElLoading, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
 import { ThemeMode } from '@/models/UISettings.ts'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboarding'
 import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
+import FloatLabel from 'primevue/floatlabel'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -438,49 +438,69 @@ onMounted(async () => {
             here:
         </p>
         <br />
-        <h6 v-if="deviceStore.isTauriApp()" class="text-xl">Daemon Address - Desktop App</h6>
+        <h6 v-if="deviceStore.isTauriApp()" class="text-lg">Daemon Address - Desktop App</h6>
         <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
         <div>
-            <div>
-                <InputText
-                    v-model="daemonAddress"
-                    class="mb-2 w-24"
-                    :input-style="{ width: '12rem' }"
-                    v-tooltip.right="
-                        'The IP address to use to communicate with the daemon. ' +
-                        'This can be an IPv4 or IPv6 address.'
-                    "
-                />
+            <div class="mt-8 flex flex-row">
+                <FloatLabel variant="on">
+                    <InputText
+                        id="host-address"
+                        v-model="daemonAddress"
+                        class="mb-2 w-60"
+                        v-tooltip.top="
+                            'The IP address to use to communicate with the daemon. ' +
+                            'This can be an IPv4 or IPv6 address.'
+                        "
+                        :invalid="daemonAddress.length === 0"
+                    />
+                    <label for="host-address">Address</label>
+                </FloatLabel>
+                <span class="mx-2">:</span>
+                <FloatLabel variant="on">
+                    <InputNumber
+                        id="daemon-port"
+                        v-model="daemonPort"
+                        showButtons
+                        :min="80"
+                        :max="65535"
+                        :useGrouping="false"
+                        class="mb-2"
+                        :input-style="{ width: '6rem' }"
+                        v-tooltip.top="'The port to use to communicate with the daemon'"
+                        button-layout="horizontal"
+                        :allow-empty="false"
+                    >
+                        <template #incrementicon>
+                            <span class="pi pi-plus" />
+                        </template>
+                        <template #decrementicon>
+                            <span class="pi pi-minus" />
+                        </template>
+                    </InputNumber>
+                    <label for="daemon-port">Port</label>
+                </FloatLabel>
             </div>
-            <InputNumber
-                v-model="daemonPort"
-                showButtons
-                :min="80"
-                :max="65535"
-                :useGrouping="false"
-                class="mb-2"
-                :input-style="{ width: '10rem' }"
-                v-tooltip.right="'The port to use to communicate with the daemon'"
-            />
-            <div class="flex mb-3 leading-none align-middle">
-                <Checkbox
-                    v-model="daemonSslEnabled"
-                    :binary="true"
-                    v-tooltip.right="'Whether to connect to the daemon using SSL/TLS'"
-                />
-                <span class="ml-2 m-1">SSL/TLS</span>
+            <div class="flex flex-col mb-3 w-12 leading-none align-middle">
+                <small class="ml-3 font-light text-sm text-text-color-secondary">Protocol</small>
+                <div
+                    class="flex flex-row items-center"
+                    v-tooltip.left="'Enable or disable SSL/TLS (HTTPS)'"
+                >
+                    <el-switch v-model="daemonSslEnabled" size="large" />
+                    <span class="ml-2 m-1">SSL/TLS</span>
+                </div>
             </div>
             <div>
                 <Button
                     label="Save and Refresh"
                     class="mb-2 w-44"
-                    v-tooltip.right="'Saves the daemon settings and reloads the UI.'"
+                    v-tooltip.left="'Saves the daemon settings and reloads the UI.'"
                     @click="saveDaemonSettings"
                 />
             </div>
             <Button
                 label="Reset"
-                v-tooltip.right="'Resets the daemon settings to their defaults and reloads the UI.'"
+                v-tooltip.left="'Resets the daemon settings to their defaults and reloads the UI.'"
                 @click="resetDaemonSettings"
             />
         </div>
