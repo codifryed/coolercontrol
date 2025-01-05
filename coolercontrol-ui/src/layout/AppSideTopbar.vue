@@ -394,13 +394,10 @@ const addItems = computed(() => [
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
-                <OverlayBadge :severity="deviceStore.loggedIn ? 'info' : 'error'">
-                    <svg-icon
-                        type="mdi"
-                        :path="deviceStore.loggedIn ? mdiAccountOutline : mdiAccountOffOutline"
-                        :size="getREMSize(1.75)"
-                    />
+                <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
+                    <svg-icon type="mdi" :path="mdiAccountOffOutline" :size="getREMSize(1.75)" />
                 </OverlayBadge>
+                <svg-icon v-else type="mdi" :path="mdiAccountOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
                 <Menu :model="accessItems" append-to="self">
@@ -435,16 +432,18 @@ const addItems = computed(() => [
                 v-tooltip.right="'Alerts'"
             >
                 <OverlayBadge
-                    :severity="numberOfActiveAlerts > 0 ? 'error' : 'info'"
-                    :value="numberOfActiveAlerts > 0 ? numberOfActiveAlerts : undefined"
+                    v-if="numberOfActiveAlerts > 0"
+                    :severity="'error'"
+                    :value="numberOfActiveAlerts"
                 >
                     <svg-icon
                         type="mdi"
-                        :class="{ 'text-error': numberOfActiveAlerts > 0 }"
-                        :path="numberOfActiveAlerts > 0 ? mdiBellRingOutline : mdiBellOutline"
+                        class="text-error"
+                        :path="mdiBellRingOutline"
                         :size="getREMSize(1.75)"
                     />
                 </OverlayBadge>
+                <svg-icon v-else type="mdi" :path="mdiBellOutline" :size="getREMSize(1.75)" />
             </Button>
         </router-link>
 
