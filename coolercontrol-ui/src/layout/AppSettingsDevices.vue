@@ -113,6 +113,20 @@ const devicesTreeArray = (): any[] => {
             }
         }
         for (const channel of device.status.channels) {
+            if (channel.name.toLowerCase().includes('power')) {
+                const nodeId = `${device.uid}_${channel.name}`
+                // @ts-ignore
+                deviceItem.children.push({
+                    id: nodeId,
+                    label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
+                    name: channel.name,
+                    deviceUID: device.uid,
+                    isChecked: true,
+                })
+                defaultCheckedNodeIds.push(nodeId)
+            }
+        }
+        for (const channel of device.status.channels) {
             if (channel.name.toLowerCase().includes('load')) {
                 const nodeId = `${device.uid}_${channel.name}`
                 // @ts-ignore
