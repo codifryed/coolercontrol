@@ -148,6 +148,11 @@ export const useSettingsStore = defineStore('settings', () => {
                         channel.name,
                         new SensorAndChannelSettings(),
                     )
+                } else if (channel.name.toLowerCase().includes('power')) {
+                    deviceSettings.sensorsAndChannels.set(
+                        channel.name,
+                        new SensorAndChannelSettings(),
+                    )
                 }
             }
             if (device.info != null) {
