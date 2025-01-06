@@ -821,7 +821,7 @@ watch(pollRate, () => {
                                     "
                                 >
                                     <td
-                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left"
@@ -838,7 +838,7 @@ watch(pollRate, () => {
                                         </div>
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <el-switch
                                             v-model="
@@ -967,7 +967,7 @@ watch(pollRate, () => {
                             <tbody>
                                 <tr
                                     v-tooltip.right="
-                                        'Upon startup, the main UI window will be hidden and only ' +
+                                        'Upon startup, the main UI window will be hidden and only\n' +
                                         'the system tray icon will be visible.'
                                     "
                                 >
@@ -1002,6 +1002,39 @@ watch(pollRate, () => {
                                             v-model="settingsStore.closeToSystemTray"
                                             size="large"
                                         />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
+                                        'Adds some delay before starting the desktop application (in seconds).\n' +
+                                        'Helps with issues that that arise from having the desktop application\n' +
+                                        'started automatically on login or starting too quickly'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Desktop Startup Delay
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <InputNumber
+                                            v-model="settingsStore.desktopStartupDelay"
+                                            show-buttons
+                                            :min="0"
+                                            :max="10"
+                                            suffix=" s"
+                                            button-layout="horizontal"
+                                            :input-style="{ width: '5rem' }"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
                                     </td>
                                 </tr>
                             </tbody>
