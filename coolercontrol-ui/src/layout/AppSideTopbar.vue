@@ -116,6 +116,18 @@ const modesItems = computed(() => {
     }
     return menuItems
 })
+const activatePreviousMode = async (): Promise<void> => {
+    const previousModeUIDs = settingsStore.modesActiveLast
+    if (previousModeUIDs.length === 0) {
+        return
+    }
+    const previousModeUID = previousModeUIDs.at(0)
+    if (previousModeUID === undefined) {
+        return
+    }
+    await settingsStore.activateMode(previousModeUID)
+    emitter.emit('active-modes-change-menu')
+}
 
 const accessMenuRef = ref<DropdownInstance>()
 const accessItems = computed(() => [
@@ -351,6 +363,7 @@ const addItems = computed(() => [
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                @click="activatePreviousMode"
             >
                 <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
             </Button>
