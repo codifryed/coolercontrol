@@ -37,6 +37,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
     for suffix in [POWER_AVERAGE_SUFFIX, POWER_INPUT_SUFFIX] {
         if let Ok(channel) = find_power(base_path, suffix).await {
             power_channels.push(channel);
+            break; // Only one power channel for now (input doesn't help much if average is present)
         }
     }
     trace!("Hwmon Power detected: {power_channels:?} for {base_path:?}");
