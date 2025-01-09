@@ -35,9 +35,9 @@ import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loade
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertLog, AlertState } from '@/models/Alert.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
-import _ from 'lodash'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
+import { invoke } from '@tauri-apps/api/core'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -250,6 +250,11 @@ export const useDeviceStore = defineStore('device', () => {
                             })
                             loggedIn.value = true
                             console.info('Login successful')
+                            if (isTauriApp()) {
+                                await invoke('login', {
+                                    passwd: options.data.passwd,
+                                })
+                            }
                             return
                         }
                         toast.add({
@@ -341,6 +346,11 @@ export const useDeviceStore = defineStore('device', () => {
                 detail: 'Login successful.',
                 life: 1500,
             })
+            if (isTauriApp()) {
+                await invoke('login', {
+                    passwd: daemonClient.defaultPasswd,
+                })
+            }
         } else {
             await requestPasswd()
         }
@@ -592,17 +602,12 @@ export const useDeviceStore = defineStore('device', () => {
             await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
-                    if (
-                        settingsStore.modesActive.length !== 0 &&
-                        !_.isEqual(settingsStore.modesActiveLast, settingsStore.modesActive)
-                    ) {
-                        settingsStore.modesActiveLast = settingsStore.modesActive
-                    }
                     const modeMessage = plainToInstance(
                         ModeActivated,
                         JSON.parse(event.data) as object,
                     )
-                    settingsStore.modesActive = [modeMessage.uid]
+                    settingsStore.modeActiveCurrent = modeMessage.uid
+                    settingsStore.modeActivePrevious = modeMessage.previous_uid
                     emitter.emit('active-modes-change-menu')
                 },
                 async onclose() {

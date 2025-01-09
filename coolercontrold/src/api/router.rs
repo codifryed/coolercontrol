@@ -427,10 +427,10 @@ pub fn init(app_state: AppState) -> ApiRouter {
         )
         .api_route(
             "/modes-active",
-            get_with(modes::get_all_active, |o| {
+            get_with(modes::get_active, |o| {
                 o.summary("Retrieve Active Modes")
                     .description(
-                        "Returns a list of all Mode UIDs that are currently considered Active."
+                        "Returns the active and previously active Mode UIDs."
                     )
                     .tag("mode")
             }),

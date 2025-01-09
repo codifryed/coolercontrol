@@ -19,6 +19,7 @@
 use crate::commands::modes::ModesState;
 use crate::commands::notifications::send_notification;
 use crate::tray::recreate_mode_menu_items;
+use reqwest::Client;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,7 @@ use std::cmp::PartialEq;
 use std::ops::Not;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::async_runtime::RwLock;
 use tauri::{command, AppHandle};
 use zbus::export::futures_util::StreamExt;
 
@@ -59,6 +61,15 @@ pub async fn connected_to_daemon(
         return Ok(());
     }
     *daemon_state_init.has_errors.lock().unwrap() = has_errors;
+    (*daemon_state_init.address.lock().unwrap()).clone_from(&daemon_address);
+    let client = Client::builder()
+        .cookie_store(true)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|err| {
+            println!("Failed to build reqwest client: {err}");
+        })?;
+    *daemon_state_init.client.write().await = client;
     watch_connection_and_logs(daemon_address.clone(), Arc::clone(&*daemon_state_init));
     watch_mode_activation(
         daemon_address.clone(),
@@ -66,6 +77,15 @@ pub async fn connected_to_daemon(
         app_handle.clone(),
     );
     watch_alerts(daemon_address);
+    Ok(())
+}
+
+#[command]
+pub async fn login(
+    passwd: String,
+    daemon_state_init: tauri::State<'_, Arc<DaemonState>>,
+) -> Result<(), ()> {
+    *daemon_state_init.passwd.write().await = passwd.into_bytes();
     Ok(())
 }
 
@@ -167,14 +187,13 @@ fn watch_mode_activation(address: String, modes_state: Arc<ModesState>, app_hand
                 };
                 let _ = send_notification(&title, "", Some("dialog-information")).await;
                 // update system tray:
-                let mut active_modes_lock = modes_state
-                    .active_modes
+                let mut active_mode_lock = modes_state
+                    .active_mode
                     .lock()
                     .expect("Active Mode State is poisoned");
-                active_modes_lock.clear();
-                active_modes_lock.push(mode_activated.uid);
+                active_mode_lock.replace(mode_activated.uid);
                 let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-                recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
+                recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
             }
         }
     });
@@ -215,13 +234,19 @@ pub struct DaemonState {
     has_errors: Mutex<bool>,
     /// This is true until we have a successful connection
     is_first_connection: Mutex<bool>,
+    pub address: Mutex<String>,
+    pub passwd: RwLock<Vec<u8>>,
+    pub client: RwLock<Client>,
 }
 
 impl Default for DaemonState {
     fn default() -> Self {
         Self {
+            address: Mutex::new(String::default()),
             has_errors: Mutex::new(false),
             is_first_connection: Mutex::new(true),
+            passwd: RwLock::new(Vec::new()),
+            client: RwLock::new(Client::new()),
         }
     }
 }

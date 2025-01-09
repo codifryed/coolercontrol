@@ -203,8 +203,8 @@ const modesTree = (): any => {
         name: null, // devices should not have names
         options: [{ modeInfo: true }, { modeAdd: true }],
         children: settingsStore.modes.map((mode) => {
-            const isActive: boolean = settingsStore.modesActive.includes(mode.uid)
-            const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(mode.uid)
+            const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
+            const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
             return {
                 id: `modes_${mode.uid}`,
                 label: mode.name,
@@ -571,8 +571,8 @@ const activeModesChange = (_: UID): void => {
         .value!.getNode('modes')
         .getChildren()
         .forEach((data: TreeNodeData) => {
-            const isActive: boolean = settingsStore.modesActive.includes(data.uid)
-            const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(data.uid)
+            const isActive: boolean = settingsStore.modeActiveCurrent === data.uid
+            const isRecentlyActive: boolean = settingsStore.modeActivePrevious === data.uid
             data.icon = isActive
                 ? mdiBookmarkCheckOutline
                 : isRecentlyActive
@@ -590,8 +590,8 @@ const activeModesChange = (_: UID): void => {
 emitter.on('active-modes-change-menu', activeModesChange)
 const addMode = (modeUID: UID): void => {
     const newMode = settingsStore.modes.find((mode) => mode.uid === modeUID)!
-    const isActive: boolean = settingsStore.modesActive.includes(newMode.uid)
-    const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(newMode.uid)
+    const isActive: boolean = settingsStore.modeActiveCurrent === newMode.uid
+    const isRecentlyActive: boolean = settingsStore.modeActivePrevious === newMode.uid
     treeRef.value!.append(
         {
             id: `modes_${newMode.uid}`,

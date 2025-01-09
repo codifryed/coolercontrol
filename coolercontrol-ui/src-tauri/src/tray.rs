@@ -16,16 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use crate::commands::modes::{EventPayload, ModeTauri, ModesState};
+use crate::commands::modes::{activate_mode, ModeTauri};
 use crate::{create_metadata, MAIN_WINDOW_ID, SYSTEM_TRAY_ID, UID};
 use std::error::Error;
-use std::sync::{Arc, MutexGuard};
+use std::sync::MutexGuard;
 use tauri::menu::{
     CheckMenuItemBuilder, IconMenuItemBuilder, MenuBuilder, MenuEvent, MenuItemBuilder,
     SubmenuBuilder,
 };
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconEvent};
-use tauri::{App, AppHandle, Emitter, Manager, Wry};
+use tauri::{App, AppHandle, Manager, Wry};
 
 pub fn setup_system_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
     let tray_menu_builder = create_starting_tray_menu(app.handle());
@@ -62,7 +62,7 @@ fn create_starting_tray_menu(app_handle: &AppHandle) -> MenuBuilder<Wry, AppHand
 
 pub fn recreate_mode_menu_items(
     app_handle: &AppHandle,
-    active_modes_lock: &MutexGuard<Vec<UID>>,
+    active_mode_lock: &MutexGuard<Option<UID>>,
     modes_state_lock: &MutexGuard<Vec<ModeTauri>>,
 ) {
     let modes_submenu_builder = SubmenuBuilder::with_id(app_handle, "modes", "Modes");
@@ -70,7 +70,7 @@ pub fn recreate_mode_menu_items(
         modes_state_lock
             .iter()
             .fold(modes_submenu_builder, |menu, mode| {
-                let mode_is_active = active_modes_lock.contains(&mode.uid);
+                let mode_is_active = active_mode_lock.as_ref() == Some(&mode.uid);
                 let mode_menu_item =
                     CheckMenuItemBuilder::with_id(mode.uid.clone(), mode.name.clone())
                         .checked(mode_is_active)
@@ -151,34 +151,13 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
         }
         id => {
             if id.len() == 36 {
-                // Mode UUID
+                // Mode UUID length
                 // println!("System Tray Menu Item Click with Mode ID: {}", id);
-                let modes_state = app.state::<Arc<ModesState>>();
-                let active_modes_lock = modes_state
-                    .active_modes
-                    .lock()
-                    .expect("Active Mode State is poisoned");
-                for active_mode_uid in active_modes_lock.iter() {
-                    if active_mode_uid != id {
-                        continue;
-                    }
-                    // this sets the menu item back to selected (since it's deselected it)
-                    let modes_state_lock =
-                        modes_state.modes.lock().expect("Modes State is poisoned");
-                    recreate_mode_menu_items(
-                        app.app_handle(),
-                        &active_modes_lock,
-                        &modes_state_lock,
-                    );
-                    return;
-                }
-                app.emit(
-                    "mode-activated",
-                    EventPayload {
-                        active_mode_uid: id.to_owned(),
-                    },
-                )
-                .unwrap();
+                let mode_uid = id.to_string();
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    activate_mode(mode_uid, app).await;
+                });
             }
         }
     }

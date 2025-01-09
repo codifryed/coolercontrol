@@ -23,7 +23,7 @@ mod base;
 mod custom_sensors;
 mod devices;
 mod functions;
-mod modes;
+pub mod modes;
 mod profiles;
 mod router;
 mod settings;

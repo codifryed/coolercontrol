@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::actor::ModeHandle;
+use crate::api::modes::ActiveModesDto;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
@@ -47,7 +48,7 @@ pub struct ModeController {
     settings_controller: Rc<SettingsController>,
     modes: RefCell<HashMap<UID, Mode>>,
     mode_order: RefCell<Vec<UID>>,
-    active_modes: RefCell<Vec<UID>>,
+    active_modes: RefCell<ActiveModes>,
     mode_handle: RefCell<Option<ModeHandle>>,
 }
 
@@ -64,7 +65,7 @@ impl ModeController {
             settings_controller,
             modes: RefCell::new(HashMap::new()),
             mode_order: RefCell::new(Vec::new()),
-            active_modes: RefCell::new(Vec::new()),
+            active_modes: RefCell::new(ActiveModes::new()),
             mode_handle: RefCell::new(None),
         };
         mode_controller.fill_data_from_mode_config_file().await?;
@@ -145,7 +146,8 @@ impl ModeController {
             let default_mode_config = serde_json::to_string(&ModeConfigFile {
                 modes: Vec::new(),
                 order: Vec::new(),
-                active_mode: None,
+                current_active_mode: None,
+                previous_active_mode: None,
             })?;
             cc_fs::write_string(&path, default_mode_config)
                 .await
@@ -170,11 +172,9 @@ impl ModeController {
             mode_order_lock.extend(mode_config.order);
         }
         {
-            let mut active_mode_lock = self.active_modes.borrow_mut();
-            active_mode_lock.clear();
-            if let Some(uid) = mode_config.active_mode {
-                active_mode_lock.push(uid);
-            }
+            let mut active_modes_lock = self.active_modes.borrow_mut();
+            active_modes_lock.current = mode_config.current_active_mode;
+            active_modes_lock.previous = mode_config.previous_active_mode;
         }
         Ok(())
     }
@@ -193,8 +193,11 @@ impl ModeController {
     }
 
     /// Returns the currently active Modes.
-    pub fn determine_active_modes_uids(&self) -> Vec<UID> {
-        self.active_modes.borrow().clone()
+    pub fn get_active_modes(&self) -> ActiveModesDto {
+        ActiveModesDto {
+            current_mode_uid: self.active_modes.borrow().current.clone(),
+            previous_mode_uid: self.active_modes.borrow().previous.clone(),
+        }
     }
 
     pub async fn clear_active_modes(&self) {
@@ -204,10 +207,8 @@ impl ModeController {
         }
     }
 
-    fn update_active_modes(&self, mut active_modes: Vec<UID>) {
-        let mut active_modes_lock = self.active_modes.borrow_mut();
-        active_modes_lock.clear();
-        active_modes_lock.append(&mut active_modes);
+    fn update_active_modes(&self, mode_uid: UID) {
+        self.active_modes.borrow_mut().mode_activated(mode_uid);
     }
 
     /// Takes a Mode UID and applies all it's saved settings, making it the active Mode.
@@ -220,12 +221,20 @@ impl ModeController {
             }
             .into());
         };
-        if self.active_modes.borrow().contains(mode_uid) {
-            debug!("Mode already active: {} ID:{mode_uid}", mode.name);
-            if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-                mode_handle.broadcast_mode_activated(&mode.uid, &mode.name, true);
+        {
+            let active_modes_lock = self.active_modes.borrow();
+            if active_modes_lock.current.as_ref() == Some(mode_uid) {
+                debug!("Mode already active: {} ID:{mode_uid}", mode.name);
+                if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
+                    mode_handle.broadcast_mode_activated(
+                        &mode.uid,
+                        &mode.name,
+                        true,
+                        active_modes_lock.previous.as_ref(),
+                    );
+                }
+                return Ok(());
             }
-            return Ok(());
         }
         debug!("Activating mode: {} ID:{mode_uid}", mode.name);
         moro_local::async_scope!(|scope| -> Result<()> {
@@ -258,10 +267,15 @@ impl ModeController {
         })
         .await?;
         self.config.save_config_file().await?;
-        self.update_active_modes(vec![mode_uid.to_string()]);
+        self.update_active_modes(mode_uid.to_string());
         self.save_modes_data().await?;
         if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-            mode_handle.broadcast_mode_activated(&mode.uid, &mode.name, false);
+            mode_handle.broadcast_mode_activated(
+                &mode.uid,
+                &mode.name,
+                false,
+                self.active_modes.borrow().previous.as_ref(),
+            );
         }
         debug!("Mode applied: {}", mode.name);
         Ok(())
@@ -455,7 +469,7 @@ impl ModeController {
             mode.all_device_settings = self.get_all_device_settings()?;
             mode.clone()
         };
-        self.update_active_modes(vec![mode_uid.to_string()]);
+        self.update_active_modes(mode_uid.to_string());
         self.save_modes_data().await?;
         Ok(mode)
     }
@@ -488,7 +502,7 @@ impl ModeController {
         {
             self.modes.borrow_mut().remove(mode_uid);
             self.mode_order.borrow_mut().retain(|uid| uid != mode_uid);
-            self.active_modes.borrow_mut().retain(|uid| uid != mode_uid);
+            self.active_modes.borrow_mut().mode_deleted(mode_uid);
         }
         self.save_modes_data().await?;
         Ok(())
@@ -499,7 +513,8 @@ impl ModeController {
         let mode_config = ModeConfigFile {
             modes: self.modes.borrow().values().cloned().collect(),
             order: self.mode_order.borrow().clone(),
-            active_mode: self.active_modes.borrow().first().cloned(),
+            current_active_mode: self.active_modes.borrow().current.clone(),
+            previous_active_mode: self.active_modes.borrow().previous.clone(),
         };
         let mode_config_json = serde_json::to_string(&mode_config)?;
         cc_fs::write_string(DEFAULT_MODE_CONFIG_FILE_PATH, mode_config_json)
@@ -619,5 +634,39 @@ pub struct Mode {
 struct ModeConfigFile {
     modes: Vec<Mode>,
     order: Vec<UID>,
-    active_mode: Option<UID>,
+    current_active_mode: Option<UID>,
+    previous_active_mode: Option<UID>,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveModes {
+    current: Option<UID>,
+    previous: Option<UID>,
+}
+
+impl ActiveModes {
+    fn new() -> Self {
+        ActiveModes {
+            current: None,
+            previous: None,
+        }
+    }
+
+    fn mode_deleted(&mut self, mode_uid: &UID) {
+        if self.current.as_ref() == Some(mode_uid) {
+            self.current = None;
+        }
+        if self.previous.as_ref() == Some(mode_uid) {
+            self.previous = None;
+        }
+    }
+
+    fn mode_activated(&mut self, mode_uid: UID) {
+        self.previous = self.current.replace(mode_uid);
+    }
+
+    fn clear(&mut self) {
+        self.current = None;
+        self.previous = None;
+    }
 }

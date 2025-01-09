@@ -97,8 +97,8 @@ const dashboardItems = computed(() => {
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {
-        const isActive = settingsStore.modesActive.includes(mode.uid)
-        const isRecentlyActive = settingsStore.modesActiveLast.includes(mode.uid)
+        const isActive = settingsStore.modeActiveCurrent === mode.uid
+        const isRecentlyActive = settingsStore.modeActivePrevious === mode.uid
         menuItems.push({
             label: mode.name,
             isActive: isActive,
@@ -117,15 +117,10 @@ const modesItems = computed(() => {
     return menuItems
 })
 const activatePreviousMode = async (): Promise<void> => {
-    const previousModeUIDs = settingsStore.modesActiveLast
-    if (previousModeUIDs.length === 0) {
+    if (settingsStore.modeActivePrevious == null) {
         return
     }
-    const previousModeUID = previousModeUIDs.at(0)
-    if (previousModeUID === undefined) {
-        return
-    }
-    await settingsStore.activateMode(previousModeUID)
+    await settingsStore.activateMode(settingsStore.modeActivePrevious)
     emitter.emit('active-modes-change-menu')
 }
 

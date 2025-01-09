@@ -63,8 +63,8 @@ export default class DaemonClient {
     private killClientTimeout: number = 3_000
     private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
-    private userId: string = 'CCAdmin'
-    private defaultPasswd: string = 'coolAdmin'
+    private readonly userId: string = 'CCAdmin'
+    public readonly defaultPasswd: string = 'coolAdmin'
     private unauthorizedCallback: (error: any) => Promise<void> = async (
         _error: any,
     ): Promise<void> => {}
@@ -964,15 +964,15 @@ export default class DaemonClient {
         }
     }
 
-    async getActiveModeUIDs(): Promise<Array<UID>> {
+    async getActiveModeUIDs(): Promise<ActiveModeDTO> {
         // This action will also deactivate the mode if it is not currently active
         try {
             const response = await this.getClient().get('/modes-active')
             this.logDaemonResponse(response, 'Get Active Mode')
-            return plainToInstance(ActiveModeDTO, response.data as object).mode_uids
+            return plainToInstance(ActiveModeDTO, response.data as object)
         } catch (err) {
             this.logError(err)
-            return []
+            return new ActiveModeDTO()
         }
     }
 

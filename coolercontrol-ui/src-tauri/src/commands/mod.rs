@@ -20,3 +20,5 @@ pub mod daemon_state;
 pub mod modes;
 pub mod notifications;
 pub mod settings;
+
+const USER_ID: &str = "CCAdmin";

@@ -56,7 +56,7 @@ const updateModeWithCurrentSettings = async (): Promise<void> => {
         },
     })
 }
-const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
+const isActivated = computed(() => settingsStore.modeActiveCurrent === props.modeUID)
 </script>
 
 <template>

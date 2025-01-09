@@ -67,13 +67,15 @@ export class CreateModeDTO {
 }
 
 export class ActiveModeDTO {
-    mode_uids: Array<UID> = []
+    current_mode_uid?: UID
+    previous_mode_uid?: UID
 }
 
 export class ModeActivated {
     uid: UID
     name: string
     already_active: boolean
+    previous_uid?: UID
 
     constructor(uid: UID, name: string, already_active: boolean) {
         this.uid = uid

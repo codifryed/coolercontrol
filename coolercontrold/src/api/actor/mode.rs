@@ -17,7 +17,7 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::api::modes::ModeActivated;
+use crate::api::modes::{ActiveModesDto, ModeActivated};
 use crate::device::UID;
 use crate::modes::{Mode, ModeController};
 use anyhow::Result;
@@ -64,8 +64,8 @@ enum ModeMessage {
         mode_uid: UID,
         respond_to: oneshot::Sender<Result<Mode>>,
     },
-    GetAllActive {
-        respond_to: oneshot::Sender<Result<Vec<UID>>>,
+    GetActive {
+        respond_to: oneshot::Sender<Result<ActiveModesDto>>,
     },
     Activate {
         mode_uid: UID,
@@ -153,9 +153,9 @@ impl ApiActor<ModeMessage> for ModeActor {
                     .await;
                 let _ = respond_to.send(result);
             }
-            ModeMessage::GetAllActive { respond_to } => {
-                let mode_uids = self.modes_controller.determine_active_modes_uids();
-                let _ = respond_to.send(Ok(mode_uids));
+            ModeMessage::GetActive { respond_to } => {
+                let active_modes = self.modes_controller.get_active_modes();
+                let _ = respond_to.send(Ok(active_modes));
             }
             ModeMessage::Activate {
                 mode_uid,
@@ -272,9 +272,9 @@ impl ModeHandle {
         rx.await?
     }
 
-    pub async fn get_all_active(&self) -> Result<Vec<UID>> {
+    pub async fn get_active(&self) -> Result<ActiveModesDto> {
         let (tx, rx) = oneshot::channel();
-        let msg = ModeMessage::GetAllActive { respond_to: tx };
+        let msg = ModeMessage::GetActive { respond_to: tx };
         let _ = self.sender.send(msg).await;
         rx.await?
     }
@@ -293,7 +293,13 @@ impl ModeHandle {
         &self.broadcaster
     }
 
-    pub fn broadcast_mode_activated(&self, mode_uid: &str, mode_name: &str, already_active: bool) {
+    pub fn broadcast_mode_activated(
+        &self,
+        mode_uid: &str,
+        mode_name: &str,
+        already_active: bool,
+        previous_mode_uid: Option<&UID>,
+    ) {
         // only create messages if we have listeners:
         if self.broadcaster.receiver_count() == 0 {
             return;
@@ -302,6 +308,7 @@ impl ModeHandle {
             uid: mode_uid.to_string(),
             name: mode_name.to_string(),
             already_active,
+            previous_uid: previous_mode_uid.cloned(),
         };
         let _ = self.broadcaster.send(msg);
     }

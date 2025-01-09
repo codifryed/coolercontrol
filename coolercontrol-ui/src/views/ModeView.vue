@@ -140,7 +140,7 @@ const initTableData = () => {
 }
 initTableData()
 
-const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
+const isActivated = computed(() => settingsStore.modeActiveCurrent === props.modeUID)
 const activateMode = async (): Promise<void> => {
     const successful = await settingsStore.activateMode(props.modeUID)
     if (successful) emitter.emit('active-modes-change-menu')

@@ -48,7 +48,6 @@ import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
@@ -80,8 +79,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const modes: Ref<Array<Mode>> = ref([])
 
-    const modesActive: Ref<Array<UID>> = ref([])
-    const modesActiveLast: Ref<Array<UID>> = ref([])
+    const modeActiveCurrent: Ref<UID | undefined> = ref()
+    const modeActivePrevious: Ref<UID | undefined> = ref()
 
     const modeInEdit: Ref<UID | undefined> = ref()
 
@@ -262,7 +261,6 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadProfiles()
         await loadModes()
         await getActiveModes()
-        await listenForTauriModeActivation()
 
         await startWatchingToSaveChanges()
     }
@@ -575,13 +573,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
     async function getActiveModes(): Promise<void> {
         console.debug('Getting Active Modes')
-        if (
-            modesActive.value.length !== 0 &&
-            !_.isEqual(modesActiveLast.value, modesActive.value)
-        ) {
-            modesActiveLast.value = modesActive.value
-        }
-        modesActive.value = await deviceStore.daemonClient.getActiveModeUIDs()
+        const activeModes = await deviceStore.daemonClient.getActiveModeUIDs()
+        modeActiveCurrent.value = activeModes.current_mode_uid
+        modeActivePrevious.value = activeModes.previous_mode_uid
         await setTauriActiveModes()
         emitter.emit('active-modes-change-menu')
     }
@@ -614,29 +608,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     async function setTauriActiveModes(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            await invoke('set_active_modes', { activeModeUids: modesActive.value })
-        }
-    }
-
-    async function listenForTauriModeActivation(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            interface EventPayload {
-                active_mode_uid: UID
-            }
-            await listen<EventPayload>('mode-activated', (event): void => {
-                console.debug('Tauri Mode activation event received', event.payload)
-                if (modesActive.value.includes(event.payload.active_mode_uid)) {
-                    toast.add({
-                        severity: 'success',
-                        summary: 'Success',
-                        detail: 'Mode Already Active',
-                        life: 3000,
-                    })
-                } else {
-                    activateMode(event.payload.active_mode_uid)
-                }
-            })
+        if (deviceStore.isTauriApp() && modeActiveCurrent.value != null) {
+            // This sets the active mode on startup and wakeup. don't think it hurts to keep this.
+            await invoke('set_active_mode', { activeModeUid: modeActiveCurrent.value })
         }
     }
 
@@ -1083,8 +1057,8 @@ export const useSettingsStore = defineStore('settings', () => {
         profiles,
         functions,
         modes,
-        modesActive,
-        modesActiveLast,
+        modeActiveCurrent,
+        modeActivePrevious,
         modeInEdit,
         allUIDeviceSettings,
         dashboards,

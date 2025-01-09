@@ -67,10 +67,11 @@ fn main() {
             commands::settings::get_startup_delay,
             commands::settings::set_startup_delay,
             modes::set_modes,
-            modes::set_active_modes,
+            modes::set_active_mode,
             notifications::send_notification,
             daemon_state::connected_to_daemon,
             daemon_state::acknowledge_daemon_issues,
+            daemon_state::login,
         ])
         .setup(move |app: &mut App| {
             handle_cli_arguments(app);

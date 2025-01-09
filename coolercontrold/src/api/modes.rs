@@ -131,13 +131,13 @@ pub async fn update_mode_settings(
         .map_err(handle_error)
 }
 
-pub async fn get_all_active(
+pub async fn get_active(
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ActiveModesDto>, CCError> {
     mode_handle
-        .get_all_active()
+        .get_active()
         .await
-        .map(|mode_uids| Json(ActiveModesDto { mode_uids }))
+        .map(Json)
         .map_err(handle_error)
 }
 
@@ -198,7 +198,8 @@ pub struct UpdateModeDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ActiveModesDto {
-    mode_uids: Vec<UID>,
+    pub current_mode_uid: Option<UID>,
+    pub previous_mode_uid: Option<UID>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -211,6 +212,7 @@ pub struct ModeActivated {
     pub uid: UID,
     pub name: String,
     pub already_active: bool,
+    pub previous_uid: Option<UID>,
 }
 
 impl Default for ModeActivated {
@@ -219,6 +221,7 @@ impl Default for ModeActivated {
             uid: "Unknown".to_string(),
             name: "Unknown".to_string(),
             already_active: false,
+            previous_uid: None,
         }
     }
 }
