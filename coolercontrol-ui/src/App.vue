@@ -328,7 +328,6 @@ const steps = [
  * This is the Startup procedure for the UI application:
  */
 onMounted(async () => {
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -336,7 +335,6 @@ onMounted(async () => {
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
     applyCustomTheme()
-    await sleep(300) // give the engine a moment to catch up for a smoother start
     await daemonState.init()
     loaded.value = true
     loading.close()
@@ -344,7 +342,19 @@ onMounted(async () => {
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
-    // This basically blocks at this point:
+    if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
+        // This "workaround" works well enough for when start-in-tray is enabled.
+        // WebKit suspends the UI within this loop, so the SSE callbacks will start once
+        // the user opens the UI, thereby avoiding the half-initialized state that happens otherwise
+        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+        const tickAway = async (): Promise<void> => {
+            for (let i = 0; i < 100; i++) {
+                await sleep(10)
+            }
+        }
+        await tickAway()
+    }
+    // async functions that run for the lifetime of the application:
     await Promise.all([
         deviceStore.updateStatusFromSSE(),
         deviceStore.updateLogsFromSSE(),
