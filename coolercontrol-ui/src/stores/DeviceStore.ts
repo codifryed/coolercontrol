@@ -68,7 +68,7 @@ export const useDeviceStore = defineStore('device', () => {
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-    const reloadAllStatusesThreshold: number = 10_000 // 10 seconds to better handle network latency
+    const reloadAllStatusesThreshold: number = 5_000 // 5 seconds to handle when closing to tray & network latency
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
@@ -539,6 +539,21 @@ export const useDeviceStore = defineStore('device', () => {
                     timeDiffMillis,
                 )}ms, reloading all states and statuses.`,
             )
+            const settingsStore = useSettingsStore()
+            await settingsStore.loadAlertsAndLogs()
+            await settingsStore.getActiveModes()
+            const healthCheck = await health()
+            const daemonState = useDaemonState()
+            daemonState.warnings = healthCheck.details.warnings
+            daemonState.errors = healthCheck.details.errors
+            if (daemonState.errors > 0) {
+                await daemonState.setStatus(DaemonStatus.ERROR)
+            } else if (daemonState.warnings > 0) {
+                await daemonState.setStatus(DaemonStatus.WARN)
+            } else {
+                await daemonState.setStatus(DaemonStatus.OK)
+            }
+            await loadLogs()
             await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
