@@ -410,6 +410,10 @@ export const useDeviceStore = defineStore('device', () => {
         logs.value = await daemonClient.logs()
     }
 
+    async function acknowledgeIssues(): Promise<void> {
+        return await daemonClient.acknowledgeIssues()
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
         const handshakeSuccessful = await daemonClient.handshake()
@@ -728,6 +732,7 @@ export const useDeviceStore = defineStore('device', () => {
         logout,
         health,
         logs,
+        acknowledgeIssues,
         loadLogs,
         setPasswd,
         initializeDevices,

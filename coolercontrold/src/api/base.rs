@@ -66,6 +66,15 @@ pub async fn health(
         .map_err(handle_error)
 }
 
+pub async fn acknowledge_issues(
+    State(AppState { log_buf_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    log_buf_handle
+        .acknowledge_issues()
+        .await
+        .map_err(handle_error)
+}
+
 pub async fn logs(State(AppState { log_buf_handle, .. }): State<AppState>) -> impl IntoApiResponse {
     log_buf_handle.get_logs().await
 }

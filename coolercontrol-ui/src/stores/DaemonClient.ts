@@ -189,6 +189,23 @@ export default class DaemonClient {
         }
     }
 
+    async acknowledgeIssues(): Promise<void> {
+        try {
+            const response = await this.getClient().post(
+                '/acknowledge',
+                {},
+                {
+                    'axios-retry': {
+                        retries: 1,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Acknowledge Issues')
+        } catch (err) {
+            this.logError(err)
+        }
+    }
+
     async login(passwd: string | undefined = undefined): Promise<boolean> {
         if (passwd == null || passwd.length === 0) {
             passwd = this.defaultPasswd

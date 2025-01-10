@@ -53,6 +53,14 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
+            "/acknowledge",
+            post_with(base::acknowledge_issues, |o| {
+                o.summary("Acknowledge Log Issues")
+                    .description("This acknowledges existing log warnings and errors, and sets a timestamp of when this occurred")
+                    .tag("base")
+            }),
+        )
+        .api_route(
             "/shutdown",
             post_with(base::shutdown, |o| {
                 o.summary("Shutdown Daemon")

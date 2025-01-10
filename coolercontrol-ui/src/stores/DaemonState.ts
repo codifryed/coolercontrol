@@ -97,7 +97,7 @@ export const useDaemonState = defineStore('daemonState', () => {
             const deviceStore = useDeviceStore()
             // re-load the logs in case the daemon has restarted
             await deviceStore.loadLogs()
-            // re-check if the session if valid, in case the daemon has restarted
+            // re-check if the session is valid, in case the daemon has restarted
             await deviceStore.login()
         }
         connected.value = isConnected
@@ -107,6 +107,7 @@ export const useDaemonState = defineStore('daemonState', () => {
         if (!connected.value) return
         status.value = DaemonStatus.OK
         const deviceStore = useDeviceStore()
+        await deviceStore.acknowledgeIssues()
         if (deviceStore.isTauriApp()) {
             await invoke('acknowledge_daemon_issues')
         }

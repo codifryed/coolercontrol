@@ -18,6 +18,7 @@
 
 use crate::{exit_successfully, Args, LOG_ENV, VERSION};
 use anyhow::Result;
+use chrono::{DateTime, Local};
 use env_logger::Logger;
 use log::{info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::collections::VecDeque;
@@ -162,8 +163,14 @@ impl Log for CCLogger {
     fn flush(&self) {}
 }
 
+pub struct CCLog {
+    pub timestamp: DateTime<Local>,
+    pub message: String,
+}
+
 struct LogBufferActor {
-    buf: VecDeque<String>,
+    buf: VecDeque<CCLog>,
+    acknowledge_issues_timestamp: DateTime<Local>,
     new_log_broadcaster: broadcast::Sender<String>,
     msg_receiver: mpsc::Receiver<CCLogBufferMessage>,
 }
@@ -178,6 +185,9 @@ enum CCLogBufferMessage {
     Log {
         log: String,
     },
+    AcknowledgeIssues {
+        respond_to: oneshot::Sender<Result<()>>,
+    },
 }
 
 impl LogBufferActor {
@@ -187,6 +197,7 @@ impl LogBufferActor {
     ) -> Self {
         Self {
             buf: VecDeque::with_capacity(LOG_BUFFER_LINE_SIZE),
+            acknowledge_issues_timestamp: Local::now(),
             new_log_broadcaster,
             msg_receiver,
         }
@@ -199,8 +210,8 @@ impl LogBufferActor {
     fn handle_msg(&mut self, msg: CCLogBufferMessage) {
         match msg {
             CCLogBufferMessage::GetLogs { respond_to } => {
-                let all_logs = self.buf.iter().fold(String::new(), |mut acc, line| {
-                    acc.push_str(line);
+                let all_logs = self.buf.iter().fold(String::new(), |mut acc, cc_log| {
+                    acc.push_str(cc_log.message.as_str());
                     acc
                 });
                 let _ = respond_to.send(all_logs);
@@ -209,17 +220,35 @@ impl LogBufferActor {
                 if self.buf.len() >= LOG_BUFFER_LINE_SIZE {
                     self.buf.pop_front();
                 }
-                self.buf.push_back(log.clone());
+
+                self.buf.push_back(CCLog {
+                    timestamp: Local::now(),
+                    message: log.clone(),
+                });
                 let _ = self.new_log_broadcaster.send(log);
             }
             CCLogBufferMessage::WarningsErrors { respond_to } => {
-                let warnings = self.buf.iter().filter(|line| line.contains("WARN")).count();
+                let warnings = self
+                    .buf
+                    .iter()
+                    .filter(|cc_log| {
+                        self.acknowledge_issues_timestamp < cc_log.timestamp
+                            && cc_log.message.contains("WARN")
+                    })
+                    .count();
                 let errors = self
                     .buf
                     .iter()
-                    .filter(|line| line.contains("ERROR"))
+                    .filter(|cc_log| {
+                        self.acknowledge_issues_timestamp < cc_log.timestamp
+                            && cc_log.message.contains("ERROR")
+                    })
                     .count();
                 let _ = respond_to.send((warnings, errors));
+            }
+            CCLogBufferMessage::AcknowledgeIssues { respond_to } => {
+                self.acknowledge_issues_timestamp = Local::now();
+                let _ = respond_to.send(Ok(()));
             }
         }
     }
@@ -270,6 +299,13 @@ impl LogBufHandle {
         let msg = CCLogBufferMessage::WarningsErrors { respond_to: tx };
         let _ = self.msg_sender.send(msg).await;
         rx.await.unwrap_or((0, 0))
+    }
+
+    pub async fn acknowledge_issues(&self) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = CCLogBufferMessage::AcknowledgeIssues { respond_to: tx };
+        let _ = self.msg_sender.send(msg).await;
+        rx.await?
     }
 }
 
