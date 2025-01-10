@@ -68,7 +68,7 @@ export const useDeviceStore = defineStore('device', () => {
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-    const reloadAllStatusesThreshold: number = 10_000 // 10 seconds to better handle network latency and long polling rates
+    const reloadAllStatusesThreshold: number = 10_000 // 10 seconds to better handle network latency
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
@@ -406,7 +406,7 @@ export const useDeviceStore = defineStore('device', () => {
         return await daemonClient.health()
     }
 
-    async function load_logs(): Promise<void> {
+    async function loadLogs(): Promise<void> {
         logs.value = await daemonClient.logs()
     }
 
@@ -533,7 +533,7 @@ export const useDeviceStore = defineStore('device', () => {
             console.debug(
                 `[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(
                     timeDiffMillis,
-                )}ms, reloading all.`,
+                )}ms, reloading all states and statuses.`,
             )
             await loadCompleteStatusHistory()
         }
@@ -728,7 +728,7 @@ export const useDeviceStore = defineStore('device', () => {
         logout,
         health,
         logs,
-        load_logs,
+        loadLogs,
         setPasswd,
         initializeDevices,
         loggedIn,

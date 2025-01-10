@@ -325,7 +325,7 @@ const steps = [
 ]
 
 /**
- * Startup procedure for the application.
+ * This is the Startup procedure for the UI application:
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -341,7 +341,7 @@ onMounted(async () => {
     loaded.value = true
     loading.close()
     await deviceStore.login()
-    await deviceStore.load_logs()
+    await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
     // This basically blocks at this point:
