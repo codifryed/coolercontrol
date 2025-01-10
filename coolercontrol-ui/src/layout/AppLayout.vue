@@ -33,17 +33,18 @@ import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, inject, onMounted, Ref, ref } from 'vue'
 import { Emitter, EventType } from 'mitt'
 
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
 const splitterGroupRef = ref<InstanceType<typeof SplitterGroup>>()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const minMenuWidthRem: number = 14
 const minViewWidthRem: number = 18
 const splitterGroupWidthPx: Ref<number> = ref(1900)
-const isCollapsed: Ref<boolean> = ref(false)
 const menuPanelWidthRem = ref(24)
 
 const calculateSplitterWidth = (rem: number): number =>
@@ -79,7 +80,7 @@ onMounted(async () => {
         menuPanelWidthRem.value = calculateMenuRemWidth(size)
     }
     const resizeObserver = new ResizeObserver((_) => {
-        if (isCollapsed.value) return // our own collapsed boolean is more reliable
+        if (settingsStore.collapsedMainMenu) return // our own collapsed boolean is more reliable
         splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
         // We need to first use the previous REM width to recalculate the new menu width
         menuPanelWidth.value = calculateSplitterWidth(menuPanelWidthRem.value)
@@ -104,12 +105,12 @@ onMounted(async () => {
             <SplitterPanel
                 ref="menuPanelRef"
                 class="bg-bg-one border border-border-one rounded-lg"
-                :class="{ invisible: isCollapsed }"
+                :class="{ invisible: settingsStore.collapsedMainMenu }"
                 collapsible
                 :default-size="menuPanelWidth"
                 :min-size="menuPanelMinWidth"
-                @collapse="isCollapsed = true"
-                @expand="isCollapsed = false"
+                @collapse="settingsStore.collapsedMainMenu = true"
+                @expand="settingsStore.collapsedMainMenu = false"
                 @resize="onResize"
             >
                 <ScrollAreaRoot class="h-full" type="hover" :scroll-hide-delay="100">
@@ -128,7 +129,10 @@ onMounted(async () => {
             </SplitterPanel>
             <SplitterResizeHandle
                 class="bg-bg-two"
-                :class="{ 'w-2.5': !isCollapsed, 'w-0': isCollapsed }"
+                :class="{
+                    'w-2.5': !settingsStore.collapsedMainMenu,
+                    'w-0': settingsStore.collapsedMainMenu,
+                }"
             >
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
                 <Button

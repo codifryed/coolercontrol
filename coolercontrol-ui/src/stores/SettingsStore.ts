@@ -114,6 +114,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
     const collapsedMenuNodeIds: Ref<Array<string>> = ref(['modes', 'profiles', 'functions'])
+    const collapsedMainMenu: Ref<boolean> = ref(false)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
         accent: defaultCustomTheme.accent,
@@ -205,6 +206,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale.value = uiSettings.uiScale
         time24.value = uiSettings.time24
         collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
+        collapsedMainMenu.value = uiSettings.collapsedMainMenu
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -813,6 +815,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiScale,
                 time24,
                 collapsedMenuNodeIds.value,
+                collapsedMainMenu,
                 frequencyPrecision,
                 customTheme,
                 showOnboarding,
@@ -854,6 +857,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.uiScale = uiScale.value
                     uiSettings.time24 = time24.value
                     uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
+                    uiSettings.collapsedMainMenu = collapsedMainMenu.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
                     uiSettings.customTheme.bgOne = customTheme.bgOne
@@ -1070,6 +1074,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale,
         time24,
         collapsedMenuNodeIds,
+        collapsedMainMenu,
         frequencyPrecision,
         customTheme,
         showOnboarding,

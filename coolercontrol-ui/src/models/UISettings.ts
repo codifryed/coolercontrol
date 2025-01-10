@@ -40,6 +40,7 @@ export class UISettingsDTO {
     chartLineScale: number = 1.5
     time24: boolean = false
     collapsedMenuNodeIds: Array<string> = ['modes', 'profiles', 'functions']
+    collapsedMainMenu: boolean = false
     frequencyPrecision: number = 1
     customTheme: CustomThemeSettings = {
         accent: defaultCustomTheme.accent,
