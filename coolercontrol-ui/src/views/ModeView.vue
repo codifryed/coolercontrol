@@ -154,21 +154,25 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="flex h-[3.6rem] border-b-4 border-border-one items-center">
-        <div class="pl-4 py-2 text-2xl">{{ currentMode.name }}</div>
-        <div
-            class="px-4 py-2 flex flex-row leading-none items-center"
-            v-tooltip.top="
-                'Note: Modes do not include Profile or Function settings, only channel configurations.'
-            "
-        >
-            <svg-icon
-                type="mdi"
-                :path="mdiInformationSlabCircleOutline"
-                :size="deviceStore.getREMSize(1.25)"
-            />
+    <div class="flex h-[3.6rem] border-b-4 border-border-one items-center justify-between">
+        <div class="flex flex-row overflow-hidden">
+            <div class="flex pl-4 py-2 text-2xl overflow-hidden">
+                <span class="overflow-hidden overflow-ellipsis">Mode:&nbsp;</span>
+                <span class="font-bold">{{ currentMode.name }}</span>
+            </div>
+            <div
+                class="px-4 py-2 flex flex-row leading-none items-center"
+                v-tooltip.top="
+                    'Note: Modes do not include Profile or Function settings, only channel configurations.'
+                "
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiInformationSlabCircleOutline"
+                    :size="deviceStore.getREMSize(1.25)"
+                />
+            </div>
         </div>
-        <div class="w-full" />
         <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated }">
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"

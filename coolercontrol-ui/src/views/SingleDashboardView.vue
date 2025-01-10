@@ -39,6 +39,7 @@ const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 
+const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 const channelLabel =
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
@@ -94,7 +95,10 @@ onMounted(async () => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl">{{ channelLabel }}</div>
+        <div class="pl-4 py-2 text-2xl overflow-hidden flex">
+            <span class="overflow-ellipsis overflow-hidden">{{ deviceLabel }}:&nbsp;</span>
+            <span class="font-bold">{{ channelLabel }}</span>
+        </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="singleDashboard.chartType == ChartType.TIME_CHART" class="p-2 flex flex-row">
                 <InputNumber

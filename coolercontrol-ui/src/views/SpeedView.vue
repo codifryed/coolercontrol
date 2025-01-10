@@ -59,6 +59,7 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
 
+const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
@@ -231,7 +232,10 @@ onMounted(() => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl">{{ props.channelName }}</div>
+        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
+            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
+            <span class="font-bold">{{ channelLabel }}</span>
+        </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"

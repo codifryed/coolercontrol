@@ -80,6 +80,10 @@ const toast = useToast()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
+const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
+const channelLabel =
+    settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
+        ?.name ?? props.channelName
 let contextIsDirty: boolean = false
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
@@ -431,7 +435,10 @@ onUnmounted(() => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl">{{ props.channelName.toUpperCase() }}</div>
+        <div class="flex pl-4 py-2 text-2xl">
+            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
+            <span class="font-bold">{{ channelLabel }}</span>
+        </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2 flex flex-row">
                 <Button

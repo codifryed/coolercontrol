@@ -72,7 +72,7 @@ onMounted(() => {
 
 <template>
     <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl">Application Information</div>
+        <div class="pl-4 py-2 text-2xl font-bold">Application Information</div>
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
