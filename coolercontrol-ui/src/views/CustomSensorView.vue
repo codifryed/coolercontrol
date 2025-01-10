@@ -447,7 +447,7 @@ onMounted(async () => {
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
                     @change="viewTypeChanged"
-                    v-tooltip.bottom="'Control this channel or view its dashboard.'"
+                    v-tooltip.bottom="'Control or View'"
                 />
             </div>
             <div class="p-2">

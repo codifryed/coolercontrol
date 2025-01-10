@@ -284,7 +284,7 @@ onMounted(() => {
                     checkmark
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="40rem"
-                    v-tooltip.bottom="'Choose a Profile to apply'"
+                    v-tooltip.bottom="'Profile to apply'"
                 />
             </div>
             <div
@@ -343,7 +343,7 @@ onMounted(() => {
                     checkmark
                     dropdown-icon="pi pi-cog"
                     scroll-height="40rem"
-                    v-tooltip.bottom="'Automatic or Manual control'"
+                    v-tooltip.bottom="'Automatic or Manual'"
                 />
                 <div
                     v-if="!channelIsControllable()"
@@ -368,7 +368,7 @@ onMounted(() => {
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
                     @change="viewTypeChanged"
-                    v-tooltip.bottom="'Control this channel or view its dashboard.'"
+                    v-tooltip.bottom="'Control or View'"
                 />
             </div>
             <div class="p-2 flex flex-row">

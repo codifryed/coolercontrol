@@ -1271,7 +1271,7 @@ onMounted(async () => {
                         checkmark
                         dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
-                        v-tooltip.bottom="'Function to apply to the Profile'"
+                        v-tooltip.bottom="'Function to apply'"
                     />
                 </div>
                 <div class="p-2">
@@ -1289,7 +1289,7 @@ onMounted(async () => {
                         scroll-height="40rem"
                         :invalid="chosenTemp == null || tempSourceInvalid"
                         dropdown-icon="pi pi-inbox"
-                        v-tooltip.bottom="'Profile Temperature Source'"
+                        v-tooltip.bottom="{ escape: false, value: 'Temperature Source' }"
                     >
                         <template #optiongroup="slotProps">
                             <div class="flex items-center">
@@ -1353,13 +1353,15 @@ onMounted(async () => {
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
-                    v-tooltip.bottom="
-                        'Profile Type:\n' +
-                        '- Default: Retains current device settings (BIOS/firmware).\n' +
-                        '- Fixed: Sets a constant speed.\n' +
-                        '- Graph: Customizable fan curve for tailored performance.\n' +
-                        '- Mix: Combines multiple profiles for advanced control.'
-                    "
+                    v-tooltip.bottom="{
+                        escape: false,
+                        value:
+                            'Profile Type:<br/>' +
+                            '- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware).<br/>' +
+                            '- Fixed: Sets a constant speed.<br/>' +
+                            '- Graph: Customizable fan curve for tailored performance.<br/>' +
+                            '- Mix: Combines multiple profiles for advanced control.',
+                    }"
                 />
             </div>
             <div class="p-2">
