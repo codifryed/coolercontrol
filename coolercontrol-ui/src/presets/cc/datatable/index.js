@@ -122,9 +122,10 @@ export default {
                 context?.size === 'small' ? 'p-2' : context?.size === 'large' ? 'p-5' : 'p-4',
 
                 // Color
-                (props.sortable === '' || props.sortable) && context.sorted
-                    ? 'bg-highlight'
-                    : 'bg-bg-two text-text-color',
+                // (props.sortable === '' || props.sortable) && context.sorted
+                //     ? 'bg-surface-hover'
+                //     : 'bg-bg-two text-text-color',
+                'bg-bg-two text-text-color',
                 'border-border-one',
 
                 // States

@@ -65,8 +65,13 @@ const { getREMSize } = useDeviceStore()
             </div>
             <div class="mt-8 flex flex-col">
                 <span class="pb-1 ml-1 font-semibold text-xl text-text-color"> Alert Logs </span>
-                <DataTable class="w-full" :value="settingsStore.alertLogs">
-                    <Column field="timestamp" header="Timestamp">
+                <DataTable
+                    class="w-full"
+                    :value="settingsStore.alertLogs"
+                    sort-field="timestamp"
+                    :sort-order="-1"
+                >
+                    <Column field="timestamp" header="Timestamp" :sortable="true">
                         <template #body="slotProps">
                             {{ new Date(slotProps.data.timestamp).toLocaleString() }}
                         </template>
