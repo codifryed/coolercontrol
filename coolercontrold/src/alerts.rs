@@ -27,7 +27,7 @@ use chrono::{DateTime, Local};
 use const_format::concatcp;
 use hashlink::LinkedHashMap;
 use lazy_format::lazy_format;
-use log::{error, info};
+use log::{error, info, trace};
 use moro_local::Scope;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ impl AlertController {
         let alert_controller = controller.clone();
         main_scope.spawn(async move {
             cancellation_token.cancelled().await;
-            info!("Shutting down Alert Controller");
+            trace!("Shutting down Alert Controller");
             let _ = alert_controller.save_alert_data_to_config().await;
         });
     }
