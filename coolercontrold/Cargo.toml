@@ -19,15 +19,15 @@ default = []
 io_uring = ["dep:tokio-uring"]
 
 [dependencies]
-log = "0.4.22"
+log = "0.4.24"
 env_logger = "0.11.6"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.23", features = [
+clap = { version = "4.5.26", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.95"
 derive_more = { version = "1.0.0", features = ["display", "error"] }
-tokio = { version = "1.42.0", default-features = false, features = [
+tokio = { version = "1.43.0", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -40,11 +40,13 @@ tokio = { version = "1.42.0", default-features = false, features = [
   "io-util",
 ] }
 tokio-uring = { version = "0.5.0", optional = true }
-tokio-util = "0.7.12"
+tokio-util = "0.7.13"
 moro-local = "0.4.0"
-async-trait = "0.1.83"
-axum = { version = "0.7.9", features = ["multipart", "macros"] }
-axum-extra = { version = "0.9.6", features = ["typed-header"] }
+async-trait = "0.1.85"
+# Axum is held back. We need to adjust all paths for 0.8+ and test aide support:
+axum = { version = "=0.7.9", features = ["multipart", "macros"] }
+# Axum-Extra held back as 0.10.0 has some breaking changes as well as Axum update above:
+axum-extra = { version = "=0.9.6", features = ["typed-header"] }
 tower-http = { version = "0.6.2", features = [
   "timeout",
   "trace",
@@ -53,7 +55,8 @@ tower-http = { version = "0.6.2", features = [
   "normalize-path",
   "compression-full",
 ] }
-tower-sessions = { version = "0.13.0", features = ["private"] }
+# Held back due to Axum update above:
+tower-sessions = { version = "=0.13.0", features = ["private"] }
 # Our own fork which handles our specific use case:
 tower_governor = { git = "https://github.com/codifryed/tower-governor", features = [
   "axum",
@@ -69,8 +72,9 @@ aide = { version = "0.13.5", features = [
 headers = "0.4.0"
 schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
-axum_typed_multipart = "0.14.0"
-tempfile = "3.14.0"
+# Held back due to Axum update above:
+axum_typed_multipart = "=0.14.0"
+tempfile = "3.15.0"
 tokio-stream = { version = "0.1.17", default-features = false, features = [
   "sync",
 ] }
@@ -85,8 +89,8 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
 ] }
 http-body-util = "0.1.2"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.134"
-zbus = { version = "5.2.0", default-features = false, features = [
+serde_json = "1.0.135"
+zbus = { version = "5.3.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.33.1", default-features = false, features = [
@@ -104,7 +108,7 @@ cached = { version = "0.54.0", default-features = false, features = [
   "async",
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-const_format = "0.2.33" # allows combining string constants
+const_format = "0.2.34" # allows combining string constants
 psutil = { version = "4.0.0", default-features = false, features = [
   "cpu",
   "sensors",
@@ -121,7 +125,7 @@ nix = { version = "0.29.0", default-features = false, features = [
   "sched",
 ] }
 pciid-parser = "0.7.2"
-libdrm_amdgpu_sys = "0.7.7"
+libdrm_amdgpu_sys = "0.8.1"
 hashlink = "0.10.0"
 lazy_format = "2.0.3"
 yata = "0.7.0" # moving averages
@@ -145,7 +149,7 @@ gifski = { version = "1.32.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
-uuid = { version = "1.11.0", features = ["v4"] }
+uuid = { version = "1.11.1", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"

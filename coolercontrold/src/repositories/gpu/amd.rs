@@ -37,7 +37,8 @@ use crate::repositories::hwmon::{devices, fans, freqs, power, temps};
 use crate::repositories::repository::DeviceLock;
 use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
-use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
+use libdrm_amdgpu_sys::LibDrmAmdgpu;
+use libdrm_amdgpu_sys::AMDGPU::GPU_INFO;
 use log::{error, info, trace, warn};
 use regex::Regex;
 
@@ -176,6 +177,7 @@ impl GpuAMD {
     }
 
     async fn get_drm_device_name(base_path: &Path) -> Option<String> {
+        let drm_amdgpu = LibDrmAmdgpu::new().ok()?;
         let slot_name = devices::get_pci_slot_name(base_path).await?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
         let drm_file = cc_fs::open_options()
@@ -183,7 +185,7 @@ impl GpuAMD {
             .write(true)
             .open(&path)
             .ok()?;
-        let (handle, _, _) = DeviceHandle::init(drm_file.as_raw_fd()).ok()?;
+        let (handle, _, _) = drm_amdgpu.init_device_handle(drm_file.as_raw_fd()).ok()?;
         Some(handle.device_info().ok()?.find_device_name_or_default())
     }
 
