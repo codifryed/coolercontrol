@@ -45,11 +45,10 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const minMenuWidthRem: number = 14
 const minViewWidthRem: number = 18
 const splitterGroupWidthPx: Ref<number> = ref(1900)
-const menuPanelWidthRem = ref(24)
 
 const calculateSplitterWidth = (rem: number): number =>
     (deviceStore.getREMSize(rem) / splitterGroupWidthPx.value) * 100
-const menuPanelWidth = ref(calculateSplitterWidth(menuPanelWidthRem.value))
+const menuPanelWidth = ref(calculateSplitterWidth(settingsStore.mainMenuWidthRem))
 
 const calculateMenuRemWidth = (percent: number): number => {
     const widthPx = (percent / 100) * splitterGroupWidthPx.value
@@ -66,25 +65,33 @@ let onResize = (_: number): void => {
     // overridden after being mounted to avoid pre-mount issues
 }
 
-const toggleSideMenu = (): void =>
+const toggleSideMenu = (): void => {
     menuPanelRef.value?.isCollapsed ? menuPanelRef.value?.expand() : menuPanelRef.value?.collapse()
+    settingsStore.collapsedMainMenu = menuPanelRef.value?.isCollapsed ?? false
+}
 emitter.on('toggle-side-menu', toggleSideMenu)
 
 onMounted(async () => {
+    // apply the saved change on startup to the menu itself.
+    // Note: Expand automatically happens on startup for the Splitter
+    if (settingsStore.collapsedMainMenu) {
+        // timeout needed as the auto-expand happens after onMounted code.
+        setTimeout(menuPanelRef.value!.collapse)
+    }
     const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
     splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
-    menuPanelWidth.value = calculateSplitterWidth(menuPanelWidthRem.value)
+    menuPanelWidth.value = calculateSplitterWidth(settingsStore.mainMenuWidthRem)
     onResize = (size: number): void => {
-        if (menuPanelWidth.value === size) return
+        if (menuPanelWidth.value === size || menuPanelRef.value?.isCollapsed) return
         menuPanelWidth.value = size
-        menuPanelWidthRem.value = calculateMenuRemWidth(size)
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(size)
     }
     const resizeObserver = new ResizeObserver((_) => {
-        if (settingsStore.collapsedMainMenu) return // our own collapsed boolean is more reliable
+        if (menuPanelRef.value?.isCollapsed) return
         splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
         // We need to first use the previous REM width to recalculate the new menu width
-        menuPanelWidth.value = calculateSplitterWidth(menuPanelWidthRem.value)
-        menuPanelWidthRem.value = calculateMenuRemWidth(menuPanelWidth.value)
+        menuPanelWidth.value = calculateSplitterWidth(settingsStore.mainMenuWidthRem)
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(menuPanelWidth.value)
     })
     resizeObserver.observe(splitterEl)
 })
@@ -98,7 +105,6 @@ onMounted(async () => {
         <SplitterGroup
             ref="splitterGroupRef"
             direction="horizontal"
-            auto-save-id="cc-main-splitter"
             :keyboard-resize-by="10"
             class="flex-auto py-2 pr-2"
         >
@@ -109,8 +115,6 @@ onMounted(async () => {
                 collapsible
                 :default-size="menuPanelWidth"
                 :min-size="menuPanelMinWidth"
-                @collapse="settingsStore.collapsedMainMenu = true"
-                @expand="settingsStore.collapsedMainMenu = false"
                 @resize="onResize"
             >
                 <ScrollAreaRoot class="h-full" type="hover" :scroll-hide-delay="100">
