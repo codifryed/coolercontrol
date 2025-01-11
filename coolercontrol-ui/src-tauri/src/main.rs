@@ -88,6 +88,8 @@ fn main() {
 /// http access to localhost in general, enabling us to access the locally running coolercontrold
 /// daemon.
 fn generate_localhost_context(port: Port) -> Context {
+    // The generate_context macro internally contains a deprecation:
+    #[allow(deprecated)]
     let mut context = tauri::generate_context!();
     let url = format!("http://localhost:{port}").parse().unwrap();
     context.config_mut().build.frontend_dist = Some(FrontendDist::Url(url));
