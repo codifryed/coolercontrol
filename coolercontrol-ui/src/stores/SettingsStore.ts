@@ -872,7 +872,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.showOnboarding = showOnboarding.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
-                1000,
+                750,
             ),
         )
 
