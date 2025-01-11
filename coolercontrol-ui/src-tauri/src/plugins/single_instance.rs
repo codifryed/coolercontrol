@@ -19,7 +19,8 @@
 use crate::MAIN_WINDOW_ID;
 use tauri::plugin::TauriPlugin;
 use tauri::{plugin, AppHandle, Manager, RunEvent, Runtime};
-use zbus::blocking::{Builder, Connection};
+use zbus::blocking::connection::Builder;
+use zbus::blocking::Connection;
 use zbus::interface;
 
 const DBUS_NAME: &str = "org.coolercontrol.SingleInstance";
