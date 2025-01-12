@@ -46,9 +46,10 @@ const minMenuWidthRem: number = 14
 const minViewWidthRem: number = 18
 const splitterGroupWidthPx: Ref<number> = ref(1900)
 
-const calculateSplitterWidth = (rem: number): number =>
+const calculateSplitterWidthPercent = (rem: number): number =>
     (deviceStore.getREMSize(rem) / splitterGroupWidthPx.value) * 100
-const menuPanelWidth = ref(calculateSplitterWidth(settingsStore.mainMenuWidthRem))
+const menuPanelWidthPercent = ref(calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem))
+const minMenuWidthPx: number = minMenuWidthRem * deviceStore.getREMSize(1)
 
 const calculateMenuRemWidth = (percent: number): number => {
     const widthPx = (percent / 100) * splitterGroupWidthPx.value
@@ -56,10 +57,10 @@ const calculateMenuRemWidth = (percent: number): number => {
     return Math.round(widthRem * 10) / 10
 }
 const menuPanelMinWidth = computed((): number =>
-    Math.min(calculateSplitterWidth(minMenuWidthRem), 50),
+    Math.min(calculateSplitterWidthPercent(minMenuWidthRem), 50),
 )
 const viewPanelMinWidth = computed((): number =>
-    Math.min(calculateSplitterWidth(minViewWidthRem), 50),
+    Math.min(calculateSplitterWidthPercent(minViewWidthRem), 50),
 )
 let onResize = (_: number): void => {
     // overridden after being mounted to avoid pre-mount issues
@@ -80,18 +81,25 @@ onMounted(async () => {
     }
     const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
     splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
-    menuPanelWidth.value = calculateSplitterWidth(settingsStore.mainMenuWidthRem)
-    onResize = (size: number): void => {
-        if (menuPanelWidth.value === size || menuPanelRef.value?.isCollapsed) return
-        menuPanelWidth.value = size
-        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(size)
+    menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
+    // This is called when the Splitter Handle is dragged and the REM size will change:
+    onResize = (sizePercent: number): void => {
+        if (menuPanelWidthPercent.value === sizePercent || menuPanelRef.value?.isCollapsed) return
+        menuPanelWidthPercent.value = sizePercent
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(sizePercent)
     }
+    // This is called when the window is resized,
+    // which resizes the Menu Splitter to maintain a certain REM size:
     const resizeObserver = new ResizeObserver((_) => {
-        if (menuPanelRef.value?.isCollapsed) return
+        if (
+            menuPanelRef.value?.isCollapsed ||
+            splitterEl.getBoundingClientRect().width < minMenuWidthPx
+        )
+            return
         splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
         // We need to first use the previous REM width to recalculate the new menu width
-        menuPanelWidth.value = calculateSplitterWidth(settingsStore.mainMenuWidthRem)
-        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(menuPanelWidth.value)
+        menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(menuPanelWidthPercent.value)
     })
     resizeObserver.observe(splitterEl)
 })
@@ -113,7 +121,7 @@ onMounted(async () => {
                 class="bg-bg-one border border-border-one rounded-lg"
                 :class="{ invisible: settingsStore.collapsedMainMenu }"
                 collapsible
-                :default-size="menuPanelWidth"
+                :default-size="menuPanelWidthPercent"
                 :min-size="menuPanelMinWidth"
                 @resize="onResize"
             >
