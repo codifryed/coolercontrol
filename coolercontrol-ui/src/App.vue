@@ -37,6 +37,7 @@ import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboardin
 import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -342,17 +343,10 @@ onMounted(async () => {
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
-    if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
-        // This "workaround" works well enough for when start-in-tray is enabled.
-        // WebKit suspends the UI within this loop, so the SSE callbacks will start once
-        // the user opens the UI, thereby avoiding the half-initialized state that happens otherwise
-        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-        const tickAway = async (): Promise<void> => {
-            for (let i = 0; i < 100; i++) {
-                await sleep(10)
-            }
+    let hideToTray = async (): Promise<void> => {
+        if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
+            await getCurrentWebviewWindow().hide()
         }
-        await tickAway()
     }
     // async functions that run for the lifetime of the application:
     await Promise.all([
@@ -360,6 +354,7 @@ onMounted(async () => {
         deviceStore.updateLogsFromSSE(),
         deviceStore.updateAlertsFromSSE(),
         deviceStore.updateActiveModeFromSSE(),
+        hideToTray(),
     ])
 })
 </script>

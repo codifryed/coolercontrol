@@ -110,7 +110,9 @@ pub fn setup_config_store(app: &mut App) -> Result<(), Box<dyn Error>> {
     let window = app.get_webview_window(MAIN_WINDOW_ID).unwrap();
     if start_in_tray {
         println!("Start in Tray setting is enabled, hiding window. Use the tray icon to show the window.");
-        window.hide().unwrap();
+        // hide is done in the frontend after initialization:
+        window.show().unwrap();
+        window.minimize().unwrap();
     } else {
         window.show().unwrap();
     }
