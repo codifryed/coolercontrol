@@ -4,7 +4,7 @@ export default {
             // Position and Shadows
             'absolute',
             // 'shadow-md',
-            'p-fadein',
+            // 'p-fadein',
             // Spacing
             {
                 'py-0 px-2':
