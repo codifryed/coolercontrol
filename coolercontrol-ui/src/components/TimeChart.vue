@@ -527,7 +527,17 @@ const uOptions: uPlot.Options = {
             },
 
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
-                if (scaleMax > 130) {
+                if (scaleMax > 7000) {
+                    return [1000]
+                } else if (scaleMax > 3000) {
+                    return [500]
+                } else if (scaleMax > 1300) {
+                    return [200]
+                } else if (scaleMax > 700) {
+                    return [100]
+                } else if (scaleMax > 300) {
+                    return [50]
+                } else if (scaleMax > 130) {
                     return [20]
                 } else if (scaleMax > 70) {
                     return [10]
@@ -535,8 +545,10 @@ const uOptions: uPlot.Options = {
                     return [5]
                 } else if (scaleMax > 7) {
                     return [1]
+                } else if (scaleMax > 1) {
+                    return [0.5]
                 }
-                return [0.5]
+                return [0.1]
             },
             // values: (_, ticks) => ticks.map((rawValue) => rawValue + ' W'),
             border: {
