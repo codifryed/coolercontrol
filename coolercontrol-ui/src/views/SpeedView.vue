@@ -239,7 +239,7 @@ onMounted(() => {
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"
-                class="p-2"
+                class="p-2 pr-0"
             >
                 <InputNumber
                     placeholder="Duty"
@@ -273,7 +273,7 @@ onMounted(() => {
             </div>
             <div
                 v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
-                class="p-2"
+                class="p-2 pr-0"
             >
                 <Select
                     v-model="selectedProfile"
@@ -292,7 +292,7 @@ onMounted(() => {
                     chosenViewType === ChannelViewType.Dashboard &&
                     singleDashboard.chartType == ChartType.TIME_CHART
                 "
-                class="p-2 flex flex-row"
+                class="p-2 pr-0 flex flex-row"
             >
                 <InputNumber
                     placeholder="Minutes"
@@ -319,7 +319,7 @@ onMounted(() => {
                 </InputNumber>
                 <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
             </div>
-            <div v-if="chosenViewType === ChannelViewType.Dashboard" class="p-2">
+            <div v-if="chosenViewType === ChannelViewType.Dashboard" class="p-2 pr-0">
                 <Select
                     v-model="singleDashboard.chartType"
                     :options="chartTypes"
@@ -331,14 +331,14 @@ onMounted(() => {
                     v-tooltip.bottom="'Chart Type'"
                 />
             </div>
-            <div class="p-2 flex flex-row">
+            <div class="p-2 pr-0 flex flex-row">
                 <Select
                     v-if="chosenViewType === ChannelViewType.Control"
                     v-model="manualControlEnabled"
                     :options="manualProfileOptions"
                     option-label="label"
                     option-value="value"
-                    class="w-32 mr-4"
+                    class="w-32 mr-3"
                     placeholder="Control Type"
                     checkmark
                     dropdown-icon="pi pi-cog"

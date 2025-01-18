@@ -181,7 +181,7 @@ onMounted(async () => {
             <span class="font-bold">{{ dashboard.name }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
-            <div class="p-2 flex flex-row">
+            <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
                     v-model="chosenSensorSources"
                     :options="sensorSources"
@@ -234,7 +234,7 @@ onMounted(async () => {
             </div>
             <div
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
-                class="p-2 flex flex-row bg-bg-one"
+                class="p-2 pr-0 flex flex-row bg-bg-one"
             >
                 <InputNumber
                     placeholder="Minutes"

@@ -100,7 +100,10 @@ onMounted(async () => {
             <span class="font-bold">{{ channelLabel }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
-            <div v-if="singleDashboard.chartType == ChartType.TIME_CHART" class="p-2 flex flex-row">
+            <div
+                v-if="singleDashboard.chartType == ChartType.TIME_CHART"
+                class="p-2 pr-0 flex flex-row"
+            >
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"

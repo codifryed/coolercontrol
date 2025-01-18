@@ -1173,12 +1173,12 @@ onMounted(async () => {
             <span class="font-bold">{{ currentProfile.name }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
-            <div v-if="selectedType === ProfileType.Mix" class="p-2 flex flex-row">
+            <div v-if="selectedType === ProfileType.Mix" class="p-2 pr-0 flex flex-row">
                 <Select
                     v-model="chosenProfileMixFunction"
                     :options="mixFunctionTypes"
                     placeholder="Mix Function"
-                    class="w-20 mr-2"
+                    class="w-20 mr-3"
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
@@ -1209,7 +1209,7 @@ onMounted(async () => {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </div>
-                <div class="p-2 flex flex-row">
+                <div class="p-2 pr-1 flex flex-row">
                     <InputNumber
                         placeholder="Duty"
                         v-model="selectedDuty"
@@ -1239,7 +1239,7 @@ onMounted(async () => {
                         v-model="selectedTemp"
                         inputId="selected-temp"
                         mode="decimal"
-                        class="temp-input w-full ml-2"
+                        class="temp-input w-full ml-3"
                         suffix="°"
                         showButtons
                         :min="inputNumberTempMin()"
@@ -1261,24 +1261,24 @@ onMounted(async () => {
                         </template>
                     </InputNumber>
                 </div>
-                <div class="p-2">
+                <div class="p-2 pr-1">
                     <Select
                         v-model="chosenFunction"
                         :options="settingsStore.functions"
                         option-label="name"
                         placeholder="Function"
-                        class="w-44"
+                        class="w-44 h-[2.375rem]"
                         checkmark
                         dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
                         v-tooltip.bottom="'Function to apply'"
                     />
                 </div>
-                <div class="p-2">
+                <div class="p-2 pr-0">
                     <Select
                         v-model="chosenTemp"
                         :options="tempSources"
-                        class="w-44"
+                        class="w-44 h-[2.375rem]"
                         option-label="tempFrontendName"
                         option-group-label="deviceName"
                         option-group-children="temps"
@@ -1318,13 +1318,13 @@ onMounted(async () => {
                     </Select>
                 </div>
             </div>
-            <div v-else-if="selectedType === ProfileType.Fixed" class="p-2">
+            <div v-else-if="selectedType === ProfileType.Fixed" class="p-2 pr-0">
                 <InputNumber
                     placeholder="Duty"
                     v-model="selectedDuty"
                     inputId="selected-duty"
                     mode="decimal"
-                    class="duty-input w-full"
+                    class="duty-input w-full h-[2.375rem]"
                     suffix="%"
                     showButtons
                     :min="dutyMin"
@@ -1344,7 +1344,7 @@ onMounted(async () => {
                     </template>
                 </InputNumber>
             </div>
-            <div class="p-2">
+            <div class="p-2 pr-0">
                 <Select
                     v-model="selectedType"
                     :options="profileTypes"
