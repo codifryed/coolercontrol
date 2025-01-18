@@ -115,6 +115,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const time24: Ref<boolean> = ref(false)
     const collapsedMenuNodeIds: Ref<Array<string>> = ref(['modes', 'profiles', 'functions'])
     const collapsedMainMenu: Ref<boolean> = ref(false)
+    const hideMenuCollapseIcon: Ref<boolean> = ref(false)
     const mainMenuWidthRem: Ref<number> = ref(24)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
@@ -209,6 +210,7 @@ export const useSettingsStore = defineStore('settings', () => {
         collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
         mainMenuWidthRem.value = uiSettings.mainMenuWidthRem
+        hideMenuCollapseIcon.value = uiSettings.hideMenuCollapseIcon
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -818,6 +820,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 time24,
                 collapsedMenuNodeIds.value,
                 collapsedMainMenu,
+                hideMenuCollapseIcon,
                 mainMenuWidthRem,
                 frequencyPrecision,
                 customTheme,
@@ -861,6 +864,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.time24 = time24.value
                     uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value
+                    uiSettings.hideMenuCollapseIcon = hideMenuCollapseIcon.value
                     uiSettings.mainMenuWidthRem = mainMenuWidthRem.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
@@ -1079,6 +1083,7 @@ export const useSettingsStore = defineStore('settings', () => {
         time24,
         collapsedMenuNodeIds,
         collapsedMainMenu,
+        hideMenuCollapseIcon,
         mainMenuWidthRem,
         frequencyPrecision,
         customTheme,

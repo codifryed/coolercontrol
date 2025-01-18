@@ -317,6 +317,26 @@ watch(pollRate, () => {
                                 </tr>
                                 <tr
                                     v-tooltip.right="
+                                        'Whether to display a Menu Collapse Icon in the Sidebar,\n' +
+                                        'or use the empty sidebar area to expand or collapse the main menu.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Sidebar to Collapse
+                                    </td>
+                                    <td
+                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.hideMenuCollapseIcon"
+                                            size="large"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
                                         'Adjust the line thickness of charts on the dashboard'
                                     "
                                 >

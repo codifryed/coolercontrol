@@ -34,6 +34,8 @@ import {
     mdiChartBoxPlusOutline,
     mdiCogOutline,
     mdiFlaskPlusOutline,
+    mdiMenuClose,
+    mdiMenuOpen,
     mdiOpenInNew,
     mdiPlus,
     mdiPlusBoxMultipleOutline,
@@ -386,51 +388,22 @@ const addItems = computed(() => [
             </template>
         </el-dropdown>
 
-        <!--Access Protection-->
-        <el-dropdown
-            id="access"
-            ref="accessMenuRef"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+        <!--Expand/Collapse Main Menu-->
+        <Button
+            v-if="!settingsStore.hideMenuCollapseIcon"
+            id="collapse-menu"
+            class="mt-2 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+            v-tooltip.right="{
+                value: settingsStore.collapsedMainMenu ? 'Expand Menu' : 'Collapse Menu',
             }"
-            popper-class="ml-[3.75rem] mt-[-3.75rem]"
+            @click="emitter.emit('toggle-side-menu')"
         >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                aria-haspopup="true"
-                aria-controls="access-overlay-menu"
-            >
-                <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
-                    <svg-icon type="mdi" :path="mdiAccountOffOutline" :size="getREMSize(1.75)" />
-                </OverlayBadge>
-                <svg-icon v-else type="mdi" :path="mdiAccountOutline" :size="getREMSize(1.75)" />
-            </Button>
-            <template #dropdown>
-                <Menu :model="accessItems" append-to="self">
-                    <!--                    <template #start>-->
-                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
-                    <!--                            <svg-icon-->
-                    <!--                                class="text-text-color"-->
-                    <!--                                type="mdi"-->
-                    <!--                                :path="-->
-                    <!--                                    deviceStore.loggedIn-->
-                    <!--                                        ? mdiShieldLockOpenOutline-->
-                    <!--                                        : mdiShieldLockOutline-->
-                    <!--                                "-->
-                    <!--                                :size="getREMSize(1.5)"-->
-                    <!--                            />-->
-                    <!--                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span-->
-                    <!--                            ><br />-->
-                    <!--                        </span>-->
-                    <!--                        <div class="px-1">-->
-                    <!--                            <div class="border-b border-border-one" />-->
-                    <!--                        </div>-->
-                    <!--                    </template>-->
-                </Menu>
-            </template>
-        </el-dropdown>
+            <svg-icon
+                type="mdi"
+                :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
+                :size="getREMSize(1.75)"
+            />
+        </Button>
 
         <!--Alerts-->
         <router-link :to="{ name: 'alerts-overview' }" class="outline-none">
@@ -467,7 +440,21 @@ const addItems = computed(() => [
         </router-link>
 
         <!--filler-->
-        <div class="flex-1 h-full cursor-pointer" @click="emitter.emit('toggle-side-menu')" />
+        <div
+            v-if="settingsStore.hideMenuCollapseIcon"
+            class="flex-1 h-full cursor-pointer text-bg-two hover:text-text-color-secondary/50"
+            @click="emitter.emit('toggle-side-menu')"
+        >
+            <div class="flex h-full items-center justify-center justify-items-center">
+                <svg-icon
+                    id="collapse-menu"
+                    type="mdi"
+                    :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
+                    :size="getREMSize(1.75)"
+                />
+            </div>
+        </div>
+        <div v-else class="flex-1 h-full" />
 
         <!--Open In Browser-->
         <a
@@ -483,6 +470,52 @@ const addItems = computed(() => [
                 <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
             </Button>
         </a>
+
+        <!--Access Protection-->
+        <el-dropdown
+            id="access"
+            ref="accessMenuRef"
+            :show-timeout="0"
+            :hide-timeout="100"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
+            popper-class="ml-[3.75rem] mb-[-3.8rem]"
+        >
+            <Button
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                aria-haspopup="true"
+                aria-controls="access-overlay-menu"
+            >
+                <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
+                    <svg-icon type="mdi" :path="mdiAccountOffOutline" :size="getREMSize(1.75)" />
+                </OverlayBadge>
+                <svg-icon v-else type="mdi" :path="mdiAccountOutline" :size="getREMSize(1.75)" />
+            </Button>
+            <template #dropdown>
+                <Menu :model="accessItems" append-to="self">
+                    <!--                    <template #start>-->
+                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
+                    <!--                            <svg-icon-->
+                    <!--                                class="text-text-color"-->
+                    <!--                                type="mdi"-->
+                    <!--                                :path="-->
+                    <!--                                    deviceStore.loggedIn-->
+                    <!--                                        ? mdiShieldLockOpenOutline-->
+                    <!--                                        : mdiShieldLockOutline-->
+                    <!--                                "-->
+                    <!--                                :size="getREMSize(1.5)"-->
+                    <!--                            />-->
+                    <!--                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span-->
+                    <!--                            ><br />-->
+                    <!--                        </span>-->
+                    <!--                        <div class="px-1">-->
+                    <!--                            <div class="border-b border-border-one" />-->
+                    <!--                        </div>-->
+                    <!--                    </template>-->
+                </Menu>
+            </template>
+        </el-dropdown>
 
         <!--Power-->
         <el-dropdown

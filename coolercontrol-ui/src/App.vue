@@ -274,10 +274,10 @@ const steps = [
         },
     },
     {
-        attachTo: { element: '#access' },
+        attachTo: { element: '#collapse-menu' },
         content: {
-            title: 'Access Menu',
-            description: 'This is where you manage your password and verify your access level.',
+            title: 'Collapse / Expand Main Menu',
+            description: 'Use this to expand or collapse the main menu.',
         },
         options: {
             popper: {
@@ -303,6 +303,18 @@ const steps = [
             title: 'Settings',
             description:
                 'This button will open up the settings page containing different UI and daemon settings.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#access' },
+        content: {
+            title: 'Access Menu',
+            description: 'This is where you manage your password and verify your access level.',
         },
         options: {
             popper: {

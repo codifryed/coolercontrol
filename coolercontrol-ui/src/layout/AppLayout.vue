@@ -19,7 +19,6 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiChevronDoubleLeft, mdiChevronDoubleRight } from '@mdi/js'
 import {
     ScrollAreaRoot,
     ScrollAreaScrollbar,
@@ -31,7 +30,6 @@ import {
 } from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
-import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, inject, onMounted, Ref, ref } from 'vue'
@@ -145,29 +143,11 @@ onMounted(async () => {
             <SplitterResizeHandle
                 class="bg-bg-two"
                 :class="{
-                    'w-2.5': !settingsStore.collapsedMainMenu,
+                    'w-3': !settingsStore.collapsedMainMenu,
                     'w-0': settingsStore.collapsedMainMenu,
                 }"
                 :disabled="settingsStore.collapsedMainMenu"
             >
-                <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
-                    class="absolute mt-[2.625rem] bg-bg-two !rounded-none !border !px-1 !py-1 hover:!bg-bg-two !text-text-color-secondary hover:!text-text-color z-50"
-                    :class="{
-                        'ml-[-1.525rem] !rounded-r-0 !rounded-l-lg !border-r-0':
-                            menuPanelRef?.isExpanded,
-                        'ml-0 !rounded-l-0 !rounded-r-lg !border-l-0': menuPanelRef?.isCollapsed,
-                    }"
-                    @click="toggleSideMenu"
-                >
-                    <svg-icon
-                        class="outline-0"
-                        type="mdi"
-                        :path="
-                            menuPanelRef?.isCollapsed ? mdiChevronDoubleRight : mdiChevronDoubleLeft
-                        "
-                        :size="deviceStore.getREMSize(1.0)"
-                    />
-                </Button>
             </SplitterResizeHandle>
             <SplitterPanel
                 class="truncate bg-bg-one border border-border-one rounded-lg"
