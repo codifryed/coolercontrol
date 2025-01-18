@@ -118,8 +118,11 @@ onMounted(async () => {
         >
             <SplitterPanel
                 ref="menuPanelRef"
-                class="bg-bg-one border border-border-one rounded-lg"
-                :class="{ invisible: settingsStore.collapsedMainMenu }"
+                class="bg-bg-one border-border-one rounded-lg"
+                :class="{
+                    invisible: settingsStore.collapsedMainMenu,
+                    border: !settingsStore.collapsedMainMenu,
+                }"
                 collapsible
                 :default-size="menuPanelWidthPercent"
                 :min-size="menuPanelMinWidth"
@@ -145,6 +148,7 @@ onMounted(async () => {
                     'w-2.5': !settingsStore.collapsedMainMenu,
                     'w-0': settingsStore.collapsedMainMenu,
                 }"
+                :disabled="settingsStore.collapsedMainMenu"
             >
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
                 <Button
