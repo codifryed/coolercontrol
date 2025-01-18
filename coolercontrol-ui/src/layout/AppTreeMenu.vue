@@ -79,7 +79,6 @@ import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
 import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
 import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
-import { useDaemonState } from '@/stores/DaemonState.ts'
 import TreeIcon from '@/components/TreeIcon.vue'
 import { AlertState } from '@/models/Alert.ts'
 import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
@@ -98,7 +97,6 @@ interface Tree {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const daemonState = useDaemonState()
 const router = useRouter()
 const route = useRoute()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -716,13 +714,6 @@ const alertStateChange = (): void => {
 }
 emitter.on('alert-state-change', alertStateChange)
 
-const calcDropdownPosition = (data: any): string => {
-    if (data.id === 'dashboards') {
-        return 'mr-[1.0rem] mb-[-1.9rem]'
-    }
-    return 'mr-[0.2rem] mb-[-1.9rem]'
-}
-
 watch(settingsStore.alertsActive, alertStateChange)
 onMounted(async () => {
     // custom tree leaf h-line
@@ -744,13 +735,15 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="">
-        <div
-            id="system-menu"
-            class="text-text-color font-bold text-xl mt-[0.25rem] ml-4 mr-6 mb-1 border-b border-border-one pb-1 tree-text"
-        >
-            {{ daemonState.systemName }}
-        </div>
+<!--    <div-->
+<!--        id="system-menu"-->
+<!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
+<!--    >-->
+<!--            <span class="flex ml-4 text-2xl mb-1 items-center">-->
+<!--                {{ daemonState.systemName }}-->
+<!--            </span>-->
+<!--    </div>-->
+    <div>
         <el-tree
             ref="treeRef"
             id="main-menu"
@@ -777,11 +770,23 @@ onMounted(async () => {
                     :ref="(el) => (data.dropdownRef = el)"
                     :id="data.id"
                     class="ml-0.5 w-full outline-none"
-                    :show-timeout="100"
-                    :hide-timeout="50"
+                    :show-timeout="0"
+                    :hide-timeout="0"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-end"
-                    :popper-class="calcDropdownPosition(data)"
+                    :popper-options="{
+                        modifiers: [
+                            {
+                                name: 'offset',
+                                options: {
+                                    offset: [
+                                        0,
+                                        -deviceStore.getREMSize(2.4),
+                                    ],
+                                },
+                            },
+                        ],
+                    }"
                     :teleported="true"
                     :hide-on-click="false"
                     :trigger="aSubMenuIsOpen ? 'click' : 'hover'"
@@ -869,7 +874,7 @@ onMounted(async () => {
                     </router-link>
                     <template #dropdown>
                         <div
-                            class="border border-border-one bg-bg-two/95 rounded-lg flex content-center items-center justify-center p-[1px]"
+                            class="border border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center p-[2px]"
                         >
                             <div v-for="option in data.options">
                                 <menu-rename

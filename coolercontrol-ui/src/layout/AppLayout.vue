@@ -128,8 +128,8 @@ onMounted(async () => {
                 :min-size="menuPanelMinWidth"
                 @resize="onResize"
             >
-                <ScrollAreaRoot class="h-full" type="hover" :scroll-hide-delay="100">
-                    <ScrollAreaViewport class="p-2 h-full">
+                <ScrollAreaRoot class="h-full p-2" type="hover" :scroll-hide-delay="100">
+                    <ScrollAreaViewport class="h-full">
                         <AppTreeMenu />
                     </ScrollAreaViewport>
                     <ScrollAreaScrollbar
@@ -151,7 +151,6 @@ onMounted(async () => {
                 :disabled="settingsStore.collapsedMainMenu"
             >
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
-                <Button
                     class="absolute mt-[2.625rem] bg-bg-two !rounded-none !border !px-1 !py-1 hover:!bg-bg-two !text-text-color-secondary hover:!text-text-color z-50"
                     :class="{
                         'ml-[-1.525rem] !rounded-r-0 !rounded-l-lg !border-r-0':
