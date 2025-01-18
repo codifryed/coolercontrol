@@ -34,6 +34,7 @@ import {
     mdiChartBoxPlusOutline,
     mdiCogOutline,
     mdiFlaskPlusOutline,
+    mdiHomeAnalytics,
     mdiMenuClose,
     mdiMenuOpen,
     mdiOpenInNew,
@@ -330,7 +331,7 @@ const addItems = computed(() => [
                 <svg-icon
                     :class="{ 'text-accent': router.currentRoute.value.fullPath === '/' }"
                     type="mdi"
-                    :path="mdiChartBoxOutline"
+                    :path="mdiHomeAnalytics"
                     :size="getREMSize(1.75)"
                 />
             </Button>

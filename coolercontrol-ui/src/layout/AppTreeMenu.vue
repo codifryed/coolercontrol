@@ -85,6 +85,7 @@ import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
 import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
 import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
+import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 
 // interface Tree {
 //     label: string
@@ -185,6 +186,7 @@ const dashboardsTree = (): any => {
                 name: dashboard.uid,
                 to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
                 options: [
+                    { dashboardHome: true },
                     { dashboardRename: true },
                     { dashboardDuplicate: true },
                     { dashboardDelete: true },
@@ -555,6 +557,27 @@ const deleteDashboard = (dashboardUID: UID): void => {
     }
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
 }
+const rearrangeDashboards = (): void => {
+    const children = settingsStore.dashboards.map((dashboard) => {
+        return {
+            id: dashboard.uid,
+            label: dashboard.name,
+            icon: mdiChartBoxOutline,
+            deviceUID: 'Dashboards',
+            dashboardUID: dashboard.uid,
+            name: dashboard.uid,
+            to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
+            options: [
+                { dashboardHome: true },
+                { dashboardRename: true },
+                { dashboardDuplicate: true },
+                { dashboardDelete: true },
+            ],
+        }
+    })
+    treeRef.value!.getNode('dashboards').childNodes = []
+    treeRef.value!.getNode('dashboards').doCreateChildren(children)
+}
 
 /**
  * Updates the mode tree nodes to reflect the current active modes.
@@ -898,6 +921,11 @@ onMounted(async () => {
                                 <menu-dashboard-add
                                     v-else-if="option.dashboardAdd"
                                     @added="addDashbaord"
+                                />
+                                <menu-dashboard-home
+                                    v-else-if="option.dashboardHome"
+                                    :dashboard-u-i-d="data.dashboardUID"
+                                    @rearrange="rearrangeDashboards"
                                 />
                                 <menu-dashboard-rename
                                     v-else-if="option.dashboardRename"

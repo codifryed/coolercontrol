@@ -126,19 +126,19 @@ const steps = [
             },
         },
     },
-    {
-        attachTo: { element: '#system-menu' },
-        content: {
-            title: 'System Menu',
-            description:
-                "This is the start of the main menu where this system's devices and sensors can be viewed and controlled.",
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
+    // {
+    //     attachTo: { element: '#system-menu' },
+    //     content: {
+    //         title: 'System Menu',
+    //         description:
+    //             "This is the start of the main menu where this system's devices and sensors can be viewed and controlled.",
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
     {
         attachTo: { element: '#dashboards' },
         content: {
