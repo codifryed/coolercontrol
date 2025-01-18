@@ -132,7 +132,7 @@ impl DeviceActor {
 }
 
 impl ApiActor<DeviceMessage> for DeviceActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "DeviceActor"
     }
 

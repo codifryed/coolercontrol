@@ -61,7 +61,7 @@ impl AlertActor {
 }
 
 impl ApiActor<AlertMessage> for AlertActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AlertActor"
     }
 

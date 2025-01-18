@@ -61,7 +61,7 @@ impl StatusActor {
 }
 
 impl ApiActor<StatusMessage> for StatusActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "StatusActor"
     }
 

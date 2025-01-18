@@ -47,7 +47,7 @@ impl HealthActor {
 }
 
 impl ApiActor<HealthMessage> for HealthActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "HealthActor"
     }
 

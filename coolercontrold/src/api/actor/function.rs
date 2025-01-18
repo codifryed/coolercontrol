@@ -69,7 +69,7 @@ impl FunctionActor {
 }
 
 impl ApiActor<FunctionMessage> for FunctionActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "FunctionActor"
     }
 

@@ -86,7 +86,7 @@ impl ModeActor {
 }
 
 impl ApiActor<ModeMessage> for ModeActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ModeActor"
     }
 

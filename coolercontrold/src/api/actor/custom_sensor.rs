@@ -77,7 +77,7 @@ impl CustomSensorActor {
 }
 
 impl ApiActor<CustomSensorMessage> for CustomSensorActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CustomSensorActor"
     }
 

@@ -73,7 +73,7 @@ impl ProfileActor {
 }
 
 impl ApiActor<ProfileMessage> for ProfileActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ProfileActor"
     }
 

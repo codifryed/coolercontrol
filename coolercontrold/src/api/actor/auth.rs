@@ -45,7 +45,7 @@ impl AuthActor {
 }
 
 impl ApiActor<AuthMessage> for AuthActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AuthActor"
     }
 

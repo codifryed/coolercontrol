@@ -79,7 +79,7 @@ impl SettingActor {
 }
 
 impl ApiActor<SettingMessage> for SettingActor {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "SettingActor"
     }
 
