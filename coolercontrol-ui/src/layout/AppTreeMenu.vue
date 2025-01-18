@@ -735,14 +735,14 @@ onMounted(async () => {
 </script>
 
 <template>
-<!--    <div-->
-<!--        id="system-menu"-->
-<!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
-<!--    >-->
-<!--            <span class="flex ml-4 text-2xl mb-1 items-center">-->
-<!--                {{ daemonState.systemName }}-->
-<!--            </span>-->
-<!--    </div>-->
+    <!--    <div-->
+    <!--        id="system-menu"-->
+    <!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
+    <!--    >-->
+    <!--            <span class="flex ml-4 text-2xl mb-1 items-center">-->
+    <!--                {{ daemonState.systemName }}-->
+    <!--            </span>-->
+    <!--    </div>-->
     <div>
         <el-tree
             ref="treeRef"
@@ -779,10 +779,7 @@ onMounted(async () => {
                             {
                                 name: 'offset',
                                 options: {
-                                    offset: [
-                                        0,
-                                        -deviceStore.getREMSize(2.4),
-                                    ],
+                                    offset: [0, -deviceStore.getREMSize(2.4)],
                                 },
                             },
                         ],
