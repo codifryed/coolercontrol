@@ -276,7 +276,7 @@ const addItems = computed(() => [
         <el-dropdown
             id="add"
             ref="addMenuRef"
-            :show-timeout="50"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -313,7 +313,7 @@ const addItems = computed(() => [
         <el-dropdown
             id="dashboard-quick"
             ref="dashboardMenuRef"
-            :show-timeout="50"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -349,7 +349,7 @@ const addItems = computed(() => [
         <el-dropdown
             id="modes-quick"
             v-if="modesItems.length > 0"
-            :show-timeout="50"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -390,7 +390,7 @@ const addItems = computed(() => [
         <el-dropdown
             id="access"
             ref="accessMenuRef"
-            :show-timeout="50"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -487,7 +487,7 @@ const addItems = computed(() => [
         <!--Power-->
         <el-dropdown
             id="restart"
-            :show-timeout="50"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
