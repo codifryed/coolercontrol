@@ -88,6 +88,7 @@ const dashboardItems = computed(() => {
         dashboardItems.push({
             label: dashboard.name,
             mdiIcon: mdiChartBoxOutline,
+            uid: dashboard.uid,
             command: async () => {
                 dashboardMenuRef.value?.handleClose()
                 await router.push({ name: 'dashboards', params: { dashboardUID: dashboard.uid } })
@@ -326,7 +327,12 @@ const addItems = computed(() => [
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 @click="router.push({ name: 'system-overview' })"
             >
-                <svg-icon type="mdi" :path="mdiChartBoxOutline" :size="getREMSize(1.75)" />
+                <svg-icon
+                    :class="{ 'text-accent': router.currentRoute.value.fullPath === '/' }"
+                    type="mdi"
+                    :path="mdiChartBoxOutline"
+                    :size="getREMSize(1.75)"
+                />
             </Button>
             <template #dropdown>
                 <Menu :model="dashboardItems" append-to="self">
@@ -337,10 +343,22 @@ const addItems = computed(() => [
                         >
                             <svg-icon
                                 type="mdi"
+                                :class="{
+                                    'text-accent':
+                                        router.currentRoute.value.params.dashboardUID === item.uid,
+                                }"
                                 :path="item.mdiIcon ?? ''"
                                 :size="getREMSize(1.25)"
                             />
-                            <span class="ml-1.5">{{ item.label }}</span>
+                            <span
+                                class="ml-1.5"
+                                :class="{
+                                    'text-accent':
+                                        router.currentRoute.value.params.dashboardUID === item.uid,
+                                }"
+                            >
+                                {{ item.label }}
+                            </span>
                         </a>
                     </template>
                 </Menu>
@@ -406,7 +424,12 @@ const addItems = computed(() => [
         </Button>
 
         <!--Alerts-->
-        <router-link :to="{ name: 'alerts-overview' }" class="outline-none">
+        <router-link
+            exact
+            :to="{ name: 'alerts-overview' }"
+            class="outline-none"
+            v-slot="{ isActive }"
+        >
             <Button
                 id="alerts-quick"
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
@@ -419,23 +442,34 @@ const addItems = computed(() => [
                 >
                     <svg-icon
                         type="mdi"
-                        class="text-error"
+                        :class="isActive ? 'text-accent' : 'text-error'"
                         :path="mdiBellRingOutline"
                         :size="getREMSize(1.75)"
                     />
                 </OverlayBadge>
-                <svg-icon v-else type="mdi" :path="mdiBellOutline" :size="getREMSize(1.75)" />
+                <svg-icon
+                    v-else
+                    type="mdi"
+                    :path="mdiBellOutline"
+                    :size="getREMSize(1.75)"
+                    :class="{ 'text-accent': isActive }"
+                />
             </Button>
         </router-link>
 
         <!--Settings-->
-        <router-link :to="{ name: 'settings' }" class="outline-none">
+        <router-link exact :to="{ name: 'settings' }" class="outline-none" v-slot="{ isActive }">
             <Button
                 id="settings"
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
                 v-tooltip.right="'Settings'"
             >
-                <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
+                <svg-icon
+                    type="mdi"
+                    :path="mdiCogOutline"
+                    :size="getREMSize(1.75)"
+                    :class="{ 'text-accent': isActive }"
+                />
             </Button>
         </router-link>
 
