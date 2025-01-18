@@ -52,7 +52,10 @@ const deviceStore = useDeviceStore()
                     Custom Sensors allow you to combine existing sensor data in various ways,
                     enhancing your control and efficiency over system cooling. Additionally, they
                     support file-based data, enabling you to script external sensor inputs for even
-                    greater flexibility.
+                    greater flexibility.<br />
+                    <i>
+                        Note: You can use a Mix Profile to combine multiple Customer Sensor outputs.
+                    </i>
                 </div>
             </popover-content>
         </popover-root>

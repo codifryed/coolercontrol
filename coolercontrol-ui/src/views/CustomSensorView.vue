@@ -580,7 +580,12 @@ onMounted(async () => {
                         filter-placeholder="Search"
                         list-style="max-height: 100%"
                         :invalid="chosenTempSources.length === 0"
-                        v-tooltip.right="'Temperature sources to be used in the mix function'"
+                        v-tooltip.right="{
+                            escape: false,
+                            value:
+                                'Temperature sources to be used in the mix function<br/>' +
+                                '<i>Note: You can use a Mix Profile to combine multiple<br/>Customer Sensors.</i>',
+                        }"
                     >
                         <template #optiongroup="slotProps">
                             <div class="flex items-center">
