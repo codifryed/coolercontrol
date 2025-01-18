@@ -20,11 +20,13 @@ use crate::api::settings::{CoolerControlDeviceSettingsDto, CoolerControlSettings
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID};
-use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
+use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Setting};
 use crate::AllDevices;
 use anyhow::Result;
 use moro_local::Scope;
 use std::collections::HashMap;
+use std::default::Default;
+use std::ops::Not;
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -192,6 +194,22 @@ impl ApiActor<SettingMessage> for SettingActor {
             } => {
                 let result = async {
                     self.config.set_cc_settings_for_device(&device_uid, &update);
+                    // check for disabled devices and channels and remove their settings:
+                    if update.disable_channels.is_empty().not() {
+                        for setting in self.config.get_device_settings(&device_uid)? {
+                            if update.disable_channels.contains(&setting.channel_name) {
+                                let reset_setting = Setting {
+                                    channel_name: setting.channel_name,
+                                    reset_to_default: Some(true),
+                                    ..Default::default()
+                                };
+                                self.config.set_device_setting(&device_uid, &reset_setting);
+                            }
+                        }
+                    }
+                    if update.disable {
+                        self.config.clear_device_settings(&device_uid);
+                    }
                     self.config.save_config_file().await
                 }
                 .await;

@@ -239,6 +239,13 @@ impl Config {
         }
     }
 
+    pub fn clear_device_settings(&self, device_uid: &str) {
+        let mut doc = self.document.borrow_mut();
+        if let Some(settings_table) = doc["device-settings"].get_mut(device_uid) {
+            *settings_table = Item::None;
+        }
+    }
+
     fn set_setting_fixed_speed(channel_setting: &mut Item, speed_fixed: u8) {
         channel_setting["profile_uid"] = Item::None; // clear profile setting
         channel_setting["speed_fixed"] =
