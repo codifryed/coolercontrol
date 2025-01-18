@@ -3,6 +3,7 @@ export default {
         class: [
             // Display and Position
             'inline-flex',
+            'flex-row-reverse',
             'items-center content-center align-middle justify-between',
             'relative',
 
@@ -100,6 +101,7 @@ export default {
             'appearance-none',
         ],
     }),
+    // The dropdown icon:
     dropdown: {
         class: [
             // Flexbox
@@ -108,12 +110,12 @@ export default {
             'flex items-center content-center',
 
             // Color and Background
-            'text-text-color-secondary hover:text-text-color',
+            'text-text-color',
             'bg-transparent',
             'border-border-one',
 
             // Size
-            'w-6 pr-2',
+            'w-6 pl-2',
 
             // Shape
             'rounded-tr-lg',
@@ -126,7 +128,8 @@ export default {
             // 'absolute top-0 left-0',
 
             // Shape
-            'border-0',
+            // 'border-0',
+            'border',
             'rounded-lg',
             'shadow-lg',
 

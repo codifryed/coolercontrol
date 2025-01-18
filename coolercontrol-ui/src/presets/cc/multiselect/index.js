@@ -3,6 +3,7 @@ export default {
         class: [
             // Display and Position
             'inline-flex',
+            'flex-row-reverse',
             'relative',
 
             // Shape
@@ -67,6 +68,7 @@ export default {
             'overflow-hidden whitespace-nowrap cursor-pointer overflow-ellipsis',
         ],
     }),
+    // This is for the dropdown Icon:
     dropdown: {
         class: [
             // Flexbox
@@ -74,12 +76,12 @@ export default {
             'shrink-0',
 
             // Color and Background
-            'text-text-color-secondary hover:text-text-color',
+            'text-text-color',
             'bg-transparent',
             'border-border-one',
 
             // Size
-            'w-6 pr-2',
+            'w-6 pl-2',
 
             // Shape
             'rounded-tr-lg',
@@ -91,7 +93,8 @@ export default {
             // Position
 
             // Shape
-            'border-0',
+            // 'border-0',
+            'border',
             'rounded-lg',
             'shadow-lg',
 
