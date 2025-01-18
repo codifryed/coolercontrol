@@ -24,7 +24,7 @@ use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use const_format::concatcp;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -238,17 +238,16 @@ impl ModeController {
         }
         debug!("Activating mode: {} ID:{mode_uid}", mode.name);
         moro_local::async_scope!(|scope| -> Result<()> {
+            // devices that have been disabled are simply skipped.
             for device_uid in self.all_devices.keys() {
                 if mode.all_device_settings.contains_key(device_uid).not() {
                     self.reset_device_settings(device_uid, scope)?;
                     continue;
                 }
-                let mut settings_tuples = Vec::new();
+                let mut saved_device_settings_map: HashMap<ChannelName, Setting> = HashMap::new();
                 for setting in self.config.get_device_settings(device_uid)? {
-                    settings_tuples.push((setting.channel_name.clone(), setting));
+                    saved_device_settings_map.insert(setting.channel_name.clone(), setting);
                 }
-                let saved_device_settings_map: HashMap<ChannelName, Setting> =
-                    settings_tuples.into_iter().collect();
                 let mode_device_settings = mode.all_device_settings.get(device_uid).unwrap();
                 self.reset_unset_mode_channels(
                     device_uid,
@@ -340,7 +339,7 @@ impl ModeController {
                         .set_reset(&device_uid, &channel_name)
                         .await
                     {
-                        error!("Error setting device setting: {err}");
+                        error!("Error resetting device setting for Mode: {err}");
                     }
                     config.set_device_setting(&device_uid, &reset_setting);
                 });
@@ -355,12 +354,22 @@ impl ModeController {
         mode_device_settings: &HashMap<ChannelName, Setting>,
         scope: &'s Scope<'s, 's, Result<()>>,
     ) {
+        let cc_device_settings = self
+            .config
+            .get_cc_settings_for_device(device_uid)
+            .unwrap_or_default();
         for (channel_name, setting) in mode_device_settings {
-            if saved_device_settings_map
-                .get(channel_name)
-                .map_or(false, |saved_setting| saved_setting == setting)
-            {
+            if saved_device_settings_map.get(channel_name) == Some(setting) {
                 continue; // no need to apply if the setting is the same
+            }
+            if let Some(cc_settings) = &cc_device_settings {
+                if cc_settings.disable_channels.contains(channel_name) {
+                    warn!(
+                        "This Mode contains a Channel: {channel_name} that has been disabled. \
+                        Please update your Mode to remove this channel."
+                    );
+                    continue; // do not attempt to apply a setting for a disabled channel
+                }
             }
             let settings_controller = Rc::clone(&self.settings_controller);
             let config = Rc::clone(&self.config);
@@ -372,7 +381,7 @@ impl ModeController {
                     .set_config_setting(&device_uid, &setting)
                     .await
                 {
-                    error!("Error setting device setting: {err}");
+                    error!("Error applying setting device setting for Mode: {err}");
                     return; // don't save setting if it wasn't successfully applied
                 }
                 debug!("Device Setting Applied: {setting:?}");
