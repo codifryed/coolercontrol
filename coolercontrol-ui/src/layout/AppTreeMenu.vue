@@ -746,11 +746,13 @@ onMounted(async () => {
         const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
         if (els.length > 0) {
             for (const el of els) {
-                el.innerHTML = ''
+                el.innerHTML = '<div class="w-2"/>'
                 el.classList.add('border-l')
                 el.classList.add('border-border-one/70')
                 el.classList.add('!visible')
                 el.classList.add('!h-[inherit]')
+                el.classList.remove('el-icon')
+                el.classList.add('w-2')
             }
         }
     }
