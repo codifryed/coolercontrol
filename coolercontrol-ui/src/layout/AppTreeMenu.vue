@@ -830,6 +830,7 @@ onMounted(async () => {
                         exact
                         :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
                         :to="!data.to ? '' : data.to"
+                        v-slot="{ isActive }"
                     >
                         <div class="flex flex-row items-center min-w-0">
                             <svg-icon
@@ -862,6 +863,7 @@ onMounted(async () => {
                                     <menu-control-view
                                         :device-u-i-d="data.deviceUID"
                                         :channel-name="data.name"
+                                        :class="{ 'text-text-color-secondary': !isActive }"
                                     />
                                 </div>
                             </div>

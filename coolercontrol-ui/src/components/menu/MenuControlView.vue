@@ -47,7 +47,7 @@ const controlSetting = computed(() => {
 })
 </script>
 <template>
-    <div class="flex leading-none text-text-color-secondary">
+    <div class="flex leading-none">
         {{ controlSetting }}
     </div>
 </template>
