@@ -810,7 +810,12 @@ onMounted(async () => {
                             {
                                 name: 'offset',
                                 options: {
-                                    offset: [0, -deviceStore.getREMSize(2.4)],
+                                    offset: [
+                                        0,
+                                        data.isControllable
+                                            ? -deviceStore.getREMSize(2.7)
+                                            : -deviceStore.getREMSize(2.4),
+                                    ],
                                 },
                             },
                         ],
