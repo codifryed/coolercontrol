@@ -86,6 +86,7 @@ import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
 import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
+import MenuControlView from '@/components/menu/MenuControlView.vue'
 
 // interface Tree {
 //     label: string
@@ -139,9 +140,12 @@ const deviceChannelIconSize = (deviceUID: UID): number => {
 
 // const filterText: Ref<string> = ref('')
 const treeRef = ref<InstanceType<typeof ElTree>>()
+const speedControlMenuClass = ({ isControllable }: TreeNodeData) =>
+    isControllable ? 'speed-control-menu' : ''
 const nodeProps = {
     children: 'children',
     label: 'label',
+    class: speedControlMenuClass,
 }
 const data: Reactive<Tree[]> = reactive([])
 const createTreeMenu = (): void => {
@@ -455,6 +459,7 @@ const devicesTreeArray = (): any[] => {
                         break
                     }
                 }
+                const isControllable: boolean = channelInfo.speed_options?.fixed_enabled ?? false
                 // @ts-ignore
                 deviceItem.children.push({
                     id: `${device.uid}_${channelName}`,
@@ -470,7 +475,8 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: duty,
                     rpm: rpm,
-                    options: [{ rename: true }, { color: true }],
+                    isControllable: isControllable,
+                    options: [{ rename: true }, { color: true }, { speedControls: isControllable }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -794,7 +800,7 @@ onMounted(async () => {
                 <el-dropdown
                     :ref="(el) => (data.dropdownRef = el)"
                     :id="data.id"
-                    class="ml-0.5 w-full outline-none"
+                    class="ml-0.5 h-full w-full outline-none"
                     :show-timeout="0"
                     :hide-timeout="0"
                     :disabled="data.options == null || data.options.length == 0"
@@ -819,7 +825,7 @@ onMounted(async () => {
                     <!--modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],-->
                     <!--}"-->
                     <router-link
-                        class="flex h-10 items-center justify-between outline-none"
+                        class="flex h-full items-center justify-between outline-none"
                         tabindex="0"
                         exact
                         :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
@@ -842,11 +848,25 @@ onMounted(async () => {
                                     deviceStore.getREMSize(deviceChannelIconSize(data.deviceUID))
                                 "
                             />
-                            <div class="tree-text">
-                                {{ node.label }}
+                            <div class="flex flex-col overflow-hidden">
+                                <div
+                                    class="tree-text leading-none"
+                                    :class="{
+                                        'mb-0.5': data.isControllable,
+                                        'mr-2': data.deviceUID && !data.name,
+                                    }"
+                                >
+                                    {{ node.label }}
+                                </div>
+                                <div v-if="data.isControllable" class="mt-0.5">
+                                    <menu-control-view
+                                        :device-u-i-d="data.deviceUID"
+                                        :channel-name="data.name"
+                                    />
+                                </div>
                             </div>
                         </div>
-                        <div class="ml-2">
+                        <div class="flex ml-2 justify-end">
                             <div v-if="data.temp != null" class="items-end tree-data">
                                 {{ deviceChannelValues(data.deviceUID, data.name)!.temp }}
                                 <span>°&nbsp;&nbsp;&nbsp;</span>
@@ -883,11 +903,11 @@ onMounted(async () => {
                                 v-else-if="data.duty != null && data.rpm != null"
                                 class="items-end flex flex-col leading-none tree-data"
                             >
-                                <span>
+                                <span :class="{ 'mb-0.5': data.isControllable }">
                                     {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
                                     <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
                                 </span>
-                                <span>
+                                <span :class="{ 'mt-0.5': data.isControllable }">
                                     {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
                                     <span style="font-size: 0.7rem">rpm</span>
                                 </span>
@@ -1078,6 +1098,10 @@ onMounted(async () => {
 */
 .el-tree-node__content {
     border-radius: 0.5rem;
+}
+
+.speed-control-menu {
+    --el-tree-node-content-height: 3rem;
 }
 
 .el-zoom-in-top-enter-action,
