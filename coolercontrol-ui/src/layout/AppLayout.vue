@@ -82,7 +82,12 @@ onMounted(async () => {
     menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
     // This is called when the Splitter Handle is dragged and the REM size will change:
     onResize = (sizePercent: number): void => {
-        if (menuPanelWidthPercent.value === sizePercent || menuPanelRef.value?.isCollapsed) return
+        if (
+            menuPanelWidthPercent.value === sizePercent ||
+            menuPanelRef.value?.isCollapsed ||
+            sizePercent < menuPanelMinWidth.value
+        )
+            return
         menuPanelWidthPercent.value = sizePercent
         settingsStore.mainMenuWidthRem = calculateMenuRemWidth(sizePercent)
     }
@@ -125,6 +130,7 @@ onMounted(async () => {
                 :default-size="menuPanelWidthPercent"
                 :min-size="menuPanelMinWidth"
                 @resize="onResize"
+                @collapse="settingsStore.collapsedMainMenu = true"
             >
                 <ScrollAreaRoot class="h-full p-2" type="hover" :scroll-hide-delay="100">
                     <ScrollAreaViewport class="h-full">
