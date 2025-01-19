@@ -58,6 +58,7 @@ const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -202,6 +203,11 @@ const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 watch(pollRate, () => {
     applyGenericDaemonChange()
 })
+
+const applyZoomPercent = _.debounce(
+    async (): Promise<void> => await getCurrentWebview().setZoom(settingsStore.uiScale / 100),
+    500,
+)
 </script>
 
 <template>
@@ -1022,6 +1028,35 @@ watch(pollRate, () => {
                                             v-model="settingsStore.closeToSystemTray"
                                             size="large"
                                         />
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.right="'Manually set the UI Zoom level.'">
+                                    <td
+                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Zoom
+                                    </td>
+                                    <td
+                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <InputNumber
+                                            v-model="settingsStore.uiScale"
+                                            show-buttons
+                                            :min="50"
+                                            :max="400"
+                                            :step="10"
+                                            suffix="%"
+                                            button-layout="horizontal"
+                                            :input-style="{ width: '5rem' }"
+                                            @update:modelValue="applyZoomPercent"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
                                     </td>
                                 </tr>
                                 <tr

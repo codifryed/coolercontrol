@@ -75,7 +75,6 @@ export const useDeviceStore = defineStore('device', () => {
 
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
-    // const fontScale = ref(useLayout().layoutConfig.scale.value)
     const loggedIn: Ref<boolean> = ref(false)
     const logs: Ref<string> = ref('')
 
@@ -126,7 +125,6 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getREMSize(rem: number): number {
-        // fontScale.value // used to reactively recalculate the following values:
         const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
         return parseFloat(fontSize) * rem
     }

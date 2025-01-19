@@ -347,6 +347,9 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
+    if (deviceStore.isTauriApp()) {
+        await getCurrentWebviewWindow().setZoom(settingsStore.uiScale / 100)
+    }
     applyCustomTheme()
     await daemonState.init()
     loaded.value = true
