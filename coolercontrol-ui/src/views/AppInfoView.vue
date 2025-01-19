@@ -125,6 +125,12 @@ onMounted(() => {
                                     <td class="table-data">{{ healthCheck.status }}</td>
                                 </tr>
                                 <tr>
+                                    <td class="table-data font-bold text-lg text-end">Host</td>
+                                    <td class="table-data w-44">
+                                        {{ healthCheck.system.name }}
+                                    </td>
+                                </tr>
+                                <tr>
                                     <td class="table-data font-bold text-lg text-end">Uptime</td>
                                     <td class="table-data w-44">
                                         {{ healthCheck.details.uptime }}
