@@ -19,10 +19,10 @@ default = []
 io_uring = ["dep:tokio-uring"]
 
 [dependencies]
-log = "0.4.24"
+log = "0.4.25"
 env_logger = "0.11.6"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.26", features = [
+clap = { version = "4.5.27", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.95"
@@ -64,7 +64,8 @@ tower_governor = { git = "https://github.com/codifryed/tower-governor", features
 ] }
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
-aide = { version = "0.13.5", features = [
+# 0.14.0 update for axum 0.8
+aide = { version = "=0.13.5", features = [
   "axum",
   "axum-extra",
   "axum-multipart",
@@ -89,8 +90,8 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
 ] }
 http-body-util = "0.1.2"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.135"
-zbus = { version = "5.3.0", default-features = false, features = [
+serde_json = "1.0.137"
+zbus = { version = "5.3.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.33.1", default-features = false, features = [
@@ -125,7 +126,7 @@ nix = { version = "0.29.0", default-features = false, features = [
   "sched",
 ] }
 pciid-parser = "0.7.2"
-libdrm_amdgpu_sys = "0.8.1"
+libdrm_amdgpu_sys = "0.8.2"
 hashlink = "0.10.0"
 lazy_format = "2.0.3"
 yata = "0.7.0" # moving averages
@@ -149,7 +150,7 @@ gifski = { version = "1.32.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
-uuid = { version = "1.11.1", features = ["v4"] }
+uuid = { version = "1.12.1", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"
