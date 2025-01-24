@@ -38,6 +38,7 @@ import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { invoke } from '@tauri-apps/api/core'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -360,7 +361,11 @@ onMounted(async () => {
     if (settingsStore.showOnboarding) start()
     let hideToTray = async (): Promise<void> => {
         if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
-            await getCurrentWebviewWindow().hide()
+            // This make sure don't hide the window AFTER the first run, i.e. for UI refreshes.
+            const isFirst: boolean = await invoke('is_first')
+            if (isFirst) {
+                await getCurrentWebviewWindow().hide()
+            }
         }
     }
     // async functions that run for the lifetime of the application:

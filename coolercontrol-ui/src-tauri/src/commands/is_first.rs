@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2021-2024  Guy Boldon, Eren Simsek and contributors
+ * Copyright (c) 2021-2025  Guy Boldon, Eren Simsek and contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,10 +16,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod daemon_state;
-pub mod is_first;
-pub mod modes;
-pub mod notifications;
-pub mod settings;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::command;
 
-const USER_ID: &str = "CCAdmin";
+#[command]
+pub fn is_first(first_run_state: tauri::State<'_, FirstRunState>) -> bool {
+    let is_first = first_run_state.is_first.load(Ordering::Relaxed);
+    if is_first {
+        first_run_state.is_first.store(false, Ordering::Relaxed);
+    }
+    is_first
+}
+
+pub struct FirstRunState {
+    is_first: AtomicBool,
+}
+
+impl Default for FirstRunState {
+    fn default() -> Self {
+        Self {
+            is_first: AtomicBool::new(true),
+        }
+    }
+}

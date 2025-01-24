@@ -17,6 +17,7 @@
  ******************************************************************************/
 
 use crate::commands::daemon_state::DaemonState;
+use crate::commands::is_first::FirstRunState;
 use crate::commands::modes::ModesState;
 use crate::commands::{daemon_state, modes, notifications};
 use crate::plugins::port_finder::Port;
@@ -49,6 +50,7 @@ fn main() {
     tauri::Builder::default()
         .manage(Arc::new(ModesState::default()))
         .manage(Arc::new(DaemonState::default()))
+        .manage(FirstRunState::default())
         .plugin(tauri_plugin_cli::init())
         .plugin(wayland_top_level_icon::init())
         .plugin(wayland_ssd::init())
@@ -66,6 +68,7 @@ fn main() {
             commands::settings::save_window_state,
             commands::settings::get_startup_delay,
             commands::settings::set_startup_delay,
+            commands::is_first::is_first,
             modes::set_modes,
             modes::set_active_mode,
             notifications::send_notification,
