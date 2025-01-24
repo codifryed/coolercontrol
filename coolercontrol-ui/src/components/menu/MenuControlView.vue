@@ -34,15 +34,15 @@ const controlSetting = computed(() => {
         .get(props.deviceUID)
         ?.settings.get(props.channelName)
     if (deviceSetting?.speed_fixed != null) {
-        return `Manual: ${deviceSetting!.speed_fixed}%`
+        return `${deviceSetting!.speed_fixed}%`
     } else if (deviceSetting?.profile_uid != null) {
-        const profileName =
+        return (
             settingsStore.profiles.find((profile) => profile.uid === deviceSetting!.profile_uid)
                 ?.name ?? 'Unknown'
-        return `Profile: ${profileName}`
+        )
     } else {
-        // Nothing has been set, so settings are blank
-        return 'Profile: Default Profile'
+        // Nothing has been set, so settings are blank/default
+        return 'Default Profile'
     }
 })
 </script>
