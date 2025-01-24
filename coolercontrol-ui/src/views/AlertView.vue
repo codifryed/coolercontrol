@@ -288,6 +288,36 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
     })
 }
 
+const minScrolled = (event: WheelEvent): void => {
+    if (chosenMin.value == null) return
+    const step = stepSize(chosenChannelSource.value?.metric)
+    if (event.deltaY < 0) {
+        const max =
+            chosenMax.value - (chosenChannelSource.value?.metric !== ChannelMetric.RPM ? 1 : 100)
+        if (chosenMin.value < max) chosenMin.value += step
+    } else {
+        if (chosenMin.value >= step) chosenMin.value -= step
+    }
+}
+const maxScrolled = (event: WheelEvent): void => {
+    if (chosenMax.value == null) return
+    const step = stepSize(chosenChannelSource.value?.metric)
+    if (event.deltaY < 0) {
+        const max = valueMax(chosenChannelSource.value?.metric)
+        if (chosenMax.value < max) chosenMax.value += step
+    } else {
+        const min =
+            chosenMin.value + (chosenChannelSource.value?.metric !== ChannelMetric.RPM ? 1 : 100)
+        if (chosenMax.value >= min) chosenMax.value -= step
+    }
+}
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('#min-input')?.addEventListener('wheel', minScrolled)
+    // @ts-ignore
+    document?.querySelector('#max-input')?.addEventListener('wheel', maxScrolled)
+}
+
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
         updateValues()
@@ -300,6 +330,7 @@ onMounted(async () => {
     })
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
+    addScrollEventListeners()
 })
 </script>
 
@@ -408,6 +439,7 @@ onMounted(async () => {
                                 </td>
                                 <td class="py-4 px-4 w-60 leading-none items-center text-center">
                                     <InputNumber
+                                        id="max-input"
                                         v-model="chosenMax"
                                         show-buttons
                                         :min="
@@ -460,6 +492,7 @@ onMounted(async () => {
                                     class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
                                 >
                                     <InputNumber
+                                        id="min-input"
                                         v-model="chosenMin"
                                         show-buttons
                                         :min="0"

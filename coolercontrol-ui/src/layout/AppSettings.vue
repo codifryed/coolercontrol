@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { inject, type Ref, ref, watch } from 'vue'
+import { inject, onMounted, type Ref, ref, watch } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
@@ -208,6 +208,23 @@ const applyZoomPercent = _.debounce(
     async (): Promise<void> => await getCurrentWebview().setZoom(settingsStore.uiScale / 100),
     500,
 )
+
+const portScrolled = (event: WheelEvent): void => {
+    if (daemonPort.value == null) return
+    if (event.deltaY < 0) {
+        if (daemonPort.value < 65525) daemonPort.value += 10
+    } else {
+        if (daemonPort.value > 90) daemonPort.value -= 10
+    }
+}
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('#port-input')?.addEventListener('wheel', portScrolled)
+}
+
+onMounted(() => {
+    addScrollEventListeners()
+})
 </script>
 
 <template>
@@ -917,6 +934,7 @@ const applyZoomPercent = _.debounce(
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
                                     >
                                         <InputNumber
+                                            id="port-input"
                                             v-model="daemonPort"
                                             show-buttons
                                             :min="80"
