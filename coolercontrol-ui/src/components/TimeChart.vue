@@ -531,18 +531,20 @@ const uOptions: uPlot.Options = {
                     return [1000]
                 } else if (scaleMax > 3000) {
                     return [500]
-                } else if (scaleMax > 1300) {
+                } else if (scaleMax > 1200) {
                     return [200]
-                } else if (scaleMax > 700) {
+                } else if (scaleMax > 500) {
                     return [100]
-                } else if (scaleMax > 300) {
+                } else if (scaleMax > 180) {
                     return [50]
-                } else if (scaleMax > 130) {
+                } else if (scaleMax > 120) {
                     return [20]
-                } else if (scaleMax > 70) {
+                } else if (scaleMax > 50) {
                     return [10]
-                } else if (scaleMax > 30) {
+                } else if (scaleMax > 23) {
                     return [5]
+                } else if (scaleMax > 13) {
+                    return [2]
                 } else if (scaleMax > 7) {
                     return [1]
                 } else if (scaleMax > 1) {
