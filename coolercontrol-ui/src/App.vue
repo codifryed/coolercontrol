@@ -536,7 +536,7 @@ onMounted(async () => {
     <VOnboardingWrapper
         ref="onboardingWrapper"
         :steps="steps"
-        :options="{ autoFinishByExit: true }"
+        :options="{ autoFinishByExit: true, scrollToStep: { enabled: false } }"
         @finish="settingsStore.showOnboarding = false"
     >
         <template #default="{ previous, next, step, isFirst, isLast }">

@@ -369,7 +369,6 @@ const addItems = computed(() => [
         <!--Modes Quick Menu-->
         <el-dropdown
             id="modes-quick"
-            v-if="modesItems.length > 0"
             :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
@@ -380,11 +379,12 @@ const addItems = computed(() => [
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 @click="activatePreviousMode"
+                v-tooltip.right="{ value: 'Modes', disable: modesItems.length > 0 }"
             >
                 <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
-                <Menu :model="modesItems" append-to="self">
+                <Menu v-if="modesItems.length > 0" :model="modesItems" append-to="self">
                     <template #item="{ item, props }">
                         <a
                             v-bind="props.action"
