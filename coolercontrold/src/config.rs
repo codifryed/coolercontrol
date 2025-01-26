@@ -78,10 +78,19 @@ impl Config {
                 }
             }
             Err(err) => {
-                warn!(
-                    "Error reading configuration file. This can happen on the very first startup \
-                of the daemon or after deleting the config file.: {err}"
-                );
+                let mut file_found = true;
+                for cause in err.chain() {
+                    if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                        if io_err.kind() == std::io::ErrorKind::NotFound {
+                            info!("Config file not found. Creating a new Config file.");
+                            file_found = false;
+                            break;
+                        }
+                    }
+                }
+                if file_found {
+                    warn!("Error reading configuration file, creating a new one: {err}");
+                }
                 Self::create_new_config_file(&path).await?
             }
         };
@@ -183,9 +192,27 @@ impl Config {
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {
-        cc_fs::read_txt(&self.path_ui)
+        let ui_result = cc_fs::read_txt(&self.path_ui)
             .await
-            .with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui))
+            .with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui));
+        match ui_result {
+            Ok(ui_settings) => Ok(ui_settings),
+            Err(err) => {
+                for cause in err.chain() {
+                    if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                        if io_err.kind() == std::io::ErrorKind::NotFound {
+                            info!("UI Config file not found - likely first run. Using empty UI Config file.");
+                            return Ok(String::new());
+                        }
+                    }
+                }
+                error!(
+                    "Error reading UI configuration file: {:?} - {err}",
+                    &self.path_ui
+                );
+                Err(err)
+            }
+        }
     }
 
     /// This adds a human-readable device list with UIDs to the config file

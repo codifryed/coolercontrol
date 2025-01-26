@@ -374,6 +374,10 @@ export default class DaemonClient {
         try {
             const response = await this.getClient().get('/settings/ui')
             this.logDaemonResponse(response, 'Load UI Settings')
+            if ((response.data as string).length == 0) {
+                // new blank config file
+                return new UISettingsDTO()
+            }
             return plainToInstance(UISettingsDTO, response.data as object)
         } catch (err) {
             this.logError(err)

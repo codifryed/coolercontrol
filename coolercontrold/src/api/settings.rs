@@ -94,14 +94,7 @@ pub async fn update_cc_device(
 pub async fn get_ui(
     State(AppState { setting_handle, .. }): State<AppState>,
 ) -> Result<String, CCError> {
-    setting_handle.get_ui().await.map_err(|err| {
-        let error = err.root_cause().to_string();
-        if error.contains("No such file") {
-            CCError::NotFound { msg: error }
-        } else {
-            CCError::InternalError { msg: error }
-        }
-    })
+    setting_handle.get_ui().await.map_err(handle_error)
 }
 
 /// Persists the UI Settings, overriding anything previously saved
