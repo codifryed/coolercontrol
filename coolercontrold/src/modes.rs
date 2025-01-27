@@ -405,8 +405,9 @@ impl ModeController {
             self.modes
                 .borrow_mut()
                 .insert(mode_uid.clone(), mode.clone());
-            self.mode_order.borrow_mut().push(mode_uid);
+            self.mode_order.borrow_mut().push(mode_uid.clone());
         }
+        self.update_active_modes(mode_uid);
         self.save_modes_data().await?;
         Ok(mode)
     }
