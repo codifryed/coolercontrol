@@ -356,55 +356,70 @@ export const mouseWheelZoomPlugin = () => {
     return {
         hooks: {
             ready: (u: uPlot) => {
-                const factor = 0.75
-                function clamp(
-                    nRange: number,
-                    nMin: number,
-                    nMax: number,
-                    xRange: number,
-                    xMin: number,
-                    xMax: number,
-                    timeScale: uPlot.Scale,
-                ) {
-                    if (nRange < 10) {
-                        // 10 seconds
-                        nMin = timeScale.min!
-                        nMax = timeScale.max!
-                    } else if (nRange > xRange) {
-                        nMin = xMin
-                        nMax = xMax
-                    } else if (nMin < xMin) {
-                        nMin = xMin
-                        nMax = xMin + nRange
-                    } else if (nMax > xMax) {
-                        nMax = xMax
-                        nMin = xMax - nRange
-                    }
-                    return [nMin, nMax]
+                // This delay fixes a bug on initial startup where it appears that rendering hasn't
+                // completely finished and scrolling has incorrect bounds.
+                function sleep(ms: number) {
+                    return new Promise((resolve) => setTimeout(resolve, ms))
                 }
-                const rect = u.over.getBoundingClientRect()
-                u.over.addEventListener('wheel', (e) => {
-                    e.preventDefault()
-                    const xMin = u.data[0].at(0)!
-                    const xMax = u.data[0].at(-1)!
-                    const xRange = xMax - xMin
+                sleep(10).then(() => {
+                    const factor = 0.75
+                    function clamp(
+                        nRange: number,
+                        nMin: number,
+                        nMax: number,
+                        xRange: number,
+                        xMin: number,
+                        xMax: number,
+                        timeScale: uPlot.Scale,
+                    ) {
+                        if (nRange < 10) {
+                            // 10 seconds
+                            nMin = timeScale.min!
+                            nMax = timeScale.max!
+                        } else if (nRange > xRange) {
+                            nMin = xMin
+                            nMax = xMax
+                        } else if (nMin < xMin) {
+                            nMin = xMin
+                            nMax = xMin + nRange
+                        } else if (nMax > xMax) {
+                            nMax = xMax
+                            nMin = xMax - nRange
+                        }
+                        return [nMin, nMax]
+                    }
+                    const rect = u.over.getBoundingClientRect()
+                    u.over.addEventListener('wheel', (e) => {
+                        e.preventDefault()
+                        const xMin = u.data[0].at(0)!
+                        const xMax = u.data[0].at(-1)!
+                        const xRange = xMax - xMin
 
-                    const left: number = u.cursor.left!
+                        const left: number = u.cursor.left!
 
-                    const leftPct = left / rect.width
-                    const xVal = u.posToVal(left, 'x')
-                    const timeScale: uPlot.Scale = u.scales.x
-                    const oxRange = timeScale.max! - timeScale.min!
+                        const leftPct = left / rect.width
+                        const xVal = u.posToVal(left, 'x')
+                        const timeScale: uPlot.Scale = u.scales.x
+                        const oxRange = timeScale.max! - timeScale.min!
 
-                    const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
-                    let nxMin: number = xVal - leftPct * nxRange
-                    let nxMax: number = nxMin + nxRange
-                    ;[nxMin, nxMax] = clamp(nxRange, nxMin, nxMax, xRange, xMin, xMax, timeScale)
+                        const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
+                        let nxMin: number = xVal - leftPct * nxRange
+                        let nxMax: number = nxMin + nxRange
+                        ;[nxMin, nxMax] = clamp(
+                            nxRange,
+                            nxMin,
+                            nxMax,
+                            xRange,
+                            xMin,
+                            xMax,
+                            timeScale,
+                        )
 
-                    u.batch(() => {
-                        u.setScale('x', {
-                            min: nxMin,
-                            max: nxMax,
+                        u.batch(() => {
+                            u.setScale('x', {
+                                min: nxMin,
+                                max: nxMax,
+                            })
                         })
                     })
                 })
