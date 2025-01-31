@@ -1344,12 +1344,12 @@ onMounted(async () => {
                     </template>
                 </InputNumber>
             </div>
-            <div class="p-2 pr-0">
+            <div class="p-2">
                 <Select
                     v-model="selectedType"
                     :options="profileTypes"
                     placeholder="Profile Type"
-                    class="w-24 h-[2.375rem]"
+                    class="w-24 h-[2.375rem] mr-3"
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
@@ -1363,8 +1363,6 @@ onMounted(async () => {
                             '- Mix: Combines multiple profiles for advanced control.',
                     }"
                 />
-            </div>
-            <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"
