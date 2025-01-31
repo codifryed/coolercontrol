@@ -1357,10 +1357,10 @@ onMounted(async () => {
                         escape: false,
                         value:
                             'Profile Type:<br/>' +
-                            '- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware).<br/>' +
-                            '- Fixed: Sets a constant speed.<br/>' +
-                            '- Graph: Customizable fan curve for tailored performance.<br/>' +
-                            '- Mix: Combines multiple profiles for advanced control.',
+                            '- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>' +
+                            '- Fixed: Sets a constant speed<br/>' +
+                            '- Graph: Customizable fan curve<br/>' +
+                            '- Mix: Combines multiple profiles',
                     }"
                 />
                 <Button
