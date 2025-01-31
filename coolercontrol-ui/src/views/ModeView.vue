@@ -157,8 +157,9 @@ onMounted(async () => {
     <div class="flex h-[3.6rem] border-b-4 border-border-one items-center justify-between">
         <div class="flex flex-row overflow-hidden">
             <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-                <span class="overflow-hidden overflow-ellipsis">Mode:&nbsp;</span>
-                <span class="font-bold">{{ currentMode.name }}</span>
+                <span class="font-bold overflow-hidden overflow-ellipsis">{{
+                    currentMode.name
+                }}</span>
             </div>
             <div
                 class="px-4 py-2 flex flex-row leading-none items-center"

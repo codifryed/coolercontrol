@@ -1169,8 +1169,9 @@ onMounted(async () => {
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="overflow-hidden overflow-ellipsis">Profile:&nbsp;</span>
-            <span class="font-bold">{{ currentProfile.name }}</span>
+            <span class="font-bold overflow-hidden overflow-ellipsis">{{
+                currentProfile.name
+            }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="selectedType === ProfileType.Mix" class="p-2 pr-0 flex flex-row">

@@ -387,8 +387,7 @@ onMounted(async () => {
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="overflow-hidden overflow-ellipsis">Custom Sensor:&nbsp;</span>
-            <span class="font-bold">{{
+            <span class="font-bold overflow-hidden overflow-ellipsis">{{
                 shouldCreateSensor ? `New Sensor: ${currentName}` : currentName
             }}</span>
         </div>
