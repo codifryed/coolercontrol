@@ -556,6 +556,7 @@ const addDashbaord = (dashboardUID: UID) => {
         },
         'dashboards',
     )
+    adjustTreeLeaves()
 }
 const deleteDashboard = (dashboardUID: UID): void => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
@@ -642,6 +643,7 @@ const addMode = (modeUID: UID): void => {
         },
         'modes',
     )
+    adjustTreeLeaves()
 }
 const deleteMode = (modeUID: UID): void => {
     if (route.params != null && route.params.modeUID === modeUID) {
@@ -664,6 +666,7 @@ const addProfile = (profileUID: UID): void => {
         },
         'profiles',
     )
+    adjustTreeLeaves()
 }
 const deleteProfile = (profileUID: UID): void => {
     if (route.params != null && route.params.profileUID === profileUID) {
@@ -690,6 +693,7 @@ const addFunction = (functionUID: UID): void => {
         },
         'functions',
     )
+    adjustTreeLeaves()
 }
 const deleteFunction = (functionUID: UID): void => {
     if (route.params != null && route.params.functionUID === functionUID) {
@@ -721,6 +725,7 @@ const addAlert = (alertUIDObj: AlertUIDObj): void => {
         },
         'alerts',
     )
+    adjustTreeLeaves()
 }
 emitter.on('alert-add', addAlert)
 
@@ -744,24 +749,30 @@ const alertStateChange = (): void => {
 emitter.on('alert-state-change', alertStateChange)
 
 watch(settingsStore.alertsActive, alertStateChange)
-onMounted(async () => {
-    // custom tree leaf h-line
-    const mainMenu = document.getElementById('main-menu')
-    const children = mainMenu!.getElementsByClassName('el-tree-node__children')
-    for (const child of children) {
-        const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
-        if (els.length > 0) {
-            for (const el of els) {
-                el.innerHTML = '<div class="w-2"/>'
-                el.classList.add('border-l')
-                el.classList.add('border-border-one/70')
-                el.classList.add('!visible')
-                el.classList.add('!h-[inherit]')
-                el.classList.remove('el-icon')
-                el.classList.add('w-2')
+
+const adjustTreeLeaves = (): void => {
+    const dynamicAdjustment = (): void => {
+        const mainMenu = document.getElementById('main-menu')
+        const children = mainMenu!.getElementsByClassName('el-tree-node__children')
+        for (const child of children) {
+            const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
+            if (els.length > 0) {
+                for (const el of els) {
+                    el.innerHTML = '<div class="w-2"/>'
+                    el.classList.add('border-l')
+                    el.classList.add('border-border-one/70')
+                    el.classList.add('!visible')
+                    el.classList.add('!h-[inherit]')
+                    el.classList.remove('el-icon')
+                    el.classList.add('w-2')
+                }
             }
         }
     }
+    setTimeout(dynamicAdjustment)
+}
+onMounted(async () => {
+    adjustTreeLeaves()
 })
 </script>
 
