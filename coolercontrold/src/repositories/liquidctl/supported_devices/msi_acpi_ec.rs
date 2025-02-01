@@ -24,7 +24,9 @@ use crate::device::{
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
-use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
+use crate::repositories::liquidctl::supported_devices::device_support::{
+    parse_float, parse_u32, ColorMode, DeviceSupport,
+};
 
 pub type StatusMap = HashMap<String, String>;
 
@@ -99,14 +101,14 @@ impl DeviceSupport for MsiAcpiEcSupport {
     }
 
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let cpu_temp = status_map.get("cpu temp").and_then(|s| self.parse_float(s));
+        let cpu_temp = status_map.get("cpu temp").and_then(parse_float);
         if let Some(temp) = cpu_temp {
             temps.push(TempStatus {
                 name: "cpu temp".to_string(),
                 temp,
             });
         }
-        let gpu_temp = status_map.get("gpu temp").and_then(|s| self.parse_float(s));
+        let gpu_temp = status_map.get("gpu temp").and_then(parse_float);
         if let Some(temp) = gpu_temp {
             temps.push(TempStatus {
                 name: "gpu temp".to_string(),
@@ -120,18 +122,10 @@ impl DeviceSupport for MsiAcpiEcSupport {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let cpu_fan_rpm = status_map
-            .get("cpu fan speed")
-            .and_then(|s| self.parse_u32(s));
-        let cpu_fan_duty = status_map
-            .get("cpu fan duty")
-            .and_then(|s| self.parse_float(s));
-        let gpu_fan_rpm = status_map
-            .get("gpu fan speed")
-            .and_then(|s| self.parse_u32(s));
-        let gpu_fan_duty = status_map
-            .get("gpu fan duty")
-            .and_then(|s| self.parse_float(s));
+        let cpu_fan_rpm = status_map.get("cpu fan speed").and_then(parse_u32);
+        let cpu_fan_duty = status_map.get("cpu fan duty").and_then(parse_float);
+        let gpu_fan_rpm = status_map.get("gpu fan speed").and_then(parse_u32);
+        let gpu_fan_duty = status_map.get("gpu fan duty").and_then(parse_float);
         if cpu_fan_rpm.is_some() || cpu_fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "cpu fan".to_string(),
