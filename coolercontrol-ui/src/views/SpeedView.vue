@@ -46,6 +46,8 @@ import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
     deviceUID: UID
@@ -58,6 +60,9 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
+const confirm = useConfirm()
+
+let contextIsDirty: boolean = false
 
 const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false
@@ -181,6 +186,7 @@ const saveSetting = async () => {
             props.channelName,
             setting,
         )
+        contextIsDirty = false
     } else {
         const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
         await settingsStore.saveDaemonDeviceSettingProfile(
@@ -188,6 +194,7 @@ const saveSetting = async () => {
             props.channelName,
             setting,
         )
+        contextIsDirty = false
     }
 }
 
@@ -206,6 +213,25 @@ const viewTypeChanged = () => {
         .sensorsAndChannels.get(props.channelName)!.viewType = chosenViewType.value
 }
 
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to this control channel.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
 onMounted(() => {
     // @ts-ignore
     document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
@@ -227,6 +253,12 @@ onMounted(() => {
         settingsStore.allUIDeviceSettings,
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
+
+    watch([manualControlEnabled, manualDuty, selectedProfile], () => {
+        contextIsDirty = true
+    })
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
 })
 </script>
 
