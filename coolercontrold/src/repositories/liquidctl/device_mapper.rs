@@ -37,6 +37,7 @@ use crate::repositories::liquidctl::supported_devices::kraken_z3::KrakenZ3Suppor
 use crate::repositories::liquidctl::supported_devices::kraken_z3_mock::KrakenZ3MockSupport;
 use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
 use crate::repositories::liquidctl::supported_devices::modern_690_lc::Modern690LcSupport;
+use crate::repositories::liquidctl::supported_devices::msi_acpi_ec::MsiAcpiEcSupport;
 use crate::repositories::liquidctl::supported_devices::nzxt_epsu::NzxtEPsuSupport;
 use crate::repositories::liquidctl::supported_devices::rgb_fusion2::RgbFusion2Support;
 use crate::repositories::liquidctl::supported_devices::smart_device::SmartDeviceSupport;
@@ -65,6 +66,7 @@ impl DeviceMapper {
             Box::new(KrakenZ3MockSupport::new()),
             Box::new(Legacy690LcSupport::new()),
             Box::new(Modern690LcSupport::new()),
+            Box::new(MsiAcpiEcSupport::new()),
             Box::new(NzxtEPsuSupport::new()),
             Box::new(RgbFusion2Support::new()),
             Box::new(SmartDeviceSupport::new()),

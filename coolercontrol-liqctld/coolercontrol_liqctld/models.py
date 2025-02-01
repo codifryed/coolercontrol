@@ -65,7 +65,7 @@ class FixedSpeedRequest(BaseModel):
 
 class SpeedProfileRequest(BaseModel):
     channel: str
-    profile: List[Tuple[int, int]]
+    profile: List[Tuple[float, int]]
     temperature_sensor: Optional[int]
 
 

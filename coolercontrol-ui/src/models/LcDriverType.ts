@@ -36,6 +36,7 @@ export enum LcDriverType {
     CommanderCore = 'CommanderCore',
     NzxtEPsu = 'NzxtEPsu',
     Modern690Lc = 'Modern690Lc',
+    MsiAcpiEc = 'MsiAcpiEc',
     Hydro690Lc = 'Hydro690Lc',
     Legacy690Lc = 'Legacy690Lc',
     HydroPro = 'HydroPro',
