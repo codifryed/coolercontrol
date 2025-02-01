@@ -32,6 +32,7 @@ pub mod kraken_z3;
 pub mod kraken_z3_mock;
 pub mod legacy_690_lc;
 pub mod modern_690_lc;
+pub mod msi_acpi_ec;
 pub mod nzxt_epsu;
 pub mod rgb_fusion2;
 pub mod smart_device;
