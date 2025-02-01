@@ -113,7 +113,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
-    const collapsedMenuNodeIds: Ref<Array<string>> = ref(['modes', 'profiles', 'functions'])
+    const collapsedMenuNodeIds: Ref<Array<string>> = ref([])
     const collapsedMainMenu: Ref<boolean> = ref(false)
     const hideMenuCollapseIcon: Ref<boolean> = ref(false)
     const mainMenuWidthRem: Ref<number> = ref(24)

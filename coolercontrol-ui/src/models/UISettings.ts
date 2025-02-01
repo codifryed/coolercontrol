@@ -39,7 +39,7 @@ export class UISettingsDTO {
     uiScale: number = 100
     chartLineScale: number = 1.5
     time24: boolean = false
-    collapsedMenuNodeIds: Array<string> = ['modes', 'profiles', 'functions']
+    collapsedMenuNodeIds: Array<string> = []
     collapsedMainMenu: boolean = false
     hideMenuCollapseIcon: boolean = false
     mainMenuWidthRem: number = 24
