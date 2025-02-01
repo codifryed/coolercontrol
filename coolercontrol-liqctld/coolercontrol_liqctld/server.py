@@ -53,7 +53,7 @@ async def liquidctl_exception_handler(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content=LiquidctlError(message=str(exc)).json(),
+        content=LiquidctlError(message=str(exc)).model_dump_json(),
     )
 
 
@@ -87,7 +87,7 @@ def set_device_as_legacy690(device_id: int) -> Device:
 
 @api.put("/devices/{device_id}/speed/fixed")
 def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONResponse:
-    speed_kwargs = speed_request.dict(exclude_none=True)
+    speed_kwargs = speed_request.model_dump(exclude_none=True)
     device_service.set_fixed_speed(device_id, speed_kwargs)
     # empty success response needed for systemd socket service to not error on 0 byte content
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
@@ -97,21 +97,21 @@ def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONRes
 def set_speed_profile(
     device_id: int, speed_request: SpeedProfileRequest
 ) -> JSONResponse:
-    speed_kwargs = speed_request.dict(exclude_none=True)
+    speed_kwargs = speed_request.model_dump(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.put("/devices/{device_id}/color")
 def set_color(device_id: int, color_request: ColorRequest) -> JSONResponse:
-    color_kwargs = color_request.dict(exclude_none=True)
+    color_kwargs = color_request.model_dump(exclude_none=True)
     device_service.set_color(device_id, color_kwargs)
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.put("/devices/{device_id}/screen")
 def set_screen(device_id: int, screen_request: ScreenRequest) -> JSONResponse:
-    screen_kwargs = screen_request.dict(
+    screen_kwargs = screen_request.model_dump(
         exclude_none=False
     )  # need None value for liquid mode
     device_service.set_screen(device_id, screen_kwargs)
@@ -120,7 +120,7 @@ def set_screen(device_id: int, screen_request: ScreenRequest) -> JSONResponse:
 
 @api.post("/devices/{device_id}/initialize")
 def init_device(device_id: int, init_request: InitRequest):
-    init_args = init_request.dict(exclude_none=True)
+    init_args = init_request.model_dump(exclude_none=True)
     status_response: Statuses = device_service.initialize_device(device_id, init_args)
     return {"status": status_response}
 
