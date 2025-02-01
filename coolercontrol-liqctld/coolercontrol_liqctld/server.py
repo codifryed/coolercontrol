@@ -20,6 +20,7 @@ import os
 import signal
 import subprocess
 import threading
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import List
 
@@ -43,7 +44,17 @@ from fastapi.responses import JSONResponse
 SYSTEMD_SOCKET_FD: int = 3
 SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
 log = logging.getLogger(__name__)
-api = FastAPI()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield  # FastAPI running
+    log.info("Liqctld server shutting down")
+    device_service.shutdown()
+
+
+os.environ["OPENAPI_URL"] = ""  # disables fastapi openapi
+api = FastAPI(lifespan=lifespan)
 device_service = DeviceService()
 
 
@@ -194,9 +205,3 @@ class Server:
             log_level=self.log_level,
             log_config=self.log_config,
         )
-
-    @staticmethod
-    @api.on_event("shutdown")
-    def shutdown() -> None:
-        log.info("Liqctld server shutting down")
-        device_service.shutdown()
