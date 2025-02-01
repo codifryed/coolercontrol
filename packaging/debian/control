@@ -29,7 +29,7 @@ Build-Depends:
  cargo,
  libdrm-dev,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
-X-Python3-Version: >= 3.7
+X-Python3-Version: >= 3.9
 
 Package: coolercontrol-liqctld
 Architecture: amd64
