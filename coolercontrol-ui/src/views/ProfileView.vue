@@ -214,6 +214,7 @@ const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
 const selectedTempSourceTemp: Ref<number | undefined> = ref()
+const knobSize: Ref<number> = ref(100)
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
@@ -1266,6 +1267,14 @@ onMounted(async () => {
     }
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
+    const updateKnobSize = (): void => {
+        const el = document.getElementById('profile-display')!
+        const w = el.getBoundingClientRect().width
+        const h = el.getBoundingClientRect().height
+        knobSize.value = Math.max(Math.min(w, h) - deviceStore.getREMSize(4), deviceStore.getREMSize(27))
+    }
+    setTimeout(updateKnobSize)
+    window.addEventListener('resize', updateKnobSize)
     addScrollEventListeners()
     // re-add some scroll event listeners for elements that are rendered on Type change
     watch(selectedType, () => {
@@ -1495,7 +1504,7 @@ onMounted(async () => {
         </div>
     </div>
     <!-- The UI Display: -->
-    <div class="flex flex-col">
+    <div id="profile-display" class="flex flex-col h-full">
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
             Default
         </div>
@@ -1508,7 +1517,7 @@ onMounted(async () => {
             :max="dutyMax"
             :step="1"
             :stroke-width="deviceStore.getREMSize(0.75)"
-            :size="deviceStore.getREMSize(27)"
+            :size="knobSize"
         />
         <v-chart
             v-else-if="showGraph"
