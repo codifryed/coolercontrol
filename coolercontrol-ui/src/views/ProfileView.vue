@@ -585,13 +585,13 @@ const setGraphData = () => {
         }
     }
     // set xAxis min and max to +/- 10 from new limits: (semi-zoom)
-    if (selectedTempSource!.tempMin > axisXTempMin + 10) {
-        option.xAxis.min = selectedTempSource!.tempMin - 10
+    if (selectedTempSource!.tempMin > axisXTempMin + 5) {
+        option.xAxis.min = selectedTempSource!.tempMin - 5
     } else {
         option.xAxis.min = axisXTempMin
     }
-    if (selectedTempSource!.tempMax < axisXTempMax - 10) {
-        option.xAxis.max = selectedTempSource!.tempMax + 10
+    if (selectedTempSource!.tempMax < axisXTempMax - 5) {
+        option.xAxis.max = selectedTempSource!.tempMax + 5
     } else {
         option.xAxis.max = axisXTempMax
     }
