@@ -346,7 +346,24 @@ const setTempSourceTemp = (): void => {
 setTempSourceTemp()
 
 const cssRoot = document.querySelector(':root')
+const functionTitle = (): string => `Applied Ƒunction(x): ${chosenFunction.value.name}`
 const option = {
+    title: {
+        show: true,
+        text: functionTitle(),
+        link: '',
+        target: 'self',
+        top: '5%',
+        left: '5%',
+        textStyle: {
+            color: colors.themeColors.text_color,
+            fontStyle: 'italic',
+            fontSize: '1.2rem',
+            textShadowColor: colors.themeColors.bg_one,
+            textShadowBlur: 10,
+        },
+        triggerEvent: true,
+    },
     tooltip: {
         position: 'top',
         appendTo: 'body',
@@ -626,6 +643,7 @@ watch(chosenTemp, () => {
     controlGraph.value?.setOption(option)
 })
 watch(chosenFunction, () => {
+    option.title.text = functionTitle()
     setFunctionGraphData()
     // needed as the graphics get a bit lost for some reason after ^:
     createGraphicDataFromPointData()
@@ -919,7 +937,11 @@ const createDraggableGraphics = (): void => {
 }
 
 const addPointToLine = (params: any) => {
-    if (params.target?.type !== 'ec-polyline') {
+    if (params.target?.style?.text === option.title.text) {
+        // handle click on Function Title in graph:
+        router.push({ name: 'functions', params: { functionUID: chosenFunction.value.uid } })
+        return
+    } else if (params.target?.type !== 'ec-polyline') {
         return
     }
     if (data.length >= selectedTempSource!.profileMaxLength) {
