@@ -124,6 +124,15 @@ const getTemp = (profileIndex: number): number => {
 const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
+const calcSmoothness = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 0.0
+    } else {
+        return 0.2
+    }
+}
 const calcLineShadowColor = (profileIndex: number): string => {
     const profile = memberProfiles.value[profileIndex]
     const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
@@ -254,7 +263,7 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
         {
             id: 'graphLine' + i,
             type: 'line',
-            smooth: 0.03,
+            smooth: calcSmoothness(i),
             symbol: 'none',
             lineStyle: {
                 color: getTempLineColor(i),
