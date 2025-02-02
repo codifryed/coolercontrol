@@ -361,7 +361,7 @@ const option = {
     },
     grid: {
         show: false,
-        top: deviceStore.getREMSize(0.5),
+        top: deviceStore.getREMSize(0.7),
         left: 0,
         right: deviceStore.getREMSize(0.9),
         bottom: 0,
