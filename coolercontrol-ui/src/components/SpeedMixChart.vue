@@ -23,7 +23,7 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { Profile } from '@/models/Profile'
+import { FunctionType, Profile } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
@@ -124,6 +124,24 @@ const getTemp = (profileIndex: number): number => {
 const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
+const calcLineShadowColor = (profileIndex: number): string => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return colors.themeColors.bg_one
+    } else {
+        return colors.themeColors.accent
+    }
+}
+const calcLineShadowSize = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 10
+    } else {
+        return 20
+    }
+}
 
 const option = {
     grid: {
@@ -199,6 +217,10 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.1),
                 type: 'dashed',
+                shadowColor: colors.themeColors.bg_one,
+                shadowBlur: 5,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0,
             },
             emphasis: {
                 disabled: true,
@@ -216,6 +238,8 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                         if (params.value == null) return ''
                         return Number(params.value).toFixed(1) + '°'
                     },
+                    shadowColor: colors.themeColors.bg_one,
+                    shadowBlur: 10,
                 },
                 data: [
                     {
@@ -236,9 +260,24 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.5),
                 cap: 'round',
+                shadowColor: calcLineShadowColor(i),
+                shadowBlur: calcLineShadowSize(i),
             },
             emphasis: {
                 disabled: true,
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.2),
+                    },
+                    {
+                        offset: 1,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.0),
+                    },
+                ]),
+                opacity: 1.0,
             },
             data: graphLineData[i],
             z: 1,
@@ -257,6 +296,8 @@ option.series.push({
         width: deviceStore.getREMSize(0.3),
         type: 'solid',
         cap: 'round',
+        shadowColor: colors.themeColors.bg_one,
+        shadowBlur: 10,
     },
     emphasis: {
         disabled: true,
@@ -272,6 +313,8 @@ option.series.push({
                 if (params.value == null) return ''
                 return Number(params.value).toFixed(0) + '%'
             },
+            shadowColor: colors.themeColors.bg_one,
+            shadowBlur: 10,
         },
         data: [
             {
@@ -279,6 +322,19 @@ option.series.push({
                 value: getDuty(),
             },
         ],
+    },
+    areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            {
+                offset: 0,
+                color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.3),
+            },
+            {
+                offset: 1,
+                color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.0),
+            },
+        ]),
+        opacity: 1.0,
     },
     z: 100,
     silent: true,
@@ -369,6 +425,18 @@ watch(settingsStore.allUIDeviceSettings, () => {
                 {
                     id: 'graphLine' + i,
                     lineStyle: { color: tempLineColor },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            {
+                                offset: 0,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.2),
+                            },
+                            {
+                                offset: 1,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.0),
+                            },
+                        ]),
+                    },
                 },
             ],
         })
