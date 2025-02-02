@@ -471,8 +471,18 @@ const option = {
             markArea: {
                 silent: true,
                 itemStyle: {
-                    color: colors.themeColors.red,
-                    opacity: 0.1,
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        {
+                            offset: 0,
+                            color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-error')} / 0.2)`,
+                        },
+                        {
+                            offset: 1,
+                            color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-error')} / 0.0)`,
+                        },
+                    ]),
+                    // color: colors.themeColors.red,
+                    // opacity: 0.1,
                 },
                 emphasis: {
                     disabled: true,
@@ -574,6 +584,18 @@ const setGraphData = () => {
             controlPointMotionForTempX(data[i].value[0], i)
         }
     }
+    // set xAxis min and max to +/- 10 from new limits: (semi-zoom)
+    if (selectedTempSource!.tempMin > axisXTempMin + 10) {
+        option.xAxis.min = selectedTempSource!.tempMin - 10
+    } else {
+        option.xAxis.min = axisXTempMin
+    }
+    if (selectedTempSource!.tempMax < axisXTempMax - 10) {
+        option.xAxis.max = selectedTempSource!.tempMax + 10
+    } else {
+        option.xAxis.max = axisXTempMax
+    }
+    // set limited Mark Area
     markAreaData[0] = [{ xAxis: axisXTempMin }, { xAxis: selectedTempSource!.tempMin }]
     markAreaData[1] = [{ xAxis: selectedTempSource!.tempMax }, { xAxis: axisXTempMax }]
     setTempSourceTemp()
