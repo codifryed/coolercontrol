@@ -15,23 +15,30 @@
   - You should have received a copy of the GNU General Public License
   - along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
-
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { GridComponent, MarkPointComponent } from 'echarts/components'
+import { GridComponent, MarkPointComponent, TitleComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { Profile } from '@/models/Profile'
+import { FunctionType, Profile } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-echarts.use([GridComponent, MarkPointComponent, LineChart, CanvasRenderer, UniversalTransition])
+echarts.use([
+    GridComponent,
+    MarkPointComponent,
+    LineChart,
+    CanvasRenderer,
+    UniversalTransition,
+    TitleComponent,
+])
 
 interface Props {
     profile: Profile
@@ -45,9 +52,22 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
+const router = useRouter()
 
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
+// set min & max dependent of temp source range:
+let currentTempSourceMin = 0
+let currentTempSourceMax = 100
+for (const device of deviceStore.allDevices()) {
+    if (device.uid === props.profile.temp_source?.device_uid) {
+        if (device.info == null) {
+            break
+        }
+        currentTempSourceMin = device.info!.temp_min
+        currentTempSourceMax = device.info!.temp_max
+    }
+}
+const axisXTempMin: number = currentTempSourceMin
+const axisXTempMax: number = currentTempSourceMax
 const dutyMin: number = 0
 const dutyMax: number = 100
 
@@ -102,7 +122,49 @@ const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
 
+const fun = settingsStore.functions.find((f) => f.uid === props.profile.function_uid)
+const calcSmoothness = (): number => {
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 0.0
+    } else {
+        return 0.2
+    }
+}
+const calcLineShadowColor = (): string => {
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return colors.themeColors.bg_one
+    } else {
+        return colors.themeColors.accent
+    }
+}
+const calcLineShadowSize = (): number => {
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 10
+    } else {
+        return 20
+    }
+}
+
+const cssRoot = document.querySelector(':root')
+const profileTitle = (): string => `Applied Profile: ${props.profile.name}`
 const option = {
+    title: {
+        show: true,
+        text: profileTitle(),
+        link: '',
+        target: 'self',
+        top: '5%',
+        left: '5%',
+        textStyle: {
+            color: colors.themeColors.text_color,
+            fontStyle: 'italic',
+            fontSize: '1.2rem',
+            textShadowColor: colors.themeColors.bg_one,
+            textShadowBlur: 10,
+        },
+        triggerEvent: true,
+        // z: 0,
+    },
     grid: {
         show: false,
         top: deviceStore.getREMSize(0.5),
@@ -169,6 +231,8 @@ const option = {
                 width: deviceStore.getREMSize(0.3),
                 type: 'solid',
                 cap: 'round',
+                shadowColor: colors.themeColors.bg_one,
+                shadowBlur: 10,
             },
             emphasis: {
                 disabled: true,
@@ -192,6 +256,23 @@ const option = {
                     },
                 ],
             },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: getDeviceDutyLineColor()
+                            .replace(')', ', 0.4)')
+                            .replace('rgb', 'rgba'),
+                    },
+                    {
+                        offset: 1,
+                        color: getDeviceDutyLineColor()
+                            .replace(')', ', 0.0)')
+                            .replace('rgb', 'rgba'),
+                    },
+                ]),
+                opacity: 1.0,
+            },
             z: 100,
             silent: true,
         },
@@ -204,6 +285,10 @@ const option = {
                 color: getTempLineColor(),
                 width: deviceStore.getREMSize(0.1),
                 type: 'dashed',
+                shadowColor: colors.themeColors.bg_one,
+                shadowBlur: 5,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0,
             },
             emphasis: {
                 disabled: true,
@@ -221,6 +306,8 @@ const option = {
                         if (params.value == null) return ''
                         return Number(params.value).toFixed(1) + '°'
                     },
+                    shadowColor: colors.themeColors.bg_one,
+                    shadowBlur: 10,
                 },
                 data: [
                     {
@@ -235,15 +322,30 @@ const option = {
         {
             id: 'GraphLine',
             type: 'line',
-            smooth: 0.03,
+            smooth: calcSmoothness(),
             symbol: 'none',
             lineStyle: {
                 color: colors.themeColors.accent,
                 width: deviceStore.getREMSize(0.5),
                 cap: 'round',
+                shadowColor: calcLineShadowColor(),
+                shadowBlur: calcLineShadowSize(),
             },
             emphasis: {
                 disabled: true,
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.5)`,
+                    },
+                    {
+                        offset: 1,
+                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.0)`,
+                    },
+                ]),
+                opacity: 1.0,
             },
             data: graphLineData,
             z: 1,
@@ -270,6 +372,13 @@ const setGraphData = () => {
     }
 }
 setGraphData()
+
+const handleGraphClick = (params: any): void => {
+    if (params.target?.style?.text === option.title.text) {
+        // handle click on Profile Title in graph:
+        router.push({ name: 'profiles', params: { profileUID: props.profile.uid } })
+    }
+}
 
 const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
 
@@ -328,6 +437,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
         :option="option"
         :autoresize="true"
         :manual-update="true"
+        @zr:click="handleGraphClick"
     />
 </template>
 

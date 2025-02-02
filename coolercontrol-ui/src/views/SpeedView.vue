@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertOutline, mdiContentSaveOutline, mdiPencilOutline } from '@mdi/js'
+import { mdiAlertOutline, mdiContentSaveOutline } from '@mdi/js'
 import Select from 'primevue/select'
 import { nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
@@ -46,7 +46,7 @@ import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
@@ -61,7 +61,6 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
 const confirm = useConfirm()
-const router = useRouter()
 
 let contextIsDirty: boolean = false
 
@@ -308,27 +307,27 @@ onMounted(() => {
                 v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
                 class="flex flex-row"
             >
-                <div class="p-2 pr-1">
-                    <Button
-                        class="!p-2 w-10 h-[2.375rem]"
-                        label="Edit"
-                        v-tooltip.bottom="'Edit Profile'"
-                        @click="
-                            router.push({
-                                name: 'profiles',
-                                params: { profileUID: selectedProfile.uid },
-                            })
-                        "
-                        :disabled="selectedProfile.uid === '0'"
-                    >
-                        <svg-icon
-                            class="outline-0"
-                            type="mdi"
-                            :path="mdiPencilOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                    </Button>
-                </div>
+                <!--                <div class="p-2 pr-1">-->
+                <!--                    <Button-->
+                <!--                        class="!p-2 w-10 h-[2.375rem]"-->
+                <!--                        label="Edit"-->
+                <!--                        v-tooltip.bottom="'Edit Profile'"-->
+                <!--                        @click="-->
+                <!--                            router.push({-->
+                <!--                                name: 'profiles',-->
+                <!--                                params: { profileUID: selectedProfile.uid },-->
+                <!--                            })-->
+                <!--                        "-->
+                <!--                        :disabled="selectedProfile.uid === '0'"-->
+                <!--                    >-->
+                <!--                        <svg-icon-->
+                <!--                            class="outline-0"-->
+                <!--                            type="mdi"-->
+                <!--                            :path="mdiPencilOutline"-->
+                <!--                            :size="deviceStore.getREMSize(1.5)"-->
+                <!--                        />-->
+                <!--                    </Button>-->
+                <!--                </div>-->
                 <div class="p-2 pr-0">
                     <Select
                         v-model="selectedProfile"
