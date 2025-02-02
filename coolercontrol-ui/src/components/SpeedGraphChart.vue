@@ -247,6 +247,8 @@ const option = {
                         if (params.value == null) return ''
                         return Number(params.value).toFixed(0) + '%'
                     },
+                    shadowColor: colors.themeColors.bg_one,
+                    shadowBlur: 10,
                 },
                 data: [
                     {
