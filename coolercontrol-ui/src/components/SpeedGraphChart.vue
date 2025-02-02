@@ -145,7 +145,6 @@ const calcLineShadowSize = (): number => {
     }
 }
 
-const cssRoot = document.querySelector(':root')
 const profileTitle = (): string => `Applied Profile: ${props.profile.name}`
 const option = {
     title: {
@@ -260,15 +259,11 @@ const option = {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                     {
                         offset: 0,
-                        color: getDeviceDutyLineColor()
-                            .replace(')', ', 0.4)')
-                            .replace('rgb', 'rgba'),
+                        color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.4),
                     },
                     {
                         offset: 1,
-                        color: getDeviceDutyLineColor()
-                            .replace(')', ', 0.0)')
-                            .replace('rgb', 'rgba'),
+                        color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.0),
                     },
                 ]),
                 opacity: 1.0,
@@ -338,11 +333,11 @@ const option = {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                     {
                         offset: 0,
-                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.5)`,
+                        color: colors.convertColorToRGBA(colors.themeColors.accent, 0.5),
                     },
                     {
                         offset: 1,
-                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.0)`,
+                        color: colors.convertColorToRGBA(colors.themeColors.accent, 0.0),
                     },
                 ]),
                 opacity: 1.0,
@@ -419,7 +414,27 @@ watch(settingsStore.allUIDeviceSettings, () => {
     option.series[1].lineStyle.color = tempLineColor
     controlGraph.value?.setOption({
         series: [
-            { id: 'dutyLine', lineStyle: { color: dutyLineColor } },
+            {
+                id: 'dutyLine',
+                lineStyle: { color: dutyLineColor },
+                markPoint: {
+                    label: {
+                        color: dutyLineColor,
+                    },
+                },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        {
+                            offset: 0,
+                            color: colors.convertColorToRGBA(dutyLineColor, 0.4),
+                        },
+                        {
+                            offset: 1,
+                            color: colors.convertColorToRGBA(dutyLineColor, 0.0),
+                        },
+                    ]),
+                },
+            },
             {
                 id: 'tempLine',
                 lineStyle: { color: tempLineColor },

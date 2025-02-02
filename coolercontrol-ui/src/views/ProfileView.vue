@@ -346,7 +346,6 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
-const cssRoot = document.querySelector(':root')
 const functionTitle = (): string => `Applied Ƒunction(x): ${chosenFunction.value.name}`
 const option = {
     title: {
@@ -475,11 +474,11 @@ const option = {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                         {
                             offset: 0,
-                            color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-error')} / 0.2)`,
+                            color: colors.convertColorToRGBA(colors.themeColors.red, 0.2),
                         },
                         {
                             offset: 1,
-                            color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-error')} / 0.0)`,
+                            color: colors.convertColorToRGBA(colors.themeColors.red, 0.0),
                         },
                     ]),
                     // color: colors.themeColors.red,
@@ -551,11 +550,11 @@ const option = {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                     {
                         offset: 0,
-                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.5)`,
+                        color: colors.convertColorToRGBA(colors.themeColors.accent, 0.5),
                     },
                     {
                         offset: 1,
-                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.0)`,
+                        color: colors.convertColorToRGBA(colors.themeColors.accent, 0.0),
                     },
                 ]),
                 opacity: 1.0,
@@ -1271,7 +1270,10 @@ onMounted(async () => {
         const el = document.getElementById('profile-display')!
         const w = el.getBoundingClientRect().width
         const h = el.getBoundingClientRect().height
-        knobSize.value = Math.max(Math.min(w, h) - deviceStore.getREMSize(4), deviceStore.getREMSize(27))
+        knobSize.value = Math.max(
+            Math.min(w, h) - deviceStore.getREMSize(4),
+            deviceStore.getREMSize(27),
+        )
     }
     setTimeout(updateKnobSize)
     window.addEventListener('resize', updateKnobSize)
