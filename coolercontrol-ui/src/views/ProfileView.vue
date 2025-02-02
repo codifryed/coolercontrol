@@ -346,7 +346,7 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
-const functionTitle = (): string => `Applied Ƒunction(x): ${chosenFunction.value.name}`
+const functionTitle = (): string => `Applied Ƒunction: ${chosenFunction.value.name}`
 const option = {
     title: {
         show: true,
