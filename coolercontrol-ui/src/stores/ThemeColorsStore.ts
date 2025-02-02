@@ -40,6 +40,28 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
         yellow: getStyle('--colors-warning'),
         info: getStyle('--colors-info'),
     })
+
+    function hexToRgb(hex: string): Array<number> {
+        return hex
+            .replace(
+                /^#?([a-f\d])([a-f\d])([a-f\d])$/i,
+                (_m, r, g, b) => '#' + r + r + g + g + b + b,
+            )!
+            .substring(1)
+            .match(/.{2}/g)!
+            .map((x) => parseInt(x, 16))
+    }
+    function convertColorToRGBA(color: string, opacity: number): string {
+        if (color.includes('#')) {
+            const rgbArray = hexToRgb(color)
+            return `rgba(${rgbArray[0]}, ${rgbArray[1]}, ${rgbArray[2]}, ${opacity})`
+        } else if (color.includes(',')) {
+            return color.replace(')', `, ${opacity})`).replace('rgb', 'rgba')
+        } else {
+            return color.replace(')', ` / ${opacity})`).replace('rgb', 'rgba')
+        }
+    }
+
     console.debug(`Theme Colors Store created`)
-    return { themeColors }
+    return { themeColors, hexToRgb, convertColorToRGBA }
 })
