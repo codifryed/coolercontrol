@@ -23,6 +23,7 @@ import { mdiContentSaveOutline, mdiInformationSlabCircleOutline, mdiMemory } fro
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import {
     Function,
+    FunctionType,
     Profile,
     ProfileMixFunctionType,
     ProfileTempSource,
@@ -42,6 +43,7 @@ import {
     MarkAreaComponent,
     MarkPointComponent,
     TooltipComponent,
+    TitleComponent,
 } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
@@ -54,7 +56,7 @@ import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
 import Select from 'primevue/select'
-import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import _ from 'lodash'
 
@@ -68,6 +70,7 @@ echarts.use([
     MarkAreaComponent,
     MarkPointComponent,
     DataZoomComponent,
+    TitleComponent,
 ])
 
 interface Props {
@@ -82,6 +85,7 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const toast = useToast()
 const confirm = useConfirm()
+const router = useRouter()
 
 let contextIsDirty: boolean = false
 
@@ -341,6 +345,7 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
+const cssRoot = document.querySelector(':root')
 const option = {
     tooltip: {
         position: 'top',
@@ -427,7 +432,7 @@ const option = {
         {
             id: 'a',
             type: 'line',
-            smooth: false,
+            smooth: 0.0,
             symbol: 'circle',
             symbolSize: defaultSymbolSize,
             itemStyle: {
@@ -439,6 +444,9 @@ const option = {
                 color: colors.themeColors.accent,
                 width: 6,
                 type: 'solid',
+                shadowColor: undefined,
+                // size of the blur around the line:
+                shadowBlur: 20,
             },
             emphasis: {
                 disabled: true, // won't work anyway with our draggable graphics that lay on top
@@ -498,6 +506,36 @@ const option = {
             z: 1,
             silent: true,
         },
+        {
+            // this is used as a non-interactable line area style
+            id: 'line-area',
+            type: 'line',
+            smooth: 0.0,
+            symbol: 'none',
+            lineStyle: {
+                color: 'transparent',
+                width: 0,
+            },
+            emphasis: {
+                disabled: true,
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.5)`,
+                    },
+                    {
+                        offset: 1,
+                        color: `rgba(${getComputedStyle(cssRoot!).getPropertyValue('--colors-accent')} / 0.0)`,
+                    },
+                ]),
+                opacity: 1.0,
+            },
+            silent: true,
+            z: 0,
+            data: data,
+        },
     ],
     animation: true,
     animationDuration: 200,
@@ -533,6 +571,22 @@ const setGraphData = () => {
     tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
     tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
 }
+const setFunctionGraphData = (): void => {
+    if (chosenFunction.value.f_type === FunctionType.Identity) {
+        option.series[0].smooth = 0.0
+        option.series[2].smooth = 0.0
+        // @ts-ignore
+        option.series[0].lineStyle.shadowColor = colors.themeColors.bg_one
+        option.series[0].lineStyle.shadowBlur = 10
+    } else {
+        option.series[0].smooth = 0.2
+        option.series[2].smooth = 0.2
+        // @ts-ignore
+        option.series[0].lineStyle.shadowColor = colors.themeColors.accent
+        // size of the blur around the line:
+        option.series[0].lineStyle.shadowBlur = 20
+    }
+}
 if (selectedTempSource != null) {
     // set chosenTemp on startup if set in profile
     for (const availableTempSource of tempSources.value) {
@@ -550,6 +604,7 @@ if (selectedTempSource != null) {
         }
     }
     setGraphData()
+    setFunctionGraphData()
 }
 
 const updateTemps = () => {
@@ -568,6 +623,12 @@ watch(chosenTemp, () => {
         chosenTemp.value?.tempName,
     )
     setGraphData()
+    controlGraph.value?.setOption(option)
+})
+watch(chosenFunction, () => {
+    setFunctionGraphData()
+    // needed as the graphics get a bit lost for some reason after ^:
+    createGraphicDataFromPointData()
     controlGraph.value?.setOption(option)
 })
 
@@ -687,7 +748,10 @@ const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
     // Point dragging needs to be very fast and efficient. We'll set the points to their allowed positions on drag end
     data[dataIndex].value = posXY
     controlGraph.value?.setOption({
-        series: [{ id: 'a', data: data }],
+        series: [
+            { id: 'a', data: data },
+            { id: 'line-area', data: data },
+        ],
     })
 }
 
@@ -696,7 +760,10 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
     controlPointMotionForTempX(posXY[0], dataIndex)
     controlPointMotionForDutyY(posXY[1], dataIndex)
     controlGraph.value?.setOption({
-        series: [{ id: 'a', data: data }],
+        series: [
+            { id: 'a', data: data },
+            { id: 'line-area', data: data },
+        ],
         graphic: data
             .slice(0, data.length - 1) // no graphic for ending point
             .map((item, dataIndex) => ({
@@ -740,7 +807,10 @@ const createWatcherOfTempDutyText = (): WatchStopHandle =>
                         )),
                 )
             controlGraph.value?.setOption({
-                series: [{ id: 'a', data: data }],
+                series: [
+                    { id: 'a', data: data },
+                    { id: 'line-area', data: data },
+                ],
                 graphic: graphicData,
             })
         },
