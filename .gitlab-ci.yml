@@ -475,6 +475,10 @@ upload_package_ubuntu:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB
+    # 24.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB
     # Debian Testing based:
     # Kali is no longer supported as they have removed liquidctl from their repositories:
     # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
