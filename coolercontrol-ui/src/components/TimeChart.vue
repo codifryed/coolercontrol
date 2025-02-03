@@ -601,9 +601,13 @@ const uOptions: uPlot.Options = {
         x: {
             auto: true,
             time: true,
-            // range: (min, max) => [uSeriesData[0].splice(-61)[0], uSeriesData[0].splice(-1)[0]],
-            // range: timeRange(),
-            // range: (min, max) => [((Date.now() / 1000) - 60), uPlotSeries[]],
+            range: (self, newMin, newMax) => {
+                let curMin = self.scales.x.min
+                let curMax = self.scales.x.max
+                // prevent zooming in too far
+                if (newMax - newMin < 10) return [curMin, curMax]
+                return [newMin, newMax]
+            },
         },
     },
     legend: {
@@ -618,9 +622,23 @@ const uOptions: uPlot.Options = {
             show: false,
         },
         drag: {
-            x: false,
+            // enable zoom selection of x-axis
+            x: true,
             y: false,
+            // distance to cover before starting selection
+            dist: 0,
         },
+        // bind: {
+        //     mousedown: (u, targ, handler) => {
+        //         return e => {
+        //             if (e.button == 2) {
+        //                 if (e.ctrlKey) {
+        //                     handler(e)
+        //                 }
+        //             }
+        //         }
+        //     },
+        // },
     },
     plugins: [
         tooltipPlugin(allDevicesLineProperties),
@@ -684,12 +702,18 @@ onMounted(async () => {
     </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .chart {
     width: 100%;
     height: calc(100vh - 5.5rem);
 }
 
+// zoom selection style
+.chart :deep(.u-select) {
+    background: rgba(var(--colors-surface-hover) / 0.05);
+    position: absolute;
+    pointer-events: none;
+}
 /** To add a crosshair to the y-axis:
 .chart :deep(.u-hz .u-cursor-y) {
     border-bottom: v-bind(yCrosshair);
