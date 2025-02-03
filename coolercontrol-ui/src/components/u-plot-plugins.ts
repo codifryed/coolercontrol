@@ -399,8 +399,8 @@ export const mouseWheelZoomPlugin = () => {
 
                         const leftPct = left / rect.width
                         const xVal = u.posToVal(left, 'x')
-                        const timeScale: uPlot.Scale = u.scales.x
-                        const oxRange = timeScale.max! - timeScale.min!
+                        const timeScale: uPlot.Scale = u.scales.x!
+                        const oxRange = timeScale.max - timeScale.min
 
                         const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
                         let nxMin: number = xVal - leftPct * nxRange
@@ -421,6 +421,64 @@ export const mouseWheelZoomPlugin = () => {
                                 max: nxMax,
                             })
                         })
+                    })
+
+                    // panning
+                    u.over.addEventListener('contextmenu', (e) => {
+                        // u.over.addEventListener('mousedown', (e) => {
+                        //     if (e.button == 1) {
+                        u.over.style.cursor = 'move'
+                        e.preventDefault()
+
+                        const xMin = u.data[0].at(0)!
+                        const xMax = u.data[0].at(-1)!
+
+                        const left0 = e.clientX
+                        //	let top0 = e.clientY
+
+                        const scXMin0 = u.scales.x.min!
+                        const scXMax0 = u.scales.x.max!
+                        const xRange = scXMax0 - scXMin0
+
+                        const xUnitsPerPx = u.posToVal(1, 'x') - u.posToVal(0, 'x')
+
+                        function onmove(e: any) {
+                            e.preventDefault()
+
+                            const left1 = e.clientX
+                            //	let top1 = e.clientY
+
+                            const dx = xUnitsPerPx * (left1 - left0)
+                            let nMin = scXMin0 - dx
+                            let nMax = scXMax0 - dx
+
+                            // clamp:
+                            if (nMin < xMin) {
+                                nMin = xMin
+                                // panning on edges, never allow range to be smaller
+                                nMax = xMin + xRange
+                            } else if (nMax > xMax) {
+                                nMax = xMax
+                                // panning on edges, never allow range to be smaller
+                                nMin = xMax - xRange
+                            }
+                            u.batch(() => {
+                                u.setScale('x', {
+                                    min: nMin,
+                                    max: nMax,
+                                })
+                            })
+                        }
+
+                        function onup(_: any) {
+                            u.over.style.cursor = 'auto'
+                            document.removeEventListener('mousemove', onmove)
+                            document.removeEventListener('mouseup', onup)
+                        }
+
+                        document.addEventListener('mousemove', onmove)
+                        document.addEventListener('mouseup', onup)
+                        // }
                     })
                 })
             },
