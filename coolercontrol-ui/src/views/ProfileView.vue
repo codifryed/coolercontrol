@@ -1508,7 +1508,7 @@ onMounted(async () => {
     <!-- The UI Display: -->
     <div id="profile-display" class="flex flex-col h-full">
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
-            Default
+            System Default
         </div>
         <Knob
             v-else-if="showDutyKnob"
