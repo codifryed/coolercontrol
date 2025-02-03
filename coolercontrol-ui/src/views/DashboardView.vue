@@ -31,7 +31,7 @@ import { TempInfo } from '@/models/TempInfo.ts'
 import { ChannelInfo } from '@/models/ChannelInfo.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiMemory } from '@mdi/js'
+import { mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
@@ -180,6 +180,19 @@ onMounted(async () => {
             <span class="font-bold overflow-hidden overflow-ellipsis">{{ dashboard.name }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
+            <div
+                v-if="dashboard.chartType == ChartType.TIME_CHART"
+                class="p-2 flex leading-none items-center"
+                v-tooltip.bottom="
+                    'Dashboard Mouse actions:\n- Scroll to zoom.\n- Left-click and select range to zoom.\n- Right-click to pan.\n- Double-click to reset zoom and resume.'
+                "
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiInformationSlabCircleOutline"
+                    :size="deviceStore.getREMSize(1.25)"
+                />
+            </div>
             <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
                     v-model="chosenSensorSources"

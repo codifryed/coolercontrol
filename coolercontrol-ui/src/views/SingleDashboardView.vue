@@ -29,6 +29,9 @@ import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
+import { mdiInformationSlabCircleOutline } from '@mdi/js'
+import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 
 interface Props {
     deviceUID: UID
@@ -37,6 +40,7 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
 const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
@@ -100,6 +104,19 @@ onMounted(async () => {
             <span class="font-bold">{{ channelLabel }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
+            <div
+                v-if="singleDashboard.chartType == ChartType.TIME_CHART"
+                class="p-2 flex leading-none items-center"
+                v-tooltip.bottom="
+                    'Dashboard Mouse actions:\n- Scroll to zoom.\n- Left-click and select range to zoom.\n- Right-click to pan.\n- Double-click to reset zoom and resume.'
+                "
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiInformationSlabCircleOutline"
+                    :size="deviceStore.getREMSize(1.25)"
+                />
+            </div>
             <div
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 pr-0 flex flex-row"
