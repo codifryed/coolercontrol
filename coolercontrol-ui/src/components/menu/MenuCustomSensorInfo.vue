@@ -54,7 +54,7 @@ const deviceStore = useDeviceStore()
                     support file-based data, enabling you to script external sensor inputs for even
                     greater flexibility.<br />
                     <i>
-                        Note: You can use a Mix Profile to combine multiple Customer Sensor outputs.
+                        Note: You can use a Mix Profile to combine multiple Custom Sensor outputs.
                     </i>
                 </div>
             </popover-content>
