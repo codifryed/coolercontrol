@@ -17,6 +17,9 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiInformationSlabCircleOutline } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { onMounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
@@ -29,8 +32,6 @@ import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import { mdiInformationSlabCircleOutline } from '@mdi/js'
-import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 
 interface Props {

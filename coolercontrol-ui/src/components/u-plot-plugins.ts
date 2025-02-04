@@ -400,7 +400,7 @@ export const mouseWheelZoomPlugin = () => {
                         const leftPct = left / rect.width
                         const xVal = u.posToVal(left, 'x')
                         const timeScale: uPlot.Scale = u.scales.x!
-                        const oxRange = timeScale.max - timeScale.min
+                        const oxRange = timeScale.max! - timeScale.min!
 
                         const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
                         let nxMin: number = xVal - leftPct * nxRange

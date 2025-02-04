@@ -601,6 +601,7 @@ const uOptions: uPlot.Options = {
         x: {
             auto: true,
             time: true,
+            // @ts-ignore
             range: (self, newMin, newMax) => {
                 let curMin = self.scales.x.min
                 let curMax = self.scales.x.max
