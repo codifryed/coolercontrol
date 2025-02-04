@@ -184,7 +184,7 @@ onMounted(async () => {
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 flex leading-none items-center"
                 v-tooltip.bottom="
-                    'Dashboard Mouse actions:\n- Scroll to zoom.\n- Left-click and select range to zoom.\n- Right-click to pan.\n- Double-click to reset zoom and resume.'
+                    'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.'
                 "
             >
                 <svg-icon
