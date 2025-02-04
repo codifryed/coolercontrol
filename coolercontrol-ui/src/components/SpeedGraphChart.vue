@@ -127,7 +127,7 @@ const calcSmoothness = (): number => {
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 0.0
     } else {
-        return 0.2
+        return 0.3
     }
 }
 const calcLineShadowColor = (): string => {
