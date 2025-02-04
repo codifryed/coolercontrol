@@ -710,7 +710,7 @@ onMounted(async () => {
 
 // zoom selection style
 .chart :deep(.u-select) {
-    background: rgba(var(--colors-surface-hover) / 0.05);
+    background: linear-gradient(0deg, rgba(var(--colors-accent) / 0.03) 0%, rgba(var(--colors-accent) / 0.4) 100%);
     position: absolute;
     pointer-events: none;
 }
