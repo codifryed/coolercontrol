@@ -145,7 +145,14 @@ const calcLineShadowSize = (): number => {
     }
 }
 
-const profileTitle = (): string => `Applied Profile: ${props.profile.name}`
+const profileTitle = (): string => {
+    let title = `Applied Profile: ${props.profile.name}`
+    if (deviceStore.isSafariWebKit()) {
+        // add some extra length for WebKit to keep default function text all linkable
+        title = title + '                      '
+    }
+    return title
+}
 const option = {
     title: {
         show: true,

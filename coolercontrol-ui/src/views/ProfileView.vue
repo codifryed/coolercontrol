@@ -346,7 +346,14 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
-const functionTitle = (): string => `Applied Ƒunction: ${chosenFunction.value.name}`
+const functionTitle = (): string => {
+    let title = `Applied Ƒunction: ${chosenFunction.value.name}`
+    if (deviceStore.isSafariWebKit()) {
+        // add some extra length for WebKit to keep default function text all linkable
+        title = title + '                          '
+    }
+    return title
+}
 const option = {
     title: {
         show: true,
