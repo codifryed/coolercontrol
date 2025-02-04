@@ -49,17 +49,16 @@ const deviceStore = useDeviceStore()
                 >
                     <span class="font-bold text-lg">Profiles Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    Profiles define customizable settings for controlling fan speeds in
-                    CoolerControl. They enable you to configure specific settings for one or more
-                    speed channels across multiple devices, including:
+                    Profiles define customizable settings for controlling fan speeds, and the same
+                    Profile can be used for multiple fans. Types include:
                     <ul class="pl-4 list-disc list-outside">
                         <li>Fixed speeds</li>
-                        <li>Fan curves/graphs</li>
-                        <li>Mixing profiles</li>
-                        <li>Device defaults</li>
+                        <li>Fan Curves/Graphs</li>
+                        <li>Mix Profiles</li>
+                        <li>Default Device Settings</li>
                     </ul>
-                    Profiles serve as the foundation for temperature-based fan control, and can be
-                    further enhanced with advanced algorithms using Functions.
+                    Profiles serve as the foundation for controlling fan speed, and can be further
+                    enhanced with more advanced algorithms applying Functions.
                 </div>
             </popover-content>
         </popover-root>

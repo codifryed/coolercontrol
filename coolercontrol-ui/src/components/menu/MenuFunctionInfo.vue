@@ -51,10 +51,10 @@ const deviceStore = useDeviceStore()
                     <div class="mt-1 h-2 border-border-one border-t-2" />
                     Functions are configurable algorithms that are applied to a Profile's output.
                     They enable you to manage when fan speed changes occur, adjust hysteresis
-                    settings, and utilize moving averages for dynamic temperatures. The Identity
-                    Function is the simplest option, as it does not modify the calculated Profile's
-                    output; it merely allows you to set the minimum and maximum speed duty changes.
-                    This is especially beneficial for users who want to minimize constant
+                    settings, and utilize moving averages for dynamic temperatures.<br /><br />
+                    The <i>Identity Function</i> is the simplest option, as it does not modify the
+                    calculated Profile's output; it merely allows you to set the minimum and maximum
+                    speed duty changes. This is especially beneficial to minimize constant
                     fluctuations in fan speeds.
                 </div>
             </popover-content>

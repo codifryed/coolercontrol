@@ -49,10 +49,10 @@ const deviceStore = useDeviceStore()
                 >
                     <span class="font-bold text-lg">Custom Sensors Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    Custom Sensors allow you to combine existing sensor data in various ways,
-                    enhancing your control and efficiency over system cooling. Additionally, they
-                    support file-based data, enabling you to script external sensor inputs for even
-                    greater flexibility.<br />
+                    Custom Sensors enable you to combine existing sensors in various ways, enhancing
+                    your control and efficiency over system cooling. Additionally, they support
+                    file-based data, enabling you to script external sensor inputs for even greater
+                    flexibility.<br /><br />
                     <i>
                         Note: You can use a Mix Profile to combine multiple Custom Sensor outputs.
                     </i>

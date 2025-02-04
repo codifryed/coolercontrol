@@ -49,12 +49,11 @@ const deviceStore = useDeviceStore()
                 >
                     <span class="font-bold text-lg">Alerts Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    Alerts are used to notify you when certain conditions occur. They can be used to
-                    monitor temperatures and fan speeds, ensuring that your system is operating
-                    optimally. Alerts are configured for specific sensor value ranges and will send
-                    a notification if outside of acceptable thresholds, and again once values fall
-                    back within thresholds. You can easily configure multiple alerts for different
-                    sensors and conditions.
+                    Alerts are used to notify you when certain conditions occur. They can monitor
+                    temperatures and fan speeds, ensuring that your system is operating properly.<br /><br />Alerts
+                    are configured for specific sensor value ranges and will send a
+                    <i>notification</i> if the value goes outside of or back within acceptable
+                    thresholds.
                 </div>
             </popover-content>
         </popover-root>

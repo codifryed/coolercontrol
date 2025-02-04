@@ -49,21 +49,15 @@ const deviceStore = useDeviceStore()
                 >
                     <span class="font-bold text-lg">Modes Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    <ul class="pl-4 list-disc list-outside">
-                        <li>
-                            Modes enable you to save device channel settings for quick and easy
-                            recall.
-                        </li>
-                        <li>
-                            For instance, you can create a 'Gaming' Mode and a 'Silent' Mode,
-                            allowing you to switch between them effortlessly.
-                        </li>
-                        <li>Different Fan Profiles may be necessary for each Mode.</li>
-                        <li>
-                            Please note that Modes only include channel configurations and do not
-                            encompass internal Profile or Function settings.
-                        </li>
-                    </ul>
+                    Modes enable you to save device channel settings for quick and easy application.
+                    For example, you can create a 'Gaming' Mode and a 'Silent' Mode, allowing you to
+                    easily switch between them.
+                    <br /><br />
+                    <span class="italic">
+                        Please note that creating different Fan Profiles may be necessary for each
+                        Mode, as Modes only include channel configurations and do not encompass
+                        internal Profile or Function settings.
+                    </span>
                 </div>
             </popover-content>
         </popover-root>
