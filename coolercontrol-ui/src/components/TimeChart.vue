@@ -639,8 +639,8 @@ const uOptions: uPlot.Options = {
                         u.cursor.drag!.dist = pxPerXUnitSecond * 10
                         // if (e.ctrlKey) {
                         // }
+                        handler(e)
                     }
-                    handler(e)
                 }
             },
         },
