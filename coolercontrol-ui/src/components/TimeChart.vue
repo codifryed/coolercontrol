@@ -605,7 +605,7 @@ const uOptions: uPlot.Options = {
             range: (self, newMin, newMax) => {
                 let curMin = self.scales.x.min
                 let curMax = self.scales.x.max
-                // prevent zooming in too far
+                // prevent zooming in too far, < 10 seconds
                 if (newMax - newMin < 10) return [curMin, curMax]
                 return [newMin, newMax]
             },
@@ -627,19 +627,23 @@ const uOptions: uPlot.Options = {
             x: true,
             y: false,
             // distance to cover before starting selection
-            dist: 0,
+            dist: 10,
         },
-        // bind: {
-        //     mousedown: (u, targ, handler) => {
-        //         return e => {
-        //             if (e.button == 2) {
-        //                 if (e.ctrlKey) {
-        //                     handler(e)
-        //                 }
-        //             }
-        //         }
-        //     },
-        // },
+        bind: {
+            // @ts-ignore
+            mousedown: (u, targ, handler) => {
+                return (e) => {
+                    if (e.button == 0) {
+                        const pxPerXUnitSecond = u.valToPos(1, 'x') - u.valToPos(0, 'x')
+                        // 10 seconds max zoom-in
+                        u.cursor.drag!.dist = pxPerXUnitSecond * 10
+                        // if (e.ctrlKey) {
+                        // }
+                    }
+                    handler(e)
+                }
+            },
+        },
     },
     plugins: [
         tooltipPlugin(allDevicesLineProperties),
