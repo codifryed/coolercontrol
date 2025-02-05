@@ -23,7 +23,7 @@ export interface HealthCheck {
     details: HealthDetails
     system: SystemDetails
     links: {
-        wiki: string
+        docs: string
         repository: string
     }
 }
@@ -60,7 +60,7 @@ export default function defaultHealthCheck(): HealthCheck {
             name: '',
         },
         links: {
-            wiki: '',
+            docs: '',
             repository: '',
         },
     }

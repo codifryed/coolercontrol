@@ -109,9 +109,8 @@ impl ApiActor<HealthMessage> for HealthActor {
                                 "https://gitlab.com/coolercontrol/coolercontrol".to_string(),
                             ),
                             (
-                                "wiki".to_string(),
-                                "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
-                                    .to_string(),
+                                "docs".to_string(),
+                                "https://docs.coolercontrol.org".to_string(),
                             ),
                         ]),
                     }

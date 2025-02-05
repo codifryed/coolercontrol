@@ -280,7 +280,7 @@ onMounted(() => {
                 <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                     <span class="mb-4 font-semibold text-xl text-text-color"> Links </span>
                     <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a target="_blank" :href="healthCheck.links.wiki" class="text-accent">
+                        <a target="_blank" :href="healthCheck.links.docs" class="text-accent">
                             <div class="flex flex-row items-center">
                                 <svg-icon
                                     type="mdi"
@@ -288,9 +288,9 @@ onMounted(() => {
                                     :path="mdiBookOpenVariantOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                The Wiki
+                                Documentation
                             </div> </a
-                        >&nbsp;- Get more information about CoolerControl and how to use it.
+                        >&nbsp;- Get more information
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.repository" class="text-accent">
