@@ -86,7 +86,7 @@ onMounted(() => {
             <div class="mt-8">
                 <div class="flex flex-row">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
-                        <table class="w-96">
+                        <table class="w-[26rem]">
                             <tbody>
                                 <tr>
                                     <td
@@ -172,112 +172,8 @@ onMounted(() => {
             </div>
             <div class="mt-8">
                 <div
-                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
                 >
-                    <span class="pb-2 ml-1 font-semibold text-xl text-text-color">
-                        Current Daemon Logs
-                    </span>
-                    <div
-                        id="log-output"
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                        v-html="convertLogsToHtml"
-                    />
-                    <a
-                        :download="downloadLogFileName"
-                        :href="downloadLogHref"
-                        :data-downloadurl="downloadLogDatasetURL"
-                    >
-                        <Button
-                            label="Download Current Logs"
-                            class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                        />
-                    </a>
-                </div>
-            </div>
-            <div class="mt-8">
-                <div
-                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
-                >
-                    <span class="mb-4 font-semibold text-xl text-text-color">More Logs</span>
-                    <p class="text-wrap">
-                        The CoolerControl daemons normally run as systemd system-level services. The
-                        journal system collects all logs from your system services and you can
-                        collect and view those logs using the
-                        <code>journalctl</code> command.
-                    </p>
-                    <p class="text-wrap mt-4">
-                        To see more logs, or to collect logs to fill out a bug report, use the
-                        following commands in your terminal:
-                    </p>
-                    <p class="mt-4">To output logs to a file in your current directory:</p>
-                    <div
-                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                    >
-                        <span class="font-semibold">
-                            journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n
-                            10000 > coolercontrol-daemons.log
-                        </span>
-                    </div>
-                    <p class="mt-4">To follow current log output live in your terminal:</p>
-                    <div
-                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                    >
-                        <span class="font-semibold">
-                            journalctl -u coolercontrold -u coolercontrol-liqctld -f -n 100
-                        </span>
-                    </div>
-                    <p class="mt-4">
-                        To change the current log level, for example for debug output:
-                    </p>
-                    <p class="mt-0 italic text-sm">Note: debug logs produces a lot of output</p>
-                    <div
-                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                    >
-                        <span class="font-semibold">
-                            sudo sed -i -E 's|COOLERCONTROL_LOG=INFO|COOLERCONTROL_LOG=DEBUG|'
-                            /lib/systemd/system/coolercontrold.service<br />
-                            sudo systemctl daemon-reload<br />
-                            sudo systemctl restart coolercontrold
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-8">
-                <div
-                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
-                >
-                    <span class="mb-4 font-semibold text-xl text-text-color">
-                        Backup/Import Configuration Files
-                    </span>
-                    <p class="text-wrap">
-                        Like most *nix <span class="font-bold">system-level</span> services, the
-                        daemon configuration files are stored under <code>/etc</code>, and for
-                        CoolerControl specifically under <code>/etc/coolercontrol/</code>.
-                    </p>
-                    <p class="mt-4">To create a complete backup:</p>
-                    <div
-                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                    >
-                        <span class="font-semibold">
-                            sudo tar -czvf coolercontrol-backup.tgz /etc/coolercontrol
-                        </span>
-                    </div>
-                    <p class="mt-4">
-                        To import and overwrite the current settings from a complete backup:
-                    </p>
-                    <div
-                        class="mt-1 w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                    >
-                        <span class="font-semibold">
-                            sudo systemctl stop coolercontrold<br />
-                            sudo tar -xvf coolercontrol-backup.tgz -C /<br />
-                            sudo systemctl start coolercontrold
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-8 mb-6">
-                <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                     <span class="mb-4 font-semibold text-xl text-text-color"> Links </span>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.docs" class="text-accent">
@@ -303,7 +199,7 @@ onMounted(() => {
                                 />
                                 Git Repository
                             </div> </a
-                        >&nbsp;- Submit Issues or Feature Requests.
+                        >&nbsp;- Submit Issues or Feature Requests
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
@@ -311,8 +207,34 @@ onMounted(() => {
                                 <span class="mr-2 pi pi-discord text-[2.0rem]" />
                                 Discord
                             </div> </a
-                        >&nbsp;- Join our Discord community.
+                        >&nbsp;- Join our Discord community
                     </p>
+                </div>
+            </div>
+            <div class="mt-8 mb-6">
+                <div
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                >
+                    <span class="pb-2 ml-1 font-semibold text-xl text-text-color">
+                        Current Daemon Logs
+                    </span>
+                    <div
+                        id="log-output"
+                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
+                        v-html="convertLogsToHtml"
+                    />
+                    <div class="flex justify-center">
+                        <a
+                            :download="downloadLogFileName"
+                            :href="downloadLogHref"
+                            :data-downloadurl="downloadLogDatasetURL"
+                        >
+                            <Button
+                                label="Download Current Logs"
+                                class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                            />
+                        </a>
+                    </div>
                 </div>
             </div>
         </ScrollAreaViewport>
