@@ -361,7 +361,7 @@ export const mouseWheelZoomPlugin = () => {
                 function sleep(ms: number) {
                     return new Promise((resolve) => setTimeout(resolve, ms))
                 }
-                sleep(10).then(() => {
+                sleep(200).then(() => {
                     const factor = 0.75
                     function clamp(
                         nRange: number,
