@@ -69,14 +69,17 @@ impl DeviceSupport for KrakenZ3Support {
                 ..Default::default()
             },
         );
-        let lighting_modes = self.get_color_channel_modes(None);
-        channels.insert(
-            "external".to_string(),
-            ChannelInfo {
-                lighting_modes,
-                ..Default::default()
-            },
-        );
+        // Kraken2023 and KrakenZ have different color channels:
+        for channel_name in &device_response.properties.color_channels {
+            let lighting_modes = self.get_color_channel_modes(None);
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    lighting_modes,
+                    ..Default::default()
+                },
+            );
+        }
         let lighting_speeds = vec![
             "slowest".to_string(),
             "slower".to_string(),
@@ -85,6 +88,10 @@ impl DeviceSupport for KrakenZ3Support {
             "fastest".to_string(),
         ];
 
+        let lcd_resolution = device_response
+            .properties
+            .lcd_resolution
+            .unwrap_or((320, 320));
         channels.insert(
             "lcd".to_string(),
             ChannelInfo {
@@ -131,8 +138,8 @@ impl DeviceSupport for KrakenZ3Support {
                     },
                 ],
                 lcd_info: Some(LcdInfo {
-                    screen_width: 320,
-                    screen_height: 320,
+                    screen_width: lcd_resolution.0,
+                    screen_height: lcd_resolution.1,
                     max_image_size_bytes: 24_320 * 1024, // 24,320 KB/KiB
                 }),
                 ..Default::default()

@@ -993,6 +993,7 @@ mod tests {
         supports_cooling_profiles: None,
         supports_lighting: None,
         led_count: None,
+        lcd_resolution: None,
     };
 
     #[test]

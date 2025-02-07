@@ -596,6 +596,7 @@ pub struct DeviceProperties {
     pub supports_cooling_profiles: Option<bool>,
     pub supports_lighting: Option<bool>,
     pub led_count: Option<u8>,
+    pub lcd_resolution: Option<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

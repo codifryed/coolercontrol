@@ -37,6 +37,7 @@ class DeviceProperties(BaseModel):
     supports_cooling_profiles: Optional[bool] = None
     supports_lighting: Optional[bool] = None
     led_count: Optional[int] = None
+    lcd_resolution: Optional[Tuple[int, int]] = None
 
 
 class Device(BaseModel):
