@@ -71,7 +71,6 @@ let startingDelay = currentFunction.value.response_delay ?? 1
 let startingDeviance = currentFunction.value.deviance ?? 2
 let startingOnlyDownward = currentFunction.value.only_downward ?? false
 
-const givenName: Ref<string> = ref(currentFunction.value.name)
 const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
 const chosenDutyMinimum: Ref<number> = ref(currentFunction.value.duty_minimum)
 const chosenDutyMaximum: Ref<number> = ref(currentFunction.value.duty_maximum)
@@ -86,7 +85,6 @@ const saveFunctionState = async () => {
         console.error('Changing of the default Function is not allowed.')
         return
     }
-    currentFunction.value.name = givenName.value
     currentFunction.value.f_type = selectedType.value
     currentFunction.value.duty_minimum = chosenDutyMinimum.value
     currentFunction.value.duty_maximum = chosenDutyMaximum.value
@@ -230,7 +228,9 @@ onMounted(async () => {
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{ givenName }}</span>
+            <span class="font-bold overflow-hidden overflow-ellipsis">{{
+                currentFunction.name
+            }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2">

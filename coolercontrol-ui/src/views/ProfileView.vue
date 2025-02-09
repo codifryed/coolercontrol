@@ -92,7 +92,6 @@ let contextIsDirty: boolean = false
 const currentProfile = computed(
     () => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!,
 )
-const givenName: Ref<string> = ref(currentProfile.value.name)
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypes = [...$enum(ProfileType).keys()]
 const mixFunctionTypes = [...$enum(ProfileMixFunctionType).keys()]
@@ -1117,7 +1116,6 @@ const saveProfileState = async () => {
         console.error('Changing of the default Profile is not allowed.')
         return
     }
-    currentProfile.value.name = givenName.value
     currentProfile.value.p_type = selectedType.value
     if (currentProfile.value.p_type === ProfileType.Fixed) {
         currentProfile.value.speed_fixed = selectedDuty.value
