@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
-import { mdiPlusBoxMultipleOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiPlusBoxMultipleOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -28,6 +28,7 @@ import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
 import { Profile, ProfileType } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
+import { useRouter } from 'vue-router'
 
 interface Props {}
 
@@ -40,6 +41,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const router = useRouter()
 
 const addProfile = async (): Promise<void> => {
     const newProfile = new Profile('New Profile', ProfileType.Default)
@@ -52,6 +54,7 @@ const addProfile = async (): Promise<void> => {
         life: 3000,
     })
     emit('added', newProfile.uid)
+    await router.push({ name: 'profiles', params: { profileUID: newProfile.uid } })
 }
 // be able to add a profile from the side menu add button:
 emitter.on('profile-add', addProfile)

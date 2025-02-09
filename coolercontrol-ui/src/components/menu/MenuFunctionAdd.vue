@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
-import { mdiFlaskPlusOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiFlaskPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -28,6 +28,7 @@ import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
 import { Function } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
+import { useRouter } from 'vue-router'
 
 interface Props {}
 
@@ -40,6 +41,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const router = useRouter()
 
 const addFunction = async (): Promise<void> => {
     const newFunction = new Function('New Function')
@@ -52,6 +54,7 @@ const addFunction = async (): Promise<void> => {
         life: 3000,
     })
     emit('added', newFunction.uid)
+    await router.push({ name: 'functions', params: { functionUID: newFunction.uid } })
 }
 // be able to add a function from the side menu add button:
 emitter.on('function-add', addFunction)

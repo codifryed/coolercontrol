@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
-import { mdiChartBoxPlusOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiChartBoxPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -27,6 +27,7 @@ import { Dashboard } from '@/models/Dashboard.ts'
 import { inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
+import { useRouter } from 'vue-router'
 
 interface Props {}
 
@@ -37,11 +38,13 @@ const emit = defineEmits<{
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const router = useRouter()
 
-const addDashboard = (): void => {
+const addDashboard = async (): Promise<void> => {
     const newDashboard = new Dashboard('New Dashboard')
     settingsStore.dashboards.push(newDashboard)
     emit('added', newDashboard.uid)
+    await router.push({ name: 'dashboards', params: { dashboardUID: newDashboard.uid } })
 }
 // be able to add a dashboard from the side menu add button:
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!

@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
+import { useRouter } from 'vue-router'
 
 interface Props {}
 
@@ -37,11 +38,13 @@ const emit = defineEmits<{
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const router = useRouter()
 
 const addMode = async (): Promise<void> => {
     const newModeUID = await settingsStore.createMode('New Mode')
     if (newModeUID == null) return
     emit('added', newModeUID)
+    await router.push({ name: 'modes', params: { modeUID: newModeUID } })
 }
 // be able to add a mode from the side menu add button:
 emitter.on('mode-add', addMode)
