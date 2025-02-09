@@ -601,7 +601,12 @@ impl LiquidctlRepo {
         })
     }
 
-    /// Resets any used device's LCD screen to its default
+    #[allow(dead_code)]
+    /// Resets any used device's LCD screen to its default.
+    ///
+    /// Due to issue quickly mentioned
+    /// [here:](https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352)
+    /// setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
     async fn reset_lcd_to_default(&self) {
         for device_lock in self.devices.values() {
             if device_lock
@@ -772,7 +777,10 @@ impl Repository for LiquidctlRepo {
 
     async fn shutdown(&self) -> Result<()> {
         if self.liqctld_client.is_connected() {
-            self.reset_lcd_to_default().await;
+            // Due to issue quickly mentioned here:
+            // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
+            // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
+            // self.reset_lcd_to_default().await;
             self.liqctld_client.post_quit().await?;
             self.liqctld_client.shutdown();
         }
