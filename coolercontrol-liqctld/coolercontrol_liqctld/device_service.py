@@ -51,6 +51,7 @@ from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
+from liquidctl.driver.kraken3 import KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 
 log = logging.getLogger(__name__)
@@ -165,6 +166,7 @@ class DeviceService:
         supports_cooling_profiles: Optional[bool] = None
         supports_lighting: Optional[bool] = None
         led_count: Optional[int] = None
+        lcd_resolution: Optional[Tuple[int, int]] = None
         if isinstance(lc_device, (SmartDevice2, SmartDevice)):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
@@ -182,6 +184,10 @@ class DeviceService:
                 lc_device, "supports_cooling_profiles", None
             )
             supports_lighting = getattr(lc_device, "supports_lighting", None)
+        elif isinstance(lc_device, KrakenZ3):
+            color_channel_dict = getattr(lc_device, "_color_channels", {})
+            color_channels = list(color_channel_dict.keys())
+            lcd_resolution = getattr(lc_device, "lcd_resolution", None)
         elif Aquacomputer is not None and isinstance(lc_device, Aquacomputer):
             device_info_dict = getattr(lc_device, "_device_info", {})
             controllable_pump_and_fans = device_info_dict.get("fan_ctrl", {})
@@ -212,6 +218,7 @@ class DeviceService:
             supports_cooling_profiles=supports_cooling_profiles,
             supports_lighting=supports_lighting,
             led_count=led_count,
+            lcd_resolution=lcd_resolution,
         )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
