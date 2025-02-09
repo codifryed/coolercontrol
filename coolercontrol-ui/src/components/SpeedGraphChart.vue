@@ -148,7 +148,7 @@ const calcLineShadowSize = (): number => {
 const profileTitle = (): string => {
     let title = `Applied Profile: ${props.profile.name}`
     if (deviceStore.isSafariWebKit()) {
-        // add some extra length for WebKit to keep default function text all linkable
+        // add some extra length for WebKit to keep default profile text all linkable
         title = title + '                      '
     }
     return title
@@ -259,7 +259,7 @@ const option = {
                 },
                 data: [
                     {
-                        coord: [5, getDuty()],
+                        coord: [axisXTempMin + 5, getDuty()],
                         value: getDuty(),
                     },
                 ],
@@ -402,7 +402,7 @@ watch(currentDeviceStatus, () => {
                 id: 'dutyLine',
                 data: deviceDutyLineData,
                 markPoint: {
-                    data: [{ coord: [5, duty], value: duty }],
+                    data: [{ coord: [axisXTempMin + 5, duty], value: duty }],
                     label: { position: getDutyPosition(duty) },
                 },
             },
