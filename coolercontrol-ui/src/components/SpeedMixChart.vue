@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { GridComponent, MarkPointComponent } from 'echarts/components'
+import { GridComponent, MarkPointComponent, TitleComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -30,8 +30,16 @@ import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { Ref, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-echarts.use([GridComponent, MarkPointComponent, LineChart, CanvasRenderer, UniversalTransition])
+echarts.use([
+    GridComponent,
+    MarkPointComponent,
+    LineChart,
+    CanvasRenderer,
+    UniversalTransition,
+    TitleComponent,
+])
 
 interface Props {
     profile: Profile
@@ -45,6 +53,7 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
+const router = useRouter()
 
 const axisXTempMin: number = 0
 const axisXTempMax: number = 100
@@ -152,7 +161,32 @@ const calcLineShadowSize = (profileIndex: number): number => {
     }
 }
 
+const profileTitle = (): string => {
+    let title = `Applied Profile: ${props.profile.name}`
+    if (deviceStore.isSafariWebKit()) {
+        // add some extra length for WebKit to keep default profile text all linkable
+        title = title + '                      '
+    }
+    return title
+}
 const option = {
+    title: {
+        show: true,
+        text: profileTitle(),
+        link: props.profile.uid !== '0' ? '' : undefined,
+        target: 'self',
+        top: '5%',
+        left: '5%',
+        textStyle: {
+            color: colors.themeColors.text_color,
+            fontStyle: 'italic',
+            fontSize: '1.2rem',
+            textShadowColor: colors.themeColors.bg_one,
+            textShadowBlur: 10,
+        },
+        triggerEvent: props.profile.uid !== '0',
+        // z: 0,
+    },
     grid: {
         show: false,
         top: deviceStore.getREMSize(0.5),
@@ -373,6 +407,16 @@ const setDutyData = (): number => {
 }
 setDutyData()
 
+const handleGraphClick = (params: any): void => {
+    if (params.target?.style?.text === option.title.text) {
+        if (props.profile.uid == '0') {
+            return
+        }
+        // handle click on Profile Title in graph:
+        router.push({ name: 'profiles', params: { profileUID: props.profile.uid } })
+    }
+}
+
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
@@ -460,6 +504,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
         :option="option"
         :autoresize="true"
         :manual-update="true"
+        @zr:click="handleGraphClick"
     />
 </template>
 
