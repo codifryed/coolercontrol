@@ -180,7 +180,6 @@ const saveAlert = async (): Promise<void> => {
             await router.push({ name: 'alerts', params: { alertUID: alert.uid } })
         }
     } else {
-        // todo: emit name change
         const successful = await settingsStore.updateAlert(alert.uid)
         if (successful) contextIsDirty = false
     }
@@ -269,7 +268,7 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
 }
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (shouldCreateAlert || !contextIsDirty) {
+    if (!contextIsDirty) {
         next()
         return
     }
