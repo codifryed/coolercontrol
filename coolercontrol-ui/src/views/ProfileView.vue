@@ -672,6 +672,8 @@ watch(chosenTemp, () => {
 })
 watch(chosenFunction, () => {
     option.title.text = functionTitle()
+    option.title.triggerEvent = chosenFunction.value.uid !== '0'
+    option.title.link = chosenFunction.value.uid !== '0' ? '' : undefined
     setFunctionGraphData()
     // needed as the graphics get a bit lost for some reason after ^:
     createGraphicDataFromPointData()
