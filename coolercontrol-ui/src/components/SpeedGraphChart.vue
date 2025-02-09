@@ -157,7 +157,7 @@ const option = {
     title: {
         show: true,
         text: profileTitle(),
-        link: '',
+        link: props.profile.uid !== '0' ? '' : undefined,
         target: 'self',
         top: '5%',
         left: '5%',
@@ -168,7 +168,7 @@ const option = {
             textShadowColor: colors.themeColors.bg_one,
             textShadowBlur: 10,
         },
-        triggerEvent: true,
+        triggerEvent: props.profile.uid !== '0',
         // z: 0,
     },
     grid: {
@@ -379,6 +379,9 @@ setGraphData()
 
 const handleGraphClick = (params: any): void => {
     if (params.target?.style?.text === option.title.text) {
+        if (props.profile.uid == '0') {
+            return
+        }
         // handle click on Profile Title in graph:
         router.push({ name: 'profiles', params: { profileUID: props.profile.uid } })
     }

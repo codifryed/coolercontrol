@@ -82,6 +82,10 @@ const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const functionTypes = [...$enum(FunctionType).keys()]
 
 const saveFunctionState = async () => {
+    if (currentFunction.value.uid === '0') {
+        console.error('Changing of the default Function is not allowed.')
+        return
+    }
     currentFunction.value.name = givenName.value
     currentFunction.value.f_type = selectedType.value
     currentFunction.value.duty_minimum = chosenDutyMinimum.value

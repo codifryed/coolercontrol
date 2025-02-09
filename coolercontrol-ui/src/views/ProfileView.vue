@@ -358,7 +358,7 @@ const option = {
     title: {
         show: true,
         text: functionTitle(),
-        link: '',
+        link: chosenFunction.value.uid !== '0' ? '' : undefined,
         target: 'self',
         top: '5%',
         left: '5%',
@@ -369,7 +369,7 @@ const option = {
             textShadowColor: colors.themeColors.bg_one,
             textShadowBlur: 10,
         },
-        triggerEvent: true,
+        triggerEvent: chosenFunction.value.uid !== '0',
     },
     tooltip: {
         position: 'top',
@@ -968,6 +968,9 @@ const createDraggableGraphics = (): void => {
 const addPointToLine = (params: any) => {
     if (params.target?.style?.text === option.title.text) {
         // handle click on Function Title in graph:
+        if (chosenFunction.value.uid === '0') {
+            return
+        }
         router.push({ name: 'functions', params: { functionUID: chosenFunction.value.uid } })
         return
     } else if (params.target?.type !== 'ec-polyline') {
@@ -1110,6 +1113,10 @@ const inputNumberTempMax = (): number => {
 // }
 
 const saveProfileState = async () => {
+    if (currentProfile.value.uid === '0') {
+        console.error('Changing of the default Profile is not allowed.')
+        return
+    }
     currentProfile.value.name = givenName.value
     currentProfile.value.p_type = selectedType.value
     if (currentProfile.value.p_type === ProfileType.Fixed) {
