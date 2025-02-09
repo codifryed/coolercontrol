@@ -1281,7 +1281,10 @@ onMounted(async () => {
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
     const updateKnobSize = (): void => {
-        const el = document.getElementById('profile-display')!
+        const el = document.getElementById('profile-display')
+        if (el == null) {
+            return
+        }
         const w = el.getBoundingClientRect().width
         const h = el.getBoundingClientRect().height
         knobSize.value = Math.max(
