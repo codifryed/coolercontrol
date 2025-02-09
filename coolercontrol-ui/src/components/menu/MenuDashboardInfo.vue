@@ -50,7 +50,7 @@ const deviceStore = useDeviceStore()
                     <span class="font-bold text-lg">Dashboards Overview</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
                     Dashboards enable you to view your system's sensor data according to your
-                    preferences. You can chose between time-based or table-based charts and adjust
+                    preferences. You can choose between time-based or table-based charts and adjust
                     the filters and settings for each chart to focus on the specific data you want
                     to view. Additionally, you can create multiple dashboards customized to suit
                     your needs.
