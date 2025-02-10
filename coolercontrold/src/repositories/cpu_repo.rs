@@ -26,7 +26,7 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
-    Status, TempInfo, TempStatus, UID,
+    Status, TempInfo, TempStatus, Watts, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, power_cap, temps};
@@ -365,6 +365,7 @@ impl CpuRepo {
         phys_cpu_id: PhysicalID,
         driver: &HwmonDriverInfo,
         cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
+        init: bool,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
         for channel in &driver.channels {
@@ -390,11 +391,12 @@ impl CpuRepo {
                         .get(&phys_cpu_id)
                         .expect("Energy Counters should be initialized")
                         .replace(joule_count);
-                    let watts = power_cap::calculate_power_watts(
+                    let mut watts = power_cap::calculate_power_watts(
                         joule_count,
                         previous_joule_count,
                         self.poll_rate,
                     );
+                    self.use_cached_value_if_zero(&mut watts, init, phys_cpu_id, &channel.name);
                     let power_status = ChannelStatus {
                         name: channel.name.clone(),
                         watts: Some(watts),
@@ -414,6 +416,35 @@ impl CpuRepo {
             })
             .collect();
         (status_channels, temps)
+    }
+
+    /// CPU power should rarely be 0, but it looks like the energy counter is either not
+    /// consistently updated, or is regularly reset and so sometimes it is 0. For that case we
+    /// will reuse the preload-cached value.
+    ///
+    /// The device initialization request will return 0, but we can't use a cached value in that case.
+    fn use_cached_value_if_zero(
+        &self,
+        watts: &mut Watts,
+        init: bool,
+        physical_id: PhysicalID,
+        channel_name: &str,
+    ) {
+        if *watts < 0.01 && !init {
+            debug!("CPU counter was measured at 0 watts");
+            let device_id = physical_id + 1;
+            if let Some(preloaded_status) = self.preloaded_statuses.borrow().get(&device_id) {
+                *watts = preloaded_status
+                    .0
+                    .iter()
+                    .find_map(|channel_status| {
+                        channel_status
+                            .watts
+                            .filter(|_| channel_status.name == channel_name)
+                    })
+                    .unwrap_or_default();
+            }
+        }
     }
 
     async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
@@ -565,7 +596,7 @@ impl Repository for CpuRepo {
                     .insert(physical_id, Cell::new(joule_count));
             }
             let (channels, temps) = self
-                .request_status(physical_id, &driver, &mut cpu_freqs)
+                .request_status(physical_id, &driver, &mut cpu_freqs, true)
                 .await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
@@ -699,7 +730,7 @@ impl Repository for CpuRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     let (channels, temps) = self
-                        .request_status(physical_id, driver, &mut cpu_freq)
+                        .request_status(physical_id, driver, &mut cpu_freq, false)
                         .await;
                     self.preloaded_statuses
                         .borrow_mut()
