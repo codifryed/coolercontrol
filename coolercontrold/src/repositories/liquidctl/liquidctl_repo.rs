@@ -508,12 +508,12 @@ impl LiquidctlRepo {
                 )
                 .await
             {
-                error!(
-                    "Error setting lcd/screen brightness {} | {}. Check coolercontrol-liqctld log for details.",
-                    brightness, err
+                // we don't abort if there are brightness or orientation setting errors
+                warn!(
+                    "Error setting lcd/screen brightness {brightness} | {err}. \
+                    Check coolercontrol-liqctld log for details."
                 );
             }
-            // we don't abort if there are brightness or orientation setting errors
         }
         if let Some(orientation) = lcd_settings.orientation {
             if let Err(err) = self
@@ -526,12 +526,12 @@ impl LiquidctlRepo {
                 )
                 .await
             {
-                error!(
-                    "Error setting lcd/screen orientation {} | {}. Check coolercontrol-liqctld log for details.",
-                    orientation, err
+                // we don't abort if there are brightness or orientation setting errors
+                warn!(
+                    "Error setting lcd/screen orientation {orientation} | {err}. \
+                    Check coolercontrol-liqctld log for details."
                 );
             }
-            // we don't abort if there are brightness or orientation setting errors
         }
         if lcd_settings.mode == "image" {
             if let Some(image_file) = &lcd_settings.image_file_processed {
