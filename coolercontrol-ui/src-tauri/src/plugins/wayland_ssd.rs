@@ -31,24 +31,24 @@ use tauri::{plugin, Runtime};
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     plugin::Builder::new("wayland-ssd")
         .on_window_ready(|window| {
-            if !should_remove_csd() {
-                return;
+            if should_remove_csd() {
+                let Ok(gtk_window) = window.gtk_window() else {
+                    return;
+                };
+                remove_csd(&gtk_window);
             }
-            let Ok(gtk_window) = window.gtk_window() else {
-                return;
-            };
-            remove_csd(&gtk_window);
         })
         .build()
 }
 
 fn should_remove_csd() -> bool {
-    gdk::Display::default().is_some_and(|display| display.backend().is_wayland() && !is_gnome())
+    gdk::Display::default()
+        .is_some_and(|display| display.backend().is_wayland() && !is_gnome_or_cosmic())
 }
 
-fn is_gnome() -> bool {
+fn is_gnome_or_cosmic() -> bool {
     env::var("XDG_CURRENT_DESKTOP")
-        .map(|desktop| desktop == "GNOME")
+        .map(|desktop| desktop == "GNOME" || desktop == "COSMIC")
         .unwrap_or(false)
 }
 
