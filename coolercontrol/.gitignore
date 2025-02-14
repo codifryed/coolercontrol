@@ -4,6 +4,10 @@ CMakeFiles
 coolercontrol_autogen
 CMakeCache.txt
 cmake_install.cmake
+.cmake
+.idea
+.vscode
+Testing
 
 # This file is used to ignore files which are generated
 # ----------------------------------------------------------------------------
