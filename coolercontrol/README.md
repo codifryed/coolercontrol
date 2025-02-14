@@ -14,6 +14,12 @@ _todo: verify these are all needed:_
 - qt6-qtwebsockets
 - qt6-qtwebview
 
+### Debian:
+- libqt6webenginewidgets6
+- qt6-base-dev
+- libqt6webenginecore6-bin
+- libxcb-cursor0 (for X11)
+
 ## Development Requirements
 
 - make
@@ -23,6 +29,13 @@ _todo: verify these are all needed:_
 - qt6-qtwebengine-devel
 - qt6-qtwebsockets-devel
 - qt6-qtwebview-devel
+
+### Debian:
+- build-essential
+- cmake
+- qt6-base-dev (already taken care of below actually)
+- qt6-webengine-dev
+- qt6-webengine-dev-tools
 
 ## Installation
 
