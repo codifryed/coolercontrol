@@ -1,12 +1,13 @@
 # Qt Desktop Application
 
-The desktop application is written in C++ and uses the [Qt6](https://www.qt.io/product/qt6) framework to
-create a native desktop application which renders the UI assets using QtWebEngine, which is based on
-the [chromium](https://www.chromium.org/) browser engine.
+The desktop application is written in C++ and uses the [Qt6](https://www.qt.io/product/qt6)
+framework to create a native desktop application which renders the UI assets using QtWebEngine,
+which is based on the [chromium](https://www.chromium.org/) browser engine.
 
 ## Runtime Requirements
 
 _todo: verify these are all needed:_
+
 - qt6-qtbase
 - qt6-qtwebchannel
 - qt6-qtwebengine
@@ -14,6 +15,7 @@ _todo: verify these are all needed:_
 - qt6-qtwebview
 
 ## Development Requirements
+
 - make
 - cmake
 - qt6-qtbase-devel
@@ -39,8 +41,8 @@ One can use the dev-build and dev-install steps below.
 **One can start an npm dev server and point the desktop app to that address, instead of the daemon
 standard address**
 
-Standard debugger is helpfull for C++ development.
-Tauri also included the ability to hot-reload the UI assets and Rust backend during development:
+Standard debugger is helpfull for C++ development. Tauri also included the ability to hot-reload the
+UI assets and Rust backend during development:
 
 ```bash
 cargo install tauri-cli --version "^2.0.0" --locked
