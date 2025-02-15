@@ -14,7 +14,7 @@ _todo: verify these are all needed:_
 - qt6-qtwebsockets
 - qt6-qtwebview
 
-### Debian:
+### Debian
 
 - libqt6webenginewidgets6
 - qt6-base-dev
@@ -31,7 +31,7 @@ _todo: verify these are all needed:_
 - qt6-qtwebsockets-devel
 - qt6-qtwebview-devel
 
-### Debian:
+### Dev Debian
 
 - build-essential
 - cmake
