@@ -151,13 +151,19 @@ impl SettingsController {
         speed_fixed: Duty,
     ) -> Result<()> {
         match self.get_device_repo(device_uid) {
-            Ok((_device_lock, repo)) => {
+            Ok((device_lock, repo)) => {
                 self.mix_commander
                     .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
                     .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
                     .await
+                    .inspect(|()| {
+                        info!(
+                            "Successfully applied:: {} | {channel_name} | Fixed Speed: {speed_fixed}",
+                            device_lock.borrow().name
+                        );
+                    })
             }
             Err(err) => Err(err),
         }
@@ -198,6 +204,13 @@ impl SettingsController {
                     .await
             }
         }
+        .inspect(|()| {
+            info!(
+                "Successfully applied:: {} | {channel_name} |  Profile: {}",
+                self.all_devices.get(device_uid).unwrap().borrow().name,
+                profile.name
+            );
+        })
     }
 
     async fn set_graph_profile(
@@ -347,9 +360,9 @@ impl SettingsController {
                 device_uid
             ));
         }
-        if lcd_settings.mode == "temp" {
+        let result = if lcd_settings.mode == "temp" {
             if lcd_settings.temp_source.is_none() {
-                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
+                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"));
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
@@ -362,7 +375,14 @@ impl SettingsController {
                 .clear_channel_setting(device_uid, channel_name);
             repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
                 .await
-        }
+        };
+        result.inspect(|()| {
+            info!(
+                "Successfully applied:: {} | {channel_name} | LCD Mode: {}",
+                device_lock.borrow().name,
+                lcd_settings.mode
+            );
+        })
     }
 
     /// This function processes the image file for the specified device channel.
@@ -498,6 +518,13 @@ impl SettingsController {
         }
         repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
             .await
+            .inspect(|()| {
+                info!(
+                    "Successfully applied:: {} | {channel_name} | Lighting Mode: {}",
+                    device_lock.borrow().name,
+                    lighting_settings.mode
+                );
+            })
     }
 
     pub async fn set_pwm_mode(

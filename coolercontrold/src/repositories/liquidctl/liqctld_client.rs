@@ -16,14 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::cell::RefCell;
 use std::ops::Not;
-use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
+use hashlink::LinkedHashMap;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::client::conn::http1::SendRequest;
@@ -38,11 +37,14 @@ use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::UnixStream;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use uuid::Uuid;
 
 const LIQCTLD_MAX_POOL_SIZE: usize = 10;
 const LIQCTLD_MAX_POOL_RETRIES: usize = 7;
+const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrol-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
 pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
@@ -59,9 +61,9 @@ const LIQCTLD_QUIT: &str = "/quit";
 
 /// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
-// Arc is proper here as we're using tokio::spawn (Send+Sync) for our hyper connection pool.
-type SocketConnectionLock = Rc<RefCell<SocketConnection>>;
-type ConnectionIndex = usize;
+// tokio::Mutex is used to make sure we're only making one request at a time per connection
+type SocketConnectionLock = Mutex<SocketConnection>;
+type ConnectionUID = String;
 
 /// `LiqctldClient` represents a client for interacting with a connection pool of socket connections.
 ///
@@ -70,7 +72,8 @@ type ConnectionIndex = usize;
 /// * `connection_pool`: The `connection_pool` property is a vector of `SocketConnectionLock` objects,
 ///   wrapped in a `RefCell`.
 pub struct LiqctldClient {
-    connection_pool: RefCell<Vec<SocketConnectionLock>>,
+    // tokio::RwLock is proper here as we're holding a lock over await points for multiple concurrent connections
+    connection_pool: RwLock<LinkedHashMap<ConnectionUID, SocketConnectionLock>>,
 }
 
 impl LiqctldClient {
@@ -81,11 +84,11 @@ impl LiqctldClient {
     /// Returns:
     /// a Result containing either an instance of the struct or an error.
     pub async fn new(connection_tries: usize) -> Result<Self> {
-        let mut connection_pool = Vec::with_capacity(LIQCTLD_MAX_POOL_SIZE);
-        let connection = Self::create_connection(connection_tries).await?;
-        connection_pool.push(Rc::new(RefCell::new(connection)));
+        let mut connection_pool = LinkedHashMap::with_capacity(LIQCTLD_MAX_POOL_SIZE);
+        let (uid, connection) = Self::create_connection(connection_tries).await?;
+        connection_pool.insert(uid, Mutex::new(connection));
         Ok(Self {
-            connection_pool: RefCell::new(connection_pool),
+            connection_pool: RwLock::new(connection_pool),
         })
     }
 
@@ -100,16 +103,15 @@ impl LiqctldClient {
     /// The function `create_connection` returns a `Result` containing a `SocketConnection` if the
     /// connection is successfully established. If the connection fails after the maximum number of
     /// retries, an error is returned.
-    async fn create_connection(connection_tries: usize) -> Result<SocketConnection> {
+    async fn create_connection(
+        connection_tries: usize,
+    ) -> Result<(ConnectionUID, SocketConnection)> {
         let mut retry_count = 0;
         while retry_count < connection_tries {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    warn!(
-                            "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {}", 
-                            retry_count + 1, err
-                        );
+                    warn!("Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",retry_count + 1);
                     Self::handle_retry(&mut retry_count).await;
                     continue;
                 }
@@ -120,7 +122,7 @@ impl LiqctldClient {
             {
                 Ok((sender, connection)) => (sender, connection),
                 Err(err) => {
-                    error!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {}", retry_count + 1, err);
+                    error!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}", retry_count + 1);
                     Self::handle_retry(&mut retry_count).await;
                     continue;
                 }
@@ -130,18 +132,18 @@ impl LiqctldClient {
             // and since it's only for the hyper Connection, is fine to use here.
             let connection_handle = tokio::task::spawn_local(async {
                 if let Err(err) = connection.await {
-                    error!("Unexpected Error: Connection to socket failed: {:?}", err);
+                    error!("Unexpected Error: Connection to socket failed: {err:?}");
                 }
             });
-            return Ok(SocketConnection {
-                sender,
-                connection_handle,
-            });
+            return Ok((
+                Uuid::new_v4().to_string(),
+                SocketConnection {
+                    sender,
+                    connection_handle,
+                },
+            ));
         }
-        bail!(
-            "Failed to connect to coolercontrol-liqctld after {} tries",
-            retry_count
-        );
+        bail!("Failed to connect to coolercontrol-liqctld after {retry_count} tries");
     }
 
     /// Asynchronously increments the value of `retry_count` after waiting
@@ -156,46 +158,38 @@ impl LiqctldClient {
         *retry_count += 1;
     }
 
-    /// Attempts to retrieve a free socket connection from a connection pool,
-    /// creating a new connection if necessary, and returns the index and lock of the connection.
-    ///
-    /// Returns:
-    ///
-    /// A `Result` containing a tuple `(ConnectionIndex, SocketConnectionLock)`.
-    async fn get_socket_connection(&self) -> Result<(ConnectionIndex, SocketConnectionLock)> {
-        let mut retries = 0;
-        while retries < LIQCTLD_MAX_POOL_RETRIES {
-            for (i, s_lock) in self.connection_pool.borrow().iter().enumerate() {
-                if s_lock.try_borrow_mut().is_err() {
-                    trace!("The #{i} socket connection is busy, trying another.");
+    /// Attempts to retrieve a free socket connection from the connection pool,
+    /// creating a new connection if necessary,
+    /// and returning the `ConnectionUID` of the free connection.
+    async fn get_socket_connection(&self) -> Result<ConnectionUID> {
+        for _ in 0..LIQCTLD_MAX_POOL_RETRIES {
+            for (c_id, s_lock) in self.connection_pool.read().await.iter() {
+                if s_lock.try_lock().is_err() {
+                    trace!("The {c_id} socket connection is busy, trying another.");
                     continue;
                 }
-                trace!("Found #{i} free socket connection.");
-                return Ok((i, s_lock.clone()));
+                trace!("Found a free socket connection: {c_id}");
+                return Ok(c_id.to_owned());
             }
-            let mut pool_size = self.connection_pool.borrow().len();
-            if pool_size < LIQCTLD_MAX_POOL_SIZE {
-                let connection = Self::create_connection(LIQCTLD_CONNECTION_TRIES).await?;
-                let connection_lock = Rc::new(RefCell::new(connection));
-                self.connection_pool
-                    .borrow_mut()
-                    .push(connection_lock.clone());
-                pool_size += 1;
-                trace!(
-                    "Created a new socket connection and added it to the pool now of {pool_size}."
-                );
-                return Ok((pool_size - 1, connection_lock));
+            {
+                let mut pool = self.connection_pool.write().await;
+                if pool.len() < LIQCTLD_MAX_POOL_SIZE {
+                    let (c_id, connection) =
+                        Self::create_connection(LIQCTLD_CONNECTION_TRIES).await?;
+                    pool.insert(c_id.clone(), Mutex::new(connection));
+                    trace!(
+                        "Created a new socket connection and added it to the pool now of {}.",
+                        pool.len()
+                    );
+                    return Ok(c_id);
+                }
             }
             warn!(
                 "Socket connection pool full & busy, waiting for a connection to become available."
             );
             sleep(Duration::from_millis(100)).await;
-            retries += 1;
         }
-        bail!(
-            "Failed to get a free liqctld connection after {} tries",
-            retries + 1
-        );
+        bail!("Failed to get a free liqctld connection after {LIQCTLD_MAX_POOL_RETRIES} tries");
     }
 
     /// Sends a request to a socket connection, handles errors, and returns the deserialized response.
@@ -213,24 +207,32 @@ impl LiqctldClient {
     where
         T: for<'de> Deserialize<'de>,
     {
-        #![allow(clippy::await_holding_refcell_ref)]
-        loop {
+        for _ in 0..LIQCTLD_EXPIRED_CONNECTION_RETRIES {
             // If we run out of connections or timeout, this will return Err:
-            let (c_index, c_lock) = self.get_socket_connection().await?;
-            // There are multiple tries for these socket connection mut references,
-            // it should be safe to hold for the send_request await point.
-            let Ok(mut c_write_lock) = c_lock.try_borrow_mut() else {
-                continue;
-            };
-            let Ok(response) = c_write_lock.sender.send_request(request.clone()).await else {
+            let c_id = self.get_socket_connection().await?;
+            let pool_read_lock = self.connection_pool.read().await;
+            let c_lock = pool_read_lock.get(&c_id).expect("Connection should exist");
+            let Ok(response) = c_lock
+                .lock()
+                .await
+                .sender
+                .send_request(request.clone())
+                .await
+            else {
+                // this can happen semi-regularly (if a connection isn't used for a while)
                 debug!("Socket Connection no longer valid. Closing.");
-                c_write_lock.connection_handle.abort();
-                self.connection_pool.borrow_mut().remove(c_index);
-                continue;
+                c_lock.lock().await.connection_handle.abort();
+                drop(pool_read_lock);
+                // tokio write lock is fair, but likely will wait until other requests are finished:
+                self.connection_pool.write().await.remove(&c_id);
+                continue; // retry with a different connection
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
             return Ok(serde_json::from_str(&lc_response.body)?);
         }
+        Err(anyhow!(
+            "Failed to get a free or new liqctld connection after {LIQCTLD_EXPIRED_CONNECTION_RETRIES} tries"
+        ))
     }
 
     /// Converts a `Response<Incoming>` object into a `LiqctldResponse` object,
@@ -539,11 +541,10 @@ impl LiqctldClient {
     }
 
     /// Asynchronously shuts down all connections in a connection pool and clears the pool.
-    pub fn shutdown(&self) {
-        let mut pool = self.connection_pool.borrow_mut();
-        for connection in pool.iter() {
-            let connection = connection.borrow_mut();
-            connection.connection_handle.abort();
+    pub async fn shutdown(&self) {
+        let mut pool = self.connection_pool.write().await;
+        for connection in pool.values() {
+            connection.lock().await.connection_handle.abort();
         }
         pool.clear();
     }
@@ -554,8 +555,8 @@ impl LiqctldClient {
     /// Returns:
     ///
     /// a boolean value.
-    pub fn is_connected(&self) -> bool {
-        self.connection_pool.borrow().is_empty().not()
+    pub async fn is_connected(&self) -> bool {
+        self.connection_pool.read().await.is_empty().not()
     }
 }
 
