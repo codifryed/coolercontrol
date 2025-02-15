@@ -276,7 +276,7 @@ impl ModeController {
                 self.active_modes.borrow().previous.as_ref(),
             );
         }
-        debug!("Mode applied: {}", mode.name);
+        info!("Successfully applied Mode: {}", mode.name);
         Ok(())
     }
 
