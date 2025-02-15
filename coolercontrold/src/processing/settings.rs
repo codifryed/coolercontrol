@@ -160,7 +160,7 @@ impl SettingsController {
                     .await
                     .inspect(|()| {
                         info!(
-                            "Successfully applied Fixed Speed: {} | {channel_name} | {speed_fixed}",
+                            "Successfully applied:: {} | {channel_name} | Fixed Speed: {speed_fixed}",
                             device_lock.borrow().name
                         );
                     })
@@ -206,7 +206,8 @@ impl SettingsController {
         }
         .inspect(|()| {
             info!(
-                "Successfully applied Profile: {device_uid} | {channel_name} | {}",
+                "Successfully applied:: {} | {channel_name} |  Profile: {}",
+                self.all_devices.get(device_uid).unwrap().borrow().name,
                 profile.name
             );
         })
@@ -377,7 +378,7 @@ impl SettingsController {
         };
         result.inspect(|()| {
             info!(
-                "Successfully applied LCD Mode: {} | {channel_name} | {}",
+                "Successfully applied:: {} | {channel_name} | LCD Mode: {}",
                 device_lock.borrow().name,
                 lcd_settings.mode
             );
@@ -519,7 +520,7 @@ impl SettingsController {
             .await
             .inspect(|()| {
                 info!(
-                    "Successfully applied Lighting Mode: {} | {channel_name} | {}",
+                    "Successfully applied:: {} | {channel_name} | Lighting Mode: {}",
                     device_lock.borrow().name,
                     lighting_settings.mode
                 );
