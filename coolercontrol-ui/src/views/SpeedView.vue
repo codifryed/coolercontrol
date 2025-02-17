@@ -21,7 +21,7 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiAlertOutline, mdiContentSaveOutline } from '@mdi/js'
 import Select from 'primevue/select'
-import { nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -232,6 +232,20 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         reject: () => next(false),
     })
 }
+const updateResponsiveGraphHeight = (): void => {
+    const graphEl = document.getElementById('control-graph')
+    const controlPanel = document.getElementById('control-panel')
+    if (graphEl != null && controlPanel != null) {
+        const panelHeight = controlPanel.getBoundingClientRect().height
+        if (panelHeight > 56) {
+            // 4rem
+            graphEl.style.height = `max(calc(100vh - (${panelHeight}px + 0.5rem)), 20rem)`
+        } else {
+            graphEl.style.height = 'max(calc(100vh - 4rem), 20rem)'
+        }
+    }
+}
+
 onMounted(() => {
     // @ts-ignore
     document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
@@ -244,6 +258,9 @@ onMounted(() => {
             })
         }
     })
+
+    window.addEventListener('resize', updateResponsiveGraphHeight)
+    setTimeout(updateResponsiveGraphHeight)
 
     addScrollEventListener()
     watch(chartMinutes, (newValue: number): void => {
@@ -260,10 +277,13 @@ onMounted(() => {
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
 })
+onUnmounted(() => {
+    window.removeEventListener('resize', updateResponsiveGraphHeight)
+})
 </script>
 
 <template>
-    <div class="flex border-b-4 border-border-one items-center justify-between">
+    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
             <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
             <span class="font-bold">{{ channelLabel }}</span>

@@ -31,7 +31,16 @@ import {
 } from '@/models/Profile.ts'
 import Button from 'primevue/button'
 import MultiSelect from 'primevue/multiselect'
-import { computed, nextTick, onMounted, ref, type Ref, watch, type WatchStopHandle } from 'vue'
+import {
+    computed,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    ref,
+    type Ref,
+    watch,
+    type WatchStopHandle,
+} from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -1252,6 +1261,39 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         reject: () => next(false),
     })
 }
+const updateResponsiveGraphHeight = (): void => {
+    const graphEl = document.getElementById('control-graph')
+    const controlPanel = document.getElementById('control-panel')
+    if (graphEl != null && controlPanel != null) {
+        const panelHeight = controlPanel.getBoundingClientRect().height
+        if (panelHeight > 56) {
+            // 4rem
+            graphEl.style.height = `max(calc(100vh - (${panelHeight}px + 0.5rem)), 20rem)`
+        } else {
+            graphEl.style.height = 'max(calc(100vh - 4rem), 20rem)'
+        }
+    }
+}
+const updatePosition = (): void => {
+    controlGraph.value?.setOption({
+        graphic: data.slice(0, data.length - 1).map((item, dataIndex) => ({
+            id: dataIndex,
+            position: controlGraph.value?.convertToPixel('grid', item.value),
+        })),
+    })
+}
+const updateKnobSize = (): void => {
+    const el = document.getElementById('profile-display')
+    if (el == null) {
+        return
+    }
+    const w = el.getBoundingClientRect().width
+    const h = el.getBoundingClientRect().height
+    knobSize.value = Math.max(
+        Math.min(w, h) - deviceStore.getREMSize(4),
+        deviceStore.getREMSize(27),
+    )
+}
 
 onMounted(async () => {
     // Make sure on selected Point change, that there is only one.
@@ -1269,29 +1311,12 @@ onMounted(async () => {
             series: [{ id: 'a', data: data }],
         })
     })
+    window.addEventListener('resize', updateResponsiveGraphHeight)
+    setTimeout(updateResponsiveGraphHeight)
+
     // handle the graphics on graph resize & zoom
-    const updatePosition = (): void => {
-        controlGraph.value?.setOption({
-            graphic: data.slice(0, data.length - 1).map((item, dataIndex) => ({
-                id: dataIndex,
-                position: controlGraph.value?.convertToPixel('grid', item.value),
-            })),
-        })
-    }
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
-    const updateKnobSize = (): void => {
-        const el = document.getElementById('profile-display')
-        if (el == null) {
-            return
-        }
-        const w = el.getBoundingClientRect().width
-        const h = el.getBoundingClientRect().height
-        knobSize.value = Math.max(
-            Math.min(w, h) - deviceStore.getREMSize(4),
-            deviceStore.getREMSize(27),
-        )
-    }
     setTimeout(updateKnobSize)
     window.addEventListener('resize', updateKnobSize)
     addScrollEventListeners()
@@ -1306,10 +1331,15 @@ onMounted(async () => {
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
 })
+onUnmounted(() => {
+    window.removeEventListener('resize', updateResponsiveGraphHeight)
+    window.removeEventListener('resize', updatePosition)
+    window.removeEventListener('resize', updateKnobSize)
+})
 </script>
 
 <template>
-    <div class="flex border-b-4 border-border-one items-center justify-between">
+    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
             <span class="font-bold overflow-hidden overflow-ellipsis">{{
                 currentProfile.name
@@ -1541,7 +1571,7 @@ onMounted(async () => {
         <v-chart
             v-else-if="showGraph"
             id="control-graph"
-            class="control-graph pt-6 pr-11 pl-4 pb-6"
+            class="pt-6 pr-11 pl-4 pb-6"
             ref="controlGraph"
             :option="option"
             :autoresize="true"
@@ -1561,11 +1591,10 @@ onMounted(async () => {
 </template>
 
 <style scoped lang="scss">
-.control-graph {
-    // todo: we might need a scrollable area:
+#control-graph {
     overflow: hidden;
-    //height: max(95vh, 40rem);
-    height: max(calc(100vh - 3.875rem), 40rem);
+    // This is adjusted dynamically on resize with js above
+    height: max(calc(100vh - 4rem), 20rem);
     //width: max(calc(90vw - 17rem), 30rem);
 }
 
