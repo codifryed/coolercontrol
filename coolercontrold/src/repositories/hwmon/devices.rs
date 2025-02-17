@@ -264,7 +264,12 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
             info!("Could not read PCI ID database: {err}, device name information will be limited");
         })
         .ok()?;
-    let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);
+    let info = db.get_device_info(
+        parse_hex_str_to_u16(vendor_id)?,
+        parse_hex_str_to_u16(model_id)?,
+        parse_hex_str_to_u16(subsys_vendor_id)?,
+        parse_hex_str_to_u16(subsys_model_id)?,
+    );
     let pci_device_names = PciDeviceNames {
         vendor_name: info.vendor_name.map(str::to_owned),
         device_name: info.device_name.map(str::to_owned),
@@ -273,6 +278,10 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     };
     debug!("Found PCI Device Names: {pci_device_names:?}");
     Some(pci_device_names)
+}
+
+fn parse_hex_str_to_u16(value: &str) -> Option<u16> {
+    u16::from_str_radix(value, 16).ok()
 }
 
 pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {

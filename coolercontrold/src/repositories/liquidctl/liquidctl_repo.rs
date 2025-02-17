@@ -31,7 +31,7 @@ use derive_more::{Display, Error};
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use zbus::export::futures_util::future::join_all;
+use futures_util::future::join_all;
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};

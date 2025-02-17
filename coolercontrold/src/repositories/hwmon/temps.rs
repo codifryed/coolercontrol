@@ -27,7 +27,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use anyhow::{Context, Result};
 use log::{debug, info, trace};
 use regex::Regex;
-use zbus::export::futures_util::future::join_all;
+use futures_util::future::join_all;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;

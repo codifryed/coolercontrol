@@ -24,7 +24,7 @@ use log::{info, trace};
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
-use zbus::export::futures_util::future::join_all;
+use futures_util::future::join_all;
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
