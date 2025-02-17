@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::async_runtime::RwLock;
 use tauri::{command, AppHandle};
-use zbus::export::futures_util::StreamExt;
+use futures_util::StreamExt;
 
 #[command]
 pub async fn acknowledge_daemon_issues(
