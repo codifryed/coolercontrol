@@ -25,9 +25,9 @@ use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
+use futures_util::future::join_all;
 use log::{debug, info, trace};
 use regex::Regex;
-use futures_util::future::join_all;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;

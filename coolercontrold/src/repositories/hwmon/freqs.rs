@@ -20,11 +20,11 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Mhz};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
+use futures_util::future::join_all;
 use log::{info, trace};
 use regex::Regex;
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
-use futures_util::future::join_all;
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 

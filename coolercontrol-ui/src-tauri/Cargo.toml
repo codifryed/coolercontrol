@@ -45,7 +45,9 @@ tauri-plugin-store = "2.2.0"
 tauri-plugin-window-state = "2.2.1"
 tauri-plugin-dialog = "2.2.0"
 zbus = { version = "5.5.0", features = ["blocking-api"] }
-futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
+futures-util = { version = "0.3.31", default-features = false, features = [
+  "std",
+] }
 # These should follow the versions Tauri uses:
 glib = "=0.18.5"
 gtk = "=0.18.1"
