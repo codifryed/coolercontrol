@@ -48,6 +48,8 @@ import {
 } from '@/models/Mode'
 import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
+// @ts-ignore
+import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
