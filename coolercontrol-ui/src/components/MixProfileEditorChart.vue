@@ -495,6 +495,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 <template>
     <v-chart
         class="mix-graph p-4 [@media(max-height:1024px)]:pb-12"
+        id="control-graph"
         ref="mixGraph"
         :option="option"
         :autoresize="true"
@@ -503,8 +504,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </template>
 
 <style scoped lang="scss">
-.mix-graph {
-    height: max(95vh, 40rem);
+#control-graph {
+    height: max(95vh, 20rem);
     //width: max(calc(90vw - 17rem), 20rem);
 }
 </style>
