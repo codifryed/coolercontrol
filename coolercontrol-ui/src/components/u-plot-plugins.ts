@@ -33,7 +33,7 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
     tooltip.className = 'u-plot-tooltip'
     tooltip.style.display = 'none'
     tooltip.style.position = 'absolute'
-    tooltip.style.background = 'color-mix(in srgb, rgb(var(--colors-bg-one)) 94%, transparent)'
+    tooltip.style.background = 'rgba(var(--colors-bg-one) / 0.9)'
     tooltip.style.border = '1px solid rgb(var(--colors-border-one))'
     tooltip.style.borderRadius = '0.5rem'
     tooltip.style.color = 'rgb(var(--colors-text-color))'
@@ -281,8 +281,7 @@ export const columnHighlightPlugin = () => {
                         left: 0,
                         top: 0,
                         height: '4%',
-                        backgroundColor:
-                            'color-mix(in srgb, rgb(var(--colors-accent)) 30%, transparent)',
+                        backgroundColor: 'rgba(var(--colors-accent) / 0.3)',
                     })
                     uPlot.assign(highlightEl2.style, {
                         pointerEvents: 'none',
@@ -291,8 +290,7 @@ export const columnHighlightPlugin = () => {
                         left: 0,
                         top: 0,
                         height: '100%',
-                        backgroundColor:
-                            'color-mix(in srgb, rgb(var(--colors-accent)) 10%, transparent)',
+                        backgroundColor: 'rgba(var(--colors-accent) / 0.1)',
                     })
                     underEl.appendChild(highlightEl)
                     underEl.appendChild(highlightEl2)
