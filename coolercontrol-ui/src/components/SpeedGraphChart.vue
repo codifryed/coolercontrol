@@ -459,7 +459,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="control-graph pt-6 pr-11 pl-4 pb-6"
+        id="control-graph"
+        class="pt-6 pr-11 pl-4 pb-6"
         ref="controlGraph"
         :option="option"
         :autoresize="true"
@@ -469,7 +470,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </template>
 
 <style scoped lang="scss">
-.control-graph {
-    height: max(calc(100vh - 3.875rem), 40rem);
+#control-graph {
+    height: max(calc(100vh - 4rem), 20rem);
 }
 </style>

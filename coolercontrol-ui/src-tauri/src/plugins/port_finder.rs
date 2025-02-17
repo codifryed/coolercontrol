@@ -49,7 +49,7 @@ fn ask_free_tcp_port_ipv6() -> Option<Port> {
 
 /// This is our own custom implementation for finding a free TCP port for IPv4, IPv6, or both.
 pub fn find_free_port() -> Option<Port> {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     random_port_both_ipvs(&mut rng)
         .or_else(|| random_port_ipv4(&mut rng))
         .or_else(|| random_port_ipv6(&mut rng))
@@ -60,7 +60,7 @@ pub fn find_free_port() -> Option<Port> {
 
 fn random_port_both_ipvs(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
-        let port = rng.gen_range(15000..25000);
+        let port = rng.random_range(15000..25000);
         if is_free_tcp_ipv4(port) && is_free_tcp_ipv6(port) {
             return Some(port);
         }
@@ -70,7 +70,7 @@ fn random_port_both_ipvs(rng: &mut ThreadRng) -> Option<Port> {
 
 fn random_port_ipv4(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
-        let port = rng.gen_range(15000..25000);
+        let port = rng.random_range(15000..25000);
         if is_free_tcp_ipv4(port) {
             return Some(port);
         }
@@ -80,7 +80,7 @@ fn random_port_ipv4(rng: &mut ThreadRng) -> Option<Port> {
 
 fn random_port_ipv6(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
-        let port = rng.gen_range(15000..25000);
+        let port = rng.random_range(15000..25000);
         if is_free_tcp_ipv6(port) {
             return Some(port);
         }

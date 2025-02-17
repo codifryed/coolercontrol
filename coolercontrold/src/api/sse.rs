@@ -22,11 +22,11 @@ use aide::NoApi;
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive};
 use axum::response::Sse;
+use futures_util::StreamExt;
 use std::convert::Infallible;
 use std::time::Duration;
 use tokio_stream::wrappers::BroadcastStream;
 use zbus::export::futures_core::Stream;
-use zbus::export::futures_util::StreamExt;
 
 const DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS: u64 = 30;
 

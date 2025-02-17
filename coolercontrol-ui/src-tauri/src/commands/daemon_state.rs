@@ -19,6 +19,7 @@
 use crate::commands::modes::ModesState;
 use crate::commands::notifications::send_notification;
 use crate::tray::recreate_mode_menu_items;
+use futures_util::StreamExt;
 use reqwest::Client;
 use reqwest_eventsource::retry::Constant;
 use reqwest_eventsource::{Event, EventSource};
@@ -29,7 +30,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::async_runtime::RwLock;
 use tauri::{command, AppHandle};
-use zbus::export::futures_util::StreamExt;
 
 #[command]
 pub async fn acknowledge_daemon_issues(

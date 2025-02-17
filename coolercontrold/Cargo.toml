@@ -22,11 +22,11 @@ io_uring = ["dep:tokio-uring"]
 log = "0.4.25"
 env_logger = "0.11.6"
 systemd-journal-logger = "2.2.0"
-clap = { version = "4.5.27", features = [
+clap = { version = "4.5.29", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.95"
-derive_more = { version = "1.0.0", features = ["display", "error"] }
+derive_more = { version = "2.0.1", features = ["display", "error"] }
 tokio = { version = "1.43.0", default-features = false, features = [
   "rt",
   "fs",
@@ -75,11 +75,11 @@ schemars = { version = "0.8.21", features = ["chrono"] }
 mime = "0.3.17"
 # Held back due to Axum update above:
 axum_typed_multipart = "=0.14.0"
-tempfile = "3.15.0"
+tempfile = "3.17.1"
 tokio-stream = { version = "0.1.17", default-features = false, features = [
   "sync",
 ] }
-hyper = { version = "1.5.2", default-features = false, features = [
+hyper = { version = "1.6.0", default-features = false, features = [
   "http1",
   "client",
 ] }
@@ -90,17 +90,20 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
 ] }
 http-body-util = "0.1.2"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.137"
-zbus = { version = "5.3.1", default-features = false, features = [
+serde_json = "1.0.138"
+zbus = { version = "5.5.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
+futures-util = { version = "0.3.31", default-features = false, features = [
+  "std",
+] } # future utilities we use like join3
 sysinfo = { version = "0.33.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.39", features = [
   "serde",
 ] } # We use timestamps in our status history
-strum = { version = "0.26.3", features = ["derive"] } # Enum -> String
+strum = { version = "0.27.1", features = ["derive"] } # Enum -> String
 regex = "1.11.1"
 lazy_static = "1.5.0" # allows us for ex to complile regex expression once in a function.
 cached = { version = "0.54.0", default-features = false, features = [
@@ -110,11 +113,11 @@ cached = { version = "0.54.0", default-features = false, features = [
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 const_format = "0.2.34" # allows combining string constants
-psutil = { version = "4.0.0", default-features = false, features = [
+psutil = { version = "5.0.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.101.0"
+nu-glob = "0.102.0"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol" }
 sha2 = "0.10.8"
@@ -125,8 +128,8 @@ nix = { version = "0.29.0", default-features = false, features = [
   "process",
   "sched",
 ] }
-pciid-parser = "0.7.2"
-libdrm_amdgpu_sys = "0.8.2"
+pciid-parser = "0.8.0"
+libdrm_amdgpu_sys = "0.8.3"
 hashlink = "0.10.0"
 lazy_format = "2.0.3"
 yata = "0.7.0" # moving averages
@@ -150,7 +153,7 @@ gifski = { version = "1.32.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
-uuid = { version = "1.12.1", features = ["v4"] }
+uuid = { version = "1.13.1", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"

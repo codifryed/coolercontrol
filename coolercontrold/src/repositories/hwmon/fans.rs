@@ -25,9 +25,9 @@ use crate::device::ChannelStatus;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{anyhow, Context, Result};
+use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use zbus::export::futures_util::future::{join3, join_all};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";

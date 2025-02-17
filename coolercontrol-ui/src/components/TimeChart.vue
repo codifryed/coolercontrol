@@ -703,18 +703,18 @@ onMounted(async () => {
 
 <template>
     <div class="p-2">
-        <div id="u-plot-chart" class="chart"></div>
+        <div id="u-plot-chart"></div>
     </div>
 </template>
 
 <style scoped lang="scss">
-.chart {
+#u-plot-chart {
     width: 100%;
-    height: calc(100vh - 5.5rem);
+    height: calc(100vh - 5.75rem);
 }
 
 // zoom selection style
-.chart :deep(.u-select) {
+#u-plot-chart :deep(.u-select) {
     background: linear-gradient(
         0deg,
         rgba(var(--colors-accent) / 0.03) 0%,

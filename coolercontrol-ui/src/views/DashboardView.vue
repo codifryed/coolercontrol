@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, type Ref, ref, watch } from 'vue'
+import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -160,8 +160,25 @@ const addScrollEventListener = (): void => {
     // @ts-ignore
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
 }
+const updateResponsiveGraphHeight = (): void => {
+    const graphEl = document.getElementById('u-plot-chart')
+    const controlPanel = document.getElementById('control-panel')
+    if (graphEl != null && controlPanel != null) {
+        const panelHeight = controlPanel.getBoundingClientRect().height
+        if (panelHeight > 77) {
+            // 5.5rem
+            graphEl.style.height = `calc(100vh - (${panelHeight}px + 2rem))`
+        } else {
+            graphEl.style.height = 'calc(100vh - 5.75rem)'
+        }
+    }
+}
+
 const chartKey: Ref<string> = ref(uuidV4())
 onMounted(async () => {
+    window.addEventListener('resize', updateResponsiveGraphHeight)
+    setTimeout(updateResponsiveGraphHeight)
+
     addScrollEventListener()
     watch(chartMinutes, (newValue: number): void => {
         chartMinutesChanged(newValue)
@@ -172,10 +189,13 @@ onMounted(async () => {
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
 })
+onUnmounted(() => {
+    window.removeEventListener('resize', updateResponsiveGraphHeight)
+})
 </script>
 
 <template>
-    <div class="flex border-b-4 border-border-one items-center justify-between">
+    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
             <span class="font-bold overflow-hidden overflow-ellipsis">{{ dashboard.name }}</span>
         </div>
