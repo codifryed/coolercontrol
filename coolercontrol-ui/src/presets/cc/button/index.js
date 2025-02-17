@@ -22,7 +22,8 @@ export default {
             // Shapes
             { 'shadow-lg': props.raised },
             // force button to not be full-rounded
-            { 'rounded-lg': !props.rounded, 'rounded-lg': props.rounded },
+            // { 'rounded-lg': !props.rounded, 'rounded-lg': props.rounded },
+            'rounded-lg',
             {
                 'rounded-none first:rounded-l-md last:rounded-r-md':
                     parent.instance.$name == 'InputGroup',
