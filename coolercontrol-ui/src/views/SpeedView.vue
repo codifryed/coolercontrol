@@ -274,6 +274,9 @@ onMounted(() => {
     watch([manualControlEnabled, manualDuty, selectedProfile], () => {
         contextIsDirty = true
     })
+    watch(selectedProfile, () => {
+        setTimeout(updateResponsiveGraphHeight)
+    })
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
 })

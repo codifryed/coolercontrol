@@ -1324,6 +1324,9 @@ onMounted(async () => {
     watch(selectedType, () => {
         nextTick(addScrollEventListeners)
     })
+    watch([selectedType, chosenTemp], () => {
+        setTimeout(updateResponsiveGraphHeight)
+    })
 
     watch([chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction], () => {
         contextIsDirty = true
