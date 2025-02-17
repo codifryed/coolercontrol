@@ -121,7 +121,7 @@ const calcLineShadowSize = (profileIndex: number): number => {
 const option = {
     grid: {
         show: false,
-        top: deviceStore.getREMSize(1),
+        top: deviceStore.getREMSize(0.75),
         left: 0,
         right: deviceStore.getREMSize(0.9),
         bottom: 0,
@@ -133,7 +133,7 @@ const option = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(1.0),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}° ',
         },
         axisLine: {
@@ -156,7 +156,7 @@ const option = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(1.0),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}%',
         },
         axisLine: {
@@ -494,7 +494,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="mix-graph p-4 [@media(max-height:1024px)]:pb-12"
+        id="control-graph"
+        class="pt-6 pr-11 pl-4 pb-6"
         ref="mixGraph"
         :option="option"
         :autoresize="true"
@@ -503,8 +504,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </template>
 
 <style scoped lang="scss">
-.mix-graph {
-    height: max(95vh, 40rem);
+#control-graph {
+    height: max(95vh, 20rem);
     //width: max(calc(90vw - 17rem), 20rem);
 }
 </style>
