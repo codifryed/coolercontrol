@@ -62,7 +62,8 @@
         "vite": "^6.1.0",
         "vite-svg-loader": "^5.1.0",
         "vitest": "^3.0.5",
-        "vue-tsc": "^2.2.2"
+        "vue-tsc": "^2.2.2",
+        "abortcontroller-polyfill": "^1.7.8"
     },
     "browserslist": [
         "defaults",
