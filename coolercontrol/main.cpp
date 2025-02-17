@@ -36,6 +36,7 @@ int main(int argc, char *argv[]) {
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 
     // QWebEngineProfile::defaultProfile()->settings()->setUnknownUrlSchemePolicy(QWebEngineSettings::AllowAllUnknownUrlSchemes);
 
