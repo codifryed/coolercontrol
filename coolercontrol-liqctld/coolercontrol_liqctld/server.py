@@ -88,7 +88,7 @@ def set_device_as_legacy690(device_id: int) -> Device:
 @api.put("/devices/{device_id}/speed/fixed")
 def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
-    speed_kwargs['direct_access'] = True
+    speed_kwargs["direct_access"] = True
     device_service.set_fixed_speed(device_id, speed_kwargs)
     # empty success response needed for systemd socket service to not error on 0 byte content
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
