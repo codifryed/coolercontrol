@@ -5,15 +5,22 @@
 #include <QMenu>
 #include <QAction>
 #include <QApplication>
-#include <QCloseEvent>
+#include <QSettings>
 #include <QWebEngineNewWindowRequest>
+#include <QStringBuilder> // for % operator
+#include <QWizardPage>
 
 #include "mywebenginepage.h"
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
       , view(new QWebEngineView(this)) {
+    // SETUP
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     setCentralWidget(view);
+
     // todo: we may not need our own page in the end: will keep for now to handle other cases:
     // Note: we can probably change the download link in the UI to point to an external link to see the raw text api endpoint
     const auto page = new MyWebEnginePage(this);
@@ -22,11 +29,9 @@ MainWindow::MainWindow(QWidget *parent)
         QDesktopServices::openUrl(request.requestedUrl());
     });
     view->setPage(page);
-    view->load(QUrl("http://localhost:11987"));
-    // page->load(QUrl("http://localhost:11987"));
 
-    // todo: zoom adjustement (probably with webchannel)
-    // view->setZoomFactor()
+    // SYSTEM TRAY:
+    ////////////////////////////////////////////////////////////////////////////////////////////////
 
     closing = false;
 
@@ -43,6 +48,12 @@ MainWindow::MainWindow(QWidget *parent)
             showAction->setText(tr("&Hide"));
         }
     });
+
+    addressAction = new QAction(tr("&Daemon Address"), this);
+    connect(addressAction, &QAction::triggered, [this]() {
+        displayAddressWizard();
+    });
+
     quitAction = new QAction(tr("&Quit"), this);
     connect(quitAction, &QAction::triggered, [this]() {
         closing = true;
@@ -53,6 +64,7 @@ MainWindow::MainWindow(QWidget *parent)
     trayIconMenu->addAction(ccHeader);
     trayIconMenu->addSeparator();
     trayIconMenu->addAction(showAction);
+    trayIconMenu->addAction(addressAction);
     trayIconMenu->addAction(quitAction);
 
     sysTrayIcon = new QSystemTrayIcon(this);
@@ -74,6 +86,19 @@ MainWindow::MainWindow(QWidget *parent)
             }
         }
     });
+
+
+    // LOAD UI:
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    view->load(getDaemonUrl());
+    connect(view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
+        if (!pageLoadedSuccessfully) {
+            displayAddressWizard();
+        }
+    });
+
+    // todo: zoom adjustement (probably with webchannel)
+    // view->setZoomFactor()
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
@@ -89,10 +114,41 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     // }
 }
 
-MainWindow::~MainWindow() {
-    delete view;
-    delete sysTrayIcon;
-    delete trayIconMenu;
-    delete quitAction;
-    delete showAction;
-};
+QUrl MainWindow::getDaemonUrl() {
+    const QSettings settings;
+    const auto host = settings.value(SETTING_DAEMON_ADDRESS, DEFAULT_DAEMON_ADDRESS.data()).toString();
+    const auto port = settings.value(SETTING_DAEMON_PORT, DEFAULT_DAEMON_PORT).toInt();
+    const auto sslEnabled = settings.value(SETTING_DAEMON_SSL_ENABLED, DEFAULT_DAEMON_SSL_ENABLED).toBool();
+    const auto prefix = sslEnabled ? tr("https://") : tr("http://");
+    return QUrl(prefix % host % tr(":") % QString::number(port));
+}
+
+void MainWindow::displayAddressWizard() {
+    if (wizard == nullptr) {
+        wizard = new QWizard;
+        wizard->setWindowTitle("Daemon Connection Error");
+        wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
+        wizard->setButtonText(QWizard::WizardButton::CancelButton, "&Quit");
+        wizard->setButtonText(QWizard::CustomButton1, "&Reset");
+        wizard->setOption(QWizard::HaveCustomButton1, true);
+        wizard->addPage(new IntroPage);
+        auto addressPage = new AddressPage;
+        wizard->addPage(addressPage);
+        connect(wizard, &QWizard::customButtonClicked, [this, addressPage]() {
+            addressPage->resetAddressInputValues();
+        });
+    }
+    if (wizard->isVisible()) {
+        return;
+    }
+    const auto result = wizard->exec();
+    if (result == 0) {
+        QApplication::quit();
+    } else {
+        QSettings settings;
+        settings.setValue(SETTING_DAEMON_ADDRESS, wizard->field("address").toString());
+        settings.setValue(SETTING_DAEMON_PORT, wizard->field("port").toInt());
+        settings.setValue(SETTING_DAEMON_SSL_ENABLED, wizard->field("ssl").toBool());
+        view->load(getDaemonUrl());
+    }
+}

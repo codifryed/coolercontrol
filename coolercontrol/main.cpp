@@ -26,9 +26,9 @@ int main(int argc, char *argv[]) {
     QApplication::setWindowIcon(
         QIcon::fromTheme("application-x-executable", QIcon(":/icons/icon.png"))
     );
-    QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
     QCoreApplication::setOrganizationName("org.coolercontrol.CoolerControl");
     QApplication::setApplicationName("org.coolercontrol.CoolerControl");
+    QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
     // todo: needed?:
     QApplication::setApplicationVersion("2.0.0");
     QApplication::setQuitOnLastWindowClosed(false);
