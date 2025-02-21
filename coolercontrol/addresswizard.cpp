@@ -13,7 +13,7 @@ IntroPage::IntroPage(QWidget *parent)
     label = new QLabel(
         "<p>A connection to the CoolerControl Daemon could not be established.<br/>"
         "Please make sure that the systemd service is running and available.</p>"
-        "<p>Check the <a href=\"https:/gitlab.com/coolercontrol/coolercontrol/\" target=\"_blank\">project page</a>"
+        "<p>Check the <a href=\"https://docs.coolercontrol.org\" target=\"_blank\">docs website</a>"
         " for installation instructions.</p>"
         "<p>Some helpful commands to enable and verify the daemon status:</p>"
         "<p><code>"
@@ -23,6 +23,8 @@ IntroPage::IntroPage(QWidget *parent)
         "<p>If you have configured a non-standard address to connect to the daemon, you can set it in the following steps: </p>"
     );
     label->setWordWrap(true);
+    label->setOpenExternalLinks(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
 
     auto *layout = new QVBoxLayout;
     layout->addWidget(label);
