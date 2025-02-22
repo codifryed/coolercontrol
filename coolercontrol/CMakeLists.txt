@@ -16,9 +16,10 @@ qt_add_executable(
         main.cpp
         mainwindow.cpp
         mainwindow.h
-        mywebenginepage.h
+        webpage.h
         addresswizard.cpp
         addresswizard.h
+        ipc.h
 )
 
 target_link_libraries(coolercontrol

@@ -5,11 +5,13 @@
 #include <QWebEnginePage>
 #include <QDesktopServices>
 
-class MyWebEnginePage final : public QWebEnginePage {
+class WebPage final : public QWebEnginePage {
     Q_OBJECT
 
 public:
     using QWebEnginePage::QWebEnginePage;
+
+    // todo: remove if not needed:
 
     // bool acceptNavigationRequest(const QUrl &url, const QWebEnginePage::NavigationType type,
     //                              const bool isMainFrame) override {

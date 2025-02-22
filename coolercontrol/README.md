@@ -9,15 +9,13 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 _todo: verify these are all needed:_
 
 - qt6-qtbase
-- qt6-qtwebchannel
 - qt6-qtwebengine
-- qt6-qtwebsockets
-- qt6-qtwebview
+- qt6-qtwebchannel
 
 ### Debian
 
-- libqt6webenginewidgets6
 - qt6-base-dev
+- libqt6webenginewidgets6
 - libqt6webenginecore6-bin
 - libxcb-cursor0 (for X11)
 
@@ -26,10 +24,8 @@ _todo: verify these are all needed:_
 - make
 - cmake
 - qt6-qtbase-devel
-- qt6-qtwebchannel-devel
 - qt6-qtwebengine-devel
-- qt6-qtwebsockets-devel
-- qt6-qtwebview-devel
+- qt6-qtwebchannel-devel
 
 ### Dev Debian
 
@@ -38,6 +34,7 @@ _todo: verify these are all needed:_
 - qt6-base-dev (already taken care of below actually)
 - qt6-webengine-dev
 - qt6-webengine-dev-tools
+// todo: webchannel?
 
 ## Installation
 

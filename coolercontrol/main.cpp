@@ -9,6 +9,8 @@
 int main(int argc, char *argv[]) {
     // Enables js debug output: (very cool)
     // QLoggingCategory::setFilterRules("*.debug=true");
+    // todo: debugging enabled:
+    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
     QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
 
     // todo: handle dbus checking for applicaton already running (freedesktop standard)
@@ -36,7 +38,8 @@ int main(int argc, char *argv[]) {
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
     QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    // todo: do we need this for Qt 6.2?
+    // QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 
     // QWebEngineProfile::defaultProfile()->settings()->setUnknownUrlSchemePolicy(QWebEngineSettings::AllowAllUnknownUrlSchemes);
 

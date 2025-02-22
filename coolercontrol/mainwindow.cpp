@@ -10,20 +10,18 @@
 #include <QStringBuilder> // for % operator
 #include <QWizardPage>
 
-#include "mywebenginepage.h"
-
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-      , view(new QWebEngineView(this)) {
+      , view(new QWebEngineView(this))
+      , page(new WebPage(this))
+      , channel(new QWebChannel(page))
+      , ipc(new IPC) {
     // SETUP
     ////////////////////////////////////////////////////////////////////////////////////////////////
-
     setCentralWidget(view);
-
-    // todo: we may not need our own page in the end: will keep for now to handle other cases:
-    // Note: we can probably change the download link in the UI to point to an external link to see the raw text api endpoint
-    const auto page = new MyWebEnginePage(this);
+    channel->registerObject("ipc", ipc);
+    page->setWebChannel(channel);
     // This allows external links in our app to be opened by the external browser:
     connect(page, &QWebEnginePage::newWindowRequested, [](QWebEngineNewWindowRequest const &request) {
         QDesktopServices::openUrl(request.requestedUrl());
@@ -32,9 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // SYSTEM TRAY:
     ////////////////////////////////////////////////////////////////////////////////////////////////
-
     closing = false;
-
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
     ccHeader->setDisabled(true);
     showAction = new QAction(tr("&Hide"), this);
@@ -65,6 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
     trayIconMenu->addSeparator();
     trayIconMenu->addAction(showAction);
     trayIconMenu->addAction(addressAction);
+    trayIconMenu->addSeparator();
     trayIconMenu->addAction(quitAction);
 
     sysTrayIcon = new QSystemTrayIcon(this);
@@ -87,7 +84,6 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-
     // LOAD UI:
     ////////////////////////////////////////////////////////////////////////////////////////////////
     view->load(getDaemonUrl());
@@ -99,6 +95,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     // todo: zoom adjustement (probably with webchannel)
     // view->setZoomFactor()
+    // todo: we can probably change the log download blob/link in the UI to point to an external link to see the raw text api endpoint
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
