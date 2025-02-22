@@ -2,41 +2,57 @@
 #define IPC_H
 
 #include <iostream>
+#include "constants.h"
+
 #include <QObject>
+
 
 /*
     An instance of this class gets published over the WebChannel and is then accessible to HTML clients.
 */
-class IPC final : public QObject
-{
+class IPC final : public QObject {
     Q_OBJECT
 
 public:
-    explicit IPC(QObject *parent = nullptr) : QObject(parent)
-    {
-//        connect(dialog, &Dialog::sendText, this, &Core::sendText);
+    explicit IPC(QObject *parent = nullptr)
+        : QObject(parent)
+          , settings(new QSettings) {
+        //        connect(dialog, &Dialog::sendText, this, &Core::sendText);
     }
 
-    // todo: adjust for specific signals and slots: (setCloseToTray, etc)
+    Q_INVOKABLE [[nodiscard]] bool getStartInTray() const {
+        return settings->value(SETTING_START_IN_TRAY.data(), false).toBool();
+    }
+
+    Q_INVOKABLE [[nodiscard]] int getStartupDelay() const {
+        return settings->value(SETTING_STARTUP_DELAY.data(), 0).toInt();
+    }
+
     /*
-        This signal is emitted from the C++ side and the text displayed on the HTML client side.
+        Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
     */
 signals:
     void sendText(const QString &text);
 
     /*
-        This slot is invoked from the HTML client side and the text displayed on the server side.
+        Slots are invoked from the JS client side and are processed on the server side.
     */
 public slots:
+    void receiveText(const QString &text) {
+        std::cout << "Received text: " << text.toStdString() << std::endl;
+        // //        m_dialog->displayMessage(Dialog::tr("Received message: %1").arg(text));
+    }
 
-     void receiveText(const QString &text)
-     {
-         std::cout << "Received text: " << text.toStdString() << std::endl;
-// //        m_dialog->displayMessage(Dialog::tr("Received message: %1").arg(text));
-     }
+    void setStartInTray(const bool startInTray) const {
+        settings->setValue(SETTING_START_IN_TRAY.data(), startInTray);
+    }
 
-// private:
+    void setStartupDelay(const int startupDelay) const {
+        settings->setValue(SETTING_STARTUP_DELAY.data(), startupDelay);
+    }
 
+private:
+    QSettings *settings;
 };
 
 #endif //IPC_H

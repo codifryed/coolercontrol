@@ -43,6 +43,6 @@ int main(int argc, char *argv[]) {
     w.setWindowTitle("CoolerControl");
     w.setMinimumSize(400, 400);
     w.resize(1600, 900);
-    w.show();
+    w.handleStartInTray();
     return QApplication::exec();
 }

@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <QDebug>
+#include <QThread>
 #include <QWebEngineView>
 #include <QSystemTrayIcon>
 #include <QMenu>
@@ -38,13 +39,22 @@ MainWindow::MainWindow(QWidget *parent)
     });
     view->setPage(page);
 
+    // wait to fully initialize if there is a delay set:
+    if (const auto startupDelay = ipc->getStartupDelay(); startupDelay > 0) {
+        qInfo() << "Waiting for startup delay: " << startupDelay << "s";
+        QThread::sleep(startupDelay);
+    }
+
     // SYSTEM TRAY:
     ////////////////////////////////////////////////////////////////////////////////////////////////
     closing = false;
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
     // todo: we could enable this for a 'prettier' sys tray header - maybe use the hide/show logic on Triggered
     ccHeader->setDisabled(true);
-    showAction = new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this);
+    showAction =
+            isVisible()
+                ? new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this)
+                : new QAction(QIcon::fromTheme("window-new", QIcon()), tr("&Show"), this);
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
@@ -165,5 +175,16 @@ void MainWindow::displayAddressWizard() {
         settings.setValue(SETTING_DAEMON_PORT, wizard->field("port").toInt());
         settings.setValue(SETTING_DAEMON_SSL_ENABLED, wizard->field("ssl").toBool());
         view->load(getDaemonUrl());
+    }
+}
+
+void MainWindow::handleStartInTray() {
+    if (ipc->getStartInTray()) {
+        hide();
+        page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
+        // todo: can play with this more in the future. It's tricky but there is a possibility of even less resource usage:
+        // page->setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
+    } else {
+        show();
     }
 }

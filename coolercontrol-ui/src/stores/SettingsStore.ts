@@ -190,14 +190,16 @@ export const useSettingsStore = defineStore('settings', () => {
             dashboards.push(...uiSettings.dashboards)
         }
         chartLineScale.value = uiSettings.chartLineScale
-        if (deviceStore.isTauriApp()) {
+        if (deviceStore.isQtApp()) {
+            // @ts-ignore
+            const ipc = window.ipc
             try {
-                startInSystemTray.value = await invoke('get_start_in_tray')
+                startInSystemTray.value = await ipc.getStartInTray()
             } catch (err: any) {
                 console.error('Failed to get desktop startup delay: ', err)
             }
             try {
-                desktopStartupDelay.value = await invoke('get_startup_delay')
+                desktopStartupDelay.value = await ipc.getStartupDelay()
             } catch (err: any) {
                 console.error('Failed to get desktop startup delay: ', err)
             }
@@ -846,18 +848,18 @@ export const useSettingsStore = defineStore('settings', () => {
                         )
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                    if (deviceStore.isTauriApp()) {
-                        if (startInSystemTray.value) {
-                            await invoke('start_in_tray_enable')
-                        } else {
-                            await invoke('start_in_tray_disable')
-                        }
+                    if (deviceStore.isQtApp()) {
+                        // @ts-ignore
+                        const ipc = window.ipc
+                        await ipc.setStartInTray(startInSystemTray.value)
                     }
                     uiSettings.dashboards = dashboards
                     uiSettings.chartLineScale = chartLineScale.value
                     uiSettings.closeToSystemTray = closeToSystemTray.value
-                    if (deviceStore.isTauriApp()) {
-                        await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
+                    if (deviceStore.isQtApp()) {
+                        // @ts-ignore
+                        const ipc = window.ipc
+                        await ipc.setStartupDelay(desktopStartupDelay.value)
                     }
                     uiSettings.themeMode = themeMode.value
                     uiSettings.uiScale = uiScale.value

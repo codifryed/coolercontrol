@@ -143,8 +143,7 @@ export const useDeviceStore = defineStore('device', () => {
 
     function connectToQtIPC(): void {
         try {
-            // @ts-ignore
-            if (!qt) {
+            if (!('qt' in window)) {
                 return
             }
             function loadScript(src: string, onload: ()=>void) {
@@ -161,16 +160,15 @@ export const useDeviceStore = defineStore('device', () => {
             loadScript('qrc:///qtwebchannel/qwebchannel.js',
                 (): void => {
                     // @ts-ignore
-                    new QWebChannel(qt.webChannelTransport, function (channel: any) {
+                    new QWebChannel(qt.webChannelTransport, async function (channel: any) {
                         // @ts-ignore
                         window.ipc = channel.objects.ipc
-                        console.debug("Connected to WebChannel, ready to send/receive messages!")
-                        // console.log("ipc: ", channel.objects)
+                        const ipc = channel.objects.ipc
+                        console.debug("Connected to Qt WebChannel, ready to send/receive messages!")
 
                         // @ts-ignore
-                        window.ipc.sendText.connect(function (message) {
-                            // console.log("Received message: " + message)
-
+                        ipc.sendText.connect(function (message) {
+                            console.log("Received message: " + message)
                         })
 
                         // @ts-ignore

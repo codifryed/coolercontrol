@@ -360,22 +360,12 @@ onMounted(async () => {
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
-    let hideToTray = async (): Promise<void> => {
-        if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
-            // This make sure don't hide the window AFTER the first run, i.e. for UI refreshes.
-            const isFirst: boolean = await invoke('is_first')
-            if (isFirst) {
-                await getCurrentWebviewWindow().hide()
-            }
-        }
-    }
     // async functions that run for the lifetime of the application:
     await Promise.all([
         deviceStore.updateStatusFromSSE(),
         deviceStore.updateLogsFromSSE(),
         deviceStore.updateAlertsFromSSE(),
         deviceStore.updateActiveModeFromSSE(),
-        hideToTray(),
     ])
 })
 </script>

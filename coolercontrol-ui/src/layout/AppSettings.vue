@@ -268,7 +268,7 @@ onMounted(() => {
                         value="2"
                         as="div"
                         class="flex w-1/5 justify-center items-center gap-2"
-                        :disabled="!deviceStore.isTauriApp()"
+                        :disabled="!deviceStore.isQtApp()"
                     >
                         <svg-icon
                             type="mdi"
