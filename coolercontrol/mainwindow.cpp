@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <QDebug>
 #include <QWebEngineView>
 #include <QSystemTrayIcon>
 #include <QMenu>
@@ -102,6 +103,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
         if (!pageLoadedSuccessfully) {
             displayAddressWizard();
+        } else {
+            qInfo() << "Successfully connected to UI at: " << getDaemonUrl().url();
         }
     });
 
