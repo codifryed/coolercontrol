@@ -129,6 +129,10 @@ export const useDeviceStore = defineStore('device', () => {
         return parseFloat(fontSize) * rem
     }
 
+    function isQtApp(): boolean {
+        return 'ipc' in window
+    }
+
     function isTauriApp(): boolean {
         return '__TAURI__' in window
     }
@@ -802,6 +806,7 @@ export const useDeviceStore = defineStore('device', () => {
         round,
         sanitizeString,
         getREMSize,
+        isQtApp,
         isTauriApp,
         isSafariWebKit,
         isThinkPad,
