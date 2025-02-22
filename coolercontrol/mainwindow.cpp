@@ -41,25 +41,28 @@ MainWindow::MainWindow(QWidget *parent)
     ////////////////////////////////////////////////////////////////////////////////////////////////
     closing = false;
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
+    // todo: we could enable this for a 'prettier' sys tray header - maybe use the hide/show logic on Triggered
     ccHeader->setDisabled(true);
-    showAction = new QAction(tr("&Hide"), this);
+    showAction = new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this);
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
             showAction->setText(tr("&Show"));
+            showAction->setIcon(QIcon::fromTheme("window-new", QIcon()));
         } else {
             show();
             activateWindow();
             showAction->setText(tr("&Hide"));
+            showAction->setIcon(QIcon::fromTheme("window-close", QIcon()));
         }
     });
 
-    addressAction = new QAction(tr("&Daemon Address"), this);
+    addressAction = new QAction(QIcon::fromTheme("address-book-new", QIcon()), tr("&Daemon Address"), this);
     connect(addressAction, &QAction::triggered, [this]() {
         displayAddressWizard();
     });
 
-    quitAction = new QAction(tr("&Quit"), this);
+    quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
     connect(quitAction, &QAction::triggered, [this]() {
         closing = true;
         // This closes the window, but doesn't quit the application
@@ -105,6 +108,8 @@ MainWindow::MainWindow(QWidget *parent)
     // todo: zoom adjustement (probably with webchannel)
     // view->setZoomFactor()
     // todo: we can probably change the log download blob/link in the UI to point to an external link to see the raw text api endpoint
+
+    // todo: check for existing running CC application? (there must be some standard for Qt???)
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
