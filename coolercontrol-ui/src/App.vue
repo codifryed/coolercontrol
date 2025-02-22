@@ -454,7 +454,7 @@ onMounted(async () => {
             here:
         </p>
         <br />
-        <h6 v-if="deviceStore.isTauriApp()" class="text-lg">Daemon Address - Desktop App</h6>
+        <h6 v-if="deviceStore.isQtApp()" class="text-lg">Daemon Address - Desktop App</h6>
         <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
         <div>
             <div class="mt-8 flex flex-row">
