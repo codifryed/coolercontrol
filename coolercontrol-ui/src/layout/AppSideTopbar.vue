@@ -493,7 +493,7 @@ const addItems = computed(() => [
 
         <!--Open In Browser-->
         <a
-            v-if="deviceStore.isTauriApp()"
+            v-if="deviceStore.isQtApp()"
             href="http://localhost:11987"
             target="_blank"
             class="!outline-none"
