@@ -137,6 +137,48 @@ export const useDeviceStore = defineStore('device', () => {
         return /apple computer/.test(navigator.vendor.toLowerCase())
     }
 
+    function connectToQtIPC(): void {
+        try {
+            // @ts-ignore
+            if (!qt) {
+                return
+            }
+            function loadScript(src: string, onload: ()=>void) {
+                let script = document.createElement('script')
+                // @ts-ignore
+                script.onload = onload ? onload : function(e) {
+                    // @ts-ignore
+                    console.log(e.target.src + ' is loaded.');
+                };
+                script.src = src;
+                script.async = false;
+                document.head.appendChild(script);
+            }
+            loadScript('qrc:///qtwebchannel/qwebchannel.js',
+                (): void => {
+                    // @ts-ignore
+                    new QWebChannel(qt.webChannelTransport, function (channel: any) {
+                        // @ts-ignore
+                        window.ipc = channel.objects.ipc
+                        console.debug("Connected to WebChannel, ready to send/receive messages!")
+                        // console.log("ipc: ", channel.objects)
+
+                        // @ts-ignore
+                        window.ipc.sendText.connect(function (message) {
+                            // console.log("Received message: " + message)
+
+                        })
+
+                        // @ts-ignore
+                        // window.ipc.receiveText("Client connected, ready to send/receive messages!")
+                    })
+                }
+            )
+        } catch (e) {
+            console.debug("Could not connect to Qt: " + e)
+        }
+    }
+
     // Private methods ------------------------------------------------
     /**
      * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
@@ -763,5 +805,6 @@ export const useDeviceStore = defineStore('device', () => {
         isTauriApp,
         isSafariWebKit,
         isThinkPad,
+        connectToQtIPC,
     }
 })

@@ -342,6 +342,7 @@ const steps = [
  * This is the Startup procedure for the UI application:
  */
 onMounted(async () => {
+    deviceStore.connectToQtIPC()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
