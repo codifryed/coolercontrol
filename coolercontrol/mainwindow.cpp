@@ -8,18 +8,27 @@
 #include <QSettings>
 #include <QWebEngineNewWindowRequest>
 #include <QStringBuilder> // for % operator
+#include <QWebEngineSettings>
 #include <QWizardPage>
 
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
       , view(new QWebEngineView(this))
-      , page(new WebPage(this))
+      , profile(new QWebEngineProfile("coolercontrol", view))
+      , page(new QWebEnginePage(profile))
       , channel(new QWebChannel(page))
       , ipc(new IPC) {
     // SETUP
     ////////////////////////////////////////////////////////////////////////////////////////////////
     setCentralWidget(view);
+    profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
+    profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
+    profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
+    profile->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
+    // local storage: ~/.local/share/{APP_NAME}
+    profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+    profile->setPersistentCookiesPolicy(QWebEngineProfile::PersistentCookiesPolicy::ForcePersistentCookies);
     channel->registerObject("ipc", ipc);
     page->setWebChannel(channel);
     // This allows external links in our app to be opened by the external browser:
@@ -99,6 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    event->accept();
     QApplication::quit();
     // todo: logic for CloseToTray setting:
     // if (closing) {

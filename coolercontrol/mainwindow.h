@@ -8,6 +8,8 @@
 
 #include <QMainWindow>
 #include <QWebEngineView>
+#include <QWebEnginePage>
+#include <QWebEngineProfile>
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QCloseEvent>
@@ -24,6 +26,10 @@ protected:
 
 private:
     QWebEngineView *view;
+    QWebEngineProfile *profile;
+    QWebEnginePage *page;
+    QWebChannel *channel;
+    IPC *ipc;
     bool closing;
     QSystemTrayIcon *sysTrayIcon;
     QMenu *trayIconMenu;
@@ -31,9 +37,6 @@ private:
     QAction *addressAction;
     QAction *showAction;
     QWizard *wizard;
-    WebPage *page;
-    QWebChannel *channel;
-    IPC *ipc;
     static QUrl getDaemonUrl();
     void displayAddressWizard();
 };

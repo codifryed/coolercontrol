@@ -2,8 +2,6 @@
 
 #include <QApplication>
 #include <QLoggingCategory>
-#include <QWebEngineProfile>
-#include <QWebEngineSettings>
 #include <QWebEngineUrlScheme>
 
 int main(int argc, char *argv[]) {
@@ -12,6 +10,9 @@ int main(int argc, char *argv[]) {
     // todo: debugging enabled:
     qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
     QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
+
+    // Standard Qt Paths:
+    // https://doc.qt.io/qt-6/qstandardpaths.htm
 
     // todo: handle dbus checking for applicaton already running (freedesktop standard)
 
@@ -31,17 +32,12 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("org.coolercontrol.CoolerControl");
     QApplication::setApplicationName("org.coolercontrol.CoolerControl");
     QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
+    //settings: ~/.config/{app_id}/{app_id}.conf
     // todo: needed?:
     QApplication::setApplicationVersion("2.0.0");
     QApplication::setQuitOnLastWindowClosed(false);
-    QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
-    QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
-    QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
-    QWebEngineProfile::defaultProfile()->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
     // todo: do we need this for Qt 6.2?
     // QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-
-    // QWebEngineProfile::defaultProfile()->settings()->setUnknownUrlSchemePolicy(QWebEngineSettings::AllowAllUnknownUrlSchemes);
 
     MainWindow w;
     w.setWindowTitle("CoolerControl");
