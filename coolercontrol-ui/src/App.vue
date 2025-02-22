@@ -38,7 +38,6 @@ import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { invoke } from '@tauri-apps/api/core'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
