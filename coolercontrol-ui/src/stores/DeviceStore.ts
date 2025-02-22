@@ -55,9 +55,9 @@ export const DEFAULT_NAME_STRING_LENGTH: number = 40
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
-    const DEFAULT_DAEMON_ADDRESS = 'localhost'
-    const DEFAULT_DAEMON_PORT = 11987
-    const DEFAULT_DAEMON_SSL_ENABLED = false
+    // const DEFAULT_DAEMON_ADDRESS = 'localhost'
+    // const DEFAULT_DAEMON_PORT = 11987
+    // const DEFAULT_DAEMON_SSL_ENABLED = false
     const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
     const CONFIG_DAEMON_PORT = 'daemonPort'
     const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
@@ -316,9 +316,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonAddress(): string {
-        const defaultAddress: string = isTauriApp()
-            ? DEFAULT_DAEMON_ADDRESS
-            : window.location.hostname
+        // const defaultAddress: string = isQtApp()
+        //     ? DEFAULT_DAEMON_ADDRESS
+        //     : window.location.hostname
+        const defaultAddress: string = window.location.hostname
         return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || defaultAddress
     }
 
@@ -331,9 +332,11 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonPort(): number {
-        const defaultPort: string = isTauriApp()
-            ? DEFAULT_DAEMON_PORT.toString()
-            : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        // const defaultPort: string = isQtApp()
+        //     ? DEFAULT_DAEMON_PORT.toString()
+        //     : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        const defaultPort: string =
+            window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
         return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
     }
 
@@ -346,9 +349,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonSslEnabled(): boolean {
-        const defaultSslEnabled: boolean = isTauriApp()
-            ? DEFAULT_DAEMON_SSL_ENABLED
-            : window.location.protocol === 'https:'
+        // const defaultSslEnabled: boolean = isQtApp()
+        //     ? DEFAULT_DAEMON_SSL_ENABLED
+        //     : window.location.protocol === 'https:'
+        const defaultSslEnabled: boolean = window.location.protocol === 'https:'
         return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
             ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
             : defaultSslEnabled
@@ -364,19 +368,19 @@ export const useDeviceStore = defineStore('device', () => {
 
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
-        if (!isTauriApp()) {
-            const sessionIsValid = await daemonClient.sessionIsValid()
-            if (sessionIsValid) {
-                loggedIn.value = true
-                console.info('Login Session still valid')
-                toast.add({
-                    severity: 'info',
-                    summary: 'Login',
-                    detail: 'Login successful.',
-                    life: 1500,
-                })
-                return
-            }
+        // Likely no long needed to skip for Qt (persisted session cookie in Qt)
+        // if (!isQtApp()) {
+        const sessionIsValid = await daemonClient.sessionIsValid()
+        if (sessionIsValid) {
+            loggedIn.value = true
+            console.info('Login Session still valid')
+            toast.add({
+                severity: 'info',
+                summary: 'Login',
+                detail: 'Login successful.',
+                life: 1500,
+            })
+            return
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
