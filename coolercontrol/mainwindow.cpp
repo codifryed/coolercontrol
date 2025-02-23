@@ -59,13 +59,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
-            showAction->setText(tr("&Show"));
-            showAction->setIcon(QIcon::fromTheme("window-new", QIcon()));
+            setTrayActionToShow();
         } else {
             show();
             activateWindow();
-            showAction->setText(tr("&Hide"));
-            showAction->setIcon(QIcon::fromTheme("window-close", QIcon()));
+            setTrayActionToHide();
         }
     });
 
@@ -192,4 +190,14 @@ void MainWindow::delay(const int millisecondsWait) {
     t.connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
     t.start(millisecondsWait);
     loop.exec();
+}
+
+void MainWindow::setTrayActionToShow() const {
+    showAction->setText(tr("&Show"));
+    showAction->setIcon(QIcon::fromTheme("window-new", QIcon()));
+}
+
+void MainWindow::setTrayActionToHide() const {
+    showAction->setText(tr("&Hide"));
+    showAction->setIcon(QIcon::fromTheme("window-close", QIcon()));
 }

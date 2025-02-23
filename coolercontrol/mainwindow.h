@@ -45,5 +45,9 @@ private:
     static QUrl getDaemonUrl();
 
     void displayAddressWizard();
+
+    void setTrayActionToShow() const;
+
+    void setTrayActionToHide() const;
 };
 #endif // MAINWINDOW_H
