@@ -128,9 +128,9 @@ drivers and contributors. The following are the steps you should take to maximiz
   distribution which includes the latest Hwmon drivers and kernel modules.
 - Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
   of support for USB devices like fan hubs and AIOs.
-- NVidia GPUs - Fan control is currently tested working for most cards and setups. CoolerControl
-  will try to communicate directly with the NVML if possible, and use the CLI tools:
-  `nvidia-settings` and `nvidia-smi` as an alternative.
+- NVidia GPUs - Fan control is currently tested working for most cards and setups using the NVidia
+  proprietary drivers. CoolerControl will try to communicate directly with `NVML` if possible, and
+  use the CLI tools: `nvidia-settings` and `nvidia-smi` as a fallback.
 - AMD RDNA 3 GPUs - There have been significant changes in how fan control works with newer cards.
   In particular the 7000 series and above will use fan speeds set by CoolerControl if you enable the
   fan control feature by setting the kernel boot option: `amdgpu.ppfeaturemask=0xffffffff`. But note
@@ -318,6 +318,29 @@ There is a Copr repository available for Fedora based distributions:
 sudo dnf install dnf-plugins-core
 sudo dnf copr enable codifryed/CoolerControl
 sudo dnf install coolercontrol
+sudo systemctl enable --now coolercontrold
+```
+
+For **Fedora Atomic** based distros:
+
+[![Linux](https://img.shields.io/badge/Bazzite-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+
+```bash
+ujust install-coolercontrol
+```
+
+[![Linux](https://img.shields.io/badge/Silverblue-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+[![Linux](https://img.shields.io/badge/Kinoite-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+[![Linux](https://img.shields.io/badge/Sway-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+[![Linux](https://img.shields.io/badge/Budgie-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+
+```bash
+# Install the Copr repository manually for your base Fedora release version:
+wget https://copr.fedorainfracloud.org/coprs/codifryed/CoolerControl/repo/fedora-41/codifryed-CoolerControl-fedora-41.repo
+sudo cp codifryed-CoolerControl-fedora-41.repo /etc/yum.repos.d/
+rpm-ostree refresh-md
+rpm-ostree install coolercontrol
+# reboot
 sudo systemctl enable --now coolercontrold
 ```
 
