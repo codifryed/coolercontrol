@@ -880,16 +880,6 @@ export const useSettingsStore = defineStore('settings', () => {
             console.debug('Saving CC Settings')
             await deviceStore.daemonClient.saveCCSettings(ccSettings.value)
         })
-
-        if (deviceStore.isTauriApp()) {
-            await getCurrentWebviewWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
-                if (closeToSystemTray.value) {
-                    event.preventDefault()
-                    await invoke('save_window_state')
-                    await getCurrentWebviewWindow().hide()
-                }
-            })
-        }
     }
 
     function applyThemeMode(): void {

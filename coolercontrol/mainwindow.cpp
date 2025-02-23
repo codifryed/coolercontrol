@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
       , profile(new QWebEngineProfile("coolercontrol", view))
       , page(new QWebEnginePage(profile))
       , channel(new QWebChannel(page))
-      , ipc(new IPC)
+      , ipc(new IPC(this))
       , forceQuit(false) {
     // SETUP
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,11 +126,13 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    ipc->saveWindowGeometry(saveGeometry());
     if (ipc->getCloseToTray() && !forceQuit) {
         hide();
         event->ignore();
         return;
     }
+    ipc->syncSettings();
     event->accept();
     QApplication::quit();
 }
@@ -183,6 +185,7 @@ void MainWindow::displayAddressWizard() {
 }
 
 void MainWindow::handleStartInTray() {
+    restoreGeometry(ipc->getWindowGeometry());
     if (ipc->getStartInTray()) {
         hide();
         page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);

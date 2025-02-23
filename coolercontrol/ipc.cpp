@@ -4,6 +4,7 @@
 #include <QApplication>
 
 #include "constants.h"
+#include "mainwindow.h"
 
 
 IPC::IPC(QObject *parent)
@@ -24,6 +25,10 @@ bool IPC::getCloseToTray() const {
     return settings->value(SETTING_CLOSE_TO_TRAY.data(), false).toBool();
 }
 
+QByteArray IPC::getWindowGeometry() const {
+    return settings->value(SETTING_WINDOW_GEOMETRY.data(), 0).toByteArray();
+}
+
 void IPC::setStartInTray(const bool startInTray) const {
     settings->setValue(SETTING_START_IN_TRAY.data(), startInTray);
 }
@@ -36,6 +41,18 @@ void IPC::setCloseToTray(const bool closeToTray) const {
     settings->setValue(SETTING_CLOSE_TO_TRAY.data(), closeToTray);
 }
 
-void IPC::forceQuit() {
+void IPC::saveWindowGeometry(const QByteArray &geometry) const {
+    settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);
+}
+
+void IPC::syncSettings() const {
+    settings->sync();
+}
+
+void IPC::forceQuit() const {
+    // this is only called when open form the UI currently
+    // closing saves the window geometry when quit from UI:
+    qobject_cast<MainWindow *>(parent())->close();
+    syncSettings();
     QApplication::quit();
 }

@@ -19,6 +19,8 @@ public:
 
     Q_INVOKABLE [[nodiscard]] bool getCloseToTray() const;
 
+    Q_INVOKABLE [[nodiscard]] QByteArray getWindowGeometry() const;
+
     /*
         Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
     */
@@ -35,7 +37,11 @@ public slots:
 
     void setCloseToTray(bool closeToTray) const;
 
-    static void forceQuit();
+    void saveWindowGeometry(const QByteArray& geometry) const;
+
+    void forceQuit() const;
+
+    void syncSettings() const;
 
 private:
     QSettings *settings;
