@@ -97,8 +97,9 @@ hardware coverage:
   distribution which includes the latest Hwmon drivers and kernel modules.
 - Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
   of support for USB devices like fan hubs and AIOs.
-- NVidia GPUs - Fan control has been tested working on most cards. CoolerControl **automatically**
-  uses NVML and the CLI tools `nvidia-settings` and `nvidia-smi` as backup.
+- NVidia GPUs - Fan control has been tested working on most cards with the NVidia proprietary
+  drivers. CoolerControl **automatically** uses `NVML` and the CLI tools `nvidia-settings` and
+  `nvidia-smi` as a fallback.
 - AMD GPUs - Older cards work out of the box. The 7000 series and above have different firmware
   controls and CoolerControl will work if you:
   - enable the fan control feature by setting the kernel boot option:
