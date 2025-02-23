@@ -1,10 +1,8 @@
 #include "ipc.h"
-
-#include <iostream>
-#include <QApplication>
-
 #include "constants.h"
 #include "mainwindow.h"
+
+#include <QApplication>
 
 
 IPC::IPC(QObject *parent)
@@ -25,6 +23,10 @@ bool IPC::getCloseToTray() const {
     return settings->value(SETTING_CLOSE_TO_TRAY.data(), false).toBool();
 }
 
+double IPC::getZoomFactor() const {
+    return settings->value(SETTING_ZOOM_FACTOR.data(), 1.0).toDouble();
+}
+
 QByteArray IPC::getWindowGeometry() const {
     return settings->value(SETTING_WINDOW_GEOMETRY.data(), 0).toByteArray();
 }
@@ -40,6 +42,12 @@ void IPC::setStartupDelay(const int startupDelay) const {
 void IPC::setCloseToTray(const bool closeToTray) const {
     settings->setValue(SETTING_CLOSE_TO_TRAY.data(), closeToTray);
 }
+
+void IPC::setZoomFactor(const double zoomFactor) const {
+    settings->setValue(SETTING_ZOOM_FACTOR.data(), zoomFactor);
+    qobject_cast<MainWindow *>(parent())->setZoomFactor(zoomFactor);
+}
+
 
 void IPC::saveWindowGeometry(const QByteArray &geometry) const {
     settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);

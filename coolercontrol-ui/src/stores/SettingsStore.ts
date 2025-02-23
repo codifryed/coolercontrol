@@ -195,13 +195,13 @@ export const useSettingsStore = defineStore('settings', () => {
                 startInSystemTray.value = await ipc.getStartInTray()
                 desktopStartupDelay.value = await ipc.getStartupDelay()
                 closeToSystemTray.value = await ipc.getCloseToTray()
+                uiScale.value = (await ipc.getZoomFactor()) * 100
             } catch (err: any) {
                 console.error('Failed to get desktop setting: ', err)
             }
         }
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
-        uiScale.value = uiSettings.uiScale
         time24.value = uiSettings.time24
         collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
@@ -851,12 +851,12 @@ export const useSettingsStore = defineStore('settings', () => {
                             await ipc.setStartInTray(startInSystemTray.value)
                             await ipc.setStartupDelay(desktopStartupDelay.value)
                             await ipc.setCloseToTray(closeToSystemTray.value)
+                            await ipc.setZoomFactor(uiScale.value / 100)
                         } catch (e) {
                             console.error('Failed to set Desktop settings: ', e)
                         }
                     }
                     uiSettings.themeMode = themeMode.value
-                    uiSettings.uiScale = uiScale.value
                     uiSettings.time24 = time24.value
                     uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value

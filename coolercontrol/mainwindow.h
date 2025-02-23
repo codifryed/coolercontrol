@@ -25,6 +25,8 @@ public:
 
     static void delay(int millisecondsWait);
 
+    void setZoomFactor(double zoomFactor) const;
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 

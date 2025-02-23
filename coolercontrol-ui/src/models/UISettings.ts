@@ -35,7 +35,6 @@ export class UISettingsDTO {
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
     themeMode: ThemeMode = ThemeMode.SYSTEM
-    uiScale: number = 100
     chartLineScale: number = 1.5
     time24: boolean = false
     collapsedMenuNodeIds: Array<string> = []

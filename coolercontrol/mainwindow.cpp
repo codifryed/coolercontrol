@@ -118,8 +118,6 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // todo: zoom adjustement (probably with webchannel)
-    // view->setZoomFactor()
     // todo: we can probably change the log download blob/link in the UI to point to an external link to see the raw text api endpoint
 
     // todo: check for existing running CC application? (there must be some standard for Qt???)
@@ -186,6 +184,7 @@ void MainWindow::displayAddressWizard() {
 
 void MainWindow::handleStartInTray() {
     restoreGeometry(ipc->getWindowGeometry());
+    setZoomFactor(ipc->getZoomFactor());
     if (ipc->getStartInTray()) {
         hide();
         page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
@@ -194,6 +193,10 @@ void MainWindow::handleStartInTray() {
     } else {
         show();
     }
+}
+
+void MainWindow::setZoomFactor(const double zoomFactor) const {
+    view->setZoomFactor(zoomFactor);
 }
 
 void MainWindow::delay(const int millisecondsWait) {

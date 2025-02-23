@@ -37,7 +37,6 @@ import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboardin
 import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -349,9 +348,6 @@ onMounted(async () => {
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
     applyCustomTheme()
-    if (deviceStore.isTauriApp()) {
-        await getCurrentWebviewWindow().setZoom(settingsStore.uiScale / 100)
-    }
     await daemonState.init()
     loaded.value = true
     loading.close()

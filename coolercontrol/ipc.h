@@ -19,6 +19,8 @@ public:
 
     Q_INVOKABLE [[nodiscard]] bool getCloseToTray() const;
 
+    Q_INVOKABLE [[nodiscard]] double getZoomFactor() const;
+
     Q_INVOKABLE [[nodiscard]] QByteArray getWindowGeometry() const;
 
     /*
@@ -37,7 +39,9 @@ public slots:
 
     void setCloseToTray(bool closeToTray) const;
 
-    void saveWindowGeometry(const QByteArray& geometry) const;
+    void setZoomFactor(double zoomFactor) const;
+
+    void saveWindowGeometry(const QByteArray &geometry) const;
 
     void forceQuit() const;
 
