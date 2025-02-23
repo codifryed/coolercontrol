@@ -53,9 +53,9 @@ MainWindow::MainWindow(QWidget *parent)
     // todo: we could enable this for a 'prettier' sys tray header - maybe use the hide/show logic on Triggered
     ccHeader->setDisabled(true);
     showAction =
-            isVisible()
-                ? new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this)
-                : new QAction(QIcon::fromTheme("window-new", QIcon()), tr("&Show"), this);
+            ipc->getStartInTray()
+                ? new QAction(QIcon::fromTheme("window-new", QIcon()), tr("&Show"), this)
+                : new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this);
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
