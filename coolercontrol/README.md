@@ -34,7 +34,7 @@ _todo: verify these are all needed:_
 - qt6-base-dev (already taken care of below actually)
 - qt6-webengine-dev
 - qt6-webengine-dev-tools
-// todo: webchannel?
+- todo: webchannel?
 
 ## Installation
 

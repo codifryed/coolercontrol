@@ -146,38 +146,41 @@ export const useDeviceStore = defineStore('device', () => {
             if (!('qt' in window)) {
                 return
             }
-            function loadScript(src: string, onload: ()=>void) {
+            function loadScript(src: string, onload: () => void) {
                 let script = document.createElement('script')
                 // @ts-ignore
-                script.onload = onload ? onload : function(e) {
-                    // @ts-ignore
-                    console.log(e.target.src + ' is loaded.');
-                };
-                script.src = src;
-                script.async = false;
-                document.head.appendChild(script);
+                script.onload = onload
+                    ? onload
+                    : function (e) {
+                          // @ts-ignore
+                          console.log(e.target.src + ' is loaded.')
+                      }
+                script.src = src
+                script.async = false
+                document.head.appendChild(script)
             }
-            loadScript('qrc:///qtwebchannel/qwebchannel.js',
-                (): void => {
+            loadScript('qrc:///qtwebchannel/qwebchannel.js', (): void => {
+                // @ts-ignore
+                new QWebChannel(qt.webChannelTransport, async function (channel: any) {
                     // @ts-ignore
-                    new QWebChannel(qt.webChannelTransport, async function (channel: any) {
-                        // @ts-ignore
-                        window.ipc = channel.objects.ipc
-                        const ipc = channel.objects.ipc
-                        console.debug("Connected to Qt WebChannel, ready to send/receive messages!")
+                    window.ipc = channel.objects.ipc
+                    const ipc = channel.objects.ipc
+                    console.debug('Connected to Qt WebChannel, ready to send/receive messages!')
 
-                        // @ts-ignore
-                        ipc.sendText.connect(function (message) {
-                            console.log("Received message: " + message)
-                        })
-
-                        // @ts-ignore
-                        // window.ipc.receiveText("Client connected, ready to send/receive messages!")
+                    // @ts-ignore
+                    ipc.sendText.connect(function (message) {
+                        console.log('Received message: ' + message)
                     })
-                }
-            )
+
+                    // const startInTray: boolean = await ipc.getStartInTray()
+                    // console.log("Start in tray value: ", startInTray)
+
+                    // @ts-ignore
+                    // window.ipc.receiveText("Client connected, ready to send/receive messages!")
+                })
+            })
         } catch (e) {
-            console.debug("Could not connect to Qt: " + e)
+            console.debug('Could not connect to Qt: ' + e)
         }
     }
 
