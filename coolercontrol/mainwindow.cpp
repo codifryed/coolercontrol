@@ -12,6 +12,7 @@
 #include <QStringBuilder> // for % operator
 #include <QWebEngineSettings>
 #include <QWizardPage>
+#include <QTimer>
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -20,7 +21,8 @@ MainWindow::MainWindow(QWidget *parent)
       , profile(new QWebEngineProfile("coolercontrol", view))
       , page(new QWebEnginePage(profile))
       , channel(new QWebChannel(page))
-      , ipc(new IPC) {
+      , ipc(new IPC)
+      , forceQuit(false) {
     // SETUP
     ////////////////////////////////////////////////////////////////////////////////////////////////
     setCentralWidget(view);
@@ -47,7 +49,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     // SYSTEM TRAY:
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    closing = false;
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
     // todo: we could enable this for a 'prettier' sys tray header - maybe use the hide/show logic on Triggered
     ccHeader->setDisabled(true);
@@ -75,8 +76,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
     connect(quitAction, &QAction::triggered, [this]() {
-        closing = true;
-        // This closes the window, but doesn't quit the application
+        forceQuit = true;
+        // Triggers the close event but with the forceQuit flag set
         close();
     });
     trayIconMenu = new QMenu(this);
@@ -126,17 +127,13 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    if (ipc->getCloseToTray() && !forceQuit) {
+        hide();
+        event->ignore();
+        return;
+    }
     event->accept();
     QApplication::quit();
-    // todo: logic for CloseToTray setting:
-    // if (closing) {
-    //     event->accept();
-    //     deleteLater();
-    //     QApplication::quit();
-    // } else {
-    //     this->hide();
-    //     event->ignore();
-    // }
 }
 
 QUrl MainWindow::getDaemonUrl() {
@@ -187,4 +184,12 @@ void MainWindow::handleStartInTray() {
     } else {
         show();
     }
+}
+
+void MainWindow::delay(const int millisecondsWait) {
+    QEventLoop loop;
+    QTimer t;
+    t.connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
+    t.start(millisecondsWait);
+    loop.exec();
 }

@@ -2,7 +2,6 @@
 
 #include <QApplication>
 #include <QLoggingCategory>
-#include <QWebEngineUrlScheme>
 
 int main(int argc, char *argv[]) {
     // Enables js debug output: (very cool)

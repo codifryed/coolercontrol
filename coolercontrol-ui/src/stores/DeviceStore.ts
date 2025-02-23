@@ -164,19 +164,7 @@ export const useDeviceStore = defineStore('device', () => {
                 new QWebChannel(qt.webChannelTransport, async function (channel: any) {
                     // @ts-ignore
                     window.ipc = channel.objects.ipc
-                    const ipc = channel.objects.ipc
                     console.debug('Connected to Qt WebChannel, ready to send/receive messages!')
-
-                    // @ts-ignore
-                    ipc.sendText.connect(function (message) {
-                        console.log('Received message: ' + message)
-                    })
-
-                    // const startInTray: boolean = await ipc.getStartInTray()
-                    // console.log("Start in tray value: ", startInTray)
-
-                    // @ts-ignore
-                    // window.ipc.receiveText("Client connected, ready to send/receive messages!")
                 })
             })
         } catch (e) {

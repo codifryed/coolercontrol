@@ -19,6 +19,7 @@ qt_add_executable(
         webpage.h
         addresswizard.cpp
         addresswizard.h
+        ipc.cpp
         ipc.h
 )
 

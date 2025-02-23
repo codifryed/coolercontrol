@@ -1,10 +1,7 @@
 #ifndef IPC_H
 #define IPC_H
 
-#include <iostream>
-#include "constants.h"
-
-#include <QObject>
+#include <QSettings>
 
 
 /*
@@ -14,19 +11,13 @@ class IPC final : public QObject {
     Q_OBJECT
 
 public:
-    explicit IPC(QObject *parent = nullptr)
-        : QObject(parent)
-          , settings(new QSettings) {
-        //        connect(dialog, &Dialog::sendText, this, &Core::sendText);
-    }
+    explicit IPC(QObject *parent = nullptr);
 
-    Q_INVOKABLE [[nodiscard]] bool getStartInTray() const {
-        return settings->value(SETTING_START_IN_TRAY.data(), false).toBool();
-    }
+    Q_INVOKABLE [[nodiscard]] bool getStartInTray() const;
 
-    Q_INVOKABLE [[nodiscard]] int getStartupDelay() const {
-        return settings->value(SETTING_STARTUP_DELAY.data(), 0).toInt();
-    }
+    Q_INVOKABLE [[nodiscard]] int getStartupDelay() const;
+
+    Q_INVOKABLE [[nodiscard]] bool getCloseToTray() const;
 
     /*
         Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
@@ -38,18 +29,13 @@ signals:
         Slots are invoked from the JS client side and are processed on the server side.
     */
 public slots:
-    void receiveText(const QString &text) {
-        std::cout << "Received text: " << text.toStdString() << std::endl;
-        // //        m_dialog->displayMessage(Dialog::tr("Received message: %1").arg(text));
-    }
+    void setStartInTray(bool startInTray) const;
 
-    void setStartInTray(const bool startInTray) const {
-        settings->setValue(SETTING_START_IN_TRAY.data(), startInTray);
-    }
+    void setStartupDelay(int startupDelay) const;
 
-    void setStartupDelay(const int startupDelay) const {
-        settings->setValue(SETTING_STARTUP_DELAY.data(), startupDelay);
-    }
+    void setCloseToTray(bool closeToTray) const;
+
+    static void forceQuit();
 
 private:
     QSettings *settings;

@@ -14,7 +14,6 @@
 #include <QMenu>
 #include <QCloseEvent>
 #include <QWebChannel>
-#include <QTimer>
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -24,13 +23,7 @@ public:
 
     void handleStartInTray();
 
-    static void delay(const int millisecondsWait) {
-        QEventLoop loop;
-        QTimer t;
-        t.connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
-        t.start(millisecondsWait);
-        loop.exec();
-    }
+    static void delay(int millisecondsWait);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -41,7 +34,7 @@ private:
     QWebEnginePage *page;
     QWebChannel *channel;
     IPC *ipc;
-    bool closing;
+    bool forceQuit;
     QSystemTrayIcon *sysTrayIcon;
     QMenu *trayIconMenu;
     QAction *quitAction;

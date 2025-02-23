@@ -46,9 +46,7 @@ import {
 } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { invoke } from '@tauri-apps/api/core'
-import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
@@ -195,16 +193,12 @@ export const useSettingsStore = defineStore('settings', () => {
             const ipc = window.ipc
             try {
                 startInSystemTray.value = await ipc.getStartInTray()
-            } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
-            }
-            try {
                 desktopStartupDelay.value = await ipc.getStartupDelay()
+                closeToSystemTray.value = await ipc.getCloseToTray()
             } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
+                console.error('Failed to get desktop setting: ', err)
             }
         }
-        closeToSystemTray.value = uiSettings.closeToSystemTray
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
         uiScale.value = uiSettings.uiScale
@@ -848,18 +842,18 @@ export const useSettingsStore = defineStore('settings', () => {
                         )
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                    if (deviceStore.isQtApp()) {
-                        // @ts-ignore
-                        const ipc = window.ipc
-                        await ipc.setStartInTray(startInSystemTray.value)
-                    }
                     uiSettings.dashboards = dashboards
                     uiSettings.chartLineScale = chartLineScale.value
-                    uiSettings.closeToSystemTray = closeToSystemTray.value
                     if (deviceStore.isQtApp()) {
-                        // @ts-ignore
-                        const ipc = window.ipc
-                        await ipc.setStartupDelay(desktopStartupDelay.value)
+                        try {
+                            // @ts-ignore
+                            const ipc = window.ipc
+                            await ipc.setStartInTray(startInSystemTray.value)
+                            await ipc.setStartupDelay(desktopStartupDelay.value)
+                            await ipc.setCloseToTray(closeToSystemTray.value)
+                        } catch (e) {
+                            console.error('Failed to set Desktop settings: ', e)
+                        }
                     }
                     uiSettings.themeMode = themeMode.value
                     uiSettings.uiScale = uiScale.value

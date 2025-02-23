@@ -34,7 +34,6 @@ export class UISettingsDTO {
 
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
-    closeToSystemTray: boolean = false
     themeMode: ThemeMode = ThemeMode.SYSTEM
     uiScale: number = 100
     chartLineScale: number = 1.5
