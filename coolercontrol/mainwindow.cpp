@@ -50,8 +50,11 @@ MainWindow::MainWindow(QWidget *parent)
     // SYSTEM TRAY:
     ////////////////////////////////////////////////////////////////////////////////////////////////
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
-    // todo: we could enable this for a 'prettier' sys tray header - maybe use the hide/show logic on Triggered
-    ccHeader->setDisabled(true);
+    connect(ccHeader, &QAction::triggered, [this]() {
+        // Use CC Tray Header as show-only trigger. (un-minimize doesn't seem to work)
+        show();
+        activateWindow();
+    });
     showAction =
             ipc->getStartInTray()
                 ? new QAction(QIcon::fromTheme("window-new", QIcon()), tr("&Show"), this)
@@ -59,11 +62,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
-            setTrayActionToShow();
         } else {
             show();
             activateWindow();
-            setTrayActionToHide();
         }
     });
 
@@ -132,6 +133,14 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     }
     event->accept();
     QApplication::quit();
+}
+
+void MainWindow::hideEvent(QHideEvent *event) {
+    setTrayActionToShow();
+}
+
+void MainWindow::showEvent(QShowEvent *event) {
+    setTrayActionToHide();
 }
 
 QUrl MainWindow::getDaemonUrl() {
