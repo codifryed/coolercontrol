@@ -29,7 +29,8 @@ MainWindow::MainWindow(QWidget *parent)
       , channel(new QWebChannel(page))
       , ipc(new IPC(this))
       , forceQuit(false)
-      , manager(new QNetworkAccessManager) {
+      , wizard(new QWizard(this))
+      , manager(new QNetworkAccessManager(this)) {
     // SETUP
     ////////////////////////////////////////////////////////////////////////////////////////////////
     setCentralWidget(view);
@@ -47,6 +48,20 @@ MainWindow::MainWindow(QWidget *parent)
         QDesktopServices::openUrl(request.requestedUrl());
     });
     view->setPage(page);
+
+    // Wizard init:
+    wizard->setWindowTitle("Daemon Connection Error");
+    wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
+    wizard->setButtonText(QWizard::WizardButton::CancelButton, "&Quit");
+    wizard->setButtonText(QWizard::CustomButton1, "&Reset");
+    wizard->setOption(QWizard::HaveCustomButton1, true);
+    wizard->addPage(new IntroPage);
+    auto addressPage = new AddressPage;
+    wizard->addPage(addressPage);
+    wizard->setMinimumSize(640, 480);
+    connect(wizard, &QWizard::customButtonClicked, [addressPage]() {
+        addressPage->resetAddressInputValues();
+    });
 
     // wait to fully initialize if there is a delay set:
     if (const auto startupDelay = ipc->getStartupDelay(); startupDelay > 0) {
@@ -243,20 +258,6 @@ QUrl MainWindow::getEndpointUrl(const QString &endpoint) {
 }
 
 void MainWindow::displayAddressWizard() {
-    if (wizard == nullptr) {
-        wizard = new QWizard;
-        wizard->setWindowTitle("Daemon Connection Error");
-        wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
-        wizard->setButtonText(QWizard::WizardButton::CancelButton, "&Quit");
-        wizard->setButtonText(QWizard::CustomButton1, "&Reset");
-        wizard->setOption(QWizard::HaveCustomButton1, true);
-        wizard->addPage(new IntroPage);
-        auto addressPage = new AddressPage;
-        wizard->addPage(addressPage);
-        connect(wizard, &QWizard::customButtonClicked, [this, addressPage]() {
-            addressPage->resetAddressInputValues();
-        });
-    }
     if (wizard->isVisible()) {
         return;
     }
