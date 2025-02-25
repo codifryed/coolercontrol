@@ -14,6 +14,7 @@
 #include <QMenu>
 #include <QCloseEvent>
 #include <QWebChannel>
+#include <QNetworkAccessManager>
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -43,17 +44,25 @@ private:
     bool forceQuit;
     QSystemTrayIcon *sysTrayIcon;
     QMenu *trayIconMenu;
+    QMenu *modesTrayMenu;
     QAction *quitAction;
     QAction *addressAction;
     QAction *showAction;
     QWizard *wizard;
+    QNetworkAccessManager * manager;
+
+    bool deamonHasErrors = false;
 
     static QUrl getDaemonUrl();
+
+    static QUrl getEndpointUrl(const QString& endpoint);
 
     void displayAddressWizard();
 
     void setTrayActionToShow() const;
 
     void setTrayActionToHide() const;
+
+    void notifyDaemonErrors() const;
 };
 #endif // MAINWINDOW_H
