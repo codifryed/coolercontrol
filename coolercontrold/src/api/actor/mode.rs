@@ -17,7 +17,7 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::api::modes::{ActiveModesDto, ModeActivated};
+use crate::api::modes::{ActiveMode, ActiveModesDto};
 use crate::device::UID;
 use crate::modes::{Mode, ModeController};
 use anyhow::Result;
@@ -171,7 +171,7 @@ impl ApiActor<ModeMessage> for ModeActor {
 #[derive(Clone)]
 pub struct ModeHandle {
     sender: mpsc::Sender<ModeMessage>,
-    broadcaster: broadcast::Sender<ModeActivated>,
+    broadcaster: broadcast::Sender<ActiveMode>,
     cancel_token: CancellationToken,
 }
 
@@ -182,7 +182,7 @@ impl ModeHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let (broadcaster, _) = broadcast::channel::<ModeActivated>(2);
+        let (broadcaster, _) = broadcast::channel::<ActiveMode>(2);
         let mode_handle = Self {
             sender: sender.clone(),
             broadcaster: broadcaster.clone(),
@@ -289,25 +289,23 @@ impl ModeHandle {
         rx.await?
     }
 
-    pub fn broadcaster(&self) -> &broadcast::Sender<ModeActivated> {
+    pub fn broadcaster(&self) -> &broadcast::Sender<ActiveMode> {
         &self.broadcaster
     }
 
-    pub fn broadcast_mode_activated(
+    pub fn broadcast_active_mode(
         &self,
-        mode_uid: &str,
-        mode_name: &str,
-        already_active: bool,
+        mode_uid: Option<&UID>,
+        mode_name: Option<&String>,
         previous_mode_uid: Option<&UID>,
     ) {
         // only create messages if we have listeners:
         if self.broadcaster.receiver_count() == 0 {
             return;
         }
-        let msg = ModeActivated {
-            uid: mode_uid.to_string(),
-            name: mode_name.to_string(),
-            already_active,
+        let msg = ActiveMode {
+            uid: mode_uid.cloned(),
+            name: mode_name.cloned(),
             previous_uid: previous_mode_uid.cloned(),
         };
         let _ = self.broadcaster.send(msg);

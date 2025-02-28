@@ -46,7 +46,6 @@ import {
 } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
-import { invoke } from '@tauri-apps/api/core'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
@@ -457,7 +456,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modesDTO = await deviceStore.daemonClient.getModes()
         modes.value.length = 0
         modes.value = modesDTO.modes
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
     async function saveModeOrder(): Promise<void> {
@@ -465,7 +464,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modeOrderDTO = new ModeOrderDTO()
         modeOrderDTO.mode_uids = modes.value.map((mode) => mode.uid)
         await deviceStore.daemonClient.saveModesOrder(modeOrderDTO)
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
     async function createMode(name: string): Promise<UID | undefined> {
@@ -475,7 +474,7 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response instanceof Mode) {
             const modeUID = response.uid
             modes.value.push(response)
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -494,7 +493,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const response = await deviceStore.daemonClient.duplicateMode(modeUID)
         if (response instanceof Mode) {
             modes.value.push(response)
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -520,7 +519,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.name = newName
             }
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -562,8 +561,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (index > -1) {
                 modes.value.splice(index, 1)
             }
-            await getActiveModes() // clears active mode if it was deleted
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -578,7 +576,6 @@ export const useSettingsStore = defineStore('settings', () => {
         const activeModes = await deviceStore.daemonClient.getActiveModeUIDs()
         modeActiveCurrent.value = activeModes.current_mode_uid
         modeActivePrevious.value = activeModes.previous_mode_uid
-        await setTauriActiveModes()
         emitter.emit('active-modes-change-menu')
     }
 
@@ -600,19 +597,15 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
-    async function setTauriModes(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            const modeTauris = modes.value.map((mode) => {
+    async function syncSysTrayModes(): Promise<void> {
+        // This is used to refresh the Modes system tray menu contents: (from CRUD operations)
+        if (deviceStore.isQtApp()) {
+            const sysTrayModes = modes.value.map((mode) => {
                 return { uid: mode.uid, name: mode.name }
             })
-            await invoke('set_modes', { modes: modeTauris })
-        }
-    }
-
-    async function setTauriActiveModes(): Promise<void> {
-        if (deviceStore.isTauriApp() && modeActiveCurrent.value != null) {
-            // This sets the active mode on startup and wakeup. don't think it hurts to keep this.
-            await invoke('set_active_mode', { activeModeUid: modeActiveCurrent.value })
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.setModes(JSON.stringify({ modes: sysTrayModes }))
         }
     }
 
@@ -930,7 +923,6 @@ export const useSettingsStore = defineStore('settings', () => {
                 detail: 'Settings successfully updated and applied to the device',
                 life: 3000,
             })
-            await getActiveModes()
         } else {
             const message =
                 errorMsg != null

@@ -260,8 +260,8 @@ void MainWindow::notifyDaemonConnectionRestored() const {
 }
 
 void MainWindow::requestDaemonErrors() const {
-  // DAEMON HEALTH REQUEST:
   QNetworkRequest healthRequest;
+  healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = manager->get(healthRequest);
   connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
@@ -281,47 +281,71 @@ void MainWindow::requestDaemonErrors() const {
 }
 
 void MainWindow::requestAllModes() const {
-  // LOAD ALL MODES:
   QNetworkRequest modesRequest;
+  modesRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
   const auto modesReply = manager->get(modesRequest);
   connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
-    const QString ReplyText = modesReply->readAll();
-    const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
-    const auto modesArray = rootObj.value("modes").toArray();
-    modesTrayMenu->setDisabled(modesArray.isEmpty());
-    foreach (QJsonValue value, modesArray) {
-      const auto modeName = value.toObject().value("name").toString();
-      const auto modeUID = value.toObject().value("uid").toString();
-      const auto modeAction = new QAction(modeName);
-      modeAction->setStatusTip(modeUID);  // We use the statusTip to store UID
-      modeAction->setCheckable(true);
-      modeAction->setChecked(false);
-      connect(modeAction, &QAction::triggered, [this, modeUID, modeAction]() {
-        // todo: send Post request to activate this mode
-      });
-      modesTrayMenu->addAction(modeAction);
-    }
+    const QString modesJson = modesReply->readAll();
+    setTrayMenuModes(modesJson);
     modesReply->deleteLater();
   });
 }
 
+void MainWindow::setTrayMenuModes(const QString& modesJson) const {
+  const QJsonObject rootObj = QJsonDocument::fromJson(modesJson.toUtf8()).object();
+  const auto modesArray = rootObj.value("modes").toArray();
+  modesTrayMenu->setDisabled(modesArray.isEmpty());
+  modesTrayMenu->clear();
+  foreach (QJsonValue value, modesArray) {
+    const auto modeName = value.toObject().value("name").toString();
+    const auto modeUID = value.toObject().value("uid").toString();
+    const auto modeAction = new QAction(modeName);
+    modeAction->setStatusTip(modeUID);  // We use the statusTip to store UID
+    modeAction->setCheckable(true);
+    modeAction->setChecked(modeUID == activeModeUID);
+    connect(modeAction, &QAction::triggered, [this, modeUID]() {
+      // todo: This request needs login Cookie to work:
+      QNetworkRequest setModeRequest;
+      setModeRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
+      auto url = getEndpointUrl(ENDPOINT_MODES_ACTIVE.data());
+      url.setPath(url.path() + "/" + modeUID);
+      setModeRequest.setUrl(url);
+      const auto setModeReply = manager->post(setModeRequest, nullptr);
+      connect(setModeReply, &QNetworkReply::finished, [setModeReply, this]() {
+        if (const auto status =
+                setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            status >= 300) {
+          qWarning() << "Error trying to apply Mode. Response Status: " << status;
+          return;
+        }
+        setModeReply->deleteLater();
+      });
+    });
+    modesTrayMenu->addAction(modeAction);
+  }
+}
+
+void MainWindow::setActiveMode(const QString& modeUID) const {
+  activeModeUID = modeUID;
+  foreach (QAction* action, modesTrayMenu->actions()) {
+    if (action->statusTip() == activeModeUID) {
+      action->setChecked(true);
+    } else {
+      action->setChecked(false);
+    }
+  }
+}
+
 void MainWindow::requestActiveMode() const {
-  // SET ACTIVE MODE:
   QNetworkRequest modesActiveRequest;
+  modesActiveRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
   const auto modesActiveReply = manager->get(modesActiveRequest);
   connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
     const QString ReplyText = modesActiveReply->readAll();
     const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
-    const auto activeModeUID = rootObj.value("current_mode_uid").toString();
-    foreach (QAction* action, modesTrayMenu->actions()) {
-      if (action->statusTip() == activeModeUID) {
-        action->setChecked(true);
-      } else {
-        action->setChecked(false);
-      }
-    }
+    setActiveMode(rootObj.value("current_mode_uid").toString());
     modesActiveReply->deleteLater();
   });
 }
@@ -350,7 +374,7 @@ void MainWindow::watchLogsAndConnection() const {
     while (!isDaemonConnected) {
       delay(1000);
       verifyDaemonIsConnected();
-    };
+    }
     watchLogsAndConnection();
     qInfo() << "Connection to the Daemon Reestablished";
     sseLogsReply->deleteLater();
@@ -359,6 +383,7 @@ void MainWindow::watchLogsAndConnection() const {
 
 void MainWindow::verifyDaemonIsConnected() const {
   QNetworkRequest healthRequest;
+  healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = manager->get(healthRequest);
   connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
@@ -377,41 +402,30 @@ void MainWindow::watchModeActivation() const {
   sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
   const auto sseModesReply = manager->get(sseModesRequest);
   connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
-    const QString modeActivated = sseModesReply->readAll();
+    const QString modeActivated = QString(sseModesReply->readAll()).simplified().replace("event: mode data: ", "");
     const QJsonObject rootObj = QJsonDocument::fromJson(modeActivated.toUtf8()).object();
     if (rootObj.isEmpty()) {
       // This is also called for keepAlive ticks - but semi-empty message
       return;
     }
-    const auto modeAlreadyActive = rootObj.value("already_active").toBool();
-    const auto activeModeUID = rootObj.value("uid").toString();
-    const auto activeModeName = rootObj.value("name").toString();
-    // todo: Do we want a Mode notification when it's no longer really active???
-    //  - YES. Let's see if this is doing - clearly the active mode has been SET to null, but
-    //    no broadcast has been sent....
-    //  - OR, we have the UI send the active Mode still - so we also know when a setting has been
-    //  applied.
+    const auto currentModeUID = rootObj.value("uid").toString();
+    const auto currentModeName = rootObj.value("name").toString();
+    const auto modeAlreadyActive = currentModeUID == activeModeUID;
+    setActiveMode(currentModeUID);
     if (activeModeUID.isEmpty()) {
       // This will happen if there is currently no active Mode (null)
       // - such as when applying a setting.
       return;
     }
-    const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(activeModeName)
-                                            : QString("Mode %1 Activated").arg(activeModeName);
+    const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
+                                            : QString("Mode %1 Activated").arg(currentModeName);
     sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
-    foreach (QAction* action, modesTrayMenu->actions()) {
-      if (action->statusTip() == activeModeUID) {
-        action->setChecked(true);
-      } else {
-        action->setChecked(false);
-      }
-    }
   });
   connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
     // on error or dropped connection, retry:
     while (!isDaemonConnected) {
       delay(1000);
-    };
+    }
     watchModeActivation();
     sseModesReply->deleteLater();
   });
@@ -424,7 +438,7 @@ void MainWindow::watchAlerts() const {
   alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
   const auto alertsReply = manager->get(alertsRequest);
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
-    const QString alert = alertsReply->readAll();
+    const QString alert = QString(alertsReply->readAll()).simplified().replace("event: alert data: ", "");
     const QJsonObject rootObj = QJsonDocument::fromJson(alert.toUtf8()).object();
     if (rootObj.isEmpty()) {
       // This is also called for keepAlive ticks - but semi-empty message
@@ -442,7 +456,7 @@ void MainWindow::watchAlerts() const {
     // on error or dropped connection, retry:
     while (!isDaemonConnected) {
       delay(1000);
-    };
+    }
     watchAlerts();
     alertsReply->deleteLater();
   });

@@ -205,6 +205,7 @@ impl ModeController {
         if let Err(err) = self.save_modes_data().await {
             error!("Error saving mode data: {err}");
         }
+        self.broadcast_active_mode(None, None, None);
     }
 
     fn update_active_modes(&self, mode_uid: UID) {
@@ -225,14 +226,11 @@ impl ModeController {
             let active_modes_lock = self.active_modes.borrow();
             if active_modes_lock.current.as_ref() == Some(mode_uid) {
                 debug!("Mode already active: {} ID:{mode_uid}", mode.name);
-                if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-                    mode_handle.broadcast_mode_activated(
-                        &mode.uid,
-                        &mode.name,
-                        true,
-                        active_modes_lock.previous.as_ref(),
-                    );
-                }
+                self.broadcast_active_mode(
+                    Some(&mode.uid),
+                    Some(&mode.name),
+                    self.active_modes.borrow().previous.as_ref(),
+                );
                 return Ok(());
             }
         }
@@ -268,14 +266,11 @@ impl ModeController {
         self.config.save_config_file().await?;
         self.update_active_modes(mode_uid.to_string());
         self.save_modes_data().await?;
-        if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
-            mode_handle.broadcast_mode_activated(
-                &mode.uid,
-                &mode.name,
-                false,
-                self.active_modes.borrow().previous.as_ref(),
-            );
-        }
+        self.broadcast_active_mode(
+            Some(&mode.uid),
+            Some(&mode.name),
+            self.active_modes.borrow().previous.as_ref(),
+        );
         info!("Successfully applied:: Mode: {}", mode.name);
         Ok(())
     }
@@ -390,6 +385,17 @@ impl ModeController {
         }
     }
 
+    fn broadcast_active_mode(
+        &self,
+        mode_uid: Option<&UID>,
+        mode_name: Option<&String>,
+        previous_mode_uid: Option<&UID>,
+    ) {
+        if let Some(mode_handle) = self.mode_handle.borrow().as_ref() {
+            mode_handle.broadcast_active_mode(mode_uid, mode_name, previous_mode_uid);
+        }
+    }
+
     /// Creates a new Mode with the given name and all current device settings.
     /// This will also essentially duplicate a currently active Mode.
     pub async fn create_mode(&self, name: String) -> Result<Mode> {
@@ -409,6 +415,11 @@ impl ModeController {
         }
         self.update_active_modes(mode_uid);
         self.save_modes_data().await?;
+        self.broadcast_active_mode(
+            Some(&mode.uid),
+            Some(&mode.name),
+            self.active_modes.borrow().previous.as_ref(),
+        );
         Ok(mode)
     }
 
@@ -481,6 +492,11 @@ impl ModeController {
         };
         self.update_active_modes(mode_uid.to_string());
         self.save_modes_data().await?;
+        self.broadcast_active_mode(
+            Some(&mode.uid),
+            Some(&mode.name),
+            self.active_modes.borrow().previous.as_ref(),
+        );
         Ok(mode)
     }
 
@@ -509,10 +525,25 @@ impl ModeController {
             }
             .into());
         }
-        {
+        let active_mode_name = {
+            if self.active_modes.borrow().current.as_ref() == Some(mode_uid) {
+                self.modes.borrow().get(mode_uid).map(|m| m.name.clone())
+            } else {
+                None
+            }
+        };
+        let active_mode_changed = {
             self.modes.borrow_mut().remove(mode_uid);
             self.mode_order.borrow_mut().retain(|uid| uid != mode_uid);
-            self.active_modes.borrow_mut().mode_deleted(mode_uid);
+            self.active_modes.borrow_mut().mode_deleted(mode_uid)
+        };
+        if active_mode_changed {
+            let active_modes_lock = self.active_modes.borrow();
+            self.broadcast_active_mode(
+                active_modes_lock.current.as_ref(),
+                active_mode_name.as_ref(),
+                active_modes_lock.previous.as_ref(),
+            );
         }
         self.save_modes_data().await?;
         Ok(())
@@ -662,13 +693,17 @@ impl ActiveModes {
         }
     }
 
-    fn mode_deleted(&mut self, mode_uid: &UID) {
+    fn mode_deleted(&mut self, mode_uid: &UID) -> bool {
+        let mut active_mode_changed = false;
         if self.current.as_ref() == Some(mode_uid) {
             self.current = None;
+            active_mode_changed = true;
         }
         if self.previous.as_ref() == Some(mode_uid) {
             self.previous = None;
+            active_mode_changed = true;
         }
+        active_mode_changed
     }
 
     fn mode_activated(&mut self, mode_uid: UID) {

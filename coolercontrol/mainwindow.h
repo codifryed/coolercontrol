@@ -28,6 +28,10 @@ class MainWindow final : public QMainWindow {
 
   void setZoomFactor(double zoomFactor) const;
 
+  void setTrayMenuModes(const QString& modesJson) const;
+
+  void setActiveMode(const QString& modeUID) const;
+
  protected:
   void closeEvent(QCloseEvent* event) override;
 
@@ -53,6 +57,9 @@ class MainWindow final : public QMainWindow {
   mutable bool isDaemonConnected = false;
 
   mutable bool deamonHasErrors = false;
+
+  // This is empty when there is currently no active mode:
+  mutable QString activeModeUID = QString();
 
   static QUrl getDaemonUrl();
 

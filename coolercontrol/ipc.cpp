@@ -46,6 +46,10 @@ void IPC::setZoomFactor(const double zoomFactor) const {
   qobject_cast<MainWindow*>(parent())->setZoomFactor(zoomFactor);
 }
 
+void IPC::setModes(const QString& modesJson) const {
+  qobject_cast<MainWindow*>(parent())->setTrayMenuModes(modesJson);
+}
+
 void IPC::saveWindowGeometry(const QByteArray& geometry) const {
   settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);
 }

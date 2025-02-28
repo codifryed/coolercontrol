@@ -41,6 +41,8 @@ class IPC final : public QObject {
 
   void setZoomFactor(double zoomFactor) const;
 
+  void setModes(const QString& modesJson) const;
+
   void saveWindowGeometry(const QByteArray& geometry) const;
 
   void forceQuit() const;
