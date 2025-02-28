@@ -52,12 +52,6 @@ export const useDaemonState = defineStore('daemonState', () => {
         } else {
             await setStatus(DaemonStatus.OK)
         }
-        if (deviceStore.isTauriApp()) {
-            await invoke('connected_to_daemon', {
-                daemonAddress: deviceStore.daemonClient.daemonURL,
-                hasErrors: errors.value > 0,
-            })
-        }
     }
 
     async function setStatus(newStatus: DaemonStatus) {
