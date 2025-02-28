@@ -138,80 +138,23 @@ MainWindow::MainWindow(QWidget *parent)
     connect(view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
         if (!pageLoadedSuccessfully) {
             displayAddressWizard();
+            notifyDaemonConnectionError();
         } else {
             qInfo() << "Successfully connected to UI at: " << getDaemonUrl().url();
-
-            // DAEMON HEALTH REQUEST:
-            QNetworkRequest healthRequest;
-            healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
-            const auto healthReply = manager->get(healthRequest);
-            connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
-                const QString ReplyText = healthReply->readAll();
-                const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
-                if (
-                    const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
-                    daemonVersion.isEmpty()
-                ) {
-                    qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
-                }
-                if (
-                    const auto errors = rootObj.value("details").toObject().value("errors").toInt();
-                    errors > 0
-                ) {
-                    deamonHasErrors = true;
-                    notifyDaemonErrors();
-                }
-                healthReply->deleteLater();
-            });
-
-            // LOAD ALL MODES:
-            QNetworkRequest modesRequest;
-            modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
-            const auto modesReply = manager->get(modesRequest);
-            connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
-                const QString ReplyText = modesReply->readAll();
-                const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
-                const auto modesArray = rootObj.value("modes").toArray();
-                modesTrayMenu->setDisabled(modesArray.isEmpty());
-                foreach(QJsonValue value, modesArray) {
-                    const auto modeName = value.toObject().value("name").toString();
-                    const auto modeUID = value.toObject().value("uid").toString();
-                    const auto modeAction = new QAction(modeName, this);
-                    modeAction->setStatusTip(modeUID); // We use the statusTip to store UID
-                    modeAction->setCheckable(true);
-                    modeAction->setChecked(false);
-                    connect(modeAction, &QAction::triggered, [this, modeUID, modeAction]() {
-                        // todo: send Post request to activate this mode
-                    });
-                    modesTrayMenu->addAction(modeAction);
-                }
-                modesReply->deleteLater();
-            });
-
-            // SET ACTIVE MODE:
-            QNetworkRequest modesActiveRequest;
-            modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
-            const auto modesActiveReply = manager->get(modesActiveRequest);
-            connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
-                const QString ReplyText = modesActiveReply->readAll();
-                const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
-                const auto activeModeUID = rootObj.value("current_mode_uid").toString();
-                foreach(QAction *action, modesTrayMenu->actions()) {
-                    if (action->statusTip() == activeModeUID) {
-                        action->setChecked(true);
-                    } else {
-                        action->setChecked(false);
-                    }
-                }
-                modesActiveReply->deleteLater();
-            });
+            isDaemonConnected = true;
+            requestDaemonErrors();
+            requestAllModes();
+            requestActiveMode();
+            watchLogsAndConnection();
+            watchModeActivation();
+            watchAlerts();
         }
 
     });
 
     // todo: we can probably change the log download blob/link in the UI to point to an external link to see the raw text api endpoint
 
-    // todo: check for existing running CC application? (there must be some standard for Qt???)
+    // todo: check for existing running CC application(single-instance)?
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
@@ -250,12 +193,10 @@ QUrl MainWindow::getDaemonUrl() {
 QUrl MainWindow::getEndpointUrl(const QString &endpoint) {
     auto url = getDaemonUrl();
     url.setPath(endpoint);
-    // todo: for testing, the UI address is often different than the daemon address (npm server)
-    url.setPort(DEFAULT_DAEMON_PORT);
     return url;
 }
 
-void MainWindow::displayAddressWizard() {
+void MainWindow::displayAddressWizard() const {
     if (wizard->isVisible()) {
         return;
     }
@@ -304,10 +245,231 @@ void MainWindow::setTrayActionToHide() const {
     showAction->setText(tr("&Hide"));
 }
 
+void MainWindow::notifyDaemonConnectionError() const {
+    sysTrayIcon->showMessage(
+        "Daemon Connection Error",
+        "Connection with the daemon could not be established",
+        QIcon::fromTheme("network-error", QIcon())
+    );
+}
+
 void MainWindow::notifyDaemonErrors() const {
     sysTrayIcon->showMessage(
         "Daemon Errors",
         "The daemon logs contain errors. You should investigate.",
-        QIcon::fromTheme("face-worried", QIcon())
+        QIcon::fromTheme("dialog-warning", QIcon())
     );
+}
+
+void MainWindow::notifyDaemonDisconnected() const {
+    sysTrayIcon->showMessage(
+        "Daemon Disconnected",
+        "Connection with the daemon has been lost",
+        QIcon::fromTheme("network-error", QIcon())
+    );
+}
+
+void MainWindow::notifyDaemonConnectionRestored() const {
+    sysTrayIcon->showMessage(
+        "Daemon Connection Restored",
+        "Connection with the daemon has been restored.",
+        QIcon::fromTheme("emblem-default", QIcon())
+    );
+}
+
+void MainWindow::requestDaemonErrors() const {
+    // DAEMON HEALTH REQUEST:
+    QNetworkRequest healthRequest;
+    healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
+    const auto healthReply = manager->get(healthRequest);
+    connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
+        const QString ReplyText = healthReply->readAll();
+        const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+        if (
+            const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
+            daemonVersion.isEmpty()
+        ) {
+            qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
+        }
+        if (
+            const auto errors = rootObj.value("details").toObject().value("errors").toInt();
+            errors > 0
+        ) {
+            deamonHasErrors = true;
+            notifyDaemonErrors();
+        }
+        healthReply->deleteLater();
+    });
+}
+
+void MainWindow::requestAllModes() const {
+    // LOAD ALL MODES:
+    QNetworkRequest modesRequest;
+    modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
+    const auto modesReply = manager->get(modesRequest);
+    connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
+        const QString ReplyText = modesReply->readAll();
+        const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+        const auto modesArray = rootObj.value("modes").toArray();
+        modesTrayMenu->setDisabled(modesArray.isEmpty());
+        foreach(QJsonValue value, modesArray) {
+            const auto modeName = value.toObject().value("name").toString();
+            const auto modeUID = value.toObject().value("uid").toString();
+            const auto modeAction = new QAction(modeName);
+            modeAction->setStatusTip(modeUID); // We use the statusTip to store UID
+            modeAction->setCheckable(true);
+            modeAction->setChecked(false);
+            connect(modeAction, &QAction::triggered, [this, modeUID, modeAction]() {
+                // todo: send Post request to activate this mode
+            });
+            modesTrayMenu->addAction(modeAction);
+        }
+        modesReply->deleteLater();
+    });
+}
+
+void MainWindow::requestActiveMode() const {
+    // SET ACTIVE MODE:
+    QNetworkRequest modesActiveRequest;
+    modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
+    const auto modesActiveReply = manager->get(modesActiveRequest);
+    connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
+        const QString ReplyText = modesActiveReply->readAll();
+        const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+        const auto activeModeUID = rootObj.value("current_mode_uid").toString();
+        foreach(QAction *action, modesTrayMenu->actions()) {
+            if (action->statusTip() == activeModeUID) {
+                action->setChecked(true);
+            } else {
+                action->setChecked(false);
+            }
+        }
+        modesActiveReply->deleteLater();
+    });
+}
+
+void MainWindow::watchLogsAndConnection() const {
+    QNetworkRequest sseLogsRequest;
+    sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data()));
+    const auto sseLogsReply = manager->get(sseLogsRequest);
+    connect(sseLogsReply, &QNetworkReply::readyRead, [sseLogsReply, this]() {
+        // This is also called for keepAlive ticks - but with semi-filled message
+        const QString log = sseLogsReply->readAll();
+        if (
+            const auto logContainsErrors = log.contains("ERROR");
+            logContainsErrors && !deamonHasErrors
+        ) {
+            deamonHasErrors = true;
+            notifyDaemonErrors();
+        }
+    });
+    connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
+        // on error or dropped connection, retry:
+        if (isDaemonConnected) {
+            isDaemonConnected = false;
+            notifyDaemonDisconnected();
+        }
+        while (!isDaemonConnected) {
+            delay(1000);
+            verifyDaemonIsConnected();
+        };
+        watchLogsAndConnection();
+        qInfo() << "Connection to the Daemon Reestablished";
+        sseLogsReply->deleteLater();
+    });
+}
+
+void MainWindow::verifyDaemonIsConnected() const {
+    QNetworkRequest healthRequest;
+    healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
+    const auto healthReply = manager->get(healthRequest);
+    connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
+        if (!isDaemonConnected) {
+            isDaemonConnected = true;
+            notifyDaemonConnectionRestored();
+        }
+        healthReply->deleteLater();
+    });
+}
+
+void MainWindow::watchModeActivation() const {
+    QNetworkRequest sseModesRequest;
+    sseModesRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
+    const auto sseModesReply = manager->get(sseModesRequest);
+    connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
+        const QString modeActivated = sseModesReply->readAll();
+        const QJsonObject rootObj = QJsonDocument::fromJson(modeActivated.toUtf8()).object();
+        if (rootObj.isEmpty()) {
+            // This is also called for keepAlive ticks - but semi-empty message
+            return;
+        }
+        const auto modeAlreadyActive = rootObj.value("already_active").toBool();
+        const auto activeModeUID = rootObj.value("uid").toString();
+        const auto activeModeName = rootObj.value("name").toString();
+        const auto msgTitle =
+                modeAlreadyActive
+                    ? QString("Mode %1 Already Active").arg(activeModeName)
+                    : QString("Mode %1 Activated").arg(activeModeName);
+        sysTrayIcon->showMessage(
+            msgTitle,
+            "",
+            QIcon::fromTheme("dialog-information", QIcon())
+        );
+        foreach(QAction *action, modesTrayMenu->actions()) {
+            if (action->statusTip() == activeModeUID) {
+                action->setChecked(true);
+            } else {
+                action->setChecked(false);
+            }
+        }
+    });
+    connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
+        // on error or dropped connection, retry:
+        while (!isDaemonConnected) {
+            delay(1000);
+        };
+        watchModeActivation();
+        sseModesReply->deleteLater();
+    });
+}
+
+void MainWindow::watchAlerts() const {
+    QNetworkRequest alertsRequest;
+    alertsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
+    const auto alertsReply = manager->get(alertsRequest);
+    connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
+        const QString alert = alertsReply->readAll();
+        const QJsonObject rootObj = QJsonDocument::fromJson(alert.toUtf8()).object();
+        if (rootObj.isEmpty()) {
+            // This is also called for keepAlive ticks - but semi-empty message
+            return;
+        }
+        const auto alertState = rootObj.value("state").toString();
+        const auto alertName = rootObj.value("name").toString();
+        const auto alertMessage = rootObj.value("message").toString();
+        const auto msgTitle =
+                alertState == tr("Active")
+                    ? QString("Alert: %1 Triggered").arg(alertName)
+                    : QString("Alert: %1 Resolved").arg(alertName);
+        const auto msgIcon =
+                alertState == tr("Active")
+                    ? tr("dialog-warning")
+                    : tr("emblem-default");
+        sysTrayIcon->showMessage(
+            msgTitle,
+            alertMessage,
+            QIcon::fromTheme(msgIcon, QIcon())
+        );
+    });
+    connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
+        // on error or dropped connection, retry:
+        while (!isDaemonConnected) {
+            delay(1000);
+        };
+        watchAlerts();
+        alertsReply->deleteLater();
+    });
 }

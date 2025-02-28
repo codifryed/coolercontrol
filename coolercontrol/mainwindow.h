@@ -49,20 +49,41 @@ private:
     QAction *addressAction;
     QAction *showAction;
     QWizard *wizard;
-    QNetworkAccessManager * manager;
+    QNetworkAccessManager *manager;
+    mutable bool isDaemonConnected = false;
 
-    bool deamonHasErrors = false;
+    mutable bool deamonHasErrors = false;
 
     static QUrl getDaemonUrl();
 
-    static QUrl getEndpointUrl(const QString& endpoint);
+    static QUrl getEndpointUrl(const QString &endpoint);
 
-    void displayAddressWizard();
+    void displayAddressWizard() const;
 
     void setTrayActionToShow() const;
 
     void setTrayActionToHide() const;
 
+    void requestDaemonErrors() const;
+
+    void requestAllModes() const;
+
+    void requestActiveMode() const;
+
+    void watchLogsAndConnection() const;
+
+    void verifyDaemonIsConnected() const;
+
+    void watchModeActivation() const;
+
+    void watchAlerts() const;
+
+    void notifyDaemonConnectionError() const;
+
     void notifyDaemonErrors() const;
+
+    void notifyDaemonDisconnected() const;
+
+    void notifyDaemonConnectionRestored() const;
 };
 #endif // MAINWINDOW_H
