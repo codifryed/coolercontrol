@@ -29,7 +29,7 @@ git add CHANGELOG.md \
     coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
-    coolercontrol/main.cpp \
+    coolercontrol/constants.h \
     packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
     packaging/fedora/coolercontrol.spec \
     packaging/fedora/coolercontrold.spec \
