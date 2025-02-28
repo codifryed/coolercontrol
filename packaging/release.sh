@@ -29,9 +29,7 @@ git add CHANGELOG.md \
     coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
-    coolercontrol-ui/src-tauri/Cargo.toml \
-    coolercontrol-ui/src-tauri/Cargo.lock \
-    coolercontrol-ui/src-tauri/tauri.conf.json \
+    coolercontrol/main.cpp \
     packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
     packaging/fedora/coolercontrol.spec \
     packaging/fedora/coolercontrold.spec \
