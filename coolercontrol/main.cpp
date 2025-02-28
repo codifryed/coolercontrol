@@ -29,11 +29,9 @@ int main(int argc, char *argv[]) {
         QIcon::fromTheme("application-x-executable", QIcon(":/icons/icon.png"))
     );
     QCoreApplication::setOrganizationName("org.coolercontrol.CoolerControl");
-    QApplication::setApplicationName("org.coolercontrol.CoolerControl");
+    QApplication::setApplicationName("CoolerControl");
     QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
     //settings: ~/.config/{app_id}/{app_id}.conf
-    // todo: needed?:
-    QApplication::setApplicationVersion("2.0.0");
     QApplication::setQuitOnLastWindowClosed(false);
     // todo: do we need this for Qt 6.2?
     // QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);

@@ -1,5 +1,4 @@
 #include "mainwindow.h"
-#include "mainwindow.h"
 
 #include <QDebug>
 #include <QThread>
@@ -72,6 +71,7 @@ MainWindow::MainWindow(QWidget *parent)
     // SYSTEM TRAY:
     ////////////////////////////////////////////////////////////////////////////////////////////////
     const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
+    ccHeader->setDisabled(true);
     connect(ccHeader, &QAction::triggered, [this]() {
         // Use CC Tray Header as show-only trigger. (un-minimize doesn't seem to work)
         show();
@@ -79,8 +79,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
     showAction =
             ipc->getStartInTray()
-                ? new QAction(QIcon::fromTheme("window-new", QIcon()), tr("&Show"), this)
-                : new QAction(QIcon::fromTheme("window-close", QIcon()), tr("&Hide"), this);
+                ? new QAction(tr("&Show"), this)
+                : new QAction(tr("&Hide"), this);
     connect(showAction, &QAction::triggered, [this]() {
         if (isVisible()) {
             hide();
@@ -90,7 +90,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    addressAction = new QAction(QIcon::fromTheme("address-book-new", QIcon()), tr("&Daemon Address"), this);
+    addressAction = new QAction(tr("&Daemon Address"), this);
     connect(addressAction, &QAction::triggered, [this]() {
         displayAddressWizard();
     });
@@ -125,11 +125,9 @@ MainWindow::MainWindow(QWidget *parent)
         if (reason == QSystemTrayIcon::Trigger) {
             if (isVisible()) {
                 hide();
-                showAction->setText(tr("&Show"));
             } else {
                 show();
                 activateWindow();
-                showAction->setText(tr("&Hide"));
             }
         }
     });
@@ -300,12 +298,10 @@ void MainWindow::delay(const int millisecondsWait) {
 
 void MainWindow::setTrayActionToShow() const {
     showAction->setText(tr("&Show"));
-    showAction->setIcon(QIcon::fromTheme("window-new", QIcon()));
 }
 
 void MainWindow::setTrayActionToHide() const {
     showAction->setText(tr("&Hide"));
-    showAction->setIcon(QIcon::fromTheme("window-close", QIcon()));
 }
 
 void MainWindow::notifyDaemonErrors() const {
