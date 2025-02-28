@@ -402,7 +402,8 @@ void MainWindow::watchModeActivation() const {
   sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
   const auto sseModesReply = manager->get(sseModesRequest);
   connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
-    const QString modeActivated = QString(sseModesReply->readAll()).simplified().replace("event: mode data: ", "");
+    const QString modeActivated =
+        QString(sseModesReply->readAll()).simplified().replace("event: mode data: ", "");
     const QJsonObject rootObj = QJsonDocument::fromJson(modeActivated.toUtf8()).object();
     if (rootObj.isEmpty()) {
       // This is also called for keepAlive ticks - but semi-empty message
@@ -438,7 +439,8 @@ void MainWindow::watchAlerts() const {
   alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
   const auto alertsReply = manager->get(alertsRequest);
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
-    const QString alert = QString(alertsReply->readAll()).simplified().replace("event: alert data: ", "");
+    const QString alert =
+        QString(alertsReply->readAll()).simplified().replace("event: alert data: ", "");
     const QJsonObject rootObj = QJsonDocument::fromJson(alert.toUtf8()).object();
     if (rootObj.isEmpty()) {
       // This is also called for keepAlive ticks - but semi-empty message
