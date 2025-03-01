@@ -50,8 +50,6 @@ import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import { open } from '@tauri-apps/plugin-dialog'
-import { homeDir } from '@tauri-apps/api/path'
 
 interface Props {
     customSensorID?: string
@@ -353,13 +351,9 @@ const viewTypeChanged = () =>
         chosenViewType.value)
 
 const fileBrowse = async (): Promise<void> => {
-    filePath.value =
-        (await open({
-            directory: false,
-            multiple: false,
-            defaultPath: await homeDir(),
-            title: 'Select Custom Sensor File',
-        })) ?? undefined
+    // @ts-ignore
+    const ipc = window.ipc
+    filePath.value = await ipc.filePathDialog('Select Custom Sensor File')
 }
 
 onMounted(async () => {
@@ -540,7 +534,7 @@ onMounted(async () => {
                             'The file is verified upon submission.'
                         "
                     />
-                    <div v-if="deviceStore.isTauriApp()">
+                    <div v-if="deviceStore.isQtApp()">
                         <Button
                             class="mt-2 w-full h-12"
                             label="Browse"

@@ -23,6 +23,10 @@ class IPC final : public QObject {
 
   Q_INVOKABLE [[nodiscard]] QByteArray getWindowGeometry() const;
 
+  Q_INVOKABLE [[nodiscard]] QString filePathDialog(const QString& title) const;
+
+  Q_INVOKABLE [[nodiscard]] QString directoryPathDialog(const QString& title) const;
+
   /*
       Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
   */

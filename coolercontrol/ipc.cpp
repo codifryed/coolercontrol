@@ -1,6 +1,7 @@
 #include "ipc.h"
 
 #include <QApplication>
+#include <QFileDialog>
 
 #include "constants.h"
 #include "main_window.h"
@@ -27,6 +28,15 @@ double IPC::getZoomFactor() const {
 
 QByteArray IPC::getWindowGeometry() const {
   return m_settings->value(SETTING_WINDOW_GEOMETRY.data(), 0).toByteArray();
+}
+
+QString IPC::filePathDialog(const QString& title) const {
+  return QFileDialog::getOpenFileName(qobject_cast<MainWindow*>(parent()), title, QDir::homePath());
+}
+
+QString IPC::directoryPathDialog(const QString& title) const {
+  return QFileDialog::getExistingDirectory(qobject_cast<MainWindow*>(parent()), title,
+                                           QDir::homePath(), QFileDialog::ShowDirsOnly);
 }
 
 void IPC::setStartInTray(const bool startInTray) const {
