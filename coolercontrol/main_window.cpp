@@ -222,6 +222,8 @@ QUrl MainWindow::getDaemonUrl() {
 QUrl MainWindow::getEndpointUrl(const QString& endpoint) {
   auto url = getDaemonUrl();
   url.setPath(endpoint);
+  // for testing with npm dev server:
+  // url.setPort(DEFAULT_DAEMON_PORT);
   return url;
 }
 
