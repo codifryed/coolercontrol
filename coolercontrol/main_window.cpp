@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDesktopServices>
+#include <QFileDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -17,6 +18,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QWebEngineCookieStore>
+#include <QWebEngineDownloadRequest>
 #include <QWebEngineNewWindowRequest>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -42,6 +44,22 @@ MainWindow::MainWindow(QWidget* parent)
   m_profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
   m_profile->setPersistentCookiesPolicy(
       QWebEngineProfile::PersistentCookiesPolicy::NoPersistentCookies);
+  connect(m_profile, &QWebEngineProfile::downloadRequested,
+          [this](QWebEngineDownloadRequest* download) {
+            Q_ASSERT(download && download->state() == QWebEngineDownloadRequest::DownloadRequested);
+            if (download->isSavePageDownload()) {
+              qInfo() << "Saving web pages is disabled.";
+              return;
+            }
+            const QString path = QFileDialog::getSaveFileName(
+                this, tr("Save as"),
+                QDir(download->downloadDirectory()).filePath(download->downloadFileName()));
+            if (path.isEmpty()) return;  // cancelled
+
+            download->setDownloadDirectory(QFileInfo(path).path());
+            download->setDownloadFileName(QFileInfo(path).fileName());
+            download->accept();
+          });
   m_channel->registerObject("ipc", m_ipc);
   m_page->setWebChannel(m_channel);
   // This allows external links in our app to be opened by the external browser:
