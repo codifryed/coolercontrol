@@ -222,10 +222,17 @@ void MainWindow::handleStartInTray() {
   restoreGeometry(m_ipc->getWindowGeometry());
   setZoomFactor(m_ipc->getZoomFactor());
   if (m_ipc->getStartInTray()) {
-    hide();
-    m_page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
-    // todo: can play with this more in the future. It's tricky but there is a possibility of even
-    // less resource usage: page->setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
+    setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, true);
+    show();  // this triggers browser engine rendering - which we want for startup&login
+    connect(
+        m_ipc, &IPC::webLoadFinished, this,
+        [this]() {
+          delay(300);  // small pause to let web engine breath before suspending.
+          hide();
+          setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
+          qInfo() << "Initialized closed to system tray.";
+        },
+        Qt::SingleShotConnection);
   } else {
     show();
   }

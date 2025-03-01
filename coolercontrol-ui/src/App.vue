@@ -355,12 +355,21 @@ onMounted(async () => {
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
+    let signalLoadFinished = async (): Promise<void> => {
+        if (deviceStore.isQtApp()) {
+            // Helps with Qt startup handling, i.e. startInTray
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
+        }
+    }
     // async functions that run for the lifetime of the application:
     await Promise.all([
         deviceStore.updateStatusFromSSE(),
         deviceStore.updateLogsFromSSE(),
         deviceStore.updateAlertsFromSSE(),
         deviceStore.updateActiveModeFromSSE(),
+        signalLoadFinished(),
     ])
 })
 </script>

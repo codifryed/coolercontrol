@@ -29,6 +29,8 @@ class IPC final : public QObject {
  signals:
   void sendText(const QString& text);
 
+  void webLoadFinished() const;
+
   /*
       Slots are invoked from the JS client side and are processed on the server side.
   */
@@ -50,6 +52,8 @@ class IPC final : public QObject {
   void forceQuit() const;
 
   void syncSettings() const;
+
+  void loadFinished() const { emit webLoadFinished(); }
 
  private:
   QSettings* m_settings;
