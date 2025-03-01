@@ -1,4 +1,4 @@
-#include "addresswizard.h"
+#include "address_wizard.h"
 
 #include <QCheckBox>
 #include <QIntValidator>

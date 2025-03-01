@@ -3,7 +3,7 @@
 #include <QApplication>
 
 #include "constants.h"
-#include "mainwindow.h"
+#include "main_window.h"
 
 IPC::IPC(QObject* parent) : QObject(parent), m_settings(new QSettings()) {
   //        connect(dialog, &Dialog::sendText, this, &Core::sendText);

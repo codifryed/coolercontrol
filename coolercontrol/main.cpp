@@ -2,7 +2,7 @@
 #include <QLoggingCategory>
 
 #include "constants.h"
-#include "mainwindow.h"
+#include "main_window.h"
 
 int main(int argc, char* argv[]) {
   // Enables js debug output: (very cool)

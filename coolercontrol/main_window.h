@@ -10,7 +10,7 @@
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
-#include "addresswizard.h"
+#include "address_wizard.h"
 #include "ipc.h"
 
 class MainWindow final : public QMainWindow {
@@ -30,6 +30,8 @@ class MainWindow final : public QMainWindow {
   void setActiveMode(const QString& modeUID) const;
 
   void acknowledgeDaemonErrors() const;
+
+  void login(const QString& pass) const;
 
  protected:
   void closeEvent(QCloseEvent* event) override;
@@ -59,6 +61,8 @@ class MainWindow final : public QMainWindow {
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};
+
+  mutable QByteArray m_passwd{QByteArray()};
 
   static QUrl getDaemonUrl();
 

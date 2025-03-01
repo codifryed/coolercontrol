@@ -13,10 +13,10 @@ qt_add_executable(
   coolercontrol
   # WIN32 MACOSX_BUNDLE
   main.cpp
-  mainwindow.cpp
-  mainwindow.h
-  addresswizard.cpp
-  addresswizard.h
+  main_window.cpp
+  main_window.h
+  address_wizard.cpp
+  address_wizard.h
   ipc.cpp
   ipc.h)
 

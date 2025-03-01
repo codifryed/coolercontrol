@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+#include "main_window.h"
 
 #include <QAction>
 #include <QApplication>
@@ -45,9 +45,10 @@ MainWindow::MainWindow(QWidget* parent)
   m_channel->registerObject("ipc", m_ipc);
   m_page->setWebChannel(m_channel);
   // This allows external links in our app to be opened by the external browser:
-  connect(m_page, &QWebEnginePage::newWindowRequested, [](QWebEngineNewWindowRequest const& request) {
-    QDesktopServices::openUrl(request.requestedUrl());
-  });
+  connect(m_page, &QWebEnginePage::newWindowRequested,
+          [](QWebEngineNewWindowRequest const& request) {
+            QDesktopServices::openUrl(request.requestedUrl());
+          });
   m_view->setPage(m_page);
 
   // Wizard init:
@@ -243,25 +244,25 @@ void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")
 
 void MainWindow::notifyDaemonConnectionError() const {
   m_sysTrayIcon->showMessage("Daemon Connection Error",
-                           "Connection with the daemon could not be established",
-                           QIcon::fromTheme("network-error", QIcon()));
+                             "Connection with the daemon could not be established",
+                             QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonErrors() const {
   m_sysTrayIcon->showMessage("Daemon Errors",
-                           "The daemon logs contain errors. You should investigate.",
-                           QIcon::fromTheme("dialog-warning", QIcon()));
+                             "The daemon logs contain errors. You should investigate.",
+                             QIcon::fromTheme("dialog-warning", QIcon()));
 }
 
 void MainWindow::notifyDaemonDisconnected() const {
   m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
-                           QIcon::fromTheme("network-error", QIcon()));
+                             QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonConnectionRestored() const {
   m_sysTrayIcon->showMessage("Daemon Connection Restored",
-                           "Connection with the daemon has been restored.",
-                           QIcon::fromTheme("emblem-default", QIcon()));
+                             "Connection with the daemon has been restored.",
+                             QIcon::fromTheme("emblem-default", QIcon()));
 }
 
 void MainWindow::requestDaemonErrors() const {
