@@ -45,6 +45,8 @@ class IPC final : public QObject {
 
   void saveWindowGeometry(const QByteArray& geometry) const;
 
+  void acknowledgeDaemonIssues() const;
+
   void forceQuit() const;
 
   void syncSettings() const;

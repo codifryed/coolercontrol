@@ -286,6 +286,8 @@ void MainWindow::requestDaemonErrors() const {
   });
 }
 
+void MainWindow::acknowledgeDaemonErrors() const { deamonHasErrors = false; }
+
 void MainWindow::requestAllModes() const {
   QNetworkRequest modesRequest;
   modesRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);

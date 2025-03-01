@@ -29,6 +29,8 @@ class MainWindow final : public QMainWindow {
 
   void setActiveMode(const QString& modeUID) const;
 
+  void acknowledgeDaemonErrors() const;
+
  protected:
   void closeEvent(QCloseEvent* event) override;
 

@@ -19,7 +19,6 @@
 import { defineStore } from 'pinia'
 import { ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { invoke } from '@tauri-apps/api/core'
 import { useToast } from 'primevue/usetoast'
 
 export enum DaemonStatus {
@@ -102,8 +101,10 @@ export const useDaemonState = defineStore('daemonState', () => {
         status.value = DaemonStatus.OK
         const deviceStore = useDeviceStore()
         await deviceStore.acknowledgeIssues()
-        if (deviceStore.isTauriApp()) {
-            await invoke('acknowledge_daemon_issues')
+        if (deviceStore.isQtApp()) {
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.acknowledgeDaemonIssues()
         }
     }
 

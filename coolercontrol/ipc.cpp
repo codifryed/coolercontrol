@@ -54,6 +54,10 @@ void IPC::saveWindowGeometry(const QByteArray& geometry) const {
   settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);
 }
 
+void IPC::acknowledgeDaemonIssues() const {
+  qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrors();
+}
+
 void IPC::syncSettings() const { settings->sync(); }
 
 void IPC::forceQuit() const {
