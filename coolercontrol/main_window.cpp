@@ -79,10 +79,6 @@ MainWindow::MainWindow(QWidget* parent)
   initDelay();
   initSystemTray();
   initWebUI();
-  // emit ipc->sendText("Hello from C++");
-  // todo: we can probably change the log download blob/link in the UI to point to an external link
-  // to see the raw text api endpoint
-  // todo: check for existing running CC application(single-instance)?
 }
 
 void MainWindow::initWizard() {

@@ -1,41 +1,41 @@
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QLoggingCategory>
 
 #include "constants.h"
 #include "main_window.h"
 
 int main(int argc, char* argv[]) {
-  // Enables js debug output: (very cool)
-  // QLoggingCategory::setFilterRules("*.debug=true");
-  // todo: debugging enabled:
-  qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
-  QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
-
+  qputenv("QT_MESSAGE_PATTERN", "%{time} %{type} %{appname}: %{category} - %{message}");
   // Standard Qt Paths:
   // https://doc.qt.io/qt-6/qstandardpaths.htm
-
-  // todo: handle dbus checking for applicaton already running (freedesktop standard)
-
-  // todo: QSettings for:
-  //  - window size & position
-  //  - start-in-tray
-
-  // todo: handle window position & size:
-  //  - save window size & position on close & hide, and restore on open & show
-  //  - load window size & position on startup
-
-  // instantiate the application
-  QApplication a(argc, argv);
+  // settings: ~/.config/{app_id}/{app_id}.conf
+  const QApplication a(argc, argv);
   QApplication::setWindowIcon(
       QIcon::fromTheme("application-x-executable", QIcon(":/icons/icon.png")));
   QCoreApplication::setOrganizationName("org.coolercontrol.CoolerControl");
   QApplication::setApplicationName("CoolerControl");
   QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
   QApplication::setApplicationVersion(COOLER_CONTROL_VERSION.data());
-  // settings: ~/.config/{app_id}/{app_id}.conf
   QApplication::setQuitOnLastWindowClosed(false);
-  // todo: do we need this for Qt 6.2?
-  // QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+  QCommandLineParser parser;
+  parser.setApplicationDescription("CoolerControl GUI Desktop Application");
+  parser.addHelpOption();
+  parser.addVersionOption();
+  const QCommandLineOption debugOption(QStringList() << "d"
+                                                     << "debug",
+                                       "Enable debug output.");
+  parser.addOption(debugOption);
+  parser.process(a);
+  if (parser.isSet(debugOption)) {
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=0");
+    QLoggingCategory::setFilterRules("*.debug=true");
+    QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
+    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
+  } else {
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=3");
+    QLoggingCategory::setFilterRules("js.warning=false");
+  }
 
   MainWindow w;
   w.setWindowTitle("CoolerControl");
