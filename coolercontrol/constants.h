@@ -4,6 +4,9 @@
 #include <string>
 
 const std::string COOLER_CONTROL_VERSION = "2.0.0";
+const std::string DBUS_NAME = "org.coolercontrol.SingleInstance";
+const std::string DBUS_PATH = "/org/coolercontrol/SingleInstance";
+const std::string DBUS_INTERFACE = "org.coolercontrol.SingleInstance";
 const std::string SETTING_DAEMON_ADDRESS = "daemonAddress";
 const std::string SETTING_DAEMON_PORT = "daemonPort";
 const std::string SETTING_DAEMON_SSL_ENABLED = "daemonSSLEnabled";

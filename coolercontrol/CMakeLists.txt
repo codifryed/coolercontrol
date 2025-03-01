@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 project(coolercontrol LANGUAGES CXX)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets WebEngineWidgets WebChannel)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets WebEngineWidgets WebChannel
+                                     DBus)
 
 # This required Qt6.3+, and jammy is still 6.2: qt_standard_project_setup() 6.2
 # version:
@@ -20,8 +21,9 @@ qt_add_executable(
   ipc.cpp
   ipc.h)
 
-target_link_libraries(coolercontrol PRIVATE Qt::Core Qt::Widgets
-                                            Qt::WebEngineWidgets Qt::WebChannel)
+target_link_libraries(
+  coolercontrol PRIVATE Qt::Core Qt::Widgets Qt::WebEngineWidgets
+                        Qt::WebChannel Qt::DBus)
 
 # Resources:
 set(cc_resource_files "icons/icon.ico" "icons/icon.png")

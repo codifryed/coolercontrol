@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDBusConnection>
 #include <QLoggingCategory>
 
 #include "constants.h"
@@ -18,6 +19,19 @@ int main(int argc, char* argv[]) {
   QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
   QApplication::setApplicationVersion(COOLER_CONTROL_VERSION.data());
   QApplication::setQuitOnLastWindowClosed(false);
+  // single-instance
+  auto connection = QDBusConnection::sessionBus();
+  if (connection.isConnected()) {
+    if (!connection.registerService(DBUS_NAME.data())) {
+      qCritical()
+          << "There appears to already be an instance of CoolerControl running.\nPlease check your"
+             "system tray for the application icon or the task manager to find the running "
+             "instance.";
+      return 1;
+    }
+  } else {
+    qWarning("Cannot connect to the D-Bus session bus.");
+  }
   QCommandLineParser parser;
   parser.setApplicationDescription("CoolerControl GUI Desktop Application");
   parser.addHelpOption();
@@ -42,5 +56,9 @@ int main(int argc, char* argv[]) {
   w.setMinimumSize(400, 400);
   w.resize(1600, 900);
   w.handleStartInTray();
-  return QApplication::exec();
+  const auto exitCode = QApplication::exec();
+  if (connection.isConnected()) {
+    connection.unregisterService(DBUS_NAME.data());
+  }
+  return exitCode;
 }
