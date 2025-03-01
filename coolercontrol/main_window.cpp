@@ -316,7 +316,6 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
     modeAction->setCheckable(true);
     modeAction->setChecked(modeUID == m_activeModeUID);
     connect(modeAction, &QAction::triggered, [this, modeUID]() {
-      // todo: This request needs login Cookie to work:
       QNetworkRequest setModeRequest;
       setModeRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
       auto url = getEndpointUrl(ENDPOINT_MODES_ACTIVE.data());
@@ -324,11 +323,15 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
       setModeRequest.setUrl(url);
       const auto setModeReply = m_manager->post(setModeRequest, nullptr);
       connect(setModeReply, &QNetworkReply::finished, [setModeReply, this]() {
-        if (const auto status =
-                setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            status >= 300) {
+        const auto status =
+            setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status == 401) {
+          m_view->show();  // show window if we have login credentials error
+          qWarning() << "Authentication no longer valid when trying to apply Mode. Please login.";
+        }
+        if (status >= 300) {
           qWarning() << "Error trying to apply Mode. Response Status: " << status;
-          return;
+          setActiveMode(m_activeModeUID);
         }
         setModeReply->deleteLater();
       });
