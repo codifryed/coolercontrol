@@ -7,7 +7,11 @@
 #include "main_window.h"
 
 int main(int argc, char* argv[]) {
-  qputenv("QT_MESSAGE_PATTERN", "%{time} %{type} %{appname}: %{category} - %{message}");
+  qputenv("QT_MESSAGE_PATTERN",
+          "%{time} coolercontrol "
+          "%{if-debug}\033[0;34mDEBUG%{endif}%{if-info}\033[0;32mINFO%{endif}%{if-warning}\033[0;"
+          "33mWARN%{endif}%{if-critical}\033[0;31mCRIT%{endif}%{if-fatal}\033[0;31mFATAL%{endif}"
+          "\033[0m [%{category}]: %{message}");
   // Standard Qt Paths:
   // https://doc.qt.io/qt-6/qstandardpaths.htm
   // settings: ~/.config/{app_id}/{app_id}.conf
