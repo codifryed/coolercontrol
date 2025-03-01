@@ -50,16 +50,28 @@ MainWindow::MainWindow(QWidget* parent)
 
   // Wizard init:
   wizard->setWindowTitle("Daemon Connection Error");
+  wizard->setOption(QWizard::IndependentPages, true);
   wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
-  wizard->setButtonText(QWizard::WizardButton::CancelButton, "&Quit");
+  wizard->setOption(QWizard::CancelButtonOnLeft, true);
   wizard->setButtonText(QWizard::CustomButton1, "&Reset");
   wizard->setOption(QWizard::HaveCustomButton1, true);
+  wizard->setButtonText(QWizard::HelpButton, "&Quit");
+  wizard->setOption(QWizard::HaveHelpButton, true);
   wizard->addPage(new IntroPage);
   auto addressPage = new AddressPage;
   wizard->addPage(addressPage);
   wizard->setMinimumSize(640, 480);
-  connect(wizard, &QWizard::customButtonClicked,
-          [addressPage]() { addressPage->resetAddressInputValues(); });
+  connect(wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
+  connect(wizard, &QWizard::customButtonClicked, [addressPage]([[maybe_unused]] const int which) {
+    addressPage->resetAddressInputValues();
+  });
+  connect(wizard, &QDialog::accepted, [this]() {
+    QSettings settings;
+    settings.setValue(SETTING_DAEMON_ADDRESS, wizard->field("address").toString());
+    settings.setValue(SETTING_DAEMON_PORT, wizard->field("port").toInt());
+    settings.setValue(SETTING_DAEMON_SSL_ENABLED, wizard->field("ssl").toBool());
+    view->load(getDaemonUrl());
+  });
 
   // wait to fully initialize if there is a delay set:
   if (const auto startupDelay = ipc->getStartupDelay(); startupDelay > 0) {
@@ -197,16 +209,7 @@ void MainWindow::displayAddressWizard() const {
   if (wizard->isVisible()) {
     return;
   }
-  const auto result = wizard->exec();
-  if (result == 0) {
-    QApplication::quit();
-  } else {
-    QSettings settings;
-    settings.setValue(SETTING_DAEMON_ADDRESS, wizard->field("address").toString());
-    settings.setValue(SETTING_DAEMON_PORT, wizard->field("port").toInt());
-    settings.setValue(SETTING_DAEMON_SSL_ENABLED, wizard->field("ssl").toBool());
-    view->load(getDaemonUrl());
-  }
+  wizard->open();
 }
 
 void MainWindow::handleStartInTray() {
