@@ -62,6 +62,14 @@ class MainWindow final : public QMainWindow {
 
   mutable QByteArray m_passwd{QByteArray()};
 
+  void initWizard();
+
+  void initSystemTray();
+
+  void initWebUI();
+
+  void initDelay() const;
+
   static QUrl getDaemonUrl();
 
   static QUrl getEndpointUrl(const QString& endpoint);

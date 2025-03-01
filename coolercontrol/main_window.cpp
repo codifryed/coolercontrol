@@ -33,8 +33,6 @@ MainWindow::MainWindow(QWidget* parent)
       m_ipc(new IPC(this)),
       m_wizard(new QWizard(this)),
       m_manager(new QNetworkAccessManager(this)) {
-  // SETUP
-  ////////////////////////////////////////////////////////////////////////////////////////////////
   setCentralWidget(m_view);
   m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
@@ -59,7 +57,17 @@ MainWindow::MainWindow(QWidget* parent)
           [this](const QNetworkCookie& cookie) { m_manager->cookieJar()->deleteCookie(cookie); });
   cookieStore->loadAllCookies();
 
-  // Wizard init:
+  initWizard();
+  initDelay();
+  initSystemTray();
+  initWebUI();
+  // emit ipc->sendText("Hello from C++");
+  // todo: we can probably change the log download blob/link in the UI to point to an external link
+  // to see the raw text api endpoint
+  // todo: check for existing running CC application(single-instance)?
+}
+
+void MainWindow::initWizard() {
   m_wizard->setWindowTitle("Daemon Connection Error");
   m_wizard->setOption(QWizard::IndependentPages, true);
   m_wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
@@ -83,22 +91,18 @@ MainWindow::MainWindow(QWidget* parent)
     settings.setValue(SETTING_DAEMON_SSL_ENABLED, m_wizard->field("ssl").toBool());
     m_view->load(getDaemonUrl());
   });
+}
 
-  // wait to fully initialize if there is a delay set:
+void MainWindow::initDelay() const {
   if (const auto startupDelay = m_ipc->getStartupDelay(); startupDelay > 0) {
     qInfo() << "Waiting for startup delay: " << startupDelay << "s";
     QThread::sleep(startupDelay);
   }
+}
 
-  // SYSTEM TRAY:
-  ////////////////////////////////////////////////////////////////////////////////////////////////
+void MainWindow::initSystemTray() {
   const auto ccHeader = new QAction(QIcon(":/icons/icon.png"), tr("CoolerControl"), this);
   ccHeader->setDisabled(true);
-  connect(ccHeader, &QAction::triggered, [this]() {
-    // Use CC Tray Header as show-only trigger. (un-minimize doesn't seem to work)
-    show();
-    activateWindow();
-  });
   m_showAction =
       m_ipc->getStartInTray() ? new QAction(tr("&Show"), this) : new QAction(tr("&Hide"), this);
   connect(m_showAction, &QAction::triggered, [this]() {
@@ -149,9 +153,9 @@ MainWindow::MainWindow(QWidget* parent)
       }
     }
   });
+}
 
-  // LOAD UI:
-  ////////////////////////////////////////////////////////////////////////////////////////////////
+void MainWindow::initWebUI() {
   m_view->load(getDaemonUrl());
   connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
     if (!pageLoadedSuccessfully) {
@@ -168,10 +172,6 @@ MainWindow::MainWindow(QWidget* parent)
       watchAlerts();
     }
   });
-  // emit ipc->sendText("Hello from C++");
-  // todo: we can probably change the log download blob/link in the UI to point to an external link
-  // to see the raw text api endpoint
-  // todo: check for existing running CC application(single-instance)?
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
