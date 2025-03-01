@@ -17,8 +17,6 @@
         "primevue": "4.1.1",
         "@jamescoyle/vue-icon": "^0.1.2",
         "@mdi/js": "^7.4.47",
-        "@tauri-apps/api": "^2.2.0",
-        "@tauri-apps/plugin-dialog": "^2.2.0",
         "@types/uuid": "^10.0.0",
         "axios-retry": "^4.5.0",
         "class-transformer": "^0.5.1",

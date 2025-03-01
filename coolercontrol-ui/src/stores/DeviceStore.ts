@@ -132,10 +132,6 @@ export const useDeviceStore = defineStore('device', () => {
         return 'ipc' in window
     }
 
-    function isTauriApp(): boolean {
-        return '__TAURI__' in window
-    }
-
     function isSafariWebKit(): boolean {
         return /apple computer/.test(navigator.vendor.toLowerCase())
     }
@@ -789,7 +785,6 @@ export const useDeviceStore = defineStore('device', () => {
         sanitizeString,
         getREMSize,
         isQtApp,
-        isTauriApp,
         isSafariWebKit,
         isThinkPad,
         connectToQtIPC,
