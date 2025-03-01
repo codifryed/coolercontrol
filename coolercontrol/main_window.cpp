@@ -9,12 +9,14 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMenu>
+#include <QNetworkCookieJar>
 #include <QNetworkReply>
 #include <QSettings>
 #include <QStringBuilder>  // for % operator
 #include <QSystemTrayIcon>
 #include <QThread>
 #include <QTimer>
+#include <QWebEngineCookieStore>
 #include <QWebEngineNewWindowRequest>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -41,7 +43,7 @@ MainWindow::MainWindow(QWidget* parent)
   // local storage: ~/.local/share/{APP_NAME}
   m_profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
   m_profile->setPersistentCookiesPolicy(
-      QWebEngineProfile::PersistentCookiesPolicy::ForcePersistentCookies);
+      QWebEngineProfile::PersistentCookiesPolicy::NoPersistentCookies);
   m_channel->registerObject("ipc", m_ipc);
   m_page->setWebChannel(m_channel);
   // This allows external links in our app to be opened by the external browser:
@@ -50,6 +52,12 @@ MainWindow::MainWindow(QWidget* parent)
             QDesktopServices::openUrl(request.requestedUrl());
           });
   m_view->setPage(m_page);
+  const auto cookieStore = m_profile->cookieStore();
+  connect(cookieStore, &QWebEngineCookieStore::cookieAdded,
+          [this](const QNetworkCookie& cookie) { m_manager->cookieJar()->insertCookie(cookie); });
+  connect(cookieStore, &QWebEngineCookieStore::cookieRemoved,
+          [this](const QNetworkCookie& cookie) { m_manager->cookieJar()->deleteCookie(cookie); });
+  cookieStore->loadAllCookies();
 
   // Wizard init:
   m_wizard->setWindowTitle("Daemon Connection Error");
@@ -159,15 +167,10 @@ MainWindow::MainWindow(QWidget* parent)
       watchModeActivation();
       watchAlerts();
     }
-
-    // todo: IPC command send from UI on login - to set password in Qt for Mode changes from
-    // sysTray.
   });
-
   // emit ipc->sendText("Hello from C++");
   // todo: we can probably change the log download blob/link in the UI to point to an external link
   // to see the raw text api endpoint
-
   // todo: check for existing running CC application(single-instance)?
 }
 

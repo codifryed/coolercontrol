@@ -31,8 +31,6 @@ class MainWindow final : public QMainWindow {
 
   void acknowledgeDaemonErrors() const;
 
-  void login(const QString& pass) const;
-
  protected:
   void closeEvent(QCloseEvent* event) override;
 
