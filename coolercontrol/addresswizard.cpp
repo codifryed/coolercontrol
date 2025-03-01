@@ -10,7 +10,7 @@
 #include "constants.h"
 
 IntroPage::IntroPage(QWidget* parent) : QWizardPage(parent) {
-  label = new QLabel(
+  m_label = new QLabel(
       "<p>A connection to the CoolerControl Daemon could not be established.<br/>"
       "Please make sure that the systemd service is running and available.</p>"
       "<p>Check the <a href=\"https://docs.coolercontrol.org\" target=\"_blank\">docs website</a>"
@@ -22,12 +22,12 @@ IntroPage::IntroPage(QWidget* parent) : QWizardPage(parent) {
       "</code></p>"
       "<p>If you have configured a non-standard address to connect to the daemon, you can set it "
       "in the following steps: </p>");
-  label->setWordWrap(true);
-  label->setOpenExternalLinks(true);
-  label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+  m_label->setWordWrap(true);
+  m_label->setOpenExternalLinks(true);
+  m_label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
 
   auto* layout = new QVBoxLayout;
-  layout->addWidget(label);
+  layout->addWidget(m_label);
   setLayout(layout);
 }
 
@@ -36,44 +36,44 @@ AddressPage::AddressPage(QWidget* parent) : QWizardPage(parent) {
   setSubTitle("Adjust the address fields as necessary.");
 
   auto* addressLabel = new QLabel("Host address:");
-  addressLineEdit = new QLineEdit;
-  addressLabel->setBuddy(addressLineEdit);
-  addressLineEdit->setToolTip(
+  m_addressLineEdit = new QLineEdit;
+  addressLabel->setBuddy(m_addressLineEdit);
+  m_addressLineEdit->setToolTip(
       "The IPv4, IPv6 address or hostname to use to communicate with the daemon.");
-  addressLineEdit->setValidator(
+  m_addressLineEdit->setValidator(
       new QRegularExpressionValidator(QRegularExpression("[0-9a-zA-Z.-]+")));
-  registerField("address", addressLineEdit);
+  registerField("address", m_addressLineEdit);
 
   auto* portLabel = new QLabel("Port:");
-  portLineEdit = new QLineEdit;
-  portLabel->setBuddy(portLineEdit);
-  portLineEdit->setToolTip("The port number to use to communicate with the daemon.");
-  portLineEdit->setValidator(new QIntValidator(80, 65535, portLineEdit));
-  registerField("port", portLineEdit);
+  m_portLineEdit = new QLineEdit;
+  portLabel->setBuddy(m_portLineEdit);
+  m_portLineEdit->setToolTip("The port number to use to communicate with the daemon.");
+  m_portLineEdit->setValidator(new QIntValidator(80, 65535, m_portLineEdit));
+  registerField("port", m_portLineEdit);
 
-  sslCheckbox = new QCheckBox("SSL/TLS");
-  sslCheckbox->setToolTip("Enable or disable SSL/TLS (HTTPS)");
-  registerField("ssl", sslCheckbox);
+  m_sslCheckbox = new QCheckBox("SSL/TLS");
+  m_sslCheckbox->setToolTip("Enable or disable SSL/TLS (HTTPS)");
+  registerField("ssl", m_sslCheckbox);
 
   auto* layout = new QGridLayout;
   layout->addWidget(addressLabel, 0, 0);
-  layout->addWidget(addressLineEdit, 0, 1);
+  layout->addWidget(m_addressLineEdit, 0, 1);
   layout->addWidget(portLabel, 1, 0);
-  layout->addWidget(portLineEdit, 1, 1);
-  layout->addWidget(sslCheckbox, 2, 0, 1, 2);
+  layout->addWidget(m_portLineEdit, 1, 1);
+  layout->addWidget(m_sslCheckbox, 2, 0, 1, 2);
   setLayout(layout);
 
   const QSettings settings;
-  addressLineEdit->setText(
+  m_addressLineEdit->setText(
       settings.value(SETTING_DAEMON_ADDRESS, DEFAULT_DAEMON_ADDRESS.data()).toString());
-  portLineEdit->setText(
+  m_portLineEdit->setText(
       QString::number(settings.value(SETTING_DAEMON_PORT, DEFAULT_DAEMON_PORT).toInt()));
-  sslCheckbox->setChecked(
+  m_sslCheckbox->setChecked(
       settings.value(SETTING_DAEMON_SSL_ENABLED, DEFAULT_DAEMON_SSL_ENABLED).toBool());
 }
 
 void AddressPage::resetAddressInputValues() const {
-  addressLineEdit->setText(DEFAULT_DAEMON_ADDRESS.data());
-  portLineEdit->setText(QString::number(DEFAULT_DAEMON_PORT));
-  sslCheckbox->setChecked(DEFAULT_DAEMON_SSL_ENABLED);
+  m_addressLineEdit->setText(DEFAULT_DAEMON_ADDRESS.data());
+  m_portLineEdit->setText(QString::number(DEFAULT_DAEMON_PORT));
+  m_sslCheckbox->setChecked(DEFAULT_DAEMON_SSL_ENABLED);
 }

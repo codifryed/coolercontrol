@@ -14,7 +14,7 @@ class IntroPage final : public QWizardPage {
   explicit IntroPage(QWidget* parent = nullptr);
 
  private:
-  QLabel* label;
+  QLabel* m_label;
 };
 
 class AddressPage final : public QWizardPage {
@@ -26,8 +26,8 @@ class AddressPage final : public QWizardPage {
   void resetAddressInputValues() const;
 
  private:
-  QLineEdit* addressLineEdit;
-  QLineEdit* portLineEdit;
-  QCheckBox* sslCheckbox;
+  QLineEdit* m_addressLineEdit;
+  QLineEdit* m_portLineEdit;
+  QCheckBox* m_sslCheckbox;
 };
 #endif  // ADDRESSWIZARD_H

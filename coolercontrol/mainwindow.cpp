@@ -24,60 +24,59 @@
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
-      view(new QWebEngineView(this)),
-      profile(new QWebEngineProfile("coolercontrol", view)),
-      page(new QWebEnginePage(profile)),
-      channel(new QWebChannel(page)),
-      ipc(new IPC(this)),
-      forceQuit(false),
-      wizard(new QWizard(this)),
-      manager(new QNetworkAccessManager(this)) {
+      m_view(new QWebEngineView(this)),
+      m_profile(new QWebEngineProfile("coolercontrol", m_view)),
+      m_page(new QWebEnginePage(m_profile)),
+      m_channel(new QWebChannel(m_page)),
+      m_ipc(new IPC(this)),
+      m_wizard(new QWizard(this)),
+      m_manager(new QNetworkAccessManager(this)) {
   // SETUP
   ////////////////////////////////////////////////////////////////////////////////////////////////
-  setCentralWidget(view);
-  profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
-  profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
-  profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
-  profile->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
+  setCentralWidget(m_view);
+  m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
+  m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
+  m_profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
+  m_profile->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
   // local storage: ~/.local/share/{APP_NAME}
-  profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
-  profile->setPersistentCookiesPolicy(
+  m_profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
+  m_profile->setPersistentCookiesPolicy(
       QWebEngineProfile::PersistentCookiesPolicy::ForcePersistentCookies);
-  channel->registerObject("ipc", ipc);
-  page->setWebChannel(channel);
+  m_channel->registerObject("ipc", m_ipc);
+  m_page->setWebChannel(m_channel);
   // This allows external links in our app to be opened by the external browser:
-  connect(page, &QWebEnginePage::newWindowRequested, [](QWebEngineNewWindowRequest const& request) {
+  connect(m_page, &QWebEnginePage::newWindowRequested, [](QWebEngineNewWindowRequest const& request) {
     QDesktopServices::openUrl(request.requestedUrl());
   });
-  view->setPage(page);
+  m_view->setPage(m_page);
 
   // Wizard init:
-  wizard->setWindowTitle("Daemon Connection Error");
-  wizard->setOption(QWizard::IndependentPages, true);
-  wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
-  wizard->setOption(QWizard::CancelButtonOnLeft, true);
-  wizard->setButtonText(QWizard::CustomButton1, "&Reset");
-  wizard->setOption(QWizard::HaveCustomButton1, true);
-  wizard->setButtonText(QWizard::HelpButton, "&Quit");
-  wizard->setOption(QWizard::HaveHelpButton, true);
-  wizard->addPage(new IntroPage);
+  m_wizard->setWindowTitle("Daemon Connection Error");
+  m_wizard->setOption(QWizard::IndependentPages, true);
+  m_wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
+  m_wizard->setOption(QWizard::CancelButtonOnLeft, true);
+  m_wizard->setButtonText(QWizard::CustomButton1, "&Reset");
+  m_wizard->setOption(QWizard::HaveCustomButton1, true);
+  m_wizard->setButtonText(QWizard::HelpButton, "&Quit");
+  m_wizard->setOption(QWizard::HaveHelpButton, true);
+  m_wizard->addPage(new IntroPage);
   auto addressPage = new AddressPage;
-  wizard->addPage(addressPage);
-  wizard->setMinimumSize(640, 480);
-  connect(wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
-  connect(wizard, &QWizard::customButtonClicked, [addressPage]([[maybe_unused]] const int which) {
+  m_wizard->addPage(addressPage);
+  m_wizard->setMinimumSize(640, 480);
+  connect(m_wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
+  connect(m_wizard, &QWizard::customButtonClicked, [addressPage]([[maybe_unused]] const int which) {
     addressPage->resetAddressInputValues();
   });
-  connect(wizard, &QDialog::accepted, [this]() {
+  connect(m_wizard, &QDialog::accepted, [this]() {
     QSettings settings;
-    settings.setValue(SETTING_DAEMON_ADDRESS, wizard->field("address").toString());
-    settings.setValue(SETTING_DAEMON_PORT, wizard->field("port").toInt());
-    settings.setValue(SETTING_DAEMON_SSL_ENABLED, wizard->field("ssl").toBool());
-    view->load(getDaemonUrl());
+    settings.setValue(SETTING_DAEMON_ADDRESS, m_wizard->field("address").toString());
+    settings.setValue(SETTING_DAEMON_PORT, m_wizard->field("port").toInt());
+    settings.setValue(SETTING_DAEMON_SSL_ENABLED, m_wizard->field("ssl").toBool());
+    m_view->load(getDaemonUrl());
   });
 
   // wait to fully initialize if there is a delay set:
-  if (const auto startupDelay = ipc->getStartupDelay(); startupDelay > 0) {
+  if (const auto startupDelay = m_ipc->getStartupDelay(); startupDelay > 0) {
     qInfo() << "Waiting for startup delay: " << startupDelay << "s";
     QThread::sleep(startupDelay);
   }
@@ -91,9 +90,9 @@ MainWindow::MainWindow(QWidget* parent)
     show();
     activateWindow();
   });
-  showAction =
-      ipc->getStartInTray() ? new QAction(tr("&Show"), this) : new QAction(tr("&Hide"), this);
-  connect(showAction, &QAction::triggered, [this]() {
+  m_showAction =
+      m_ipc->getStartInTray() ? new QAction(tr("&Show"), this) : new QAction(tr("&Hide"), this);
+  connect(m_showAction, &QAction::triggered, [this]() {
     if (isVisible()) {
       hide();
     } else {
@@ -102,36 +101,36 @@ MainWindow::MainWindow(QWidget* parent)
     }
   });
 
-  addressAction = new QAction(tr("&Daemon Address"), this);
-  connect(addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
+  m_addressAction = new QAction(tr("&Daemon Address"), this);
+  connect(m_addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
 
-  quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
-  connect(quitAction, &QAction::triggered, [this]() {
-    forceQuit = true;
+  m_quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
+  connect(m_quitAction, &QAction::triggered, [this]() {
+    m_forceQuit = true;
     // Triggers the close event but with the forceQuit flag set
     close();
   });
-  trayIconMenu = new QMenu(this);
-  trayIconMenu->setTitle("CoolerControl");
-  trayIconMenu->addAction(ccHeader);
-  trayIconMenu->addSeparator();
-  modesTrayMenu = new QMenu(this);
-  modesTrayMenu->setTitle("Modes");
-  modesTrayMenu->setEnabled(false);
-  trayIconMenu->addMenu(modesTrayMenu);
-  trayIconMenu->addAction(showAction);
-  trayIconMenu->addAction(addressAction);
-  trayIconMenu->addSeparator();
-  trayIconMenu->addAction(quitAction);
+  m_trayIconMenu = new QMenu(this);
+  m_trayIconMenu->setTitle("CoolerControl");
+  m_trayIconMenu->addAction(ccHeader);
+  m_trayIconMenu->addSeparator();
+  m_modesTrayMenu = new QMenu(this);
+  m_modesTrayMenu->setTitle("Modes");
+  m_modesTrayMenu->setEnabled(false);
+  m_trayIconMenu->addMenu(m_modesTrayMenu);
+  m_trayIconMenu->addAction(m_showAction);
+  m_trayIconMenu->addAction(m_addressAction);
+  m_trayIconMenu->addSeparator();
+  m_trayIconMenu->addAction(m_quitAction);
 
-  sysTrayIcon = new QSystemTrayIcon(this);
-  sysTrayIcon->setContextMenu(trayIconMenu);
-  sysTrayIcon->setIcon(QIcon(":/icons/icon.ico"));
-  sysTrayIcon->setToolTip("CoolerControl");
-  sysTrayIcon->show();
+  m_sysTrayIcon = new QSystemTrayIcon(this);
+  m_sysTrayIcon->setContextMenu(m_trayIconMenu);
+  m_sysTrayIcon->setIcon(QIcon(":/icons/icon.ico"));
+  m_sysTrayIcon->setToolTip("CoolerControl");
+  m_sysTrayIcon->show();
 
   // left click:
-  connect(sysTrayIcon, &QSystemTrayIcon::activated, [this](auto reason) {
+  connect(m_sysTrayIcon, &QSystemTrayIcon::activated, [this](auto reason) {
     if (reason == QSystemTrayIcon::Trigger) {
       if (isVisible()) {
         hide();
@@ -144,14 +143,14 @@ MainWindow::MainWindow(QWidget* parent)
 
   // LOAD UI:
   ////////////////////////////////////////////////////////////////////////////////////////////////
-  view->load(getDaemonUrl());
-  connect(view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
+  m_view->load(getDaemonUrl());
+  connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
     if (!pageLoadedSuccessfully) {
       displayAddressWizard();
       notifyDaemonConnectionError();
     } else {
       qInfo() << "Successfully connected to UI at: " << getDaemonUrl().url();
-      isDaemonConnected = true;
+      m_isDaemonConnected = true;
       requestDaemonErrors();
       requestAllModes();
       requestActiveMode();
@@ -172,13 +171,13 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-  ipc->saveWindowGeometry(saveGeometry());
-  if (ipc->getCloseToTray() && !forceQuit) {
+  m_ipc->saveWindowGeometry(saveGeometry());
+  if (m_ipc->getCloseToTray() && !m_forceQuit) {
     hide();
     event->ignore();
     return;
   }
-  ipc->syncSettings();
+  m_ipc->syncSettings();
   event->accept();
   QApplication::quit();
 }
@@ -209,18 +208,18 @@ QUrl MainWindow::getEndpointUrl(const QString& endpoint) {
 }
 
 void MainWindow::displayAddressWizard() const {
-  if (wizard->isVisible()) {
+  if (m_wizard->isVisible()) {
     return;
   }
-  wizard->open();
+  m_wizard->open();
 }
 
 void MainWindow::handleStartInTray() {
-  restoreGeometry(ipc->getWindowGeometry());
-  setZoomFactor(ipc->getZoomFactor());
-  if (ipc->getStartInTray()) {
+  restoreGeometry(m_ipc->getWindowGeometry());
+  setZoomFactor(m_ipc->getZoomFactor());
+  if (m_ipc->getStartInTray()) {
     hide();
-    page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
+    m_page->setLifecycleState(QWebEnginePage::LifecycleState::Frozen);
     // todo: can play with this more in the future. It's tricky but there is a possibility of even
     // less resource usage: page->setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
   } else {
@@ -228,7 +227,7 @@ void MainWindow::handleStartInTray() {
   }
 }
 
-void MainWindow::setZoomFactor(const double zoomFactor) const { view->setZoomFactor(zoomFactor); }
+void MainWindow::setZoomFactor(const double zoomFactor) const { m_view->setZoomFactor(zoomFactor); }
 
 void MainWindow::delay(const int millisecondsWait) {
   QEventLoop loop;
@@ -238,29 +237,29 @@ void MainWindow::delay(const int millisecondsWait) {
   loop.exec();
 }
 
-void MainWindow::setTrayActionToShow() const { showAction->setText(tr("&Show")); }
+void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")); }
 
-void MainWindow::setTrayActionToHide() const { showAction->setText(tr("&Hide")); }
+void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
 void MainWindow::notifyDaemonConnectionError() const {
-  sysTrayIcon->showMessage("Daemon Connection Error",
+  m_sysTrayIcon->showMessage("Daemon Connection Error",
                            "Connection with the daemon could not be established",
                            QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonErrors() const {
-  sysTrayIcon->showMessage("Daemon Errors",
+  m_sysTrayIcon->showMessage("Daemon Errors",
                            "The daemon logs contain errors. You should investigate.",
                            QIcon::fromTheme("dialog-warning", QIcon()));
 }
 
 void MainWindow::notifyDaemonDisconnected() const {
-  sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
+  m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
                            QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonConnectionRestored() const {
-  sysTrayIcon->showMessage("Daemon Connection Restored",
+  m_sysTrayIcon->showMessage("Daemon Connection Restored",
                            "Connection with the daemon has been restored.",
                            QIcon::fromTheme("emblem-default", QIcon()));
 }
@@ -269,7 +268,7 @@ void MainWindow::requestDaemonErrors() const {
   QNetworkRequest healthRequest;
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
-  const auto healthReply = manager->get(healthRequest);
+  const auto healthReply = m_manager->get(healthRequest);
   connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
     const QString ReplyText = healthReply->readAll();
     const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
@@ -279,20 +278,20 @@ void MainWindow::requestDaemonErrors() const {
     }
     if (const auto errors = rootObj.value("details").toObject().value("errors").toInt();
         errors > 0) {
-      deamonHasErrors = true;
+      m_deamonHasErrors = true;
       notifyDaemonErrors();
     }
     healthReply->deleteLater();
   });
 }
 
-void MainWindow::acknowledgeDaemonErrors() const { deamonHasErrors = false; }
+void MainWindow::acknowledgeDaemonErrors() const { m_deamonHasErrors = false; }
 
 void MainWindow::requestAllModes() const {
   QNetworkRequest modesRequest;
   modesRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
-  const auto modesReply = manager->get(modesRequest);
+  const auto modesReply = m_manager->get(modesRequest);
   connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
     const QString modesJson = modesReply->readAll();
     setTrayMenuModes(modesJson);
@@ -303,15 +302,15 @@ void MainWindow::requestAllModes() const {
 void MainWindow::setTrayMenuModes(const QString& modesJson) const {
   const QJsonObject rootObj = QJsonDocument::fromJson(modesJson.toUtf8()).object();
   const auto modesArray = rootObj.value("modes").toArray();
-  modesTrayMenu->setDisabled(modesArray.isEmpty());
-  modesTrayMenu->clear();
+  m_modesTrayMenu->setDisabled(modesArray.isEmpty());
+  m_modesTrayMenu->clear();
   foreach (QJsonValue value, modesArray) {
     const auto modeName = value.toObject().value("name").toString();
     const auto modeUID = value.toObject().value("uid").toString();
     const auto modeAction = new QAction(modeName);
     modeAction->setStatusTip(modeUID);  // We use the statusTip to store UID
     modeAction->setCheckable(true);
-    modeAction->setChecked(modeUID == activeModeUID);
+    modeAction->setChecked(modeUID == m_activeModeUID);
     connect(modeAction, &QAction::triggered, [this, modeUID]() {
       // todo: This request needs login Cookie to work:
       QNetworkRequest setModeRequest;
@@ -319,7 +318,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
       auto url = getEndpointUrl(ENDPOINT_MODES_ACTIVE.data());
       url.setPath(url.path() + "/" + modeUID);
       setModeRequest.setUrl(url);
-      const auto setModeReply = manager->post(setModeRequest, nullptr);
+      const auto setModeReply = m_manager->post(setModeRequest, nullptr);
       connect(setModeReply, &QNetworkReply::finished, [setModeReply, this]() {
         if (const auto status =
                 setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -330,14 +329,14 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
         setModeReply->deleteLater();
       });
     });
-    modesTrayMenu->addAction(modeAction);
+    m_modesTrayMenu->addAction(modeAction);
   }
 }
 
 void MainWindow::setActiveMode(const QString& modeUID) const {
-  activeModeUID = modeUID;
-  foreach (QAction* action, modesTrayMenu->actions()) {
-    if (action->statusTip() == activeModeUID) {
+  m_activeModeUID = modeUID;
+  foreach (QAction* action, m_modesTrayMenu->actions()) {
+    if (action->statusTip() == m_activeModeUID) {
       action->setChecked(true);
     } else {
       action->setChecked(false);
@@ -349,7 +348,7 @@ void MainWindow::requestActiveMode() const {
   QNetworkRequest modesActiveRequest;
   modesActiveRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
-  const auto modesActiveReply = manager->get(modesActiveRequest);
+  const auto modesActiveReply = m_manager->get(modesActiveRequest);
   connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
     const QString ReplyText = modesActiveReply->readAll();
     const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
@@ -363,23 +362,23 @@ void MainWindow::watchLogsAndConnection() const {
   sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                               QNetworkRequest::AlwaysNetwork);
   sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data()));
-  const auto sseLogsReply = manager->get(sseLogsRequest);
+  const auto sseLogsReply = m_manager->get(sseLogsRequest);
   connect(sseLogsReply, &QNetworkReply::readyRead, [sseLogsReply, this]() {
     // This is also called for keepAlive ticks - but with semi-filled message
     const QString log = sseLogsReply->readAll();
     if (const auto logContainsErrors = log.contains("ERROR");
-        logContainsErrors && !deamonHasErrors) {
-      deamonHasErrors = true;
+        logContainsErrors && !m_deamonHasErrors) {
+      m_deamonHasErrors = true;
       notifyDaemonErrors();
     }
   });
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
     // on error or dropped connection, retry:
-    if (isDaemonConnected) {
-      isDaemonConnected = false;
+    if (m_isDaemonConnected) {
+      m_isDaemonConnected = false;
       notifyDaemonDisconnected();
     }
-    while (!isDaemonConnected) {
+    while (!m_isDaemonConnected) {
       delay(1000);
       verifyDaemonIsConnected();
     }
@@ -393,10 +392,10 @@ void MainWindow::verifyDaemonIsConnected() const {
   QNetworkRequest healthRequest;
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
-  const auto healthReply = manager->get(healthRequest);
+  const auto healthReply = m_manager->get(healthRequest);
   connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
-    if (!isDaemonConnected) {
-      isDaemonConnected = true;
+    if (!m_isDaemonConnected) {
+      m_isDaemonConnected = true;
       notifyDaemonConnectionRestored();
     }
     healthReply->deleteLater();
@@ -408,7 +407,7 @@ void MainWindow::watchModeActivation() const {
   sseModesRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                                QNetworkRequest::AlwaysNetwork);
   sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
-  const auto sseModesReply = manager->get(sseModesRequest);
+  const auto sseModesReply = m_manager->get(sseModesRequest);
   connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
     const QString modeActivated =
         QString(sseModesReply->readAll()).simplified().replace("event: mode data: ", "");
@@ -419,20 +418,20 @@ void MainWindow::watchModeActivation() const {
     }
     const auto currentModeUID = rootObj.value("uid").toString();
     const auto currentModeName = rootObj.value("name").toString();
-    const auto modeAlreadyActive = currentModeUID == activeModeUID;
+    const auto modeAlreadyActive = currentModeUID == m_activeModeUID;
     setActiveMode(currentModeUID);
-    if (activeModeUID.isEmpty()) {
+    if (m_activeModeUID.isEmpty()) {
       // This will happen if there is currently no active Mode (null)
       // - such as when applying a setting.
       return;
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
+    m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
   });
   connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
     // on error or dropped connection, retry:
-    while (!isDaemonConnected) {
+    while (!m_isDaemonConnected) {
       delay(1000);
     }
     watchModeActivation();
@@ -445,7 +444,7 @@ void MainWindow::watchAlerts() const {
   alertsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                              QNetworkRequest::AlwaysNetwork);
   alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
-  const auto alertsReply = manager->get(alertsRequest);
+  const auto alertsReply = m_manager->get(alertsRequest);
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
     const QString alert =
         QString(alertsReply->readAll()).simplified().replace("event: alert data: ", "");
@@ -460,11 +459,11 @@ void MainWindow::watchAlerts() const {
     const auto msgTitle = alertState == tr("Active") ? QString("Alert: %1 Triggered").arg(alertName)
                                                      : QString("Alert: %1 Resolved").arg(alertName);
     const auto msgIcon = alertState == tr("Active") ? tr("dialog-warning") : tr("emblem-default");
-    sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
+    m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
     // on error or dropped connection, retry:
-    while (!isDaemonConnected) {
+    while (!m_isDaemonConnected) {
       delay(1000);
     }
     watchAlerts();

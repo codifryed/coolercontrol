@@ -52,7 +52,7 @@ class IPC final : public QObject {
   void syncSettings() const;
 
  private:
-  QSettings* settings;
+  QSettings* m_settings;
 };
 
 #endif  // IPC_H

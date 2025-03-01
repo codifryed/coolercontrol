@@ -39,26 +39,26 @@ class MainWindow final : public QMainWindow {
   void showEvent(QShowEvent* event) override;
 
  private:
-  QWebEngineView* view;
-  QWebEngineProfile* profile;
-  QWebEnginePage* page;
-  QWebChannel* channel;
-  IPC* ipc;
-  bool forceQuit;
-  QSystemTrayIcon* sysTrayIcon;
-  QMenu* trayIconMenu;
-  QMenu* modesTrayMenu;
-  QAction* quitAction;
-  QAction* addressAction;
-  QAction* showAction;
-  QWizard* wizard;
-  QNetworkAccessManager* manager;
-  mutable bool isDaemonConnected = false;
+  QWebEngineView* m_view;
+  QWebEngineProfile* m_profile;
+  QWebEnginePage* m_page;
+  QWebChannel* m_channel;
+  IPC* m_ipc;
+  bool m_forceQuit{false};
+  QSystemTrayIcon* m_sysTrayIcon;
+  QMenu* m_trayIconMenu;
+  QMenu* m_modesTrayMenu;
+  QAction* m_quitAction;
+  QAction* m_addressAction;
+  QAction* m_showAction;
+  QWizard* m_wizard;
+  QNetworkAccessManager* m_manager;
+  mutable bool m_isDaemonConnected{false};
 
-  mutable bool deamonHasErrors = false;
+  mutable bool m_deamonHasErrors{false};
 
   // This is empty when there is currently no active mode:
-  mutable QString activeModeUID = QString();
+  mutable QString m_activeModeUID{QString()};
 
   static QUrl getDaemonUrl();
 
