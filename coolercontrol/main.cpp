@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QLoggingCategory>
 
+#include "constants.h"
 #include "mainwindow.h"
 
 int main(int argc, char* argv[]) {

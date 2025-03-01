@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,6 +19,8 @@
 #include <QWebEngineSettings>
 #include <QWebEngineView>
 #include <QWizardPage>
+
+#include "constants.h"
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),

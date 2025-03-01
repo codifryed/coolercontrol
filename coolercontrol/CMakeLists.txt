@@ -15,8 +15,6 @@ qt_add_executable(
   main.cpp
   mainwindow.cpp
   mainwindow.h
-  # todo: probably remove webpage:
-  webpage.h
   addresswizard.cpp
   addresswizard.h
   ipc.cpp

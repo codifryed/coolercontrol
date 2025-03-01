@@ -7,14 +7,11 @@
 #include <QNetworkAccessManager>
 #include <QSystemTrayIcon>
 #include <QWebChannel>
-#include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
 #include "addresswizard.h"
-#include "constants.h"
 #include "ipc.h"
-#include "webpage.h"
 
 class MainWindow final : public QMainWindow {
   Q_OBJECT
