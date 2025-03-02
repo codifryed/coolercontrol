@@ -4,41 +4,41 @@ The desktop application is written in C++ and uses the [Qt6](https://www.qt.io/p
 framework to create a native desktop application which renders the UI assets using QtWebEngine,
 which is based on the [chromium](https://www.chromium.org/) browser engine.
 
-## Runtime Requirements
+## Requirements RPM
 
-_todo: verify these are all needed:_
+### Runtime
 
 - qt6-qtbase
 - qt6-qtwebengine
 - qt6-qtwebchannel
+-
 
-### Debian
+### Development
+
+- make automake gcc gcc-c++
+- cmake
+- qt6-qtbase-devel
+- qt6-qtwebengine-devel
+- qt6-qtwebchannel-devel
+
+## Requirements DEB
+
+### Runtime
 
 - qt6-base-dev
 - libqt6webenginewidgets6
 - libqt6webenginecore6-bin
 - libxcb-cursor0 (for X11)
 
-## Development Requirements
-
-- make
-- cmake
-- qt6-qtbase-devel
-- qt6-qtwebengine-devel
-- qt6-qtwebchannel-devel
-
-### Dev Debian
+### Development
 
 - build-essential
 - cmake
 - qt6-base-dev (already taken care of below actually)
 - qt6-webengine-dev
 - qt6-webengine-dev-tools
-- todo: webchannel?
 
 ## Installation
-
-_todo: not yes sure if we're going to use the web assets and need to create makefiles:_
 
 ```bash
 make build
@@ -50,15 +50,17 @@ One can use the dev-build and dev-install steps below.
 
 ## Development
 
-**One can start an npm dev server and point the desktop app to that address, instead of the daemon
-standard address**
+Standard debugger is helpful for C++ development. Also, it's quite common to use an npm dev server
+when testing Web & Qt changes. To use that properly, one needs to comment out the
+`// url.setPort(DEFAULT_DAEMON_PORT);`
+line on line 226 of `main_window.cpp`. (subject to change in the future)
 
-Standard debugger is helpfull for C++ development. Tauri also included the ability to hot-reload the
-UI assets and Rust backend during development:
+Also note, that compilation is relatively quick, so testing with the release build is ok for most
+things.
 
 ```bash
-cargo install tauri-cli --version "^2.0.0" --locked
-cargo tauri dev
+make
+./build/coolercontrol
 ```
 
 **Alternatively:**  
