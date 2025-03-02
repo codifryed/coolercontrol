@@ -1,6 +1,6 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
-docker_image_tag := v18
+docker_image_tag := v20
 ap_id := 'org.coolercontrol.CoolerControl'
 liqctld_dir := 'coolercontrol-liqctld'
 daemon_dir := 'coolercontrold'
