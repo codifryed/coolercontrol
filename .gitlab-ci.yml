@@ -81,6 +81,7 @@ test_all:
     - rustc --version
     - npm --version
     - node --version
+    - cmake --version
   script:
     # For Trunk to detect changes, it needs to compare to main and gitlab does a shallow clone by default:
     - git fetch origin main
@@ -136,6 +137,7 @@ build_appimages:
     - rustc --version
     - npm --version
     - node --version
+    - cmake --version
   script:
     - make build-appimages -j1
     - make appimages -j2
@@ -192,6 +194,7 @@ build_deb_bookworm:
       rustc --version
       npm --version
       node --version
+      cmake --version
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
     - cp ../coolercontrol*_amd64.* ./
@@ -243,6 +246,7 @@ build_ubuntu:
       rustc --version
       npm --version
       node --version
+      cmake --version
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
     - cp ../coolercontrol*_amd64.* ./
