@@ -100,9 +100,9 @@ void MainWindow::initWizard() {
   });
   connect(m_wizard, &QDialog::accepted, [this]() {
     QSettings settings;
-    settings.setValue(SETTING_DAEMON_ADDRESS, m_wizard->field("address").toString());
-    settings.setValue(SETTING_DAEMON_PORT, m_wizard->field("port").toInt());
-    settings.setValue(SETTING_DAEMON_SSL_ENABLED, m_wizard->field("ssl").toBool());
+    settings.setValue(SETTING_DAEMON_ADDRESS.data(), m_wizard->field("address").toString());
+    settings.setValue(SETTING_DAEMON_PORT.data(), m_wizard->field("port").toInt());
+    settings.setValue(SETTING_DAEMON_SSL_ENABLED.data(), m_wizard->field("ssl").toBool());
     m_view->load(getDaemonUrl());
   });
 }
@@ -207,10 +207,10 @@ void MainWindow::showEvent(QShowEvent* event) { setTrayActionToHide(); }
 QUrl MainWindow::getDaemonUrl() {
   const QSettings settings;
   const auto host =
-      settings.value(SETTING_DAEMON_ADDRESS, DEFAULT_DAEMON_ADDRESS.data()).toString();
-  const auto port = settings.value(SETTING_DAEMON_PORT, DEFAULT_DAEMON_PORT).toInt();
+      settings.value(SETTING_DAEMON_ADDRESS.data(), DEFAULT_DAEMON_ADDRESS.data()).toString();
+  const auto port = settings.value(SETTING_DAEMON_PORT.data(), DEFAULT_DAEMON_PORT).toInt();
   const auto sslEnabled =
-      settings.value(SETTING_DAEMON_SSL_ENABLED, DEFAULT_DAEMON_SSL_ENABLED).toBool();
+      settings.value(SETTING_DAEMON_SSL_ENABLED.data(), DEFAULT_DAEMON_SSL_ENABLED).toBool();
   const auto schema = sslEnabled ? tr("https") : tr("http");
   QUrl url;
   url.setScheme(schema);
@@ -344,7 +344,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
       auto url = getEndpointUrl(ENDPOINT_MODES_ACTIVE.data());
       url.setPath(url.path() + "/" + modeUID);
       setModeRequest.setUrl(url);
-      const auto setModeReply = m_manager->post(setModeRequest, nullptr);
+      const auto setModeReply = m_manager->post(setModeRequest, QByteArray());
       connect(setModeReply, &QNetworkReply::finished, [setModeReply, this]() {
         const auto status =
             setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();

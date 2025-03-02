@@ -65,11 +65,11 @@ AddressPage::AddressPage(QWidget* parent) : QWizardPage(parent) {
 
   const QSettings settings;
   m_addressLineEdit->setText(
-      settings.value(SETTING_DAEMON_ADDRESS, DEFAULT_DAEMON_ADDRESS.data()).toString());
+      settings.value(SETTING_DAEMON_ADDRESS.data(), DEFAULT_DAEMON_ADDRESS.data()).toString());
   m_portLineEdit->setText(
-      QString::number(settings.value(SETTING_DAEMON_PORT, DEFAULT_DAEMON_PORT).toInt()));
+      QString::number(settings.value(SETTING_DAEMON_PORT.data(), DEFAULT_DAEMON_PORT).toInt()));
   m_sslCheckbox->setChecked(
-      settings.value(SETTING_DAEMON_SSL_ENABLED, DEFAULT_DAEMON_SSL_ENABLED).toBool());
+      settings.value(SETTING_DAEMON_SSL_ENABLED.data(), DEFAULT_DAEMON_SSL_ENABLED).toBool());
 }
 
 void AddressPage::resetAddressInputValues() const {
