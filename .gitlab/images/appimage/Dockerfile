@@ -40,19 +40,6 @@ RUN apt update && apt install -y --no-install-recommends \
     # npm:
     ca-certificates \
     gnupg \
-    # tauri:
-    # already used above:  build-essential \
-    # already used above: curl \
-    wget \
-    file \
-    # libwebkit2gtk-4.0-dev \
-    libwebkit2gtk-4.1-dev \
-    libssl-dev \
-    libxdo-dev \
-    libgtk-3-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev \
-    libdrm-dev \
     # qt:
     # already used above:  build-essential \
     cmake \
