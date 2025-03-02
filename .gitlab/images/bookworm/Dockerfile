@@ -30,17 +30,16 @@ RUN apt update && apt install -y --no-install-recommends \
     nodejs \
     npm \
     build-essential \
-    libwebkit2gtk-4.1-dev \
-    libssl-dev \
-    libxdo-dev \
-    libgtk-3-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev \
+    cmake \
+    qt6-base-dev \
+    qt6-webengine-dev \
+    qt6-webengine-dev-tools \
     libdrm-dev \
     cargo \
     # rustup:
     curl \
     ca-certificates \
+    dh-cmake \
     debhelper
 
 # rust toolchain

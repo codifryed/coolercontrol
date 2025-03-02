@@ -48,21 +48,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # nodejs from nodesource:
         ca-certificates \
         gnupg \
-        # tauri build deps: (for fast testing)
+        # qt build deps: (for fast testing)
         # already used above:  build-essential \
-        # already used above: curl \
-        wget \
-        file \
-        # to remove once tauri updates to 2.0 officially:
-        libwebkit2gtk-4.0-dev \
-        libwebkit2gtk-4.1-dev \
-        libssl-dev \
-        libxdo-dev \
-        libgtk-3-dev \
-        libayatana-appindicator3-dev \
-        librsvg2-dev \
+        cmake \
+        qt6-base-dev \
+        qt6-webengine-dev \
+        qt6-webengine-dev-tools \
         libdrm-dev \
         # debian package helper
+        dh-cmake \
         debhelper
 
 # rust toolchain
