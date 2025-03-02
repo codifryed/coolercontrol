@@ -184,7 +184,6 @@ build_deb_bookworm:
       qt6-base-dev
       qt6-webengine-dev
       qt6-webengine-dev-tools
-      dh-cmake
       libdrm-dev
       cargo
     - |
@@ -235,7 +234,6 @@ build_ubuntu:
       qt6-base-dev
       qt6-webengine-dev
       qt6-webengine-dev-tools
-      dh-cmake
       libdrm-dev
       cargo
     - |
