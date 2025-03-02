@@ -51,12 +51,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # qt build deps: (for fast testing)
         # already used above:  build-essential \
         cmake \
+        xvfb \
+        libgl1-mesa-dev \
+        libqt6opengl6-dev \
         qt6-base-dev \
         qt6-webengine-dev \
         qt6-webengine-dev-tools \
         libdrm-dev \
         # debian package helper
-        dh-cmake \
         debhelper
 
 # rust toolchain

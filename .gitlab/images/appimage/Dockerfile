@@ -43,13 +43,15 @@ RUN apt update && apt install -y --no-install-recommends \
     # qt:
     # already used above:  build-essential \
     cmake \
+    xvfb \
+    libgl1-mesa-dev \
+    libqt6opengl6-dev \
     qt6-base-dev \
     qt6-webengine-dev \
     qt6-webengine-dev-tools \
     # python symlink:
     python-is-python3 \
     # debian package helper
-    dh-cmake \
     debhelper
 
 # python 3.11.8 used for AppImages (Nuitka does not yet support 3.12)
