@@ -22,8 +22,7 @@ build-daemon: build-ui
 	@$(MAKE) -C $(daemon_dir) build
 
 build-qt:
-	@cmake -S $(qt_dir) -B $(qt_dir) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ 
-	@$(MAKE) -C $(qt_dir)
+	@$(MAKE) -C $(qt_dir) build
 
 build-ui:
 	@$(MAKE) -C $(ui_dir) build
@@ -58,7 +57,7 @@ test-ui:
 	@$(MAKE) -C $(ui_dir) test
 
 test-qt:
-	#@$(MAKE) -C $(qt_dir) test
+	@$(MAKE) -C $(qt_dir) test
  
 ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-qt
 
@@ -72,7 +71,7 @@ ci-test-ui:
 	@$(MAKE) -C $(ui_dir) ci-test
 
 ci-test-qt:
-	#@$(MAKE) -C $(qt_dir) ci-test
+	@$(MAKE) -C $(qt_dir) ci-test
 
 ci-check-all:
 	@./trunk check --ci --all
@@ -88,7 +87,6 @@ clean:
 	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
-	@cmake -S $(qt_dir) -B $(qt_dir) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ 
 	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -rf assets-built
 
@@ -143,7 +141,7 @@ ubuntu-source-package:
 	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
 # should be executed after the build targets
-assets: assets-daemon assets-ui
+assets: assets-daemon assets-ui assets-qt
 
 assets-daemon:
 	@mkdir -p assets-built
@@ -154,6 +152,10 @@ assets-daemon:
 assets-ui:
 	@mkdir -p assets-built
 	@cd $(ui_dir) && tar --zstd -cf ../assets-built/coolercontrol-ui-vendor.tzst node_modules
+
+assets-qt: build-qt
+	@mkdir -p assets-built
+	@cp $(qt_dir)/build/coolercontrol ./assets-built/
 
 # AppImages:
 ############################################################################################################################################
