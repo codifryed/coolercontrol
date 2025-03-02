@@ -10,19 +10,27 @@ export APP_ID=org.coolercontrol.CoolerControl
 %:
 	dh $@ --with python3 
 
+override_dh_auto_configure:
+	dh_auto_configure
+	dh_auto_configure --buildsystem=cmake --sourcedirectory=coolercontrol
+
 override_dh_auto_build:
 	dh_auto_build --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
-	dh_auto_build
+	dh_auto_build --buildsystem=cmake --sourcedirectory=coolercontrol
+	dh_auto_build --sourcedirectory=coolercontrol-ui
+	dh_auto_build --sourcedirectory=coolercontrold
 
 override_dh_auto_test:
 	dh_auto_test --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
+	dh_auto_test --sourcedirectory=coolercontrol-ui
 	dh_auto_test --sourcedirectory=coolercontrold
 	@coolercontrold/target/release/coolercontrold --version
-	dh_auto_test --sourcedirectory=coolercontrol-ui/src-tauri
+	dh_auto_test --sourcedirectory=coolercontrol
 
 override_dh_auto_install:
 	dh_auto_install --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
-	dh_auto_install
+	dh_auto_install --sourcedirectory=coolercontrold
+	dh_auto_install --buildsystem=cmake --sourcedirectory=coolercontrol
 	@$(eval DESTDIR=$(CURDIR)/debian/tmp)
 	@install -Dm 644 packaging/metadata/$(APP_ID).desktop -t $(DESTDIR)/usr/share/applications/
 	@install -Dm 644 packaging/metadata/$(APP_ID).svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
