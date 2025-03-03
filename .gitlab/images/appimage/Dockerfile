@@ -40,6 +40,8 @@ RUN apt update && apt install -y --no-install-recommends \
     # npm:
     ca-certificates \
     gnupg \
+    # daemon
+    libdrm-dev \
     # qt:
     # already used above:  build-essential \
     cmake \
