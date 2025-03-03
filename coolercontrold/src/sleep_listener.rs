@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use anyhow::{Context, Result};
-use log::info;
+use anyhow::Result;
+use log::{error, info};
 use moro_local::Scope;
 use std::cell::Cell;
 use std::ops::Not;
@@ -36,9 +36,18 @@ impl<'s> SleepListener {
         run_token: CancellationToken,
         scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Result<Self> {
-        let conn = Connection::system()
-            .await
-            .with_context(|| "Connecting to DBUS. If this errors out DBus might not be running")?;
+        let conn_result = Connection::system().await;
+        if conn_result.is_err() {
+            // See issue:
+            // https://gitlab.com/coolercontrol/coolercontrol/-/issues/264
+            error!("Could not connect to DBUS, sleeping listener will not work!");
+            let deaf_listener = Self {
+                preparing_to_sleep: Rc::new(Cell::new(false)),
+                resuming: Rc::new(Cell::new(false)),
+            };
+            return Ok(deaf_listener);
+        }
+        let conn = conn_result?;
         let proxy = Proxy::new(
             &conn,
             "org.freedesktop.login1",
@@ -72,6 +81,7 @@ impl<'s> SleepListener {
                     else => break,
                 }
             }
+            let _ = conn.close().await;
             Ok::<(), zbus::Error>(())
         });
 
