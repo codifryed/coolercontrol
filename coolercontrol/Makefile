@@ -17,8 +17,8 @@ clean:
 	@-$(RM) -rf build
 
 install:
-	@$(MAKE) -C $@
+	@$(MAKE) -C build $@
 
 uninstall:
-	@$(MAKE) -C $@
+	@$(MAKE) -C build $@
 
