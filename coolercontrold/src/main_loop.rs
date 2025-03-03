@@ -47,7 +47,7 @@ const FULL_SECOND_MS: u64 = 1000;
 /// devices, and checking for changes in the sleep state of the system.
 ///
 /// The main loop will exit when the application receives a termination signal.
-pub async fn run<'s>(
+pub async fn run(
     config: Rc<Config>,
     repos: Repos,
     settings_controller: Rc<SettingsController>,

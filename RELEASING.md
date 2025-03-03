@@ -7,10 +7,10 @@ one.
 1. Update Changelog
 
    1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
-   2. add new version
-   3. add needed subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
+   2. Add new version
+   3. Add needed subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
       Updates
-   4. format changelog appropriately
+   4. Format changelog appropriately
 
 2. Update App Metadata
 

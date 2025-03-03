@@ -98,7 +98,7 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
         // By default, this pool can grow large and fluctuate over time.
         // A large thread pool is less efficient for us, but we want more than a single
         // thread in case a device has severe latency:
-        .max_blocking_threads(2)
+        .max_blocking_threads(4)
         .thread_keep_alive(Duration::from_secs(60))
         .thread_name("coolercontrold-wrk")
         .build();
