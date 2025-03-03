@@ -69,6 +69,7 @@ lint:
         - .pip/**
         - .cache/**
         - coolercontrol-ui/src-tauri/gen/**
+        - coolercontrol-ui/src-tauri/**
         - .gitlab/images/**
         - .gitlab-ci.yml
         - openapi/openapi.json
