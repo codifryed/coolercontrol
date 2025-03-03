@@ -4,16 +4,16 @@ The desktop application is written in C++ and uses the [Qt6](https://www.qt.io/p
 framework to create a native desktop application which renders the UI assets using QtWebEngine,
 which is based on the [chromium](https://www.chromium.org/) browser engine.
 
-## Requirements RPM
+## Package Requirements RPM
 
-### Runtime
+### Runtime RPM
 
 - qt6-qtbase
 - qt6-qtwebengine
 - qt6-qtwebchannel
 -
 
-### Development
+### Development RPM
 
 - make automake gcc gcc-c++
 - cmake
@@ -21,16 +21,16 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 - qt6-qtwebengine-devel
 - qt6-qtwebchannel-devel
 
-## Requirements DEB
+## Package Requirements DEB
 
-### Runtime
+### Runtime DEB
 
 - qt6-base-dev
 - libqt6webenginewidgets6
 - libqt6webenginecore6-bin
 - libxcb-cursor0 (for X11)
 
-### Development
+### Development DEB
 
 - build-essential
 - cmake
