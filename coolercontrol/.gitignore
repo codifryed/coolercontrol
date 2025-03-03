@@ -5,7 +5,8 @@ coolercontrol_autogen
 CMakeCache.txt
 cmake_install.cmake
 .cmake
-.idea
+.idea/*
+!.idea/copyright
 .vscode
 Testing
 
