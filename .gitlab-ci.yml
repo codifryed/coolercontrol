@@ -45,7 +45,6 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
     - key:
         files:
           - coolercontrold/Cargo.lock
-          - coolercontrol-ui/src-tauri/Cargo.lock
       paths:
         - .cargo
     - key: '${CI_JOB_NAME}'
@@ -55,7 +54,6 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         # ~/.cache/trunk
         # this can add up over time to a very large cache and isn't very clean, but could speed up compilation:
         #- coolercontrold/target
-        #- coolercontrol-ui/src-tauri/target
 
 .main_image_template: &main_image_template
   before_script:
@@ -93,7 +91,7 @@ test_all:
       junit: coolercontrold/results.xml
     name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
     paths:
-      - coolercontrol-ui/src-tauri/target/debug/coolercontrol
+      - coolercontrol/build/coolercontrol
       - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
 
