@@ -19,7 +19,7 @@ BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
-Recommends:     coolercontrol-liqctld
+Recommends:     coolercontrol-liqctld = %{version}
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
