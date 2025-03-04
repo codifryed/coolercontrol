@@ -20,6 +20,7 @@
 #include <string>
 
 const std::string COOLER_CONTROL_VERSION = "2.0.0";
+const std::string APP_ID = "org.coolercontrol.CoolerControl";
 const std::string DBUS_NAME = "org.coolercontrol.SingleInstance";
 const std::string DBUS_PATH = "/org/coolercontrol/SingleInstance";
 const std::string DBUS_INTERFACE = "org.coolercontrol.SingleInstance";

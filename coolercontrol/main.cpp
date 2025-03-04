@@ -34,9 +34,9 @@ int main(int argc, char* argv[]) {
   const QApplication a(argc, argv);
   QApplication::setWindowIcon(
       QIcon::fromTheme("application-x-executable", QIcon(":/icons/icon.png")));
-  QCoreApplication::setOrganizationName("org.coolercontrol.CoolerControl");
+  QCoreApplication::setOrganizationName(APP_ID.data());
   QApplication::setApplicationName("CoolerControl");
-  QApplication::setDesktopFileName("org.coolercontrol.CoolerControl");
+  QApplication::setDesktopFileName(APP_ID.data());
   QApplication::setApplicationVersion(COOLER_CONTROL_VERSION.data());
   QApplication::setQuitOnLastWindowClosed(false);
   // single-instance
