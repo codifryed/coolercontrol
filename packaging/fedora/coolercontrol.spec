@@ -24,7 +24,7 @@ Requires:       hicolor-icon-theme
 Requires:       qt6-qtbase
 Requires:       qt6-qtwebengine
 Requires:       qt6-qtwebchannel
-Requires:       coolercontrold
+Requires:       coolercontrold = %{version}
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
