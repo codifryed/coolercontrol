@@ -34,7 +34,7 @@ use tokio::time;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-const SNAPSHOT_WAIT_MS: u64 = 400;
+const SNAPSHOT_TIMEOUT_MS: u64 = 400;
 const WAKE_PAUSE_MINIMUM_S: u64 = 1;
 // setting (temp) images is pretty quick, <2s, but gifs can take significantly longer >3-4s
 const LCD_TIMEOUT_S: u64 = 5;
@@ -56,7 +56,7 @@ pub async fn run(
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
-    let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_WAIT_MS));
+    let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_TIMEOUT_MS));
     let poll_rate = config.get_settings()?.poll_rate;
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
