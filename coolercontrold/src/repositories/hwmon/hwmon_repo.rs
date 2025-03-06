@@ -426,10 +426,7 @@ impl Repository for HwmonRepo {
             let device_index = device.borrow().type_index;
             let preloaded_statuses = preloaded_statuses_map.get(&device_index);
             if preloaded_statuses.is_none() {
-                error!(
-                    "There is no status preloaded for this device: {}",
-                    device_index
-                );
+                error!("There is no status preloaded for this device: {device_index}");
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -439,9 +436,8 @@ impl Repository for HwmonRepo {
                 ..Default::default()
             };
             trace!(
-                "Hwmon device: {} status was updated with: {:?}",
-                device.borrow().name,
-                status
+                "Hwmon device: {} status was updated with: {status:?}",
+                device.borrow().name
             );
             device.borrow_mut().set_status(status);
         }
@@ -464,8 +460,7 @@ impl Repository for HwmonRepo {
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
         debug!(
-            "Applying HWMON device: {} channel: {}; Resetting to Original fan control mode",
-            device_uid, channel_name
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Resetting to Original fan control mode"
         );
         fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
     }
@@ -478,11 +473,10 @@ impl Repository for HwmonRepo {
     ) -> Result<()> {
         let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
         debug!(
-            "Applying HWMON device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         if speed_fixed > 100 {
-            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
+            return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
         if speed_fixed == 100
             && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME

@@ -563,7 +563,7 @@ pub async fn set_pwm_duty(
                         "Unable to set manual fan control for {path_pwm_enable:?}. \
                     Most likely because of a limitation set by the driver or a BIOS setting."
                     );
-                    error!("{}", msg);
+                    error!("{msg}");
                     msg
                 })?;
         }
