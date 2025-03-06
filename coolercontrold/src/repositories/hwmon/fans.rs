@@ -16,10 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::io::{Error, ErrorKind};
-use std::ops::Not;
-use std::path::{Path, PathBuf};
-
 use crate::cc_fs;
 use crate::device::ChannelStatus;
 use crate::repositories::hwmon::devices;
@@ -28,6 +24,9 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use std::io::{Error, ErrorKind};
+use std::ops::Not;
+use std::path::{Path, PathBuf};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -196,19 +195,10 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         }
         let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
         let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
-        let fan_pwm_mode = if channel.pwm_mode_supported {
-            cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
-                .await
-                .and_then(check_parsing_8)
-                .ok()
-        } else {
-            None
-        };
         fans.push(ChannelStatus {
             name: channel.name.clone(),
             rpm: fan_rpm,
             duty: fan_duty,
-            pwm_mode: fan_pwm_mode,
             ..Default::default()
         });
     }
