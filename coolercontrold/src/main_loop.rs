@@ -155,7 +155,7 @@ async fn fire_snapshots_and_processes<'s>(
         }
     }
     fire_lcd_update(settings_controller, lcd_update_trigger, scope);
-    settings_controller.process_scheduled_speeds().await;
+    settings_controller.process_scheduled_speeds(scope);
     status_handle.broadcast_status().await;
 }
 

@@ -23,6 +23,7 @@ use std::ops::{Div, Not};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
+use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
@@ -142,15 +143,19 @@ impl MixProfileCommander {
     /// This processes the member profiles for all mix profiles first, then applies the
     /// `MixProfileFunction` appropriately.
     /// Normally triggered by a loop/timer.
-    pub async fn update_speeds(&self) {
+    pub fn update_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
         self.update_last_applied_duties();
         if self.scheduled_settings.borrow().is_empty() {
             return;
         }
-        for (device_uid, channel_name, duty) in self.calculate_duties_to_apply() {
-            self.graph_commander
-                .set_device_speed(&device_uid, &channel_name, duty)
-                .await;
+        for (device_uid, channel_duties_to_apply) in self.calculate_duties_to_apply() {
+            scope.spawn(async move {
+                for (channel_name, duty) in channel_duties_to_apply {
+                    self.graph_commander
+                        .set_device_speed(&device_uid, &channel_name, duty)
+                        .await;
+                }
+            });
         }
     }
 
@@ -180,8 +185,8 @@ impl MixProfileCommander {
     /// from `all_last_applied_duties`. If a member profile has no output, the last applied duty is used
     /// as a backup. The `MixProfileFunction` is then applied to the member values and the resulting
     /// duty is stored in `duties_to_apply` for each device channel.
-    fn calculate_duties_to_apply(&self) -> Vec<(DeviceUID, ChannelName, Duty)> {
-        let mut duties_to_apply = Vec::new();
+    fn calculate_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+        let mut duties_to_apply = HashMap::new();
         // All the member profiles have been processed already by the graph_commander:
         let requested_duties = self.graph_commander.process_output_cache.borrow();
         let last_applied_duties = self.all_last_applied_duties.borrow();
@@ -206,11 +211,10 @@ impl MixProfileCommander {
             }
             let duty_to_apply = Self::apply_mix_function(&member_values, mix_profile.mix_function);
             for device_channel in device_channels {
-                duties_to_apply.push((
-                    device_channel.device_uid().clone(),
-                    device_channel.channel_name().clone(),
-                    duty_to_apply,
-                ));
+                duties_to_apply
+                    .entry(device_channel.device_uid().clone())
+                    .or_insert_with(Vec::new)
+                    .push((device_channel.channel_name().clone(), duty_to_apply));
             }
         }
         duties_to_apply
