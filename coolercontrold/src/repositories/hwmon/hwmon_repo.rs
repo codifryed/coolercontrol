@@ -430,8 +430,8 @@ impl Repository for HwmonRepo {
                                 return;
                             }
                             warn!(
-                                "Slow Device response detected. Some polling loops \
-                                will be skipped for this hwmon device: {}.", driver.name
+                                "Slow HWMon Device detected for: {}. This device \
+                                may be slow to update and respond.", driver.name
                             );
                             self.delay_logged.get(&type_index).unwrap().replace(true);
                         },
