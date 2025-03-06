@@ -157,6 +157,8 @@ impl SettingsController {
                     .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
                     .clear_channel_setting(device_uid, channel_name);
+                repo.apply_setting_manual_control(device_uid, channel_name)
+                    .await?;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
                     .await
                     .inspect(|()| {
@@ -263,6 +265,8 @@ impl SettingsController {
         } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
             || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
         {
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await?;
             self.graph_commander
                 .schedule_setting(
                     DeviceChannelProfileSetting::Graph {
@@ -291,7 +295,7 @@ impl SettingsController {
         if profile.mix_function_type.is_none() {
             return Err(anyhow!("Mix Profile should have a mix function type"));
         }
-        let (device_lock, _) = self.get_device_repo(device_uid)?;
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let speed_options = device_lock
             .borrow()
             .info
@@ -327,6 +331,8 @@ impl SettingsController {
         if speed_options.fixed_enabled {
             self.graph_commander
                 .clear_channel_setting(device_uid, channel_name);
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await?;
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
                 .await

@@ -267,6 +267,15 @@ impl Repository for GpuRepo {
         }
     }
 
+    /// Applying manual control is handled internally for GPU devices.
+    async fn apply_setting_manual_control(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,

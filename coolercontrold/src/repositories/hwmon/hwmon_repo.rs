@@ -506,6 +506,34 @@ impl Repository for HwmonRepo {
         fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
     }
 
+    async fn apply_setting_manual_control(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<()> {
+        let (hwmon_driver, channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
+        let _device_permit = self
+            .device_permits
+            .get(&type_index)
+            .unwrap()
+            .acquire()
+            .await?;
+        debug!("Applying HWMON device: {device_uid} channel: {channel_name}; Manual Control: 1");
+        fans::set_pwm_enable(
+            fans::PWM_ENABLE_MANUAL_VALUE,
+            &hwmon_driver.path,
+            channel_info,
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Error on {}:{channel_name} for Manual Control - {err}",
+                hwmon_driver.name
+            )
+        })
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,
