@@ -38,11 +38,15 @@ use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::Duration;
 use strum::{Display, EnumString};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, SemaphorePermit};
 use tokio::time::{sleep, Instant};
 
-static MAX_DEVICE_POLL_PERMIT_WAIT_TIME: LazyLock<Duration> =
-    LazyLock::new(|| Duration::from_millis(200));
+/// Our `SNAPSHOT_TIMEOUT_MS` in the `main_loop` is 400ms, so if we have a very slow device that
+/// will hit that timeout regularly, we want our read permit timeout to come close to that
+/// so that we have even snapshot timestamps.
+static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
+    LazyLock::new(|| Duration::from_millis(350));
+static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -278,6 +282,32 @@ impl HwmonRepo {
         }
         locations
     }
+
+    fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
+        if self.delay_logged.get(&type_index).unwrap().get() {
+            return;
+        }
+        warn!(
+            "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
+        );
+        self.delay_logged.get(&type_index).unwrap().replace(true);
+    }
+
+    async fn get_permit_with_write_timeout(
+        &self,
+        type_index: TypeIndex,
+        driver_name: &str,
+        channel_name: &str,
+    ) -> Result<SemaphorePermit> {
+        tokio::select! {
+            () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
+                "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
+                fan speed. There will be significant issues handling this device due to extreme lag."
+            )),
+            device_permit = self.device_permits.get(&type_index).unwrap().acquire() =>
+                device_permit.map_err(|e| anyhow!(e)),
+        }
+    }
 }
 
 #[async_trait(?Send)]
@@ -425,16 +455,7 @@ impl Repository for HwmonRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     tokio::select! {
-                        () = sleep(*MAX_DEVICE_POLL_PERMIT_WAIT_TIME) => {
-                            if self.delay_logged.get(&type_index).unwrap().get() {
-                                return;
-                            }
-                            warn!(
-                                "Slow HWMon Device detected for: {}. This device \
-                                may be slow to update and respond.", driver.name
-                            );
-                            self.delay_logged.get(&type_index).unwrap().replace(true);
-                        },
+                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
                             let fan_statuses = fans::extract_fan_statuses(driver).await;
                             let temp_statuses = temps::extract_temp_statuses(driver).await;
@@ -446,8 +467,7 @@ impl Repository for HwmonRepo {
                     }
                 });
             }
-        })
-            .await;
+        }).await;
         trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
@@ -498,10 +518,7 @@ impl Repository for HwmonRepo {
             "Applying HWMON device: {device_uid} channel: {channel_name}; Resetting to Original fan control mode"
         );
         let _device_permit = self
-            .device_permits
-            .get(&type_index)
-            .unwrap()
-            .acquire()
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
         fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
     }
@@ -514,10 +531,7 @@ impl Repository for HwmonRepo {
         let (hwmon_driver, channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
         let _device_permit = self
-            .device_permits
-            .get(&type_index)
-            .unwrap()
-            .acquire()
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
         debug!("Applying HWMON device: {device_uid} channel: {channel_name}; Manual Control: 1");
         fans::set_pwm_enable(
@@ -546,10 +560,7 @@ impl Repository for HwmonRepo {
             return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
         let _device_permit = self
-            .device_permits
-            .get(&type_index)
-            .unwrap()
-            .acquire()
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
