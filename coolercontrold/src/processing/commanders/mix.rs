@@ -217,6 +217,7 @@ impl MixProfileCommander {
     }
 
     /// This function expects a non-empty `member_values` vector
+    #[allow(clippy::cast_possible_truncation)]
     fn apply_mix_function(member_values: &[&Duty], mix_function: ProfileMixFunctionType) -> Duty {
         // Since the member functions manage their own thresholds and the safety latch should
         //  kick off about the same time for all of them, we don't check thresholds here.
