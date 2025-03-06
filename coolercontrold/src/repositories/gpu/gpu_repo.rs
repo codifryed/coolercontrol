@@ -72,6 +72,7 @@ impl GpuRepo {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn detect_gpu_types(&mut self) {
         let nvidia_dev_count = if self.force_nvidia_cli {
             self.gpus_nvidia
