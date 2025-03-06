@@ -274,8 +274,7 @@ impl SettingsController {
                 .await
         } else {
             Err(anyhow!(
-                "Speed Profiles not enabled for this device: {}",
-                device_uid
+                "Speed Profiles not enabled for this device: {device_uid}"
             ))
         }
     }

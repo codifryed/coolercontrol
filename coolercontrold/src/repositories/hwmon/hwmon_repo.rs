@@ -182,9 +182,7 @@ impl HwmonRepo {
                 if thinkpad_fan_control.is_some() && channel.number == 1 {
                     thinkpad_fan_control = Some(
                         // verify if fan control for this ThinkPad is enabled or not:
-                        fans::set_pwm_enable(&2, &driver.path, channel)
-                            .await
-                            .is_ok(),
+                        fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
                     );
                 }
                 let channel_info = ChannelInfo {
@@ -516,9 +514,6 @@ impl Repository for HwmonRepo {
     ) -> Result<()> {
         let (hwmon_driver, channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
-        debug!(
-            "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
-        );
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
@@ -528,6 +523,9 @@ impl Repository for HwmonRepo {
             .unwrap()
             .acquire()
             .await?;
+        debug!(
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+        );
         if speed_fixed == 100
             && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
             && self.config.get_settings()?.thinkpad_full_speed

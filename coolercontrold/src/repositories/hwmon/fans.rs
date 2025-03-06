@@ -498,11 +498,11 @@ pub async fn set_pwm_enable_to_default(
 /// This sets `pwm_enable` to the desired value. Unlike other operations,
 /// it will not check if it's already set to the desired value.
 pub async fn set_pwm_enable(
-    pwm_enable_value: &u8,
+    pwm_enable_value: u8,
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
-    if *pwm_enable_value > 5 {
+    if pwm_enable_value > 5 {
         return Err(anyhow!(
             "pwm_enable value must be between 0 and 5 (inclusive)"
         ));
@@ -513,7 +513,7 @@ pub async fn set_pwm_enable(
         .with_context(|| {
             let msg = "Not able to set pwm_enable value. Most likely because of a \
                 limitation set by the driver or a BIOS setting.";
-            error!("{}", msg);
+            error!("{msg}");
             msg
         })?;
     Ok(())

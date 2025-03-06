@@ -274,11 +274,10 @@ impl Repository for GpuRepo {
         speed_fixed: u8,
     ) -> Result<()> {
         debug!(
-            "Applying GPU device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
+            "Applying GPU device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         if speed_fixed > 100 {
-            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
+            return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
         let is_amd = self.gpus_amd.amd_driver_infos.contains_key(device_uid);
         if is_amd {
