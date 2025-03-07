@@ -11,7 +11,6 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 - qt6-qtbase
 - qt6-qtwebengine
 - qt6-qtwebchannel
--
 
 ### Development RPM
 
@@ -25,7 +24,7 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 
 ### Runtime DEB
 
-- qt6-base-dev
+- qt6-base-dev (not 100% accurate - many smaller non-dev deps)
 - libqt6webenginewidgets6
 - libqt6webenginecore6-bin
 - libxcb-cursor0 (for X11)
@@ -34,7 +33,7 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 
 - build-essential
 - cmake
-- qt6-base-dev (already taken care of below actually)
+- qt6-base-dev
 - qt6-webengine-dev
 - qt6-webengine-dev-tools
 
