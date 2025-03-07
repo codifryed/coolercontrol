@@ -21,6 +21,7 @@ import { createPinia } from 'pinia'
 import './style.css'
 import 'primeicons/primeicons.css'
 import 'uplot/dist/uPlot.min.css'
+import 'abortcontroller-polyfill/dist/abortsignal-polyfill-only'
 
 import App from './App.vue'
 import router from './router'

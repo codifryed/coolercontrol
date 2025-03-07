@@ -37,7 +37,6 @@ import { AlertLog, AlertState } from '@/models/Alert.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
-import { invoke } from '@tauri-apps/api/core'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -55,9 +54,9 @@ export const DEFAULT_NAME_STRING_LENGTH: number = 40
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
-    const DEFAULT_DAEMON_ADDRESS = 'localhost'
-    const DEFAULT_DAEMON_PORT = 11987
-    const DEFAULT_DAEMON_SSL_ENABLED = false
+    // const DEFAULT_DAEMON_ADDRESS = 'localhost'
+    // const DEFAULT_DAEMON_PORT = 11987
+    // const DEFAULT_DAEMON_SSL_ENABLED = false
     const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
     const CONFIG_DAEMON_PORT = 'daemonPort'
     const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
@@ -129,12 +128,43 @@ export const useDeviceStore = defineStore('device', () => {
         return parseFloat(fontSize) * rem
     }
 
-    function isTauriApp(): boolean {
-        return '__TAURI__' in window
+    function isQtApp(): boolean {
+        return 'ipc' in window
     }
 
     function isSafariWebKit(): boolean {
         return /apple computer/.test(navigator.vendor.toLowerCase())
+    }
+
+    function connectToQtIPC(): void {
+        try {
+            if (!('qt' in window)) {
+                return
+            }
+            function loadScript(src: string, onload: () => void) {
+                let script = document.createElement('script')
+                // @ts-ignore
+                script.onload = onload
+                    ? onload
+                    : function (e) {
+                          // @ts-ignore
+                          console.log(e.target.src + ' is loaded.')
+                      }
+                script.src = src
+                script.async = false
+                document.head.appendChild(script)
+            }
+            loadScript('qrc:///qtwebchannel/qwebchannel.js', (): void => {
+                // @ts-ignore
+                new QWebChannel(qt.webChannelTransport, async function (channel: any) {
+                    // @ts-ignore
+                    window.ipc = channel.objects.ipc
+                    console.debug('Connected to Qt WebChannel, ready to send/receive messages!')
+                })
+            })
+        } catch (e) {
+            console.debug('Could not connect to Qt: ' + e)
+        }
     }
 
     // Private methods ------------------------------------------------
@@ -248,11 +278,6 @@ export const useDeviceStore = defineStore('device', () => {
                             })
                             loggedIn.value = true
                             console.info('Login successful')
-                            if (isTauriApp()) {
-                                await invoke('login', {
-                                    passwd: options.data.passwd,
-                                })
-                            }
                             return
                         }
                         toast.add({
@@ -272,9 +297,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonAddress(): string {
-        const defaultAddress: string = isTauriApp()
-            ? DEFAULT_DAEMON_ADDRESS
-            : window.location.hostname
+        // const defaultAddress: string = isQtApp()
+        //     ? DEFAULT_DAEMON_ADDRESS
+        //     : window.location.hostname
+        const defaultAddress: string = window.location.hostname
         return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || defaultAddress
     }
 
@@ -287,9 +313,11 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonPort(): number {
-        const defaultPort: string = isTauriApp()
-            ? DEFAULT_DAEMON_PORT.toString()
-            : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        // const defaultPort: string = isQtApp()
+        //     ? DEFAULT_DAEMON_PORT.toString()
+        //     : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        const defaultPort: string =
+            window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
         return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
     }
 
@@ -302,9 +330,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonSslEnabled(): boolean {
-        const defaultSslEnabled: boolean = isTauriApp()
-            ? DEFAULT_DAEMON_SSL_ENABLED
-            : window.location.protocol === 'https:'
+        // const defaultSslEnabled: boolean = isQtApp()
+        //     ? DEFAULT_DAEMON_SSL_ENABLED
+        //     : window.location.protocol === 'https:'
+        const defaultSslEnabled: boolean = window.location.protocol === 'https:'
         return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
             ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
             : defaultSslEnabled
@@ -320,19 +349,19 @@ export const useDeviceStore = defineStore('device', () => {
 
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
-        if (!isTauriApp()) {
-            const sessionIsValid = await daemonClient.sessionIsValid()
-            if (sessionIsValid) {
-                loggedIn.value = true
-                console.info('Login Session still valid')
-                toast.add({
-                    severity: 'info',
-                    summary: 'Login',
-                    detail: 'Login successful.',
-                    life: 1500,
-                })
-                return
-            }
+        // Likely no long needed to skip for Qt (persisted session cookie in Qt)
+        // if (!isQtApp()) {
+        const sessionIsValid = await daemonClient.sessionIsValid()
+        if (sessionIsValid) {
+            loggedIn.value = true
+            console.info('Login Session still valid')
+            toast.add({
+                severity: 'info',
+                summary: 'Login',
+                detail: 'Login successful.',
+                life: 1500,
+            })
+            return
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
@@ -344,11 +373,6 @@ export const useDeviceStore = defineStore('device', () => {
                 detail: 'Login successful.',
                 life: 1500,
             })
-            if (isTauriApp()) {
-                await invoke('login', {
-                    passwd: daemonClient.defaultPasswd,
-                })
-            }
         } else {
             await requestPasswd()
         }
@@ -760,8 +784,9 @@ export const useDeviceStore = defineStore('device', () => {
         round,
         sanitizeString,
         getREMSize,
-        isTauriApp,
+        isQtApp,
         isSafariWebKit,
         isThinkPad,
+        connectToQtIPC,
     }
 })

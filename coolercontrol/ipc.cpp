@@ -1,0 +1,96 @@
+// CoolerControl - monitor and control your cooling and other devices
+// Copyright (c) 2021-2025  Guy Boldon and contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include "ipc.h"
+
+#include <QApplication>
+#include <QFileDialog>
+
+#include "constants.h"
+#include "main_window.h"
+
+IPC::IPC(QObject* parent) : QObject(parent), m_settings(new QSettings()) {
+  //        connect(dialog, &Dialog::sendText, this, &Core::sendText);
+}
+
+bool IPC::getStartInTray() const {
+  return m_settings->value(SETTING_START_IN_TRAY.data(), false).toBool();
+}
+
+int IPC::getStartupDelay() const {
+  return m_settings->value(SETTING_STARTUP_DELAY.data(), 0).toInt();
+}
+
+bool IPC::getCloseToTray() const {
+  return m_settings->value(SETTING_CLOSE_TO_TRAY.data(), false).toBool();
+}
+
+double IPC::getZoomFactor() const {
+  return m_settings->value(SETTING_ZOOM_FACTOR.data(), 1.0).toDouble();
+}
+
+QByteArray IPC::getWindowGeometry() const {
+  return m_settings->value(SETTING_WINDOW_GEOMETRY.data(), 0).toByteArray();
+}
+
+QString IPC::filePathDialog(const QString& title) const {
+  return QFileDialog::getOpenFileName(qobject_cast<MainWindow*>(parent()), title, QDir::homePath());
+}
+
+QString IPC::directoryPathDialog(const QString& title) const {
+  return QFileDialog::getExistingDirectory(qobject_cast<MainWindow*>(parent()), title,
+                                           QDir::homePath(), QFileDialog::ShowDirsOnly);
+}
+
+void IPC::setStartInTray(const bool startInTray) const {
+  m_settings->setValue(SETTING_START_IN_TRAY.data(), startInTray);
+}
+
+void IPC::setStartupDelay(const int startupDelay) const {
+  m_settings->setValue(SETTING_STARTUP_DELAY.data(), startupDelay);
+}
+
+void IPC::setCloseToTray(const bool closeToTray) const {
+  m_settings->setValue(SETTING_CLOSE_TO_TRAY.data(), closeToTray);
+}
+
+void IPC::setZoomFactor(const double zoomFactor) const {
+  m_settings->setValue(SETTING_ZOOM_FACTOR.data(), zoomFactor);
+  qobject_cast<MainWindow*>(parent())->setZoomFactor(zoomFactor);
+}
+
+void IPC::setModes(const QString& modesJson) const {
+  qobject_cast<MainWindow*>(parent())->setTrayMenuModes(modesJson);
+}
+
+void IPC::saveWindowGeometry(const QByteArray& geometry) const {
+  m_settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);
+}
+
+void IPC::acknowledgeDaemonIssues() const {
+  // todo: refactor all these direct calls to signal/slot connections in the constructor
+  qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrors();
+}
+
+void IPC::syncSettings() const { m_settings->sync(); }
+
+void IPC::forceQuit() const {
+  // this is only called when open form the UI currently
+  // closing saves the window geometry when quit from UI:
+  qobject_cast<MainWindow*>(parent())->close();
+  syncSettings();
+  QApplication::quit();
+}

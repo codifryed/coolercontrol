@@ -36,12 +36,11 @@ cd ../coolercontrol-liqctld || exit
 sed -i -E 's|version = "[0-9]+\.[0-9]+\.[0-9]+"|version = "'"$NEW_VER"'"|' pyproject.toml
 sed -i -E 's|version = [0-9]+\.[0-9]+\.[0-9]+|version = '"$NEW_VER"'|' setup.cfg
 sed -i -E 's|__version__: str = "[0-9]+\.[0-9]+\.[0-9]+"|__version__: str = "'"$NEW_VER"'"|' coolercontrol_liqctld/liqctld.py
-# ui-tauri
-cd ../coolercontrol-ui/src-tauri/
-cargo set-version --offline "$NEW_VER"
-sed -i -E 's|"version": "[0-9]+\.[0-9]+\.[0-9]+"|"version": "'"$NEW_VER"'"|' tauri.conf.json
+# ui-qt
+cd ../coolercontrol/ || exit
+sed -i -E 's|COOLER_CONTROL_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"|COOLER_CONTROL_VERSION = "'"$NEW_VER"'"|' constants.h
 # ui
-cd ../
+cd ../coolercontrol-ui/ || exit
 npm version --allow-same-version --no-commit-hooks --no-git-tag-version --no-workspaces-update "$NEW_VER"
 cd ../
 echo "New version successfully set: $NEW_VER"

@@ -54,7 +54,6 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
@@ -199,12 +198,15 @@ const restartItems = ref([
         },
     },
 ])
-if (deviceStore.isTauriApp()) {
+if (deviceStore.isQtApp()) {
     restartItems.value.push({
         label: 'Quit Desktop App',
         icon: 'pi pi-fw pi-power-off',
         command: async () => {
-            await getCurrentWindow().destroy()
+            // call quit to the backend.
+            // @ts-ignore
+            const ipc = window.ipc
+            ipc.forceQuit()
         },
     })
 }
@@ -493,7 +495,7 @@ const addItems = computed(() => [
 
         <!--Open In Browser-->
         <a
-            v-if="deviceStore.isTauriApp()"
+            v-if="deviceStore.isQtApp()"
             href="http://localhost:11987"
             target="_blank"
             class="!outline-none"

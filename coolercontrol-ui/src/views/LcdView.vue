@@ -48,8 +48,6 @@ import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import InputText from 'primevue/inputtext'
-import { open } from '@tauri-apps/plugin-dialog'
-import { pictureDir } from '@tauri-apps/api/path'
 import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderViewBox } from '@/models/Loader.ts'
 
@@ -319,13 +317,9 @@ const delayIntervalFormatted: ComputedRef<string> = computed((): string => {
 })
 
 const pathBrowse = async (): Promise<void> => {
-    imagesPath.value =
-        (await open({
-            directory: true,
-            multiple: false,
-            defaultPath: await pictureDir(),
-            title: 'Select Images Directory',
-        })) ?? ''
+    // @ts-ignore
+    const ipc = window.ipc
+    imagesPath.value = await ipc.directoryPathDialog('Select Images Directory')
 }
 
 const brightnessScrolled = (event: WheelEvent): void => {
@@ -667,7 +661,7 @@ onUnmounted(() => {
                                 'upon submission to ensure maximum compatibility.'
                             "
                         />
-                        <div v-if="deviceStore.isTauriApp()">
+                        <div v-if="deviceStore.isQtApp()">
                             <Button
                                 class="mt-2 w-full h-12"
                                 label="Browse"

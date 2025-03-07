@@ -38,6 +38,8 @@ lint:
     - taplo@0.9.3
     - trivy@0.55.1
     - yamllint@1.35.1
+    - cmake-format@0.6.13
+    - clang-format@16.0.3
   disabled:
     - checkov
   files:
@@ -67,6 +69,7 @@ lint:
         - .pip/**
         - .cache/**
         - coolercontrol-ui/src-tauri/gen/**
+        - coolercontrol-ui/src-tauri/**
         - .gitlab/images/**
         - .gitlab-ci.yml
         - openapi/openapi.json

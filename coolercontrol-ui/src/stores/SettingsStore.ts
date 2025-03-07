@@ -46,9 +46,6 @@ import {
 } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { invoke } from '@tauri-apps/api/core'
-import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
@@ -190,22 +187,20 @@ export const useSettingsStore = defineStore('settings', () => {
             dashboards.push(...uiSettings.dashboards)
         }
         chartLineScale.value = uiSettings.chartLineScale
-        if (deviceStore.isTauriApp()) {
+        if (deviceStore.isQtApp()) {
+            // @ts-ignore
+            const ipc = window.ipc
             try {
-                startInSystemTray.value = await invoke('get_start_in_tray')
+                startInSystemTray.value = await ipc.getStartInTray()
+                desktopStartupDelay.value = await ipc.getStartupDelay()
+                closeToSystemTray.value = await ipc.getCloseToTray()
+                uiScale.value = (await ipc.getZoomFactor()) * 100
             } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
-            }
-            try {
-                desktopStartupDelay.value = await invoke('get_startup_delay')
-            } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
+                console.error('Failed to get desktop setting: ', err)
             }
         }
-        closeToSystemTray.value = uiSettings.closeToSystemTray
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
-        uiScale.value = uiSettings.uiScale
         time24.value = uiSettings.time24
         collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
@@ -461,7 +456,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modesDTO = await deviceStore.daemonClient.getModes()
         modes.value.length = 0
         modes.value = modesDTO.modes
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
     async function saveModeOrder(): Promise<void> {
@@ -469,7 +464,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modeOrderDTO = new ModeOrderDTO()
         modeOrderDTO.mode_uids = modes.value.map((mode) => mode.uid)
         await deviceStore.daemonClient.saveModesOrder(modeOrderDTO)
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
     async function createMode(name: string): Promise<UID | undefined> {
@@ -479,7 +474,7 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response instanceof Mode) {
             const modeUID = response.uid
             modes.value.push(response)
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -498,7 +493,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const response = await deviceStore.daemonClient.duplicateMode(modeUID)
         if (response instanceof Mode) {
             modes.value.push(response)
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -524,7 +519,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.name = newName
             }
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -566,8 +561,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (index > -1) {
                 modes.value.splice(index, 1)
             }
-            await getActiveModes() // clears active mode if it was deleted
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -582,7 +576,6 @@ export const useSettingsStore = defineStore('settings', () => {
         const activeModes = await deviceStore.daemonClient.getActiveModeUIDs()
         modeActiveCurrent.value = activeModes.current_mode_uid
         modeActivePrevious.value = activeModes.previous_mode_uid
-        await setTauriActiveModes()
         emitter.emit('active-modes-change-menu')
     }
 
@@ -604,19 +597,15 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
-    async function setTauriModes(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            const modeTauris = modes.value.map((mode) => {
+    async function syncSysTrayModes(): Promise<void> {
+        // This is used to refresh the Modes system tray menu contents: (from CRUD operations)
+        if (deviceStore.isQtApp()) {
+            const sysTrayModes = modes.value.map((mode) => {
                 return { uid: mode.uid, name: mode.name }
             })
-            await invoke('set_modes', { modes: modeTauris })
-        }
-    }
-
-    async function setTauriActiveModes(): Promise<void> {
-        if (deviceStore.isTauriApp() && modeActiveCurrent.value != null) {
-            // This sets the active mode on startup and wakeup. don't think it hurts to keep this.
-            await invoke('set_active_mode', { activeModeUid: modeActiveCurrent.value })
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.setModes(JSON.stringify({ modes: sysTrayModes }))
         }
     }
 
@@ -846,21 +835,21 @@ export const useSettingsStore = defineStore('settings', () => {
                         )
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                    if (deviceStore.isTauriApp()) {
-                        if (startInSystemTray.value) {
-                            await invoke('start_in_tray_enable')
-                        } else {
-                            await invoke('start_in_tray_disable')
-                        }
-                    }
                     uiSettings.dashboards = dashboards
                     uiSettings.chartLineScale = chartLineScale.value
-                    uiSettings.closeToSystemTray = closeToSystemTray.value
-                    if (deviceStore.isTauriApp()) {
-                        await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
+                    if (deviceStore.isQtApp()) {
+                        try {
+                            // @ts-ignore
+                            const ipc = window.ipc
+                            await ipc.setStartInTray(startInSystemTray.value)
+                            await ipc.setStartupDelay(desktopStartupDelay.value)
+                            await ipc.setCloseToTray(closeToSystemTray.value)
+                            await ipc.setZoomFactor(uiScale.value / 100)
+                        } catch (e) {
+                            console.error('Failed to set Desktop settings: ', e)
+                        }
                     }
                     uiSettings.themeMode = themeMode.value
-                    uiSettings.uiScale = uiScale.value
                     uiSettings.time24 = time24.value
                     uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value
@@ -884,16 +873,6 @@ export const useSettingsStore = defineStore('settings', () => {
             console.debug('Saving CC Settings')
             await deviceStore.daemonClient.saveCCSettings(ccSettings.value)
         })
-
-        if (deviceStore.isTauriApp()) {
-            await getCurrentWebviewWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
-                if (closeToSystemTray.value) {
-                    event.preventDefault()
-                    await invoke('save_window_state')
-                    await getCurrentWebviewWindow().hide()
-                }
-            })
-        }
     }
 
     function applyThemeMode(): void {
@@ -944,7 +923,6 @@ export const useSettingsStore = defineStore('settings', () => {
                 detail: 'Settings successfully updated and applied to the device',
                 life: 3000,
             })
-            await getActiveModes()
         } else {
             const message =
                 errorMsg != null

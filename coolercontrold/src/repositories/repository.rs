@@ -53,6 +53,14 @@ pub trait Repository {
     async fn shutdown(&self) -> Result<()>;
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()>;
+
+    /// This is used to enable manual fan control for a device channel.
+    async fn apply_setting_manual_control(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<()>;
+
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,

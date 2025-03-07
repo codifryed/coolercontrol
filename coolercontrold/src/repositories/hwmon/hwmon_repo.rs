@@ -15,17 +15,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ops::Not;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType,
-    SpeedOptions, Status, TempInfo, TempStatus, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType,
+    SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -34,10 +28,25 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::ops::Not;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::LazyLock;
+use std::time::Duration;
 use strum::{Display, EnumString};
-use tokio::time::Instant;
+use tokio::sync::{Semaphore, SemaphorePermit};
+use tokio::time::{sleep, Instant};
+
+/// Our `SNAPSHOT_TIMEOUT_MS` in the `main_loop` is 400ms, so if we have a very slow device that
+/// will hit that timeout regularly, we want our read permit timeout to come close to that
+/// so that we have even snapshot timestamps.
+static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
+    LazyLock::new(|| Duration::from_millis(350));
+static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -86,8 +95,19 @@ pub struct HwmonDriverInfo {
 /// A Repository for `HWMon` Devices
 pub struct HwmonRepo {
     config: Rc<Config>,
-    devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
-    preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    devices: HashMap<DeviceUID, (DeviceLock, Rc<HwmonDriverInfo>)>,
+    preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+
+    /// Permits for each `HWMon` device. This is useful for slower devices.
+    /// `coolercontrol-liqctld` already has an in-built device queue - where only one read or write
+    /// request can be sent to the device at a time. This is that same idea but for hwmon devices.
+    /// This also ensures that polling loops don't overlap and stack if the device hasn't finished
+    /// responding from the previous polling loop.
+    device_permits: HashMap<TypeIndex, Semaphore>,
+
+    /// Used to avoid logging a device-delay warning more than once
+    delay_logged: HashMap<TypeIndex, Cell<bool>>,
+
     /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
 }
@@ -98,6 +118,8 @@ impl HwmonRepo {
             config,
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            device_permits: HashMap::new(),
+            delay_logged: HashMap::new(),
             lc_hwmon_paths: lc_locations
                 .into_iter()
                 .filter(|loc| loc.contains("hwmon/hwmon"))
@@ -164,9 +186,7 @@ impl HwmonRepo {
                 if thinkpad_fan_control.is_some() && channel.number == 1 {
                     thinkpad_fan_control = Some(
                         // verify if fan control for this ThinkPad is enabled or not:
-                        fans::set_pwm_enable(&2, &driver.path, channel)
-                            .await
-                            .is_ok(),
+                        fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
                     );
                 }
                 let channel_info = ChannelInfo {
@@ -219,6 +239,9 @@ impl HwmonRepo {
                 ..Default::default()
             };
             device.initialize_status_history_with(status, poll_rate);
+            self.device_permits
+                .insert(type_index, Semaphore::const_new(1));
+            self.delay_logged.insert(type_index, Cell::new(false));
             self.devices.insert(
                 device.uid.clone(),
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
@@ -232,8 +255,8 @@ impl HwmonRepo {
         &self,
         device_uid: &UID,
         channel_name: &str,
-    ) -> Result<(&Rc<HwmonDriverInfo>, &HwmonChannelInfo)> {
-        let (_, hwmon_driver) = self
+    ) -> Result<(&Rc<HwmonDriverInfo>, &HwmonChannelInfo, TypeIndex)> {
+        let (device_lock, hwmon_driver) = self
             .devices
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?;
@@ -244,7 +267,7 @@ impl HwmonRepo {
                 channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
             })
             .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-        Ok((hwmon_driver, channel_info))
+        Ok((hwmon_driver, channel_info, device_lock.borrow().type_index))
     }
 
     async fn get_driver_locations(base_path: &Path) -> Vec<String> {
@@ -258,6 +281,32 @@ impl HwmonRepo {
             locations.push(hid_phys);
         }
         locations
+    }
+
+    fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
+        if self.delay_logged.get(&type_index).unwrap().get() {
+            return;
+        }
+        warn!(
+            "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
+        );
+        self.delay_logged.get(&type_index).unwrap().replace(true);
+    }
+
+    async fn get_permit_with_write_timeout(
+        &self,
+        type_index: TypeIndex,
+        driver_name: &str,
+        channel_name: &str,
+    ) -> Result<SemaphorePermit> {
+        tokio::select! {
+            () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
+                "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
+                fan speed. There will be significant issues handling this device due to extreme lag."
+            )),
+            device_permit = self.device_permits.get(&type_index).unwrap().acquire() =>
+                device_permit.map_err(|e| anyhow!(e)),
+        }
     }
 }
 
@@ -402,18 +451,23 @@ impl Repository for HwmonRepo {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let device_id = device_lock.borrow().type_index;
+                let type_index = device_lock.borrow().type_index;
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
-                    let fan_statuses = fans::extract_fan_statuses(driver).await;
-                    let temp_statuses = temps::extract_temp_statuses(driver).await;
-                    self.preloaded_statuses
-                        .borrow_mut()
-                        .insert(device_id, (fan_statuses, temp_statuses));
+                    tokio::select! {
+                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
+                        Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
+                            let fan_statuses = fans::extract_fan_statuses(driver).await;
+                            let temp_statuses = temps::extract_temp_statuses(driver).await;
+                            self.preloaded_statuses
+                                .borrow_mut()
+                                .insert(type_index, (fan_statuses, temp_statuses));
+                            drop(device_permit);
+                        },
+                    }
                 });
             }
-        })
-        .await;
+        }).await;
         trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
@@ -426,10 +480,7 @@ impl Repository for HwmonRepo {
             let device_index = device.borrow().type_index;
             let preloaded_statuses = preloaded_statuses_map.get(&device_index);
             if preloaded_statuses.is_none() {
-                error!(
-                    "There is no status preloaded for this device: {}",
-                    device_index
-                );
+                error!("There is no status preloaded for this device: {device_index}");
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -439,9 +490,8 @@ impl Repository for HwmonRepo {
                 ..Default::default()
             };
             trace!(
-                "Hwmon device: {} status was updated with: {:?}",
-                device.borrow().name,
-                status
+                "Hwmon device: {} status was updated with: {status:?}",
+                device.borrow().name
             );
             device.borrow_mut().set_status(status);
         }
@@ -462,12 +512,40 @@ impl Repository for HwmonRepo {
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
-        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
+        let (hwmon_driver, channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
         debug!(
-            "Applying HWMON device: {} channel: {}; Resetting to Original fan control mode",
-            device_uid, channel_name
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Resetting to Original fan control mode"
         );
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
         fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
+    }
+
+    async fn apply_setting_manual_control(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<()> {
+        let (hwmon_driver, channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
+        debug!("Applying HWMON device: {device_uid} channel: {channel_name}; Manual Control: 1");
+        fans::set_pwm_enable(
+            fans::PWM_ENABLE_MANUAL_VALUE,
+            &hwmon_driver.path,
+            channel_info,
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Error on {}:{channel_name} for Manual Control - {err}",
+                hwmon_driver.name
+            )
+        })
     }
 
     async fn apply_setting_speed_fixed(
@@ -476,14 +554,17 @@ impl Repository for HwmonRepo {
         channel_name: &str,
         speed_fixed: u8,
     ) -> Result<()> {
-        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
-        debug!(
-            "Applying HWMON device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
-        );
+        let (hwmon_driver, channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
         if speed_fixed > 100 {
-            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
+            return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
+        debug!(
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+        );
         if speed_fixed == 100
             && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
             && self.config.get_settings()?.thinkpad_full_speed

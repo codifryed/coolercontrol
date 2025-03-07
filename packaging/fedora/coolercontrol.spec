@@ -1,11 +1,8 @@
 %global _enable_debug_packages 0
 %global debug_package %{nil}
 %global project coolercontrol
-%global ui_dir coolercontrol-ui/src-tauri
+%global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
-
-# prevent library files from being installed
-%global __cargo_is_lib() 0
 
 Name:           %{project}
 Version:        1.4.5
@@ -15,20 +12,19 @@ Summary:        Monitor and control your cooling devices.
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
 
-BuildRequires:  cargo-rpm-macros >= 24
 BuildRequires:  libappstream-glib
 BuildRequires:  desktop-file-utils
-BuildRequires:  nodejs
-BuildRequires:  npm
 BuildRequires:  make
-# Tauri build dependencies
-BuildRequires:  pkgconfig(webkit2gtk-4.1) pkgconfig(openssl) pkgconfig(librsvg-2.0)
-BuildRequires:  libappindicator-gtk3-devel  glibc-devel
-BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb libtool pkgconf strace
+BuildRequires:  cmake
+BuildRequires:  autoconf automake gcc gcc-c++
+BuildRequires:  qt6-qtbase-devel
+BuildRequires:  qt6-qtwebengine-devel
+BuildRequires:  qt6-qtwebchannel-devel
 Requires:       hicolor-icon-theme
-Requires:       webkit2gtk4.1
-Requires:       libappindicator-gtk3
-Requires:       coolercontrold
+Requires:       qt6-qtbase
+Requires:       qt6-qtwebengine
+Requires:       qt6-qtwebchannel
+Requires:       coolercontrold = %{version}
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
@@ -40,19 +36,16 @@ It offers an easy-to-use user interface with various control features and also p
 
 %prep
 {{{ git_dir_setup_macro }}}
-# rust and npm dependencies are a WIP
-# (cd coolercontrol-ui/src-tauri; #cargo_prep)
 
 %generate_buildrequires
 # (cd coolercontrol-ui/src-tauri; #cargo_generate_buildrequires)
 
 %build
-# build web ui files:
-make build-ui
-(cd %{ui_dir}; /usr/bin/cargo build --locked -j${RPM_BUILD_NCPUS} --profile release -F custom-protocol)
+(cd %{qt_dir}; %cmake)
+(cd %{qt_dir}; %cmake_build)
 
 %install
-install -Dpm 755 %{ui_dir}/target/release/%{name} -t %{buildroot}%{_bindir}
+(cd %{qt_dir}; %cmake_install)
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
@@ -63,7 +56,6 @@ cp -p packaging/metadata/%{ap_id}.metainfo.xml %{buildroot}%{_metainfodir}/
 
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
-(cd %{ui_dir}; /usr/bin/cargo test --locked -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
 
 %files
 %{_bindir}/%{name}

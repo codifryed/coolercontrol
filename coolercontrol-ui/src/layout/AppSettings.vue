@@ -58,7 +58,6 @@ const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
-import { getCurrentWebview } from '@tauri-apps/api/webview'
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -204,11 +203,6 @@ watch(pollRate, () => {
     applyGenericDaemonChange()
 })
 
-const applyZoomPercent = _.debounce(
-    async (): Promise<void> => await getCurrentWebview().setZoom(settingsStore.uiScale / 100),
-    500,
-)
-
 const portScrolled = (event: WheelEvent): void => {
     if (daemonPort.value == null) return
     if (event.deltaY < 0) {
@@ -268,7 +262,7 @@ onMounted(() => {
                         value="2"
                         as="div"
                         class="flex w-1/5 justify-center items-center gap-2"
-                        :disabled="!deviceStore.isTauriApp()"
+                        :disabled="!deviceStore.isQtApp()"
                     >
                         <svg-icon
                             type="mdi"
@@ -1066,7 +1060,6 @@ onMounted(() => {
                                             suffix="%"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
-                                            @update:modelValue="applyZoomPercent"
                                         >
                                             <template #incrementicon>
                                                 <span class="pi pi-plus" />

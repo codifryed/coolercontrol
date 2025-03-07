@@ -37,8 +37,6 @@ import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboardin
 import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { invoke } from '@tauri-apps/api/core'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -342,6 +340,7 @@ const steps = [
  * This is the Startup procedure for the UI application:
  */
 onMounted(async () => {
+    deviceStore.connectToQtIPC()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -349,9 +348,6 @@ onMounted(async () => {
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
     applyCustomTheme()
-    if (deviceStore.isTauriApp()) {
-        await getCurrentWebviewWindow().setZoom(settingsStore.uiScale / 100)
-    }
     await daemonState.init()
     loaded.value = true
     loading.close()
@@ -359,13 +355,12 @@ onMounted(async () => {
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
-    let hideToTray = async (): Promise<void> => {
-        if (deviceStore.isTauriApp() && settingsStore.startInSystemTray) {
-            // This make sure don't hide the window AFTER the first run, i.e. for UI refreshes.
-            const isFirst: boolean = await invoke('is_first')
-            if (isFirst) {
-                await getCurrentWebviewWindow().hide()
-            }
+    let signalLoadFinished = async (): Promise<void> => {
+        if (deviceStore.isQtApp()) {
+            // Helps with Qt startup handling, i.e. startInTray
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
         }
     }
     // async functions that run for the lifetime of the application:
@@ -374,7 +369,7 @@ onMounted(async () => {
         deviceStore.updateLogsFromSSE(),
         deviceStore.updateAlertsFromSSE(),
         deviceStore.updateActiveModeFromSSE(),
-        hideToTray(),
+        signalLoadFinished(),
     ])
 })
 </script>
@@ -463,7 +458,7 @@ onMounted(async () => {
             here:
         </p>
         <br />
-        <h6 v-if="deviceStore.isTauriApp()" class="text-lg">Daemon Address - Desktop App</h6>
+        <h6 v-if="deviceStore.isQtApp()" class="text-lg">Daemon Address - Desktop App</h6>
         <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
         <div>
             <div class="mt-8 flex flex-row">

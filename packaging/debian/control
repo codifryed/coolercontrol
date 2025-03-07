@@ -20,12 +20,13 @@ Build-Depends:
  nodejs,
 # coolercontrol:
  build-essential,
- libwebkit2gtk-4.1-dev,
- libxdo-dev,
- libssl-dev,
- libayatana-appindicator3-dev,
- librsvg2-dev,
-# coolercontrol & coolercontrold:
+ cmake (>= 3.15),
+ libgl1-mesa-dev,
+ libqt6opengl6-dev,
+ qt6-base-dev,
+ qt6-webengine-dev,
+ qt6-webengine-dev-tools,
+# coolercontrold:
  cargo,
  libdrm-dev,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
@@ -44,17 +45,16 @@ Architecture: amd64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
+Suggests:
+ coolercontrol-liqctld (= ${binary:Version}),
 Description: Monitor and control your cooling devices.
  This is the main systemd daemon for CoolerControl.
 
 Package: coolercontrol
 Architecture: amd64
 Depends:
+ coolercontrold (= ${binary:Version}),
  ${shlibs:Depends},
  ${misc:Depends},
- coolercontrold (= ${binary:Version}),
- libwebkit2gtk-4.1-0,
- libgtk-3-0,
- libayatana-appindicator3-1,
 Description: Monitor and control your cooling devices.
  This is the GUI standalone application for CoolerControl.

@@ -16,10 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::io::{Error, ErrorKind};
-use std::ops::Not;
-use std::path::{Path, PathBuf};
-
 use crate::cc_fs;
 use crate::device::ChannelStatus;
 use crate::repositories::hwmon::devices;
@@ -28,10 +24,13 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use std::io::{Error, ErrorKind};
+use std::ops::Not;
+use std::path::{Path, PathBuf};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
-const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -196,19 +195,10 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         }
         let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
         let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
-        let fan_pwm_mode = if channel.pwm_mode_supported {
-            cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
-                .await
-                .and_then(check_parsing_8)
-                .ok()
-        } else {
-            None
-        };
         fans.push(ChannelStatus {
             name: channel.name.clone(),
             rpm: fan_rpm,
             duty: fan_duty,
-            pwm_mode: fan_pwm_mode,
             ..Default::default()
         });
     }
@@ -497,12 +487,13 @@ pub async fn set_pwm_enable_to_default(
 
 /// This sets `pwm_enable` to the desired value. Unlike other operations,
 /// it will not check if it's already set to the desired value.
+/// See also `get_current_pwm_enable`.
 pub async fn set_pwm_enable(
-    pwm_enable_value: &u8,
+    pwm_enable_value: u8,
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
-    if *pwm_enable_value > 5 {
+    if pwm_enable_value > 5 {
         return Err(anyhow!(
             "pwm_enable value must be between 0 and 5 (inclusive)"
         ));
@@ -513,9 +504,38 @@ pub async fn set_pwm_enable(
         .with_context(|| {
             let msg = "Not able to set pwm_enable value. Most likely because of a \
                 limitation set by the driver or a BIOS setting.";
-            error!("{}", msg);
+            error!("{msg}");
             msg
         })?;
+    Ok(())
+}
+
+/// This sets `pwm_enable` to the desired value if it's not already set to the desired value.
+/// See also `get_current_pwm_enable`.
+pub async fn set_pwm_enable_if_not_already(
+    pwm_enable_value: u8,
+    base_path: &Path,
+    channel_info: &HwmonChannelInfo,
+) -> Result<()> {
+    if channel_info.pwm_enable_default.is_some() {
+        // set to manual control if applicable
+        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+        let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
+            .await
+            .and_then(check_parsing_8)?;
+        if current_pwm_enable != pwm_enable_value {
+            cc_fs::write_string(&path_pwm_enable, pwm_enable_value.to_string())
+                .await
+                .with_context(|| {
+                    let msg = format!(
+                        "Unable to set fan control for {path_pwm_enable:?} to {pwm_enable_value}. \
+                        Most likely because of a limitation set by the driver or a BIOS setting."
+                    );
+                    error!("{msg}");
+                    msg
+                })?;
+        }
+    }
     Ok(())
 }
 
@@ -549,25 +569,6 @@ pub async fn set_pwm_duty(
     speed_duty: u8,
 ) -> Result<()> {
     let pwm_value = duty_to_pwm_value(speed_duty);
-    if channel_info.pwm_enable_default.is_some() {
-        // set to manual control if applicable
-        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-        let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
-            .await
-            .and_then(check_parsing_8)?;
-        if current_pwm_enable != PWM_ENABLE_MANUAL_VALUE {
-            cc_fs::write_string(&path_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string())
-                .await
-                .with_context(|| {
-                    let msg = format!(
-                        "Unable to set manual fan control for {path_pwm_enable:?}. \
-                    Most likely because of a limitation set by the driver or a BIOS setting."
-                    );
-                    error!("{}", msg);
-                    msg
-                })?;
-        }
-    }
     let pwm_path = base_path.join(format_pwm!(channel_info.number));
     cc_fs::write_string(&pwm_path, pwm_value.to_string())
         .await
@@ -862,15 +863,84 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_set_pwm_enable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result =
+                set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, test_base_path, &channel_info).await;
+
+            // then:
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(current_pwm_enable, "1");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_if_not_already_set() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"0".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result = set_pwm_enable_if_not_already(
+                PWM_ENABLE_MANUAL_VALUE,
+                test_base_path,
+                &channel_info,
+            )
+            .await;
+
+            // then:
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(current_pwm_enable, "1");
+        });
+    }
+
+    #[test]
+    #[serial]
     fn test_set_pwm_duty() {
         cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
-                .await
-                .unwrap();
-            cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
                 .await
                 .unwrap();
             let channel_info = HwmonChannelInfo {
@@ -892,13 +962,9 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-                .await
-                .unwrap();
             teardown(&ctx);
             assert!(result.is_ok());
             assert_eq!(format!("{current_duty:.1}"), "50.0");
-            assert_eq!(current_pwm_enable, "1");
         });
     }
 

@@ -21,9 +21,6 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
-use anyhow::{anyhow, Context, Result};
-use log::{debug, error};
-
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::processing::processors::functions::{
@@ -37,6 +34,9 @@ use crate::processing::{
 };
 use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
+use anyhow::{anyhow, Context, Result};
+use log::{debug, error};
+use moro_local::Scope;
 
 struct ProcessorCollection {
     fun_safety_latch: Rc<dyn Processor>,
@@ -175,16 +175,20 @@ impl GraphProfileCommander {
 
     /// Applies the speed of all devices that have a scheduled Graph Profile setting.
     /// Normally triggered by a loop/timer.
-    pub async fn update_speeds(&self) {
-        for (device_uid, channel_name, duty_to_set) in self.collect_processed_outputs() {
-            self.set_device_speed(&device_uid, &channel_name, duty_to_set)
-                .await;
+    pub fn update_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
+        for (device_uid, channel_duties_to_set) in self.collect_processed_outputs() {
+            scope.spawn(async move {
+                for (channel_name, duty_to_set) in channel_duties_to_set {
+                    self.set_device_speed(&device_uid, &channel_name, duty_to_set)
+                        .await;
+                }
+            });
         }
     }
 
     /// Collects all the processed outputs for all scheduled Graph Profiles.
-    fn collect_processed_outputs(&self) -> Vec<(DeviceUID, ChannelName, Duty)> {
-        let mut output_to_apply = Vec::new();
+    fn collect_processed_outputs(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+        let mut output_to_apply = HashMap::new();
         for (normalized_profile, device_channels) in self.scheduled_settings.borrow().iter() {
             let optional_duty_to_set = self.process_output_cache.borrow()
                 [&normalized_profile.profile_uid]
@@ -199,7 +203,10 @@ impl GraphProfileCommander {
                     channel_name,
                 } = device_channel
                 {
-                    output_to_apply.push((device_uid.clone(), channel_name.clone(), duty_to_set));
+                    output_to_apply
+                        .entry(device_uid.clone())
+                        .or_insert_with(Vec::new)
+                        .push((channel_name.clone(), duty_to_set));
                 }
             }
         }
