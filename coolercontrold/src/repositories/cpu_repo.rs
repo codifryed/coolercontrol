@@ -778,6 +778,16 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
+    async fn apply_setting_manual_control(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         _device_uid: &UID,

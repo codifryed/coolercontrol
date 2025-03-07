@@ -37,6 +37,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use log::{error, info, trace};
 use mime::Mime;
+use moro_local::Scope;
 use tokio::time::Instant;
 
 const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
@@ -156,6 +157,8 @@ impl SettingsController {
                     .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
                     .clear_channel_setting(device_uid, channel_name);
+                repo.apply_setting_manual_control(device_uid, channel_name)
+                    .await?;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
                     .await
                     .inspect(|()| {
@@ -262,6 +265,8 @@ impl SettingsController {
         } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
             || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
         {
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await?;
             self.graph_commander
                 .schedule_setting(
                     DeviceChannelProfileSetting::Graph {
@@ -273,8 +278,7 @@ impl SettingsController {
                 .await
         } else {
             Err(anyhow!(
-                "Speed Profiles not enabled for this device: {}",
-                device_uid
+                "Speed Profiles not enabled for this device: {device_uid}"
             ))
         }
     }
@@ -291,7 +295,7 @@ impl SettingsController {
         if profile.mix_function_type.is_none() {
             return Err(anyhow!("Mix Profile should have a mix function type"));
         }
-        let (device_lock, _) = self.get_device_repo(device_uid)?;
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let speed_options = device_lock
             .borrow()
             .info
@@ -327,6 +331,8 @@ impl SettingsController {
         if speed_options.fixed_enabled {
             self.graph_commander
                 .clear_channel_setting(device_uid, channel_name);
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await?;
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
                 .await
@@ -559,15 +565,15 @@ impl SettingsController {
 
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
-    pub async fn process_scheduled_speeds(&self) {
+    pub fn process_scheduled_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
         let start = Instant::now();
         self.graph_commander.process_all_profiles();
         trace!(
             "Processing time taken for all profiles: {:?}",
             start.elapsed()
         );
-        self.graph_commander.update_speeds().await;
-        self.mix_commander.update_speeds().await;
+        self.graph_commander.update_speeds(scope);
+        self.mix_commander.update_speeds(scope);
         trace!("Update and Processing time taken: {:?}", start.elapsed());
     }
 

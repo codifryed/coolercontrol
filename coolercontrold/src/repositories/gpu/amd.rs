@@ -555,6 +555,12 @@ impl GpuAMD {
                     channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                 })
                 .with_context(|| "Searching for channel name")?;
+            fans::set_pwm_enable_if_not_already(
+                fans::PWM_ENABLE_MANUAL_VALUE,
+                &amd_driver_info.hwmon.path,
+                channel_info,
+            )
+            .await?;
             fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
                 .await
                 .map_err(|err| {

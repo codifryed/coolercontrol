@@ -623,6 +623,17 @@ impl Repository for CustomSensorsRepo {
     async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
         Ok(())
     }
+
+    async fn apply_setting_manual_control(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CUSTOMER_SENSORS devices"
+        ))
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         _device_uid: &UID,

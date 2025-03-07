@@ -794,6 +794,15 @@ impl Repository for LiquidctlRepo {
         Ok(())
     }
 
+    /// liquidctl drivers handle this themselves, so we don't need to do anything.
+    async fn apply_setting_manual_control(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,
