@@ -313,9 +313,11 @@ void MainWindow::requestDaemonErrors() const {
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
-  connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
-    const QString ReplyText = healthReply->readAll();
-    const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+  connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
+    const auto status = healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString replyText = healthReply->readAll();
+    qDebug() << "Health Endpoint Response Status: " << status << "; Body: " << replyText;
+    const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
     if (const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
         daemonVersion.isEmpty()) {
       qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
@@ -327,6 +329,14 @@ void MainWindow::requestDaemonErrors() const {
     }
     healthReply->deleteLater();
   });
+  connect(healthReply, &QNetworkReply::errorOccurred,
+          [healthReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qWarning() << "Error occurred establishing connection to Daemon. Status: " << status
+                       << " QtErrorCode: " << code;
+            healthReply->deleteLater();
+          });
 }
 
 void MainWindow::acknowledgeDaemonErrors() const { m_deamonHasErrors = false; }
@@ -420,6 +430,8 @@ void MainWindow::watchLogsAndConnection() const {
     }
   });
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
+    const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Log Watch SSE closed with status: " << status;
     // on error or dropped connection, retry:
     if (m_isDaemonConnected) {
       m_isDaemonConnected = false;
@@ -510,6 +522,7 @@ void MainWindow::watchAlerts() const {
   });
   connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
     // on error or dropped connection, retry:
+    // todo: IF daemon IS considered connected - this could spam:
     while (!m_isDaemonConnected) {
       delay(1000);
     }
