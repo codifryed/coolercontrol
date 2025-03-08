@@ -81,16 +81,12 @@ void IPC::saveWindowGeometry(const QByteArray& geometry) const {
 }
 
 void IPC::acknowledgeDaemonIssues() const {
-  // todo: refactor all these direct calls to signal/slot connections in the constructor
   qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrors();
 }
 
 void IPC::syncSettings() const { m_settings->sync(); }
 
 void IPC::forceQuit() const {
-  // this is only called when open form the UI currently
-  // closing saves the window geometry when quit from UI:
-  qobject_cast<MainWindow*>(parent())->close();
-  syncSettings();
-  QApplication::quit();
+  // this is only called when open from the UI currently
+  qobject_cast<MainWindow*>(parent())->forceQuit();
 }
