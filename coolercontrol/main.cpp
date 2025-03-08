@@ -23,7 +23,7 @@
 #include "main_window.h"
 
 void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu) {
-  QByteArrayView chromiumFlags;
+  QByteArray chromiumFlags;
   if (debugOrFullDebug) {
     chromiumFlags = disableGpu ? "--enable-logging --log-level=0 --disable-gpu"
                                : "--enable-logging --log-level=0";
