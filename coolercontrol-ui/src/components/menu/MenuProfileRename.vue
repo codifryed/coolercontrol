@@ -26,7 +26,6 @@ import { UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, ref, type Ref } from 'vue'
 import InputText from 'primevue/inputtext'
-import FloatLabel from 'primevue/floatlabel'
 import { PopoverClose, PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { useToast } from 'primevue/usetoast'
 
@@ -99,7 +98,10 @@ const nameInvalid = computed(() => {
                     class="w-80 bg-bg-two border-2 border-border-one p-4 rounded-lg text-text-color"
                 >
                     <span class="text-xl font-bold">Edit Name</span>
-                    <FloatLabel class="mt-8">
+                    <div class="mt-8 flex flex-col">
+                        <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
+                            {{ currentName }}
+                        </small>
                         <InputText
                             ref="inputArea"
                             id="property-name"
@@ -108,8 +110,7 @@ const nameInvalid = computed(() => {
                             v-model="nameInput"
                             @keydown.enter.prevent="clickSaveButton"
                         />
-                        <label for="property-name">{{ currentName }}</label>
-                    </FloatLabel>
+                    </div>
                     <br />
                     <div class="text-right mt-4">
                         <popover-close ref="saveButton" @click="closeAndSave">
