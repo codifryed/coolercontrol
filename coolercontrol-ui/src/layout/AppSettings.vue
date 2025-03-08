@@ -177,7 +177,7 @@ const applyGenericDaemonChange = _.debounce(
                     life: 6000,
                 })
                 await deviceStore.daemonClient.shutdownDaemon()
-                await deviceStore.waitAndReload(10)
+                await deviceStore.waitAndReload()
             },
         }),
     2000,

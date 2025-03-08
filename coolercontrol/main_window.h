@@ -47,6 +47,20 @@ class MainWindow final : public QMainWindow {
 
   void acknowledgeDaemonErrors() const;
 
+ public slots:
+  void forceQuit();
+
+  void reestablishDaemonConnection() const;
+
+  void startWatchingSSE() const;
+
+ signals:
+  void daemonConnectionLost() const;
+
+  void watchForSSE() const;
+
+  void dropConnections() const;
+
  protected:
   void closeEvent(QCloseEvent* event) override;
 
@@ -61,6 +75,8 @@ class MainWindow final : public QMainWindow {
   QWebChannel* m_channel;
   IPC* m_ipc;
   bool m_forceQuit{false};
+  bool m_startup{true};
+  bool m_changeAddress{false};
   QSystemTrayIcon* m_sysTrayIcon;
   QMenu* m_trayIconMenu;
   QMenu* m_modesTrayMenu;
@@ -102,9 +118,9 @@ class MainWindow final : public QMainWindow {
 
   void requestActiveMode() const;
 
-  void watchLogsAndConnection() const;
+  void watchConnectionAndLogs() const;
 
-  void verifyDaemonIsConnected() const;
+  void tryDaemonConnection() const;
 
   void watchModeActivation() const;
 

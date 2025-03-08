@@ -94,7 +94,15 @@ export const useDeviceStore = defineStore('device', () => {
             svg: svgLoader,
             svgViewBox: svgLoaderViewBox,
         })
-        await sleep(secs * 1000)
+        let s = 0
+        const daemonState = useDaemonState()
+        while (s < 30) {
+            await sleep(1000)
+            if (s > secs && daemonState.connected) {
+                break
+            }
+            s++
+        }
         reloadUI()
     }
 
@@ -595,6 +603,7 @@ export const useDeviceStore = defineStore('device', () => {
                     // attempt to re-establish connection automatically (resume/restart)
                     await daemonState.setConnected(false)
                     thisStore.loggedIn = false
+                    await sleep(1000)
                     await startSSE()
                 },
                 // @ts-ignore
@@ -627,6 +636,7 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
+                    await sleep(1000)
                     await startLogSSE()
                 },
                 onerror() {
@@ -653,6 +663,7 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
+                    await sleep(1000)
                     await startModeSSE()
                 },
                 onerror() {

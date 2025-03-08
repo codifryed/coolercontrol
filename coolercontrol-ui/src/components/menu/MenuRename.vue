@@ -26,7 +26,6 @@ import { UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, ref, type Ref } from 'vue'
 import InputText from 'primevue/inputtext'
-import FloatLabel from 'primevue/floatlabel'
 import { PopoverClose, PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 
 interface Props {
@@ -115,7 +114,10 @@ const nameInvalid = computed(() => {
             <popover-content side="right" class="z-10">
                 <div class="w-80 bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                     <span class="text-xl font-bold">Edit Name</span>
-                    <FloatLabel class="mt-8">
+                    <div class="mt-8 flex flex-col">
+                        <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
+                            {{ systemDisplayName }}
+                        </small>
                         <InputText
                             ref="inputArea"
                             id="property-name"
@@ -124,9 +126,8 @@ const nameInvalid = computed(() => {
                             v-model="nameInput"
                             @keydown.enter.prevent="clickSaveButton"
                         />
-                        <label for="property-name">{{ systemDisplayName }}</label>
-                    </FloatLabel>
-                    <small id="rename-help">
+                    </div>
+                    <small id="rename-help" class="ml-2">
                         A blank name will reset it to the system default.
                     </small>
                     <br />

@@ -118,5 +118,6 @@ export const useDaemonState = defineStore('daemonState', () => {
         warnings,
         errors,
         status,
+        connected,
     }
 })

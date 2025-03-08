@@ -256,7 +256,7 @@ const saveCCDeviceSettings = async (): Promise<void> => {
             }
             if (oneSuccessful) {
                 await deviceStore.daemonClient.shutdownDaemon()
-                await deviceStore.waitAndReload(10)
+                await deviceStore.waitAndReload()
             } else {
                 toast.add({
                     severity: 'error',

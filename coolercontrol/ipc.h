@@ -44,14 +44,6 @@ class IPC final : public QObject {
   Q_INVOKABLE [[nodiscard]] QString directoryPathDialog(const QString& title) const;
 
   /*
-      Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
-  */
- signals:
-  void sendText(const QString& text);
-
-  void webLoadFinished() const;
-
-  /*
       Slots are invoked from the JS client side and are processed on the server side.
   */
  public slots:
@@ -74,6 +66,14 @@ class IPC final : public QObject {
   void syncSettings() const;
 
   void loadFinished() const { emit webLoadFinished(); }
+
+  /*
+      Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
+  */
+ signals:
+  void sendText(const QString& text);
+
+  void webLoadFinished() const;
 
  private:
   QSettings* m_settings;
