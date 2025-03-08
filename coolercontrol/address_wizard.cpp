@@ -71,12 +71,19 @@ AddressPage::AddressPage(QWidget* parent) : QWizardPage(parent) {
   m_sslCheckbox->setToolTip("Enable or disable SSL/TLS (HTTPS)");
   registerField("ssl", m_sslCheckbox);
 
+  m_defaultButton = new QPushButton("Defaults");
+  m_defaultButton->setToolTip("Reset the daemon address to default values");
+  connect(m_defaultButton, &QPushButton::clicked, [this]() { resetAddressInputValues(); });
+
   auto* layout = new QGridLayout;
+  auto* spacer = new QSpacerItem(1, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
   layout->addWidget(addressLabel, 0, 0);
   layout->addWidget(m_addressLineEdit, 0, 1);
   layout->addWidget(portLabel, 1, 0);
   layout->addWidget(m_portLineEdit, 1, 1);
   layout->addWidget(m_sslCheckbox, 2, 0, 1, 2);
+  layout->addItem(spacer, 3, 0, 1, 2);
+  layout->addWidget(m_defaultButton, 4, 0, 1, 1);
   setLayout(layout);
 
   const QSettings settings;

@@ -20,6 +20,7 @@
 #include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QSettings>
 #include <QWizardPage>
 
@@ -45,5 +46,6 @@ class AddressPage final : public QWizardPage {
   QLineEdit* m_addressLineEdit;
   QLineEdit* m_portLineEdit;
   QCheckBox* m_sslCheckbox;
+  QPushButton* m_defaultButton;
 };
 #endif  // ADDRESSWIZARD_H

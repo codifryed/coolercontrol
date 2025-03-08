@@ -102,17 +102,20 @@ void MainWindow::initWizard() {
   m_wizard->setOption(QWizard::IndependentPages, true);
   m_wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
   m_wizard->setOption(QWizard::CancelButtonOnLeft, true);
-  m_wizard->setButtonText(QWizard::CustomButton1, "&Reset");
+  m_wizard->setButtonText(QWizard::CustomButton1, "&Retry");
   m_wizard->setOption(QWizard::HaveCustomButton1, true);
-  m_wizard->setButtonText(QWizard::HelpButton, "&Quit");
+  m_wizard->setButtonText(QWizard::HelpButton, "&Quit App");
   m_wizard->setOption(QWizard::HaveHelpButton, true);
   m_wizard->addPage(new IntroPage);
   auto addressPage = new AddressPage;
   m_wizard->addPage(addressPage);
   m_wizard->setMinimumSize(640, 480);
   connect(m_wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
-  connect(m_wizard, &QWizard::customButtonClicked, [addressPage]([[maybe_unused]] const int which) {
-    addressPage->resetAddressInputValues();
+  connect(m_wizard, &QWizard::customButtonClicked, [this](const int which) {
+    if (which == 6) {  // Retry CustomButton1
+      m_view->load(getDaemonUrl());
+      m_wizard->hide();
+    }
   });
   connect(m_wizard, &QDialog::accepted, [this]() {
     QSettings settings;
@@ -140,7 +143,8 @@ void MainWindow::initSystemTray() {
     if (isVisible()) {
       hide();
     } else {
-      show();
+      showNormal();
+      raise();
       activateWindow();
     }
   });
@@ -179,7 +183,8 @@ void MainWindow::initSystemTray() {
       if (isVisible()) {
         hide();
       } else {
-        show();
+        showNormal();
+        raise();
         activateWindow();
       }
     }
@@ -313,9 +318,11 @@ void MainWindow::requestDaemonErrors() const {
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
-  connect(healthReply, &QNetworkReply::finished, [healthReply, this]() {
-    const QString ReplyText = healthReply->readAll();
-    const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+  connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
+    const auto status = healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString replyText = healthReply->readAll();
+    qDebug() << "Health Endpoint Response Status: " << status << "; Body: " << replyText;
+    const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
     if (const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
         daemonVersion.isEmpty()) {
       qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
@@ -327,6 +334,14 @@ void MainWindow::requestDaemonErrors() const {
     }
     healthReply->deleteLater();
   });
+  connect(healthReply, &QNetworkReply::errorOccurred,
+          [healthReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qWarning() << "Error occurred connecting to Daemon Health endpoint. Status: " << status
+                       << " QtErrorCode: " << code;
+            healthReply->deleteLater();
+          });
 }
 
 void MainWindow::acknowledgeDaemonErrors() const { m_deamonHasErrors = false; }
@@ -337,10 +352,20 @@ void MainWindow::requestAllModes() const {
   modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
   const auto modesReply = m_manager->get(modesRequest);
   connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
+    const auto status = modesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString modesJson = modesReply->readAll();
+    qDebug() << "Modes Endpoint Response Status: " << status << "; Body: " << modesJson;
     setTrayMenuModes(modesJson);
     modesReply->deleteLater();
   });
+  connect(modesReply, &QNetworkReply::errorOccurred,
+          [modesReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                modesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qWarning() << "Error occurred connecting to Daemon Modes endpoint. Status: " << status
+                       << " QtErrorCode: " << code;
+            modesReply->deleteLater();
+          });
 }
 
 void MainWindow::setTrayMenuModes(const QString& modesJson) const {
@@ -366,7 +391,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
         const auto status =
             setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status == 401) {
-          m_view->show();  // show window if we have login credentials error
+          m_view->showNormal();  // show window if we have login credentials error
           qWarning() << "Authentication no longer valid when trying to apply Mode. Please login.";
         }
         if (status >= 300) {
@@ -397,8 +422,11 @@ void MainWindow::requestActiveMode() const {
   modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
   const auto modesActiveReply = m_manager->get(modesActiveRequest);
   connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
-    const QString ReplyText = modesActiveReply->readAll();
-    const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+    const auto status =
+        modesActiveReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString replyText = modesActiveReply->readAll();
+    qDebug() << "ModesActive Endpoint Response Status: " << status << "; Body: " << replyText;
+    const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
     setActiveMode(rootObj.value("current_mode_uid").toString());
     modesActiveReply->deleteLater();
   });
@@ -420,6 +448,8 @@ void MainWindow::watchLogsAndConnection() const {
     }
   });
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
+    const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Log Watch SSE closed with status: " << status;
     // on error or dropped connection, retry:
     if (m_isDaemonConnected) {
       m_isDaemonConnected = false;
@@ -447,6 +477,14 @@ void MainWindow::verifyDaemonIsConnected() const {
     }
     healthReply->deleteLater();
   });
+  connect(healthReply, &QNetworkReply::errorOccurred,
+          [healthReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qDebug() << "Error occurred establishing connection to Daemon. Status: " << status
+                     << " QtErrorCode: " << code;
+            healthReply->deleteLater();
+          });
 }
 
 void MainWindow::watchModeActivation() const {
@@ -477,6 +515,8 @@ void MainWindow::watchModeActivation() const {
     m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
   });
   connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
+    const auto status = sseModesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Modes SSE closed with status: " << status;
     // on error or dropped connection, retry:
     while (!m_isDaemonConnected) {
       delay(1000);
@@ -509,6 +549,8 @@ void MainWindow::watchAlerts() const {
     m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
+    const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Alerts SSE closed with status: " << status;
     // on error or dropped connection, retry:
     while (!m_isDaemonConnected) {
       delay(1000);

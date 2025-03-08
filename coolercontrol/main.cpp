@@ -22,6 +22,47 @@
 #include "constants.h"
 #include "main_window.h"
 
+void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu) {
+  QByteArray chromiumFlags;
+  if (debugOrFullDebug) {
+    chromiumFlags = disableGpu ? "--enable-logging --log-level=0 --disable-gpu"
+                               : "--enable-logging --log-level=0";
+  } else {
+    chromiumFlags = disableGpu ? "--enable-logging --log-level=3 --disable-gpu"
+                               : "--enable-logging --log-level=3";
+  }
+  qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags);
+}
+
+void setEnvVars(const bool debugOrFullDebug, const bool disableGpu) {
+  if (debugOrFullDebug) {
+    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
+  }
+  if (disableGpu) {
+    qputenv("QT_OPENGL", "software");
+  }
+}
+
+void setLogFilters(const bool debug, const bool fullDebug) {
+  if (debug) {
+    QLoggingCategory::setFilterRules(
+        "default.debug=true\n"
+        "qt.webenginecontext.debug=true");
+  } else if (fullDebug) {
+    QLoggingCategory::setFilterRules(
+        "*.debug=true\n"
+        "qt.webenginecontext.debug=true");
+  } else {
+    QLoggingCategory::setFilterRules("js.warning=false");
+  }
+}
+
+void handleCmdOptions(const bool debug, const bool fullDebug, const bool disableGpu) {
+  setChromiumFlags(debug || fullDebug, disableGpu);
+  setEnvVars(debug || fullDebug, disableGpu);
+  setLogFilters(debug, fullDebug);
+}
+
 int main(int argc, char* argv[]) {
   qputenv("QT_MESSAGE_PATTERN",
           "%{time} coolercontrol "
@@ -59,16 +100,15 @@ int main(int argc, char* argv[]) {
                                                      << "debug",
                                        "Enable debug output.");
   parser.addOption(debugOption);
+  const QCommandLineOption fullDebugOption(QStringList() << "full-debug",
+                                           "Enable full debug output. This outputs a lot of data.");
+  parser.addOption(fullDebugOption);
+  const QCommandLineOption gpuOption(QStringList() << "disable-gpu",
+                                     "Disable GPU hardware acceleration.");
+  parser.addOption(gpuOption);
   parser.process(a);
-  if (parser.isSet(debugOption)) {
-    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=0");
-    QLoggingCategory::setFilterRules("*.debug=true");
-    QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
-    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
-  } else {
-    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=3");
-    QLoggingCategory::setFilterRules("js.warning=false");
-  }
+  handleCmdOptions(parser.isSet(debugOption), parser.isSet(fullDebugOption),
+                   parser.isSet(gpuOption));
 
   MainWindow w;
   w.setWindowTitle("CoolerControl");
