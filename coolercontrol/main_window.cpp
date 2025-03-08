@@ -333,7 +333,7 @@ void MainWindow::requestDaemonErrors() const {
           [healthReply](const QNetworkReply::NetworkError code) {
             const auto status =
                 healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            qWarning() << "Error occurred establishing connection to Daemon. Status: " << status
+            qWarning() << "Error occurred connecting to Daemon Health endpoint. Status: " << status
                        << " QtErrorCode: " << code;
             healthReply->deleteLater();
           });
@@ -347,10 +347,20 @@ void MainWindow::requestAllModes() const {
   modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
   const auto modesReply = m_manager->get(modesRequest);
   connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
+    const auto status = modesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString modesJson = modesReply->readAll();
+    qDebug() << "Modes Endpoint Response Status: " << status << "; Body: " << modesJson;
     setTrayMenuModes(modesJson);
     modesReply->deleteLater();
   });
+  connect(modesReply, &QNetworkReply::errorOccurred,
+          [modesReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                modesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qWarning() << "Error occurred connecting to Daemon Modes endpoint. Status: " << status
+                       << " QtErrorCode: " << code;
+            modesReply->deleteLater();
+          });
 }
 
 void MainWindow::setTrayMenuModes(const QString& modesJson) const {
@@ -407,8 +417,11 @@ void MainWindow::requestActiveMode() const {
   modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
   const auto modesActiveReply = m_manager->get(modesActiveRequest);
   connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
-    const QString ReplyText = modesActiveReply->readAll();
-    const QJsonObject rootObj = QJsonDocument::fromJson(ReplyText.toUtf8()).object();
+    const auto status =
+        modesActiveReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString replyText = modesActiveReply->readAll();
+    qDebug() << "ModesActive Endpoint Response Status: " << status << "; Body: " << replyText;
+    const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
     setActiveMode(rootObj.value("current_mode_uid").toString());
     modesActiveReply->deleteLater();
   });
@@ -459,6 +472,14 @@ void MainWindow::verifyDaemonIsConnected() const {
     }
     healthReply->deleteLater();
   });
+  connect(healthReply, &QNetworkReply::errorOccurred,
+          [healthReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qDebug() << "Error occurred establishing connection to Daemon. Status: " << status
+                     << " QtErrorCode: " << code;
+            healthReply->deleteLater();
+          });
 }
 
 void MainWindow::watchModeActivation() const {
@@ -489,6 +510,8 @@ void MainWindow::watchModeActivation() const {
     m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
   });
   connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
+    const auto status = sseModesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Modes SSE closed with status: " << status;
     // on error or dropped connection, retry:
     while (!m_isDaemonConnected) {
       delay(1000);
@@ -521,8 +544,9 @@ void MainWindow::watchAlerts() const {
     m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
+    const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Alerts SSE closed with status: " << status;
     // on error or dropped connection, retry:
-    // todo: IF daemon IS considered connected - this could spam:
     while (!m_isDaemonConnected) {
       delay(1000);
     }
