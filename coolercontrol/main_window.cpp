@@ -91,6 +91,11 @@ MainWindow::MainWindow(QWidget* parent)
           [this](const QNetworkCookie& cookie) { m_manager->cookieJar()->deleteCookie(cookie); });
   cookieStore->loadAllCookies();
 
+  connect(this, &MainWindow::daemonConnectionLost, this, &MainWindow::reestablishDaemonConnection,
+          Qt::QueuedConnection);
+  connect(this, &MainWindow::watchForSSE, this, &MainWindow::startWatchingSSE,
+          Qt::QueuedConnection);
+
   initWizard();
   initDelay();
   initSystemTray();
@@ -122,6 +127,12 @@ void MainWindow::initWizard() {
     settings.setValue(SETTING_DAEMON_ADDRESS.data(), m_wizard->field("address").toString());
     settings.setValue(SETTING_DAEMON_PORT.data(), m_wizard->field("port").toInt());
     settings.setValue(SETTING_DAEMON_SSL_ENABLED.data(), m_wizard->field("ssl").toBool());
+    m_changeAddress = true;
+    emit dropConnections();
+    delay(300);  // give signals a moment to process.
+    m_startup = true;
+    m_changeAddress = false;
+    m_isDaemonConnected = false;
     m_view->load(getDaemonUrl());
   });
 }
@@ -153,11 +164,7 @@ void MainWindow::initSystemTray() {
   connect(m_addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
 
   m_quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
-  connect(m_quitAction, &QAction::triggered, [this]() {
-    m_forceQuit = true;
-    // Triggers the close event but with the forceQuit flag set
-    close();
-  });
+  connect(m_quitAction, &QAction::triggered, this, &MainWindow::forceQuit);
   m_trayIconMenu = new QMenu(this);
   m_trayIconMenu->setTitle("CoolerControl");
   m_trayIconMenu->addAction(ccHeader);
@@ -198,16 +205,27 @@ void MainWindow::initWebUI() {
       displayAddressWizard();
       notifyDaemonConnectionError();
     } else {
-      qInfo() << "Successfully connected to UI at: " << getDaemonUrl().url();
-      m_isDaemonConnected = true;
-      requestDaemonErrors();
-      requestAllModes();
-      requestActiveMode();
-      watchLogsAndConnection();
-      watchModeActivation();
-      watchAlerts();
+      qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
+      if (m_startup) {  // don't do this for Wizard retries
+        while (!m_isDaemonConnected) {
+          delay(1000);
+          tryDaemonConnection();
+        }
+        requestDaemonErrors();
+        requestAllModes();
+        requestActiveMode();
+        emit watchForSSE();
+        m_startup = false;
+        qInfo() << "Successfully connected to the Daemon";
+      }
     }
   });
+}
+
+void MainWindow::forceQuit() {
+  m_forceQuit = true;
+  // Triggers the close event but with the forceQuit flag set
+  close();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
@@ -217,6 +235,8 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     event->ignore();
     return;
   }
+  m_isDaemonConnected = false;  // stops from trying to reconnect
+  emit dropConnections();
   m_ipc->syncSettings();
   event->accept();
   QApplication::quit();
@@ -432,12 +452,20 @@ void MainWindow::requestActiveMode() const {
   });
 }
 
-void MainWindow::watchLogsAndConnection() const {
+void MainWindow::startWatchingSSE() const {
+  watchConnectionAndLogs();
+  watchModeActivation();
+  watchAlerts();
+}
+
+void MainWindow::watchConnectionAndLogs() const {
   QNetworkRequest sseLogsRequest;
   sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                               QNetworkRequest::AlwaysNetwork);
   sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data()));
   const auto sseLogsReply = m_manager->get(sseLogsRequest);
+  connect(this, &MainWindow::dropConnections, sseLogsReply, &QNetworkReply::abort,
+          Qt::DirectConnection);
   connect(sseLogsReply, &QNetworkReply::readyRead, [sseLogsReply, this]() {
     // This is also called for keepAlive ticks - but with semi-filled message
     const QString log = sseLogsReply->readAll();
@@ -450,30 +478,41 @@ void MainWindow::watchLogsAndConnection() const {
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
     const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Log Watch SSE closed with status: " << status;
-    // on error or dropped connection, retry:
-    if (m_isDaemonConnected) {
+    // on error or dropped connection will be re-connected once connection is re-established.
+    if (m_isDaemonConnected && !m_changeAddress) {
       m_isDaemonConnected = false;
       notifyDaemonDisconnected();
+      emit daemonConnectionLost();
+      qInfo() << "Connection to the Daemon Lost";
     }
-    while (!m_isDaemonConnected) {
-      delay(1000);
-      verifyDaemonIsConnected();
-    }
-    watchLogsAndConnection();
-    qInfo() << "Connection to the Daemon Reestablished";
     sseLogsReply->deleteLater();
   });
 }
 
-void MainWindow::verifyDaemonIsConnected() const {
+void MainWindow::reestablishDaemonConnection() const {
+  if (m_isDaemonConnected || m_changeAddress) {
+    return;
+  }
+  emit dropConnections();
+  while (!m_isDaemonConnected) {
+    delay(2000);
+    tryDaemonConnection();
+  }
+  qInfo() << "Connection to the Daemon Reestablished";
+  emit watchForSSE();
+}
+
+void MainWindow::tryDaemonConnection() const {
   QNetworkRequest healthRequest;
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
-  connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
+  connect(healthReply, &QNetworkReply::readyRead, [this, healthReply]() {
     if (!m_isDaemonConnected) {
       m_isDaemonConnected = true;
-      notifyDaemonConnectionRestored();
+      if (!m_startup) {
+        notifyDaemonConnectionRestored();
+      }
     }
     healthReply->deleteLater();
   });
@@ -493,6 +532,8 @@ void MainWindow::watchModeActivation() const {
                                QNetworkRequest::AlwaysNetwork);
   sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
   const auto sseModesReply = m_manager->get(sseModesRequest);
+  connect(this, &MainWindow::dropConnections, sseModesReply, &QNetworkReply::abort,
+          Qt::DirectConnection);
   connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
     const QString modeActivated =
         QString(sseModesReply->readAll()).simplified().replace("event: mode data: ", "");
@@ -514,14 +555,10 @@ void MainWindow::watchModeActivation() const {
                                             : QString("Mode %1 Activated").arg(currentModeName);
     m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
   });
-  connect(sseModesReply, &QNetworkReply::finished, [this, sseModesReply]() {
+  connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
+    // on error or dropped connection will be re-connected once connection is re-established.
     const auto status = sseModesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Modes SSE closed with status: " << status;
-    // on error or dropped connection, retry:
-    while (!m_isDaemonConnected) {
-      delay(1000);
-    }
-    watchModeActivation();
     sseModesReply->deleteLater();
   });
 }
@@ -532,6 +569,8 @@ void MainWindow::watchAlerts() const {
                              QNetworkRequest::AlwaysNetwork);
   alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
   const auto alertsReply = m_manager->get(alertsRequest);
+  connect(this, &MainWindow::dropConnections, alertsReply, &QNetworkReply::abort,
+          Qt::DirectConnection);
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
     const QString alert =
         QString(alertsReply->readAll()).simplified().replace("event: alert data: ", "");
@@ -548,14 +587,10 @@ void MainWindow::watchAlerts() const {
     const auto msgIcon = alertState == tr("Active") ? tr("dialog-warning") : tr("emblem-default");
     m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
-  connect(alertsReply, &QNetworkReply::finished, [this, alertsReply]() {
+  connect(alertsReply, &QNetworkReply::finished, [alertsReply]() {
     const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Alerts SSE closed with status: " << status;
-    // on error or dropped connection, retry:
-    while (!m_isDaemonConnected) {
-      delay(1000);
-    }
-    watchAlerts();
+    // on error or dropped connection will be re-connected once connection is re-established.
     alertsReply->deleteLater();
   });
 }
