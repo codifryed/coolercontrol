@@ -62,8 +62,9 @@ int main(int argc, char* argv[]) {
   parser.process(a);
   if (parser.isSet(debugOption)) {
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=0");
-    QLoggingCategory::setFilterRules("*.debug=true");
-    QLoggingCategory::setFilterRules("qt.webenginecontext.debug=true");
+    QLoggingCategory::setFilterRules(
+        "default.debug=true\n"
+        "qt.webenginecontext.debug=true");
     qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
   } else {
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=3");
