@@ -18,6 +18,7 @@
 #include <QCommandLineParser>
 #include <QDBusConnection>
 #include <QLoggingCategory>
+#include <QSurfaceFormat>
 
 #include "constants.h"
 #include "main_window.h"
@@ -72,6 +73,12 @@ int main(int argc, char* argv[]) {
   // Standard Qt Paths:
   // https://doc.qt.io/qt-6/qstandardpaths.htm
   // settings: ~/.config/{app_id}/{app_id}.conf
+
+  QSurfaceFormat surfaceFormat;
+  surfaceFormat.setProfile(QSurfaceFormat::CompatibilityProfile);
+  surfaceFormat.setRenderableType(QSurfaceFormat::OpenGL);
+  QSurfaceFormat::setDefaultFormat(surfaceFormat);
+
   const QApplication a(argc, argv);
   QApplication::setWindowIcon(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.png")));
   QCoreApplication::setOrganizationName(APP_ID.data());
