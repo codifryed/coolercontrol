@@ -102,17 +102,20 @@ void MainWindow::initWizard() {
   m_wizard->setOption(QWizard::IndependentPages, true);
   m_wizard->setButtonText(QWizard::WizardButton::FinishButton, "&Apply");
   m_wizard->setOption(QWizard::CancelButtonOnLeft, true);
-  m_wizard->setButtonText(QWizard::CustomButton1, "&Reset");
+  m_wizard->setButtonText(QWizard::CustomButton1, "&Retry");
   m_wizard->setOption(QWizard::HaveCustomButton1, true);
-  m_wizard->setButtonText(QWizard::HelpButton, "&Quit");
+  m_wizard->setButtonText(QWizard::HelpButton, "&Quit App");
   m_wizard->setOption(QWizard::HaveHelpButton, true);
   m_wizard->addPage(new IntroPage);
   auto addressPage = new AddressPage;
   m_wizard->addPage(addressPage);
   m_wizard->setMinimumSize(640, 480);
   connect(m_wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
-  connect(m_wizard, &QWizard::customButtonClicked, [addressPage]([[maybe_unused]] const int which) {
-    addressPage->resetAddressInputValues();
+  connect(m_wizard, &QWizard::customButtonClicked, [this](const int which) {
+    if (which == 6) {  // Retry CustomButton1
+      m_view->load(getDaemonUrl());
+      m_wizard->hide();
+    }
   });
   connect(m_wizard, &QDialog::accepted, [this]() {
     QSettings settings;
