@@ -140,7 +140,8 @@ void MainWindow::initSystemTray() {
     if (isVisible()) {
       hide();
     } else {
-      show();
+      showNormal();
+      raise();
       activateWindow();
     }
   });
@@ -179,7 +180,8 @@ void MainWindow::initSystemTray() {
       if (isVisible()) {
         hide();
       } else {
-        show();
+        showNormal();
+        raise();
         activateWindow();
       }
     }
@@ -386,7 +388,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
         const auto status =
             setModeReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status == 401) {
-          m_view->show();  // show window if we have login credentials error
+          m_view->showNormal();  // show window if we have login credentials error
           qWarning() << "Authentication no longer valid when trying to apply Mode. Please login.";
         }
         if (status >= 300) {
