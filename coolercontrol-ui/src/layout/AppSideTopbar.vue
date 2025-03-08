@@ -184,7 +184,7 @@ const restartItems = ref([
                             detail: 'Daemon shutdown signal accepted',
                             life: 6000,
                         })
-                        await deviceStore.waitAndReload(10)
+                        await deviceStore.waitAndReload()
                     } else {
                         toast.add({
                             severity: 'error',
