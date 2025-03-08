@@ -59,15 +59,24 @@ int main(int argc, char* argv[]) {
                                                      << "debug",
                                        "Enable debug output.");
   parser.addOption(debugOption);
+  const QCommandLineOption gpuOption(QStringList() << "disable-gpu",
+                                     "Disable GPU hardware acceleration.");
+  parser.addOption(gpuOption);
   parser.process(a);
   if (parser.isSet(debugOption)) {
-    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=0");
+    const QByteArray chromiumFlags = parser.isSet(gpuOption)
+                                         ? "--enable-logging --log-level=0 --disable-gpu"
+                                         : "--enable-logging --log-level=0";
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags);
     QLoggingCategory::setFilterRules(
         "default.debug=true\n"
         "qt.webenginecontext.debug=true");
     qputenv("QTWEBENGINE_REMOTE_DEBUGGING", QByteArray::number(9000));
   } else {
-    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--enable-logging --log-level=3");
+    const QByteArray chromiumFlags = parser.isSet(gpuOption)
+                                         ? "--enable-logging --log-level=3 --disable-gpu"
+                                         : "--enable-logging --log-level=3";
+    qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags);
     QLoggingCategory::setFilterRules("js.warning=false");
   }
 
