@@ -219,10 +219,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 
 void MainWindow::hideEvent(QHideEvent* event) { setTrayActionToShow(); }
 
-void MainWindow::showEvent(QShowEvent* event) {
-  setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
-  setTrayActionToHide();
-}
+void MainWindow::showEvent(QShowEvent* event) { setTrayActionToHide(); }
 
 QUrl MainWindow::getDaemonUrl() {
   const QSettings settings;
