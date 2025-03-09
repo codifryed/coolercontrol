@@ -7,7 +7,7 @@
 Name:           %{project}
 Version:        1.4.5
 Release:        1%{?dist}
-Summary:        Monitor and control your cooling devices.
+Summary:        Monitor and control your cooling devices
 
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
@@ -20,7 +20,7 @@ BuildRequires:  autoconf automake gcc gcc-c++
 BuildRequires:  qt6-qtbase-devel
 BuildRequires:  qt6-qtwebengine-devel
 BuildRequires:  qt6-qtwebchannel-devel
-Requires:       hicolor-icon-theme
+Requires:       hicolor-icon-theme > 0
 Requires:       qt6-qtbase
 Requires:       qt6-qtwebengine
 Requires:       qt6-qtwebchannel
