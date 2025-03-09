@@ -58,9 +58,6 @@ cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 %license LICENSE
 %doc README.md CHANGELOG.md
 
-%pre
-%systemd_pre coolercontrold.service
-
 %post
 %systemd_post coolercontrold.service
 
