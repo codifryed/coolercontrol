@@ -58,12 +58,12 @@ import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 export default class DaemonClient {
     public readonly daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
-    private daemonTimeout: number = 2_000
-    private daemonTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
+    private daemonTimeout: number = 10_000
+    private daemonTimeoutExtended: number = 15_000 // this is for image processing calls that can take significantly longer
     private daemonInitialConnectionTimeout: number = 20_000 // to allow extra time for the daemon to come up
     private daemonCompleteHistoryTimeout: number = 30_000 // takes a long time on a slow connection
-    private killClientTimeout: number = 3_000
-    private killClientTimeoutExtended: number = 12_000 // this is for image processing calls that can take significantly longer
+    private killClientTimeout: number = 11_000
+    private killClientTimeoutExtended: number = 16_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
     private readonly userId: string = 'CCAdmin'
     public readonly defaultPasswd: string = 'coolAdmin'
