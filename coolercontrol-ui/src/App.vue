@@ -179,46 +179,46 @@ const steps = [
             },
         },
     },
-    {
-        attachTo: { element: '#custom-sensors' },
-        content: {
-            title: 'Custom Sensors',
-            description:
-                'Custom Sensors allow you to combine existing sensor data in various ways, ' +
-                'and enable you to use your own custom scripted sensor output.',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#modes' },
-        content: {
-            title: 'Modes',
-            description:
-                'Modes are saved collections of your settings, allowing you to switch ' +
-                'between silent and performance modes easily',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#alerts' },
-        content: {
-            title: 'Alerts',
-            description: 'Alerts will notify you when sensors values exceed chosen thresholds',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
+    // {
+    //     attachTo: { element: '#custom-sensors' },
+    //     content: {
+    //         title: 'Custom Sensors',
+    //         description:
+    //             'Custom Sensors allow you to combine existing sensor data in various ways, ' +
+    //             'and enable you to use your own custom scripted sensor output.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#modes' },
+    //     content: {
+    //         title: 'Modes',
+    //         description:
+    //             'Modes are saved collections of your settings, allowing you to switch ' +
+    //             'between silent and performance modes easily',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#alerts' },
+    //     content: {
+    //         title: 'Alerts',
+    //         description: 'Alerts will notify you when sensors values exceed chosen thresholds',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
     {
         attachTo: { element: '#logo' },
         content: {
@@ -260,42 +260,42 @@ const steps = [
             },
         },
     },
-    {
-        attachTo: { element: '#modes-quick' },
-        content: {
-            title: 'Modes Quick Menu',
-            description: 'This is a menu to quickly switch between your saved Modes.',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#collapse-menu' },
-        content: {
-            title: 'Collapse / Expand Main Menu',
-            description: 'Use this to expand or collapse the main menu.',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
-    {
-        attachTo: { element: '#alerts-quick' },
-        content: {
-            title: 'Alerts Overview',
-            description: 'This is where you can view all the alert statuses and logs.',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
+    // {
+    //     attachTo: { element: '#modes-quick' },
+    //     content: {
+    //         title: 'Modes Quick Menu',
+    //         description: 'This is a menu to quickly switch between your saved Modes.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#collapse-menu' },
+    //     content: {
+    //         title: 'Collapse / Expand Main Menu',
+    //         description: 'Use this to expand or collapse the main menu.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#alerts-quick' },
+    //     content: {
+    //         title: 'Alerts Overview',
+    //         description: 'This is where you can view all the alert statuses and logs.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
     {
         attachTo: { element: '#settings' },
         content: {
@@ -309,18 +309,18 @@ const steps = [
             },
         },
     },
-    {
-        attachTo: { element: '#access' },
-        content: {
-            title: 'Access Menu',
-            description: 'This is where you manage your password and verify your access level.',
-        },
-        options: {
-            popper: {
-                placement: 'right',
-            },
-        },
-    },
+    // {
+    //     attachTo: { element: '#access' },
+    //     content: {
+    //         title: 'Access Menu',
+    //         description: 'This is where you manage your password and verify your access level.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
     {
         attachTo: { element: '#restart' },
         content: {
