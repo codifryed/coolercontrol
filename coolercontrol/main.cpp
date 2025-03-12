@@ -63,6 +63,27 @@ void handleCmdOptions(const bool debug, const bool fullDebug, const bool disable
   setLogFilters(debug, fullDebug);
 }
 
+void parseCLIOptions(const QApplication& a) {
+  QCommandLineParser parser;
+  parser.setApplicationDescription("CoolerControl GUI Desktop Application");
+  parser.addHelpOption();
+  parser.addVersionOption();
+  const QCommandLineOption debugOption(QStringList() << "d"
+                                                     << "debug",
+                                       "Enable debug output.");
+  parser.addOption(debugOption);
+  const QCommandLineOption fullDebugOption(QStringList() << "full-debug",
+                                           "Enable full debug output. This outputs a lot of data.");
+  parser.addOption(fullDebugOption);
+  const QCommandLineOption gpuOption(QStringList() << "disable-gpu",
+                                     "Disable GPU hardware acceleration.");
+  parser.addOption(gpuOption);
+  parser.process(a);
+  handleCmdOptions(parser.isSet(debugOption), parser.isSet(fullDebugOption),
+                   parser.isSet(gpuOption));
+}
+
+/// Entrypoint for the application
 int main(int argc, char* argv[]) {
   qputenv("QT_MESSAGE_PATTERN",
           "%{time} coolercontrol "
@@ -92,23 +113,7 @@ int main(int argc, char* argv[]) {
   } else {
     qWarning("Cannot connect to the D-Bus session bus.");
   }
-  QCommandLineParser parser;
-  parser.setApplicationDescription("CoolerControl GUI Desktop Application");
-  parser.addHelpOption();
-  parser.addVersionOption();
-  const QCommandLineOption debugOption(QStringList() << "d"
-                                                     << "debug",
-                                       "Enable debug output.");
-  parser.addOption(debugOption);
-  const QCommandLineOption fullDebugOption(QStringList() << "full-debug",
-                                           "Enable full debug output. This outputs a lot of data.");
-  parser.addOption(fullDebugOption);
-  const QCommandLineOption gpuOption(QStringList() << "disable-gpu",
-                                     "Disable GPU hardware acceleration.");
-  parser.addOption(gpuOption);
-  parser.process(a);
-  handleCmdOptions(parser.isSet(debugOption), parser.isSet(fullDebugOption),
-                   parser.isSet(gpuOption));
+  parseCLIOptions(a);
 
   MainWindow w;
   w.setWindowTitle("CoolerControl");
