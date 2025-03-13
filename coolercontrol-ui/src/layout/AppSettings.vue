@@ -360,7 +360,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Line Size
+                                        Dashboard Line Size
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 leading-none border-border-one border-l-2 border-t-2"
