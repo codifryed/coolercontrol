@@ -43,7 +43,7 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { computed, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
@@ -199,6 +199,7 @@ const dashboardsTree = (): any => {
         }),
     }
 }
+const homeDashboardUID = computed(() => settingsStore.dashboards.at(0)?.uid)
 const modesTree = (): any => {
     return {
         id: 'modes',
@@ -842,6 +843,10 @@ onMounted(async () => {
                     <!--}"-->
                     <router-link
                         class="flex h-full items-center justify-between outline-none"
+                        :class="{
+                            'text-accent':
+                                route.fullPath === '/' && data.dashboardUID === homeDashboardUID,
+                        }"
                         tabindex="0"
                         exact
                         :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"

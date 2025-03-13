@@ -97,6 +97,7 @@ const dashboardItems = computed(() => {
     }
     return dashboardItems
 })
+const homeDashboardUID = computed(() => settingsStore.dashboards.at(0)?.uid)
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {
@@ -331,7 +332,11 @@ const addItems = computed(() => [
                 @click="router.push({ name: 'system-overview' })"
             >
                 <svg-icon
-                    :class="{ 'text-accent': router.currentRoute.value.fullPath === '/' }"
+                    :class="{
+                        'text-accent':
+                            router.currentRoute.value.fullPath === '/' ||
+                            router.currentRoute.value.params.dashboardUID === homeDashboardUID,
+                    }"
                     type="mdi"
                     :path="mdiHomeAnalytics"
                     :size="getREMSize(1.75)"
@@ -348,7 +353,10 @@ const addItems = computed(() => [
                                 type="mdi"
                                 :class="{
                                     'text-accent':
-                                        router.currentRoute.value.params.dashboardUID === item.uid,
+                                        router.currentRoute.value.params.dashboardUID ===
+                                            item.uid ||
+                                        (router.currentRoute.value.fullPath === '/' &&
+                                            item.uid === homeDashboardUID),
                                 }"
                                 :path="item.mdiIcon ?? ''"
                                 :size="getREMSize(1.25)"
@@ -357,7 +365,10 @@ const addItems = computed(() => [
                                 class="ml-1.5"
                                 :class="{
                                     'text-accent':
-                                        router.currentRoute.value.params.dashboardUID === item.uid,
+                                        router.currentRoute.value.params.dashboardUID ===
+                                            item.uid ||
+                                        (router.currentRoute.value.fullPath === '/' &&
+                                            item.uid === homeDashboardUID),
                                 }"
                             >
                                 {{ item.label }}
