@@ -394,7 +394,12 @@ const addItems = computed(() => [
                 @click="activatePreviousMode"
                 v-tooltip.right="{ value: 'Modes', disable: modesItems.length > 0 }"
             >
-                <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(1.75)" />
+                <svg-icon
+                    type="mdi"
+                    :class="{ 'text-accent': settingsStore.modeActiveCurrent }"
+                    :path="mdiBookmarkOutline"
+                    :size="getREMSize(1.75)"
+                />
             </Button>
             <template #dropdown>
                 <Menu v-if="modesItems.length > 0" :model="modesItems" append-to="self">
