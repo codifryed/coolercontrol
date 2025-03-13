@@ -183,6 +183,8 @@ const applyGenericDaemonChange = _.debounce(
     2000,
 )
 
+const applyQuickUIRefresh = _.debounce(() => deviceStore.reloadUI(), 1000)
+
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
 const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
 const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
@@ -354,6 +356,40 @@ onMounted(() => {
                                 </tr>
                                 <tr
                                     v-tooltip.right="
+                                        'Whether to display entities below device sensors in the main menu.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left py-1"
+                                            v-tooltip.top="
+                                                'Triggers an automatic restart of the UI'
+                                            "
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestart"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Entities below Sensors
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.menuEntitiesAtBottom"
+                                            size="large"
+                                            @change="applyQuickUIRefresh"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
                                         'Adjust the line thickness of charts on the dashboard'
                                     "
                                 >
@@ -430,7 +466,7 @@ onMounted(() => {
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
-                                            class="float-left"
+                                            class="float-left py-1"
                                             v-tooltip.top="
                                                 'Triggers an automatic restart of the UI'
                                             "

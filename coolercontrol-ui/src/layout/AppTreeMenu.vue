@@ -150,13 +150,23 @@ const nodeProps = {
 const data: Reactive<Tree[]> = reactive([])
 const createTreeMenu = (): void => {
     data.length = 0
-    data.push(dashboardsTree())
-    data.push(modesTree())
-    data.push(profilesTree())
-    data.push(functionsTree())
-    data.push(alertsTree())
-    data.push(customSensorsTree())
-    data.push(...devicesTreeArray())
+    if (settingsStore.menuEntitiesAtBottom) {
+        data.push(customSensorsTree())
+        data.push(...devicesTreeArray())
+        data.push(dashboardsTree())
+        data.push(modesTree())
+        data.push(profilesTree())
+        data.push(functionsTree())
+        data.push(alertsTree())
+    } else {
+        data.push(dashboardsTree())
+        data.push(modesTree())
+        data.push(profilesTree())
+        data.push(functionsTree())
+        data.push(alertsTree())
+        data.push(customSensorsTree())
+        data.push(...devicesTreeArray())
+    }
     // data.unshift(pinnedTree(data)) // needs to be done at the end
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {

@@ -113,6 +113,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const collapsedMenuNodeIds: Ref<Array<string>> = ref([])
     const collapsedMainMenu: Ref<boolean> = ref(false)
     const hideMenuCollapseIcon: Ref<boolean> = ref(false)
+    const menuEntitiesAtBottom: Ref<boolean> = ref(false)
     const mainMenuWidthRem: Ref<number> = ref(24)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
@@ -206,6 +207,7 @@ export const useSettingsStore = defineStore('settings', () => {
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
         mainMenuWidthRem.value = uiSettings.mainMenuWidthRem
         hideMenuCollapseIcon.value = uiSettings.hideMenuCollapseIcon
+        menuEntitiesAtBottom.value = uiSettings.menuEntitiesAtBottom
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -810,6 +812,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 collapsedMenuNodeIds.value,
                 collapsedMainMenu,
                 hideMenuCollapseIcon,
+                menuEntitiesAtBottom,
                 mainMenuWidthRem,
                 frequencyPrecision,
                 customTheme,
@@ -854,6 +857,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value
                     uiSettings.hideMenuCollapseIcon = hideMenuCollapseIcon.value
+                    uiSettings.menuEntitiesAtBottom = menuEntitiesAtBottom.value
                     uiSettings.mainMenuWidthRem = mainMenuWidthRem.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
@@ -1062,6 +1066,7 @@ export const useSettingsStore = defineStore('settings', () => {
         collapsedMenuNodeIds,
         collapsedMainMenu,
         hideMenuCollapseIcon,
+        menuEntitiesAtBottom,
         mainMenuWidthRem,
         frequencyPrecision,
         customTheme,

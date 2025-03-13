@@ -40,6 +40,7 @@ export class UISettingsDTO {
     collapsedMenuNodeIds: Array<string> = []
     collapsedMainMenu: boolean = false
     hideMenuCollapseIcon: boolean = false
+    menuEntitiesAtBottom: boolean = false
     mainMenuWidthRem: number = 24
     frequencyPrecision: number = 1
     customTheme: CustomThemeSettings = {
