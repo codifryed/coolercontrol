@@ -271,8 +271,8 @@ const saveCCDeviceSettings = async (): Promise<void> => {
 </script>
 
 <template>
-    <div class="flex flex-row max-w-96">
-        <table class="bg-bg-two rounded-lg">
+    <div class="flex flex-row">
+        <table class="bg-bg-two rounded-lg w-[36rem]">
             <tbody>
                 <tr
                     v-tooltip.right="
@@ -281,9 +281,9 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                         'recommended for the best performance.'
                     "
                 >
-                    <td class="flex justify-center py-4">
+                    <td class="flex justify-between py-4">
                         <div
-                            class="flex flex-row w-[27rem] my-1 leading-none text-center items-center"
+                            class="flex flex-row w-full my-1 mx-4 leading-none text-center items-center"
                         >
                             <svg-icon
                                 type="mdi"
@@ -292,7 +292,7 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                                 :size="deviceStore.getREMSize(1.0)"
                                 v-tooltip.top="'Triggers and automatic daemon restart'"
                             />
-                            <span class="w-full"> Devices and Sensors </span>
+                            <span class="w-full">Devices and Sensors</span>
                             <Button
                                 label="Apply"
                                 class="bg-accent/80 hover:!bg-accent w-80 h-[2.375rem]"
@@ -303,10 +303,10 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                     </td>
                 </tr>
                 <tr>
-                    <td class="px-4 w-96">
+                    <td class="px-4">
                         <el-tree
                             ref="treeRef"
-                            class="device-menu mb-2 py-2 w-[27rem] bg-bg-two rounded-lg border-border-one border"
+                            class="device-menu mb-2 py-2 pl-2 bg-bg-two rounded-lg border-border-one border"
                             :data="data"
                             :props="nodeProps"
                             node-key="id"
