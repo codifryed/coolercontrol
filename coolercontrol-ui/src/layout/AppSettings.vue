@@ -800,7 +800,7 @@ onMounted(() => {
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
-                                            class="float-left"
+                                            class="float-left py-1"
                                             v-tooltip.top="'Triggers an automatic daemon restart'"
                                         >
                                             <svg-icon
@@ -964,10 +964,10 @@ onMounted(() => {
                                 </tr>
                                 <tr>
                                     <td
-                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
-                                            class="float-left h-[2.375rem] content-center"
+                                            class="float-left py-2"
                                             v-tooltip.top="'Triggers an automatic UI restart'"
                                         >
                                             <svg-icon
