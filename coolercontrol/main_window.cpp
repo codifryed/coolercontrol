@@ -195,6 +195,7 @@ void MainWindow::initSystemTray() {
   connect(m_sysTrayIcon, &QSystemTrayIcon::activated, [this](auto reason) {
     if (reason == QSystemTrayIcon::Trigger) {
       if (isVisible()) {
+        delay(50);
         hide();
       } else {
         showNormal();
@@ -238,6 +239,7 @@ void MainWindow::forceQuit() {
 void MainWindow::closeEvent(QCloseEvent* event) {
   m_ipc->saveWindowGeometry(saveGeometry());
   if (m_ipc->getCloseToTray() && !m_forceQuit) {
+    delay(50);
     hide();
     event->ignore();
     return;
@@ -246,6 +248,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   emit dropConnections();
   m_ipc->syncSettings();
   event->accept();
+  delay(200);
   QApplication::quit();
 }
 
