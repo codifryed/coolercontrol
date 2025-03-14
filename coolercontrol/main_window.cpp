@@ -44,13 +44,13 @@
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
-      m_view(new QWebEngineView(this)),
+      m_view(new QWebEngineView(parent)),
       m_profile(new QWebEngineProfile("coolercontrol", m_view)),
       m_page(new QWebEnginePage(m_profile)),
       m_channel(new QWebChannel(m_page)),
       m_ipc(new IPC(this)),
-      m_wizard(new QWizard(this)),
-      m_manager(new QNetworkAccessManager(this)) {
+      m_wizard(new QWizard(parent)),
+      m_manager(new QNetworkAccessManager(parent)) {
   setCentralWidget(m_view);
   m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
@@ -118,8 +118,8 @@ void MainWindow::initWizard() {
   m_wizard->setOption(QWizard::HaveCustomButton1, true);
   m_wizard->setButtonText(QWizard::HelpButton, "&Quit App");
   m_wizard->setOption(QWizard::HaveHelpButton, true);
-  m_wizard->addPage(new IntroPage);
-  auto addressPage = new AddressPage;
+  m_wizard->addPage(new IntroPage(m_wizard));
+  auto addressPage = new AddressPage(m_wizard);
   m_wizard->addPage(addressPage);
   m_wizard->setMinimumSize(640, 480);
   connect(m_wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
@@ -152,11 +152,12 @@ void MainWindow::initDelay() const {
 }
 
 void MainWindow::initSystemTray() {
+  m_sysTrayIcon = new QSystemTrayIcon(this->parent());
   const auto ccHeader = new QAction(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.png")),
-                                    tr("CoolerControl"), this);
+                                    tr("CoolerControl"), m_sysTrayIcon);
   ccHeader->setDisabled(true);
-  m_showAction =
-      m_ipc->getStartInTray() ? new QAction(tr("&Show"), this) : new QAction(tr("&Hide"), this);
+  m_showAction = m_ipc->getStartInTray() ? new QAction(tr("&Show"), m_sysTrayIcon)
+                                         : new QAction(tr("&Hide"), m_sysTrayIcon);
   connect(m_showAction, &QAction::triggered, [this]() {
     if (isVisible()) {
       hide();
@@ -167,10 +168,11 @@ void MainWindow::initSystemTray() {
     }
   });
 
-  m_addressAction = new QAction(tr("&Daemon Address"), this);
+  m_addressAction = new QAction(tr("&Daemon Address"), m_sysTrayIcon);
   connect(m_addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
 
-  m_quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
+  m_quitAction =
+      new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), m_sysTrayIcon);
   connect(m_quitAction, &QAction::triggered, this, &MainWindow::forceQuit, Qt::QueuedConnection);
   m_trayIconMenu = new QMenu(this);
   m_trayIconMenu->setTitle("CoolerControl");
@@ -185,7 +187,6 @@ void MainWindow::initSystemTray() {
   m_trayIconMenu->addSeparator();
   m_trayIconMenu->addAction(m_quitAction);
 
-  m_sysTrayIcon = new QSystemTrayIcon(this);
   m_sysTrayIcon->setContextMenu(m_trayIconMenu);
   m_sysTrayIcon->setIcon(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.ico")));
   m_sysTrayIcon->setToolTip("CoolerControl");
@@ -406,7 +407,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
   foreach (QJsonValue value, modesArray) {
     const auto modeName = value.toObject().value("name").toString();
     const auto modeUID = value.toObject().value("uid").toString();
-    const auto modeAction = new QAction(modeName);
+    const auto modeAction = new QAction(m_modesTrayMenu);
     modeAction->setStatusTip(modeUID);  // We use the statusTip to store UID
     modeAction->setCheckable(true);
     modeAction->setChecked(modeUID == m_activeModeUID);
