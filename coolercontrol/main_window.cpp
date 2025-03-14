@@ -249,6 +249,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   emit dropConnections();
   m_ipc->syncSettings();
   event->accept();
+  m_page->deleteLater();
   delay(200);
   QApplication::quit();
 }
