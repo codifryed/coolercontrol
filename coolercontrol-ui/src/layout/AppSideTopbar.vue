@@ -23,6 +23,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiAccountOffOutline,
     mdiAccountOutline,
+    mdiArrowLeft,
     mdiBellOutline,
     mdiBellPlusOutline,
     mdiBellRingOutline,
@@ -277,6 +278,16 @@ const addItems = computed(() => [
                     <img :src="logoUrl" alt="logo" class="w-10 h-10" />
                 </OverlayBadge>
             </router-link>
+        </Button>
+
+        <!--Back-->
+        <Button
+            id="back"
+            class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+            v-tooltip.right="'Back'"
+            @click="router.back()"
+        >
+            <svg-icon type="mdi" :path="mdiArrowLeft" :size="getREMSize(1.75)" />
         </Button>
 
         <!--Add-->
