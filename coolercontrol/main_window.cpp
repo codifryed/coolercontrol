@@ -158,15 +158,18 @@ void MainWindow::initSystemTray() {
   ccHeader->setDisabled(true);
   m_showAction = m_ipc->getStartInTray() ? new QAction(tr("&Show"), m_sysTrayIcon)
                                          : new QAction(tr("&Hide"), m_sysTrayIcon);
-  connect(m_showAction, &QAction::triggered, [this]() {
-    if (isVisible()) {
-      hide();
-    } else {
-      showNormal();
-      raise();
-      activateWindow();
-    }
-  });
+  connect(
+      m_showAction, &QAction::triggered, this,
+      [this]() {
+        if (isVisible()) {
+          hide();
+        } else {
+          showNormal();
+          raise();
+          activateWindow();
+        }
+      },
+      Qt::QueuedConnection);
 
   m_addressAction = new QAction(tr("&Daemon Address"), m_sysTrayIcon);
   connect(m_addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
@@ -193,18 +196,20 @@ void MainWindow::initSystemTray() {
   m_sysTrayIcon->show();
 
   // left click:
-  connect(m_sysTrayIcon, &QSystemTrayIcon::activated, [this](auto reason) {
-    if (reason == QSystemTrayIcon::Trigger) {
-      if (isVisible()) {
-        delay(50);
-        hide();
-      } else {
-        showNormal();
-        raise();
-        activateWindow();
-      }
-    }
-  });
+  connect(
+      m_sysTrayIcon, &QSystemTrayIcon::activated, this,
+      [this](auto reason) {
+        if (reason == QSystemTrayIcon::Trigger) {
+          if (isVisible()) {
+            hide();
+          } else {
+            showNormal();
+            raise();
+            activateWindow();
+          }
+        }
+      },
+      Qt::QueuedConnection);
 }
 
 void MainWindow::initWebUI() {
@@ -224,8 +229,8 @@ void MainWindow::initWebUI() {
         requestAllModes();
         requestActiveMode();
         emit watchForSSE();
-        m_startup = false;
         qInfo() << "Successfully connected to the Daemon";
+        m_startup = false;
       }
     }
   });
@@ -238,11 +243,16 @@ void MainWindow::forceQuit() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+  if (m_startup) {
+    // Killing the app during initialization can cause a crash
+    event->ignore();
+    return;
+  }
   if (isVisible()) {
     m_ipc->saveWindowGeometry(saveGeometry());
   }
   if (m_ipc->getCloseToTray() && !m_forceQuit) {
-    delay(50);
+    delay(100);
     hide();
     event->ignore();
     return;
@@ -256,9 +266,27 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   QApplication::quit();
 }
 
-void MainWindow::hideEvent(QHideEvent* event) { setTrayActionToShow(); }
+void MainWindow::hideEvent(QHideEvent* event) {
+  if (m_startup) {
+    // opening/closing the window during initialization can cause issues.
+    event->ignore();
+    return;
+  }
+  delay(100);
+  setTrayActionToShow();
+  event->accept();
+}
 
-void MainWindow::showEvent(QShowEvent* event) { setTrayActionToHide(); }
+void MainWindow::showEvent(QShowEvent* event) {
+  if (m_startup) {
+    // opening/closing the window during initialization can cause issues.
+    event->ignore();
+    return;
+  }
+  delay(100);
+  setTrayActionToHide();
+  event->accept();
+}
 
 QUrl MainWindow::getDaemonUrl() {
   const QSettings settings;
