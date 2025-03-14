@@ -24,7 +24,7 @@ import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Fieldset from 'primevue/fieldset'
 import Divider from 'primevue/divider'
-import { onMounted, Ref, ref, watch } from 'vue'
+import { onMounted, Ref, ref } from 'vue'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
@@ -210,9 +210,7 @@ const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues
 //----------------------------------------------------------------------------------------------------------------------
 
 onMounted(async () => {
-    watch(settingsStore.allUIDeviceSettings, () => {
-        initWidgetData()
-    })
+    // watchers are all handled by the dashboard keys in DashboardView
 })
 </script>
 

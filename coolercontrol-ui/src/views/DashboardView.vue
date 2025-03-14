@@ -223,6 +223,10 @@ onMounted(async () => {
         [settingsStore.dashboards, settingsStore.allUIDeviceSettings],
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
+    watch(
+        settingsStore.allDaemonDeviceSettings,
+        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
+    )
 })
 onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
