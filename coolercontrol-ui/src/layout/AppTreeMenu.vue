@@ -123,17 +123,23 @@ const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => 
     return color
 }
 
-const deviceChannelIconSize = (deviceUID: UID): number => {
+const deviceChannelIconSize = (deviceUID: UID, name: string | undefined): number => {
     if (deviceUID == null) {
-        return 1.5
+        // Group root like Dashboards, Modes, etc
+        return 1.75
     } else if (
+        // group items
         deviceUID.startsWith('Dashboards') ||
         deviceUID.startsWith('Modes') ||
         deviceUID.startsWith('Profiles') ||
         deviceUID.startsWith('Functions')
     ) {
         return 1.0
+    } else if (deviceUID && !name) {
+        // Device roots
+        return 1.75
     } else {
+        // channels, etc.
         return 1.5
     }
 }
@@ -877,13 +883,15 @@ onMounted(async () => {
                                     color: deviceChannelColor(data.deviceUID, data.name).value,
                                 }"
                                 :size="
-                                    deviceStore.getREMSize(deviceChannelIconSize(data.deviceUID))
+                                    deviceStore.getREMSize(
+                                        deviceChannelIconSize(data.deviceUID, data.name),
+                                    )
                                 "
                             />
                             <div class="flex flex-col overflow-hidden">
                                 <div
                                     class="tree-text leading-tight"
-                                    :class="{ 'mr-2': data.deviceUID && !data.name }"
+                                    :class="{ 'mr-2 text-lg': data.deviceUID && !data.name }"
                                 >
                                     {{ node.label }}
                                 </div>
