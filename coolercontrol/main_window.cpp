@@ -438,7 +438,7 @@ void MainWindow::setTrayMenuModes(const QString& modesJson) const {
   foreach (QJsonValue value, modesArray) {
     const auto modeName = value.toObject().value("name").toString();
     const auto modeUID = value.toObject().value("uid").toString();
-    const auto modeAction = new QAction(m_modesTrayMenu);
+    const auto modeAction = new QAction(modeName);
     modeAction->setStatusTip(modeUID);  // We use the statusTip to store UID
     modeAction->setCheckable(true);
     modeAction->setChecked(modeUID == m_activeModeUID);
