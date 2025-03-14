@@ -39,13 +39,7 @@ class MainWindow final : public QMainWindow {
 
   static void delay(int millisecondsWait);
 
-  void setZoomFactor(double zoomFactor) const;
-
-  void setTrayMenuModes(const QString& modesJson) const;
-
   void setActiveMode(const QString& modeUID) const;
-
-  void acknowledgeDaemonErrors() const;
 
  public slots:
   void forceQuit();
@@ -54,12 +48,26 @@ class MainWindow final : public QMainWindow {
 
   void startWatchingSSE() const;
 
+  void setZoomFactor(double zoomFactor) const;
+
+  void setTrayMenuModes(const QString& modesJson) const;
+
+  void acknowledgeDaemonErrors() const;
+
  signals:
+  void forceQuitSignal();
+
   void daemonConnectionLost() const;
 
   void watchForSSE() const;
 
   void dropConnections() const;
+
+  void setZoomFactorSignal(double zoomFactor) const;
+
+  void setTrayMenuModesSignal(const QString& modesJson) const;
+
+  void acknowledgeDaemonErrorsSignal() const;
 
  protected:
   void closeEvent(QCloseEvent* event) override;

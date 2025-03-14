@@ -95,6 +95,13 @@ MainWindow::MainWindow(QWidget* parent)
           Qt::QueuedConnection);
   connect(this, &MainWindow::watchForSSE, this, &MainWindow::startWatchingSSE,
           Qt::QueuedConnection);
+  connect(this, &MainWindow::setZoomFactorSignal, this, &MainWindow::setZoomFactor,
+          Qt::QueuedConnection);
+  connect(this, &MainWindow::setTrayMenuModesSignal, this, &MainWindow::setTrayMenuModes,
+          Qt::QueuedConnection);
+  connect(this, &MainWindow::acknowledgeDaemonErrorsSignal, this,
+          &MainWindow::acknowledgeDaemonErrors, Qt::QueuedConnection);
+  connect(this, &MainWindow::forceQuitSignal, this, &MainWindow::forceQuit, Qt::QueuedConnection);
 
   initWizard();
   initDelay();
@@ -164,7 +171,7 @@ void MainWindow::initSystemTray() {
   connect(m_addressAction, &QAction::triggered, [this]() { displayAddressWizard(); });
 
   m_quitAction = new QAction(QIcon::fromTheme("application-exit", QIcon()), tr("&Quit"), this);
-  connect(m_quitAction, &QAction::triggered, this, &MainWindow::forceQuit);
+  connect(m_quitAction, &QAction::triggered, this, &MainWindow::forceQuit, Qt::QueuedConnection);
   m_trayIconMenu = new QMenu(this);
   m_trayIconMenu->setTitle("CoolerControl");
   m_trayIconMenu->addAction(ccHeader);

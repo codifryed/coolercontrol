@@ -16,7 +16,6 @@
 
 #include "ipc.h"
 
-#include <QApplication>
 #include <QFileDialog>
 
 #include "constants.h"
@@ -69,11 +68,11 @@ void IPC::setCloseToTray(const bool closeToTray) const {
 
 void IPC::setZoomFactor(const double zoomFactor) const {
   m_settings->setValue(SETTING_ZOOM_FACTOR.data(), zoomFactor);
-  qobject_cast<MainWindow*>(parent())->setZoomFactor(zoomFactor);
+  emit qobject_cast<MainWindow*>(parent())->setZoomFactorSignal(zoomFactor);
 }
 
 void IPC::setModes(const QString& modesJson) const {
-  qobject_cast<MainWindow*>(parent())->setTrayMenuModes(modesJson);
+  emit qobject_cast<MainWindow*>(parent())->setTrayMenuModesSignal(modesJson);
 }
 
 void IPC::saveWindowGeometry(const QByteArray& geometry) const {
@@ -81,12 +80,12 @@ void IPC::saveWindowGeometry(const QByteArray& geometry) const {
 }
 
 void IPC::acknowledgeDaemonIssues() const {
-  qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrors();
+  emit qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrorsSignal();
 }
 
 void IPC::syncSettings() const { m_settings->sync(); }
 
 void IPC::forceQuit() const {
   // this is only called when open from the UI currently
-  qobject_cast<MainWindow*>(parent())->forceQuit();
+  emit qobject_cast<MainWindow*>(parent())->forceQuitSignal();
 }
