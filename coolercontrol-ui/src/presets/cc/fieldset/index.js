@@ -4,15 +4,15 @@ export default {
             'block',
 
             // Spacing
-            'px-4 pt-2 py-3',
+            'px-4 py-0',
             'inline-size-min',
 
             // Shape
-            'rounded-md',
+            'rounded-lg',
             // Color
-            'border border-surface-200 dark:border-surface-700',
-            'bg-surface-0 dark:bg-surface-900',
-            'text-surface-700 dark:text-surface-0/80',
+            'border-0 border-border-one',
+            'bg-bg-two',
+            'text-text-color',
         ],
     },
     legend: ({ props }) => ({
@@ -22,15 +22,15 @@ export default {
             'leading-none',
 
             //Spacing
-            { 'p-0': props.toggleable, 'p-5': !props.toggleable },
+            { 'p-0': props.toggleable, 'py-2 pl-2 px-3': !props.toggleable },
 
             // Shape
-            'rounded-md',
+            'rounded-lg',
 
             // Color
-            'text-surface-700 dark:text-surface-0/80',
-            'border border-surface-200 dark:border-surface-700',
-            'bg-surface-50 dark:bg-surface-900',
+            'text-text-color',
+            'border border-border-one',
+            'bg-bg-two',
 
             // Transition
             'transition-none',
@@ -52,7 +52,7 @@ export default {
             { 'p-5': props.toggleable },
 
             // Shape
-            { 'rounded-md': props.toggleable },
+            { 'rounded-lg': props.toggleable },
 
             // Color
             { 'text-surface-700 dark:text-surface-200 hover:text-surface-900': props.toggleable },
@@ -77,7 +77,7 @@ export default {
         class: 'flex items-center justify-center leading-none',
     },
     content: {
-        class: 'p-5',
+        class: 'pt-4 pb-2',
     },
     transition: {
         enterFromClass: 'max-h-0',

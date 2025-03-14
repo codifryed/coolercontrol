@@ -61,14 +61,17 @@ export class Dashboard {
         this.name = dashboardName
     }
 
-    static default(): Dashboard {
-        return new Dashboard('System')
+    static defaults(): Array<Dashboard> {
+        const controls = new Dashboard('Controls')
+        controls.chartType = ChartType.CONTROLS
+        return [new Dashboard('System'), controls]
     }
 }
 
 export enum ChartType {
     TIME_CHART = 'Time Chart',
     TABLE = 'Table',
+    CONTROLS = 'Controls',
 }
 
 export enum DataType {

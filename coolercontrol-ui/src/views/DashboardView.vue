@@ -36,6 +36,7 @@ import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
+import ControlsOverview from '@/components/ControlsOverview.vue'
 
 interface Props {
     dashboardUID?: UID
@@ -83,6 +84,7 @@ interface AvailableSensorSource {
 
 const chosenSensorSources: Ref<Array<AvailableSensor>> = ref([])
 const sensorSources: Ref<Array<AvailableSensorSource>> = ref([])
+const controlSensorSources: Ref<Array<AvailableSensorSource>> = ref([])
 const fillSensorSources = (): void => {
     sensorSources.value.length = 0
     for (const device of deviceStore.allDevices()) {
@@ -119,6 +121,39 @@ const fillSensorSources = (): void => {
     }
 }
 fillSensorSources()
+const fillControlSensorSources = (): void => {
+    controlSensorSources.value.length = 0
+    for (const device of deviceStore.allDevices()) {
+        if (device.info == null) continue
+        if (device.info.channels.size === 0 && device.info.temps.size === 0) {
+            continue
+        }
+        const sensors: Array<AvailableSensor> = []
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+        device.info.channels.forEach((value: ChannelInfo, key: string) => {
+            if (
+                value.speed_options == null &&
+                value.lcd_modes.length === 0 &&
+                value.lighting_modes.length === 0
+            )
+                return
+            const sensorSettings = deviceSettings.sensorsAndChannels.get(key)!
+            sensors.push({
+                name: key,
+                deviceUID: device.uid,
+                label: sensorSettings.name,
+                color: sensorSettings.color,
+            })
+        })
+        if (sensors.length === 0) continue
+        controlSensorSources.value.push({
+            deviceUID: device.uid,
+            deviceName: deviceSettings.name,
+            sensors: sensors,
+        })
+    }
+}
+fillControlSensorSources()
 const fillChosenSensorSources = (): void => {
     chosenSensorSources.value.length = 0
     const deviceChannelsMap: Map<UID, Array<string>> = new Map()
@@ -216,7 +251,11 @@ onUnmounted(() => {
             <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
                     v-model="chosenSensorSources"
-                    :options="sensorSources"
+                    :options="
+                        dashboard.chartType !== ChartType.CONTROLS
+                            ? sensorSources
+                            : controlSensorSources
+                    "
                     class="w-36 h-[2.375rem]"
                     placeholder="Filter Sensors"
                     filter-placeholder="Search"
@@ -253,6 +292,7 @@ onUnmounted(() => {
                     </template>
                 </MultiSelect>
                 <MultiSelect
+                    v-if="dashboard.chartType != ChartType.CONTROLS"
                     v-model="dashboard.dataTypes"
                     :options="dataTypes"
                     class="ml-3 w-36 h-[2.375rem]"
@@ -316,6 +356,11 @@ onUnmounted(() => {
         v-else-if="dashboard.chartType == ChartType.TABLE"
         :dashboard="dashboard"
         :key="'table' + chartKey"
+    />
+    <ControlsOverview
+        v-else-if="dashboard.chartType == ChartType.CONTROLS"
+        :dashboard="dashboard"
+        :key="'controls' + chartKey"
     />
 </template>
 
