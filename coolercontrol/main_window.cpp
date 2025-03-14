@@ -238,7 +238,9 @@ void MainWindow::forceQuit() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-  m_ipc->saveWindowGeometry(saveGeometry());
+  if (isVisible()) {
+    m_ipc->saveWindowGeometry(saveGeometry());
+  }
   if (m_ipc->getCloseToTray() && !m_forceQuit) {
     delay(50);
     hide();
