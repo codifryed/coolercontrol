@@ -248,6 +248,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     event->ignore();
     return;
   }
+  m_forceQuit = true; // keeps from triggering disconnect notification
   m_retryTimer->stop();  // stop reconnecting if running
   emit dropConnections();
   m_ipc->syncSettings();
