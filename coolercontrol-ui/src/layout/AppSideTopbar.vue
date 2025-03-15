@@ -115,7 +115,6 @@ const modesItems = computed(() => {
                   : mdiBookmarkOutline,
             command: async () => {
                 await settingsStore.activateMode(mode.uid)
-                emitter.emit('active-modes-change-menu')
             },
         })
     }
@@ -126,7 +125,6 @@ const activatePreviousMode = async (): Promise<void> => {
         return
     }
     await settingsStore.activateMode(settingsStore.modeActivePrevious)
-    emitter.emit('active-modes-change-menu')
 }
 
 const accessMenuRef = ref<DropdownInstance>()

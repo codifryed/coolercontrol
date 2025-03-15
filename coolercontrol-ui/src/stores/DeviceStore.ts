@@ -659,6 +659,7 @@ export const useDeviceStore = defineStore('device', () => {
                     )
                     settingsStore.modeActiveCurrent = modeMessage.uid
                     settingsStore.modeActivePrevious = modeMessage.previous_uid
+                    await settingsStore.loadDaemonDeviceSettings() // need to reload all settings after applying mode
                     emitter.emit('active-modes-change-menu')
                 },
                 async onclose() {

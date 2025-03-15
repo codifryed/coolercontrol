@@ -588,7 +588,6 @@ export const useSettingsStore = defineStore('settings', () => {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
             return false
         } else {
-            await loadDaemonDeviceSettings() // need to reload all settings after applying mode
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -1047,6 +1046,7 @@ export const useSettingsStore = defineStore('settings', () => {
     console.debug(`Settings Store created`)
     return {
         initializeSettings,
+        loadDaemonDeviceSettings,
         predefinedColorOptions,
         profiles,
         functions,

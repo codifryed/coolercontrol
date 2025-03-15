@@ -21,7 +21,7 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiBookmarkCheckOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, inject, onMounted, type Ref, ref, watch } from 'vue'
+import { computed, onMounted, type Ref, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -29,14 +29,12 @@ import { Mode } from '@/models/Mode.ts'
 import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
 import Button from 'primevue/button'
-import { Emitter, EventType } from 'mitt'
 
 interface Props {
     modeUID: UID
 }
 
 const props = defineProps<Props>()
-const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -142,8 +140,7 @@ initTableData()
 
 const isActivated = false
 const activateMode = async (): Promise<void> => {
-    const successful = await settingsStore.activateMode(props.modeUID)
-    if (successful) emitter.emit('active-modes-change-menu')
+    await settingsStore.activateMode(props.modeUID)
 }
 
 onMounted(async () => {
