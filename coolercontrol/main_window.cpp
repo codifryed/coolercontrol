@@ -389,7 +389,7 @@ void MainWindow::requestDaemonErrors() const {
     }
     if (const auto errors = rootObj.value("details").toObject().value("errors").toInt();
         errors > 0) {
-      m_deamonHasErrors = true;
+      m_daemonHasErrors = true;
       notifyDaemonErrors();
     }
     healthReply->deleteLater();
@@ -404,7 +404,7 @@ void MainWindow::requestDaemonErrors() const {
           });
 }
 
-void MainWindow::acknowledgeDaemonErrors() const { m_deamonHasErrors = false; }
+void MainWindow::acknowledgeDaemonErrors() const { m_daemonHasErrors = false; }
 
 void MainWindow::requestAllModes() const {
   QNetworkRequest modesRequest;
@@ -510,8 +510,8 @@ void MainWindow::watchConnectionAndLogs() const {
     // This is also called for keepAlive ticks - but with semi-filled message
     const QString log = sseLogsReply->readAll();
     if (const auto logContainsErrors = log.contains("ERROR");
-        logContainsErrors && !m_deamonHasErrors) {
-      m_deamonHasErrors = true;
+        logContainsErrors && !m_daemonHasErrors) {
+      m_daemonHasErrors = true;
       notifyDaemonErrors();
     }
   });

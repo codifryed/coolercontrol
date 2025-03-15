@@ -99,7 +99,7 @@ class MainWindow final : public QMainWindow {
   QNetworkAccessManager* m_manager;
   mutable bool m_isDaemonConnected{false};
 
-  mutable bool m_deamonHasErrors{false};
+  mutable bool m_daemonHasErrors{false};
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};
