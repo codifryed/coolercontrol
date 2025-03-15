@@ -50,7 +50,8 @@ MainWindow::MainWindow(QWidget* parent)
       m_channel(new QWebChannel(m_page)),
       m_ipc(new IPC(this)),
       m_wizard(new QWizard(parent)),
-      m_manager(new QNetworkAccessManager(parent)) {
+      m_manager(new QNetworkAccessManager(parent)),
+      m_retryTimer(new QTimer(parent)) {
   setCentralWidget(m_view);
   m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
@@ -95,6 +96,8 @@ MainWindow::MainWindow(QWidget* parent)
           Qt::QueuedConnection);
   connect(this, &MainWindow::watchForSSE, this, &MainWindow::startWatchingSSE,
           Qt::QueuedConnection);
+  m_retryTimer->setInterval(DEFAULT_CONNECTION_RETRY_INTERVAL_MS);
+  connect(m_retryTimer, &QTimer::timeout, this, &MainWindow::tryDaemonConnection);
 
   initWizard();
   initDelay();
@@ -219,16 +222,7 @@ void MainWindow::initWebUI() {
       m_uiLoadingStopped = false;
       qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
       if (m_startup) {  // don't do this for Wizard retries
-        while (!m_isDaemonConnected) {
-          delay(1000);
-          tryDaemonConnection();
-        }
-        requestDaemonErrors();
-        requestAllModes();
-        requestActiveMode();
-        emit watchForSSE();
-        qInfo() << "Successfully connected to the Daemon";
-        m_startup = false;
+        m_retryTimer->start();
       }
     }
   });
@@ -256,6 +250,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     return;
   }
   m_isDaemonConnected = false;  // stops from trying to reconnect
+  m_retryTimer->stop();
   emit dropConnections();
   m_ipc->syncSettings();
   event->accept();
@@ -534,12 +529,7 @@ void MainWindow::reestablishDaemonConnection() const {
     return;
   }
   emit dropConnections();
-  while (!m_isDaemonConnected) {
-    delay(2000);
-    tryDaemonConnection();
-  }
-  qInfo() << "Connection to the Daemon Reestablished";
-  emit watchForSSE();
+  m_retryTimer->start();
 }
 
 void MainWindow::tryDaemonConnection() const {
@@ -547,11 +537,22 @@ void MainWindow::tryDaemonConnection() const {
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
+  qDebug() << "Attempting to establish connection to the daemon...";
   connect(healthReply, &QNetworkReply::readyRead, [this, healthReply]() {
     if (!m_isDaemonConnected) {
       m_isDaemonConnected = true;
-      if (!m_startup) {
+      m_retryTimer->stop();
+      if (m_startup) {
+        requestDaemonErrors();
+        requestAllModes();
+        requestActiveMode();
+        emit watchForSSE();
+        qInfo() << "Successfully connected to the Daemon";
+        m_startup = false;
+      } else {
+        qInfo() << "Connection to the Daemon Reestablished";
         notifyDaemonConnectionRestored();
+        emit watchForSSE();
       }
     }
     healthReply->deleteLater();

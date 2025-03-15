@@ -36,6 +36,7 @@ const std::string DEFAULT_DAEMON_ADDRESS = "localhost";
 constexpr int DEFAULT_DAEMON_PORT = 11987;
 constexpr bool DEFAULT_DAEMON_SSL_ENABLED = false;
 constexpr int DEFAULT_CONNECTION_TIMEOUT_MS = 8000;
+constexpr int DEFAULT_CONNECTION_RETRY_INTERVAL_MS = 1000;
 const std::string USER_ID = "CCAdmin";
 const std::string ENDPOINT_HEALTH = "/health";
 const std::string ENDPOINT_MODES = "/modes";

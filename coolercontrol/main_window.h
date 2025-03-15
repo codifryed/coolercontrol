@@ -49,6 +49,8 @@ class MainWindow final : public QMainWindow {
 
   void reestablishDaemonConnection() const;
 
+  void tryDaemonConnection() const;
+
   void startWatchingSSE() const;
 
   void setZoomFactor(double zoomFactor) const;
@@ -85,10 +87,6 @@ class MainWindow final : public QMainWindow {
   QWebEnginePage* m_page;
   QWebChannel* m_channel;
   IPC* m_ipc;
-  bool m_forceQuit{false};
-  bool m_startup{true};
-  bool m_uiLoadingStopped{false};
-  bool m_changeAddress{false};
   QSystemTrayIcon* m_sysTrayIcon;
   QMenu* m_trayIconMenu;
   QMenu* m_modesTrayMenu;
@@ -97,13 +95,16 @@ class MainWindow final : public QMainWindow {
   QAction* m_showAction;
   QWizard* m_wizard;
   QNetworkAccessManager* m_manager;
+  QTimer* m_retryTimer;
+  mutable bool m_forceQuit{false};
+  mutable bool m_startup{true};
+  mutable bool m_uiLoadingStopped{false};
+  mutable bool m_changeAddress{false};
   mutable bool m_isDaemonConnected{false};
-
   mutable bool m_daemonHasErrors{false};
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};
-
   mutable QByteArray m_passwd{QByteArray()};
 
   void initWizard();
@@ -131,8 +132,6 @@ class MainWindow final : public QMainWindow {
   void requestActiveMode() const;
 
   void watchConnectionAndLogs() const;
-
-  void tryDaemonConnection() const;
 
   void watchModeActivation() const;
 
