@@ -118,6 +118,7 @@ void MainWindow::initWizard() {
   connect(m_wizard, &QWizard::helpRequested, this, &MainWindow::forceQuit, Qt::QueuedConnection);
   connect(m_wizard, &QWizard::customButtonClicked, [this](const int which) {
     if (which == 6) {  // Retry CustomButton1
+      delay(500);
       m_uiLoadingStopped = false;
       m_view->load(getDaemonUrl());
       m_wizard->hide();
