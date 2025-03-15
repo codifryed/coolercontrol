@@ -29,6 +29,9 @@
 #include "address_wizard.h"
 #include "ipc.h"
 
+// forward declaration:
+class IPC;
+
 class MainWindow final : public QMainWindow {
   Q_OBJECT
 

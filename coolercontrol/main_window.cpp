@@ -95,13 +95,6 @@ MainWindow::MainWindow(QWidget* parent)
           Qt::QueuedConnection);
   connect(this, &MainWindow::watchForSSE, this, &MainWindow::startWatchingSSE,
           Qt::QueuedConnection);
-  connect(this, &MainWindow::setZoomFactorSignal, this, &MainWindow::setZoomFactor,
-          Qt::QueuedConnection);
-  connect(this, &MainWindow::setTrayMenuModesSignal, this, &MainWindow::setTrayMenuModes,
-          Qt::QueuedConnection);
-  connect(this, &MainWindow::acknowledgeDaemonErrorsSignal, this,
-          &MainWindow::acknowledgeDaemonErrors, Qt::QueuedConnection);
-  connect(this, &MainWindow::forceQuitSignal, this, &MainWindow::forceQuit, Qt::QueuedConnection);
 
   initWizard();
   initDelay();

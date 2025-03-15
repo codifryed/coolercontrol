@@ -21,8 +21,18 @@
 #include "constants.h"
 #include "main_window.h"
 
-IPC::IPC(QObject* parent) : QObject(parent), m_settings(new QSettings()) {
-  //        connect(dialog, &Dialog::sendText, this, &Core::sendText);
+IPC::IPC(QObject* parent)
+    : QObject(parent),
+      m_settings(new QSettings(this)),
+      m_mainWindow(qobject_cast<MainWindow*>(parent)) {
+  connect(m_mainWindow, &MainWindow::setZoomFactorSignal, m_mainWindow, &MainWindow::setZoomFactor,
+          Qt::QueuedConnection);
+  connect(m_mainWindow, &MainWindow::setTrayMenuModesSignal, m_mainWindow,
+          &MainWindow::setTrayMenuModes, Qt::QueuedConnection);
+  connect(m_mainWindow, &MainWindow::acknowledgeDaemonErrorsSignal, m_mainWindow,
+          &MainWindow::acknowledgeDaemonErrors, Qt::QueuedConnection);
+  connect(m_mainWindow, &MainWindow::forceQuitSignal, m_mainWindow, &MainWindow::forceQuit,
+          Qt::QueuedConnection);
 }
 
 bool IPC::getStartInTray() const {
@@ -46,12 +56,12 @@ QByteArray IPC::getWindowGeometry() const {
 }
 
 QString IPC::filePathDialog(const QString& title) const {
-  return QFileDialog::getOpenFileName(qobject_cast<MainWindow*>(parent()), title, QDir::homePath());
+  return QFileDialog::getOpenFileName(m_mainWindow, title, QDir::homePath());
 }
 
 QString IPC::directoryPathDialog(const QString& title) const {
-  return QFileDialog::getExistingDirectory(qobject_cast<MainWindow*>(parent()), title,
-                                           QDir::homePath(), QFileDialog::ShowDirsOnly);
+  return QFileDialog::getExistingDirectory(m_mainWindow, title, QDir::homePath(),
+                                           QFileDialog::ShowDirsOnly);
 }
 
 void IPC::setStartInTray(const bool startInTray) const {
@@ -68,24 +78,22 @@ void IPC::setCloseToTray(const bool closeToTray) const {
 
 void IPC::setZoomFactor(const double zoomFactor) const {
   m_settings->setValue(SETTING_ZOOM_FACTOR.data(), zoomFactor);
-  emit qobject_cast<MainWindow*>(parent())->setZoomFactorSignal(zoomFactor);
+  emit m_mainWindow->setZoomFactorSignal(zoomFactor);
 }
 
 void IPC::setModes(const QString& modesJson) const {
-  emit qobject_cast<MainWindow*>(parent())->setTrayMenuModesSignal(modesJson);
+  emit m_mainWindow->setTrayMenuModesSignal(modesJson);
 }
 
 void IPC::saveWindowGeometry(const QByteArray& geometry) const {
   m_settings->setValue(SETTING_WINDOW_GEOMETRY.data(), geometry);
 }
 
-void IPC::acknowledgeDaemonIssues() const {
-  emit qobject_cast<MainWindow*>(parent())->acknowledgeDaemonErrorsSignal();
-}
+void IPC::acknowledgeDaemonIssues() const { emit m_mainWindow->acknowledgeDaemonErrorsSignal(); }
 
 void IPC::syncSettings() const { m_settings->sync(); }
 
 void IPC::forceQuit() const {
   // this is only called when open from the UI currently
-  emit qobject_cast<MainWindow*>(parent())->forceQuitSignal();
+  emit m_mainWindow->forceQuitSignal();
 }

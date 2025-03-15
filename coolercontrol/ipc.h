@@ -19,6 +19,11 @@
 
 #include <QSettings>
 
+#include "main_window.h"
+
+// forward declaration:
+class MainWindow;
+
 /*
     An instance of this class gets published over the WebChannel and is then accessible to HTML
    clients.
@@ -77,6 +82,7 @@ class IPC final : public QObject {
 
  private:
   QSettings* m_settings;
+  MainWindow* m_mainWindow;
 };
 
 #endif  // IPC_H
