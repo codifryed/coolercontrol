@@ -21,6 +21,7 @@
 <!-- trunk-ignore-end(markdownlint)-->
 
 <br/>
+<br/>
 <p>
 CoolerControl is a feature-rich cooling device control and monitoring application for Linux.
 </p>
@@ -30,7 +31,8 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 
 </div>
 
-<h4 align="center">
+<div align="center">
+<h2>
 
 <!-- trunk-ignore-begin(markdownlint/MD051): links with emojis -->
 
@@ -40,7 +42,8 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
-</h4>
+</h2>
+</div>
 
 ## ✨ Features
 
