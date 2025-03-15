@@ -219,7 +219,7 @@ onMounted(async () => {
         <ScrollAreaViewport class="pb-24 h-screen w-full">
             <div v-for="deviceControl in deviceControlData" :key="deviceControl.deviceUID">
                 <Divider align="left" class="!my-0 !mt-5">
-                    <div class="flex flex-row text-xl">
+                    <div class="flex flex-row text-lg">
                         <svg-icon
                             v-if="deviceControl.icon"
                             class="mr-1.5 min-w-6 text-text-color"

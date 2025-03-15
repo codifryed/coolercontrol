@@ -891,7 +891,7 @@ onMounted(async () => {
                             <div class="flex flex-col overflow-hidden">
                                 <div
                                     class="tree-text leading-tight"
-                                    :class="{ 'mr-2 text-lg': data.deviceUID && !data.name }"
+                                    :class="{ 'mr-2': data.deviceUID && !data.name }"
                                 >
                                     {{ node.label }}
                                 </div>
