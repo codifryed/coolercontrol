@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.0.0] - 2025-03-15
+
+### Added
+
+- A new custom UI theme (#340)
+- Dashboards (#296) (#337) (#356) (#395)
+- Power usage display for CPUs and GPUs that support it (#355)
+- Desktop notifications for important events and issues
+- Alerts to be notified if temperatures or fan speeds exceed an expected range
+- Application status badge with daemon health status
+- Polling rate controls (#371)
+- LCD loop over gifs folder feature (#76) (#364)
+
+### Changed
+
+- Many changes made for this major release for every component
+- Modes UX and business logic has been reworked
+- Disable (formerly Blacklist) devices and sensors more easily
+- New Desktop Application based on Qt, improving usability and performance (#321) (#229) (#282)
+- Various Daemon improvements (#237)
+- All readme's have been refreshed
+
+### Fixed
+
+- Many small and larger bugs fixed, too many to list.
+
+### Dependency
+
+- Most all dependencies updated to latest versions
+
 ## [1.4.5] - 2024-12-14
 
 ### Added

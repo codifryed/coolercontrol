@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "coolercontrold"
-version = "1.4.5"
+version = "2.0.0"
 dependencies = [
  "aide",
  "anyhow",
