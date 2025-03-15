@@ -76,6 +76,8 @@ use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const SESSION_COOKIE_NAME: &str = "cc";
+const API_RATE_BURST: u32 = 50;
+const API_RATE_REQ_PER_SEC: u64 = 10;
 
 type Port = u16;
 
@@ -135,9 +137,9 @@ pub async fn start_server<'s>(
         config: Arc::new(
             GovernorConfigBuilder::default()
                 // startup has quite a few requests (e.g. per device)
-                .burst_size(30)
+                .burst_size(API_RATE_BURST)
                 // 10 req/s
-                .per_millisecond(100)
+                .per_millisecond(1000 / API_RATE_REQ_PER_SEC)
                 .finish()
                 .unwrap(),
         ),
