@@ -20,4 +20,6 @@ pub mod devices;
 pub mod fans;
 pub mod freqs;
 pub mod hwmon_repo;
+pub mod power;
+pub mod power_cap;
 pub mod temps;

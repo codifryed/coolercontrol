@@ -17,34 +17,41 @@
   -->
 
 <script setup lang="ts">
-import Dropdown from 'primevue/dropdown'
-import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiAlertOutline, mdiContentSaveOutline } from '@mdi/js'
+import Select from 'primevue/select'
+import { nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
-import SpeedDefaultChart from '@/components/SpeedDefaultChart.vue'
 import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
 import SpeedGraphChart from '@/components/SpeedGraphChart.vue'
 import SpeedMixChart from '@/components/SpeedMixChart.vue'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import MiniGauge from '@/components/MiniGauge.vue'
 import { storeToRefs } from 'pinia'
 import {
     DeviceSettingReadDTO,
     DeviceSettingWriteManualDTO,
     DeviceSettingWriteProfileDTO,
 } from '@/models/DaemonSettings'
-import SelectButton from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
-import { useDialog } from 'primevue/usedialog'
-import ProfileEditor from '@/components/ProfileEditor.vue'
-import FunctionEditor from '@/components/FunctionEditor.vue'
+import { $enum } from 'ts-enum-util'
+import { ChannelViewType, SensorAndChannelSettings } from '@/models/UISettings.ts'
+import { ChartType, Dashboard, DashboardDeviceChannel } from '@/models/Dashboard.ts'
+import TimeChart from '@/components/TimeChart.vue'
+import SensorTable from '@/components/SensorTable.vue'
+import AxisOptions from '@/components/AxisOptions.vue'
+import { v4 as uuidV4 } from 'uuid'
+import _ from 'lodash'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
-    deviceId: UID
-    name: string
+    deviceUID: UID
+    channelName: string
 }
 
 const props = defineProps<Props>()
@@ -52,17 +59,24 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
-const dialog = useDialog()
 const componentKey: Ref<number> = ref(0)
+const confirm = useConfirm()
+
+let contextIsDirty: boolean = false
+
+const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
-    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
+    settingsStore.allDaemonDeviceSettings.get(props.deviceUID)?.settings.get(props.channelName)
+const uiChannelSetting: SensorAndChannelSettings = settingsStore.allUIDeviceSettings
+    .get(props.deviceUID)!
+    .sensorsAndChannels.get(props.channelName)!
 
 const channelIsControllable = (): boolean => {
     for (const device of deviceStore.allDevices()) {
-        if (device.uid === props.deviceId && device.info != null) {
-            const channelInfo = device.info.channels.get(props.name)
+        if (device.uid === props.deviceUID && device.info != null) {
+            const channelInfo = device.info.channels.get(props.channelName)
             if (channelInfo != null && channelInfo.speed_options != null) {
                 return channelInfo.speed_options.fixed_enabled
             }
@@ -81,71 +95,56 @@ if (channelIsControllable()) {
     }
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
-const memberProfiles: Ref<Array<Profile>> = computed(() => {
-    if (selectedProfile.value.p_type === ProfileType.Mix) {
-        return settingsStore.profiles.filter((profile) =>
-            selectedProfile.value.member_profile_uids.includes(profile.uid),
-        )
-    }
-    return []
-})
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
-const editProfileEnabled = () => {
-    return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
+const chosenViewType: Ref<ChannelViewType> = ref(
+    channelIsControllable() ? uiChannelSetting.viewType : ChannelViewType.Dashboard,
+)
+const viewTypeOptions = channelIsControllable()
+    ? [...$enum(ChannelViewType).keys()]
+    : [ChannelViewType.Dashboard]
+
+const channelLabel =
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)
+        ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+
+const createNewDashboard = (): Dashboard => {
+    const dash = new Dashboard(channelLabel)
+    dash.timeRangeSeconds = 300
+    dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID, props.channelName))
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)!
+        .sensorsAndChannels.get(props.channelName)!.channelDashboard = dash
+    return dash
 }
-const editFunctionEnabled = () => {
-    return (
-        !manualControlEnabled.value &&
-        selectedProfile.value.uid !== '0' &&
-        selectedProfile.value.function_uid !== '0'
-    )
+const singleDashboard = ref(
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)!
+        .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
+)
+const chartTypes = [...$enum(ChartType).values()]
+const chartMinutesMin: number = 1
+const chartMinutesMax: number = 60
+const chartMinutes: Ref<number> = ref(singleDashboard.value.timeRangeSeconds / 60)
+const chartMinutesScrolled = (event: WheelEvent): void => {
+    if (event.deltaY < 0) {
+        if (chartMinutes.value < chartMinutesMax) chartMinutes.value += 1
+    } else {
+        if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
+    }
 }
 
-const goToProfile = (): void => {
-    dialog.open(ProfileEditor, {
-        props: {
-            header: 'Edit Profile',
-            position: 'center',
-            modal: true,
-            dismissableMask: false,
-        },
-        data: {
-            profileUID: selectedProfile.value.uid,
-        },
-        onClose: (options: any) => {
-            componentKey.value += 1 // refreshes the graph after profile changes, so they are correctly displayed
-            const data = options.data
-            if (data && data.functionUID != null) {
-                dialog.open(FunctionEditor, {
-                    props: {
-                        header: 'Edit Function',
-                        position: 'center',
-                        modal: true,
-                        dismissableMask: false,
-                    },
-                    data: {
-                        functionUID: data.functionUID,
-                    },
-                })
-            }
-        },
-    })
+const addScrollEventListener = (): void => {
+    // @ts-ignore
+    document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
 }
-const goToFunction = (): void => {
-    dialog.open(FunctionEditor, {
-        props: {
-            header: 'Edit Function',
-            position: 'center',
-            modal: true,
-            dismissableMask: false,
-        },
-        data: {
-            functionUID: selectedProfile.value.function_uid,
-        },
-    })
+const chartMinutesChanged = (value: number): void => {
+    singleDashboard.value.timeRangeSeconds = value * 60
 }
+const chartKey: Ref<string> = ref(uuidV4())
+
 const getCurrentDuty = (): number | undefined => {
-    const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
+    const duty = currentDeviceStatus.value.get(props.deviceUID)?.get(props.channelName)?.duty
     return duty != null ? Number(duty) : undefined
 }
 
@@ -153,8 +152,8 @@ const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)
 let dutyMin = 0
 let dutyMax = 100
 for (const device of deviceStore.allDevices()) {
-    if (device.uid === props.deviceId && device.info != null) {
-        const channelInfo = device.info.channels.get(props.name)
+    if (device.uid === props.deviceUID && device.info != null) {
+        const channelInfo = device.info.channels.get(props.channelName)
         if (channelInfo != null && channelInfo.speed_options != null) {
             dutyMin = channelInfo.speed_options.min_duty
             dutyMax = channelInfo.speed_options.max_duty
@@ -171,8 +170,8 @@ const getProfileOptions = (): any[] => {
 }
 
 const manualProfileOptions = [
+    { value: false, label: 'Automatic' },
     { value: true, label: 'Manual' },
-    { value: false, label: 'Profiles' },
 ]
 // todo: PWM Mode Toggle with own save function
 
@@ -182,10 +181,20 @@ const saveSetting = async () => {
             return
         }
         const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
-        await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
+        await settingsStore.saveDaemonDeviceSettingManual(
+            props.deviceUID,
+            props.channelName,
+            setting,
+        )
+        contextIsDirty = false
     } else {
         const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
-        await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
+        await settingsStore.saveDaemonDeviceSettingProfile(
+            props.deviceUID,
+            props.channelName,
+            setting,
+        )
+        contextIsDirty = false
     }
 }
 
@@ -198,12 +207,44 @@ const manualScrolled = (event: WheelEvent): void => {
     }
 }
 
-const applyButton = ref()
-nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
-    await delay()
-    applyButton.value.$el.focus()
-})
+const viewTypeChanged = () => {
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)!
+        .sensorsAndChannels.get(props.channelName)!.viewType = chosenViewType.value
+}
+
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to this control channel.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
+const updateResponsiveGraphHeight = (): void => {
+    const graphEl = document.getElementById('control-graph')
+    const controlPanel = document.getElementById('control-panel')
+    if (graphEl != null && controlPanel != null) {
+        const panelHeight = controlPanel.getBoundingClientRect().height
+        if (panelHeight > 56) {
+            // 4rem
+            graphEl.style.height = `max(calc(100vh - (${panelHeight}px + 0.5rem)), 20rem)`
+        } else {
+            graphEl.style.height = 'max(calc(100vh - 4rem), 20rem)'
+        }
+    }
+}
 
 onMounted(() => {
     // @ts-ignore
@@ -217,195 +258,278 @@ onMounted(() => {
             })
         }
     })
+
+    window.addEventListener('resize', updateResponsiveGraphHeight)
+    setTimeout(updateResponsiveGraphHeight)
+
+    addScrollEventListener()
+    watch(chartMinutes, (newValue: number): void => {
+        chartMinutesChanged(newValue)
+    })
+    watch(
+        settingsStore.allUIDeviceSettings,
+        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
+    )
+
+    watch([manualControlEnabled, manualDuty, selectedProfile], () => {
+        contextIsDirty = true
+    })
+    watch(selectedProfile, () => {
+        setTimeout(updateResponsiveGraphHeight)
+    })
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
+})
+onUnmounted(() => {
+    window.removeEventListener('resize', updateResponsiveGraphHeight)
 })
 </script>
 
 <template>
-    <div class="card pt-2">
-        <div class="flex">
-            <div class="flex-inline control-column">
-                <Button
-                    v-if="!channelIsControllable()"
-                    class="mt-2 w-full mb-2"
-                    style="color: var(--cc-yellow)"
-                    label="Not Supported"
-                    icon="pi pi-info-circle"
-                    size="small"
-                    outlined
-                    v-tooltip.right="{
-                        value: 'The currently installed driver does not support control of this channel.',
-                        showDelay: 0,
-                    }"
+    <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
+            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
+            <span class="font-bold">{{ channelLabel }}</span>
+        </div>
+        <div class="flex flex-wrap gap-x-1 justify-end">
+            <div
+                v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"
+                class="p-2 pr-0"
+            >
+                <InputNumber
+                    placeholder="Duty"
+                    v-model="manualDuty"
+                    mode="decimal"
+                    class="duty-input w-full"
+                    suffix="%"
+                    showButtons
+                    :min="dutyMin"
+                    :max="dutyMax"
+                    :use-grouping="false"
+                    :step="1"
+                    button-layout="horizontal"
+                    :input-style="{ width: '8rem' }"
+                    v-tooltip.bottom="'Manual Duty'"
                 >
-                </Button>
-                <div class="mt-2">
-                    <SelectButton
-                        v-model="manualControlEnabled"
-                        :options="manualProfileOptions"
-                        option-label="label"
-                        option-value="value"
-                        :allow-empty="false"
-                        class="w-full"
-                        :pt="{ label: { style: 'width: 3.80rem' } }"
-                        :disabled="!channelIsControllable()"
-                        v-tooltip.top="{
-                            value: 'Select whether to control manually, or apply a profile',
-                            showDelay: 700,
-                        }"
-                    />
-                </div>
-                <div v-if="manualControlEnabled" class="manual-input p-float-label mt-5">
-                    <InputNumber
-                        placeholder="Duty"
-                        v-model="manualDuty"
-                        inputId="dd-brightness"
-                        mode="decimal"
-                        class="w-full"
-                        suffix="%"
-                        :step="1"
-                        :input-style="{ width: '60px' }"
-                        :min="dutyMin"
-                        :max="dutyMax"
-                    />
-                    <Slider
-                        v-model="manualDuty"
-                        :step="1"
-                        :min="dutyMin"
-                        :max="dutyMax"
-                        class="w-full mt-0"
-                    />
-                    <label for="dd-duty">Duty</label>
-                </div>
-                <div v-else class="p-float-label mt-5">
-                    <Dropdown
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+                <Slider
+                    v-model="manualDuty"
+                    class="!w-[11.5rem] ml-1.5"
+                    :step="1"
+                    :min="dutyMin"
+                    :max="dutyMax"
+                />
+            </div>
+            <div
+                v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
+                class="flex flex-row"
+            >
+                <!--                <div class="p-2 pr-1">-->
+                <!--                    <Button-->
+                <!--                        class="!p-2 w-10 h-[2.375rem]"-->
+                <!--                        label="Edit"-->
+                <!--                        v-tooltip.bottom="'Edit Profile'"-->
+                <!--                        @click="-->
+                <!--                            router.push({-->
+                <!--                                name: 'profiles',-->
+                <!--                                params: { profileUID: selectedProfile.uid },-->
+                <!--                            })-->
+                <!--                        "-->
+                <!--                        :disabled="selectedProfile.uid === '0'"-->
+                <!--                    >-->
+                <!--                        <svg-icon-->
+                <!--                            class="outline-0"-->
+                <!--                            type="mdi"-->
+                <!--                            :path="mdiPencilOutline"-->
+                <!--                            :size="deviceStore.getREMSize(1.5)"-->
+                <!--                        />-->
+                <!--                    </Button>-->
+                <!--                </div>-->
+                <div class="p-2 pr-0">
+                    <Select
                         v-model="selectedProfile"
-                        inputId="dd-profile"
                         :options="getProfileOptions()"
                         option-label="name"
                         placeholder="Profile"
-                        class="w-full"
-                        scroll-height="400px"
-                        :disabled="!channelIsControllable() || manualControlEnabled"
+                        class="w-full mr-4 h-full"
+                        checkmark
+                        dropdown-icon="pi pi-chart-line"
+                        scroll-height="40rem"
+                        v-tooltip.bottom="'Profile to apply'"
                     />
-                    <label for="dd-profile">Profile</label>
                 </div>
-                <Button
-                    label="Edit Profile"
-                    class="mt-6 w-full"
-                    outlined
-                    :disabled="!channelIsControllable() || !editProfileEnabled()"
-                    @click="goToProfile"
+            </div>
+            <div
+                v-else-if="
+                    chosenViewType === ChannelViewType.Dashboard &&
+                    singleDashboard.chartType == ChartType.TIME_CHART
+                "
+                class="p-2 pr-0 flex flex-row"
+            >
+                <InputNumber
+                    placeholder="Minutes"
+                    input-id="chart-minutes"
+                    v-model="chartMinutes"
+                    class="h-[2.375rem] chart-minutes"
+                    suffix=" min"
+                    show-buttons
+                    :use-grouping="false"
+                    :step="1"
+                    :min="chartMinutesMin"
+                    :max="chartMinutesMax"
+                    button-layout="horizontal"
+                    :allow-empty="false"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.bottom="'Time Range'"
                 >
-                    <span class="p-button-label">Edit Profile</span>
-                </Button>
-                <Button
-                    label="Edit Function"
-                    class="mt-5 w-full"
-                    outlined
-                    :disabled="!channelIsControllable() || !editFunctionEnabled()"
-                    @click="goToFunction"
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+                <axis-options class="h-[2.375rem] ml-3" :dashboard="singleDashboard" />
+            </div>
+            <div v-if="chosenViewType === ChannelViewType.Dashboard" class="p-2 pr-0">
+                <Select
+                    v-model="singleDashboard.chartType"
+                    :options="chartTypes"
+                    placeholder="Select a Chart Type"
+                    class="w-32 h-full"
+                    checkmark
+                    dropdown-icon="pi pi-chart-bar"
+                    scroll-height="400px"
+                    v-tooltip.bottom="'Chart Type'"
+                />
+            </div>
+            <div class="p-2 pr-0 flex flex-row">
+                <Select
+                    v-if="chosenViewType === ChannelViewType.Control"
+                    v-model="manualControlEnabled"
+                    :options="manualProfileOptions"
+                    option-label="label"
+                    option-value="value"
+                    class="w-32 mr-3"
+                    placeholder="Control Type"
+                    checkmark
+                    dropdown-icon="pi pi-cog"
+                    scroll-height="40rem"
+                    v-tooltip.bottom="'Automatic or Manual'"
+                />
+                <div
+                    v-if="!channelIsControllable()"
+                    class="pr-4 py-2 flex flex-row leading-none items-center"
+                    v-tooltip.bottom="
+                        'The currently installed driver does not support control of this channel.'
+                    "
                 >
-                    <span class="p-button-label">Edit Function</span>
-                </Button>
+                    <svg-icon
+                        type="mdi"
+                        class="text-warning"
+                        :path="mdiAlertOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </div>
+                <Select
+                    v-model="chosenViewType"
+                    :options="viewTypeOptions"
+                    class="w-32"
+                    placeholder="View Type"
+                    checkmark
+                    dropdown-icon="pi pi-sliders-h"
+                    scroll-height="40rem"
+                    @change="viewTypeChanged"
+                    v-tooltip.bottom="'Control or View'"
+                />
+            </div>
+            <div class="p-2 flex flex-row">
                 <Button
-                    ref="applyButton"
+                    class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Apply"
-                    class="mt-5 w-full"
+                    v-tooltip.bottom="'Apply Setting'"
                     @click="saveSetting"
-                    :disabled="!channelIsControllable()"
+                    :disabled="
+                        !channelIsControllable() || chosenViewType === ChannelViewType.Dashboard
+                    "
                 >
-                    <span class="p-button-label">Apply</span>
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiContentSaveOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
                 </Button>
-                <div v-if="!manualControlEnabled">
-                    <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
-                        <MiniGauge
-                            :device-u-i-d="selectedProfile.temp_source!.device_uid"
-                            :sensor-name="selectedProfile.temp_source!.temp_name"
-                            :key="'temp' + props.deviceId + props.name + selectedProfile.uid"
-                            temp
-                        />
-                        <MiniGauge
-                            v-if="getCurrentDuty() != null"
-                            :device-u-i-d="props.deviceId"
-                            :sensor-name="props.name"
-                            :key="'duty' + props.deviceId + props.name + selectedProfile.uid"
-                            duty
-                        />
-                    </div>
-                    <div v-if="selectedProfile.p_type === ProfileType.Mix" class="mt-6">
-                        <MiniGauge
-                            v-for="memberProfile in memberProfiles"
-                            :device-u-i-d="memberProfile.temp_source!.device_uid"
-                            :sensor-name="memberProfile.temp_source!.temp_name"
-                            :key="'temp' + props.deviceId + props.name + memberProfile.uid"
-                            temp
-                        />
-                        <MiniGauge
-                            v-if="getCurrentDuty() != null"
-                            :device-u-i-d="props.deviceId"
-                            :sensor-name="props.name"
-                            :key="'duty' + props.deviceId + props.name + selectedProfile.uid"
-                            duty
-                        />
-                    </div>
-                </div>
             </div>
-            <div class="flex-1 pb-0">
-                <div v-if="manualControlEnabled">
-                    <SpeedFixedChart
-                        :duty="manualDuty"
-                        :current-device-u-i-d="props.deviceId"
-                        :current-sensor-name="props.name"
-                        :key="'manual' + props.deviceId + props.name + selectedProfile.uid"
-                    />
-                </div>
-                <div v-else>
-                    <SpeedDefaultChart
-                        v-if="selectedProfile.p_type === ProfileType.Default"
-                        :profile="selectedProfile"
-                        :current-device-u-i-d="props.deviceId"
-                        :current-sensor-name="props.name"
-                        :key="'default' + props.deviceId + props.name + selectedProfile.uid"
-                    />
-                    <SpeedFixedChart
-                        v-else-if="selectedProfile.p_type === ProfileType.Fixed"
-                        :duty="selectedProfile.speed_fixed"
-                        :current-device-u-i-d="props.deviceId"
-                        :current-sensor-name="props.name"
-                        :key="'fixed' + props.deviceId + props.name + selectedProfile.uid"
-                    />
-                    <SpeedGraphChart
-                        v-else-if="selectedProfile.p_type === ProfileType.Graph"
-                        :profile="selectedProfile"
-                        :current-device-u-i-d="props.deviceId"
-                        :current-sensor-name="props.name"
-                        :key="
-                            'graph' +
-                            componentKey +
-                            props.deviceId +
-                            props.name +
-                            selectedProfile.uid
-                        "
-                    />
-                    <SpeedMixChart
-                        v-else-if="selectedProfile.p_type === ProfileType.Mix"
-                        :profile="selectedProfile"
-                        :current-device-u-i-d="props.deviceId"
-                        :current-sensor-name="props.name"
-                        :key="
-                            'mix' + componentKey + props.deviceId + props.name + selectedProfile.uid
-                        "
-                    />
-                </div>
-            </div>
+        </div>
+    </div>
+    <div class="flex flex-col">
+        <div v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled">
+            <SpeedFixedChart
+                :duty="manualDuty"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="'manual' + props.deviceUID + props.channelName"
+            />
+        </div>
+        <div v-else-if="chosenViewType === ChannelViewType.Control">
+            <SpeedFixedChart
+                v-if="selectedProfile.p_type === ProfileType.Default"
+                :default-profile="true"
+                :profile="selectedProfile"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="'default' + props.deviceUID + props.channelName + selectedProfile.uid"
+            />
+            <SpeedFixedChart
+                v-else-if="selectedProfile.p_type === ProfileType.Fixed"
+                :duty="selectedProfile.speed_fixed"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="'fixed' + props.deviceUID + props.channelName + selectedProfile.uid"
+            />
+            <SpeedGraphChart
+                v-else-if="selectedProfile.p_type === ProfileType.Graph"
+                :profile="selectedProfile"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="
+                    'graph' +
+                    componentKey +
+                    props.deviceUID +
+                    props.channelName +
+                    selectedProfile.uid
+                "
+            />
+            <SpeedMixChart
+                v-else-if="selectedProfile.p_type === ProfileType.Mix"
+                :profile="selectedProfile"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="
+                    'mix' + componentKey + props.deviceUID + props.channelName + selectedProfile.uid
+                "
+            />
+        </div>
+        <div v-else-if="chosenViewType === ChannelViewType.Dashboard">
+            <TimeChart
+                v-if="singleDashboard.chartType == ChartType.TIME_CHART"
+                :dashboard="singleDashboard"
+                :key="chartKey"
+            />
+            <SensorTable
+                v-else-if="singleDashboard.chartType == ChartType.TABLE"
+                :dashboard="singleDashboard"
+                :key="'table' + chartKey"
+            />
         </div>
     </div>
 </template>
 
-<style scoped lang="scss">
-.control-column {
-    width: 14rem;
-    padding-right: 1rem;
-    margin-right: 1rem;
-}
-</style>
+<style scoped lang="scss"></style>

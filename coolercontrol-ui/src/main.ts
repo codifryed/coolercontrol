@@ -18,6 +18,10 @@
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import './style.css'
+import 'primeicons/primeicons.css'
+import 'uplot/dist/uPlot.min.css'
+import 'abortcontroller-polyfill/dist/abortsignal-polyfill-only'
 
 import App from './App.vue'
 import router from './router'
@@ -26,21 +30,34 @@ import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import DialogService from 'primevue/dialogservice'
 import ConfirmationService from 'primevue/confirmationservice'
+import CC from './presets/cc'
 
-import '@/assets/styles.scss'
-import StyleClass from 'primevue/styleclass'
 import Tooltip from 'primevue/tooltip'
+import mitt from 'mitt'
 
+const appVersion = import.meta.env.PACKAGE_VERSION
+console.info(`
+   ____            _            ____            _             _
+  / ___|___   ___ | | ___ _ __ / ___|___  _ __ | |_ _ __ ___ | |
+ | |   / _ \\ / _ \\| |/ _ \\ '__| |   / _ \\| '_ \\| __| '__/ _ \\| |
+ | |__| (_) | (_) | |  __/ |  | |__| (_) | | | | |_| | | (_) | |
+  \\____\\___/ \\___/|_|\\___|_|   \\____\\___/|_| |_|\\__|_|  \\___/|_|  v${appVersion}
+
+ =======================================================================
+`)
 const app = createApp(App)
+app.provide('emitter', mitt())
 
 app.use(createPinia())
 app.use(router)
-app.use(PrimeVue)
+app.use(PrimeVue, {
+    unstyled: true,
+    pt: CC,
+})
 app.use(ToastService)
 app.use(DialogService)
 app.use(ConfirmationService)
 
-app.directive('styleclass', StyleClass)
 app.directive('tooltip', Tooltip)
 
 app.mount('#app')

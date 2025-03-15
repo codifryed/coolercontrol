@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-
-use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::device::ChannelName;
@@ -42,7 +42,7 @@ pub const DEFAULT_FUNCTION_UID: &str = "0";
 
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct Setting {
     pub channel_name: ChannelName,
 
@@ -55,7 +55,8 @@ pub struct Setting {
     /// Settings for LCD screens
     pub lcd: Option<LcdSettings>,
 
-    /// the current pwm_mode to set for hwmon devices, eg: 1
+    /// the current `pwm_mode` to set for hwmon devices, eg: 1
+    // #[deprecated]
     pub pwm_mode: Option<u8>,
 
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
@@ -71,12 +72,11 @@ impl PartialEq for Setting {
             && self.speed_fixed == other.speed_fixed
             && self.lighting == other.lighting
             && self.lcd == other.lcd
-            && self.pwm_mode == other.pwm_mode
             && self.profile_uid == other.profile_uid
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LightingSettings {
     /// The lighting mode name
     pub mode: String,
@@ -91,16 +91,16 @@ pub struct LightingSettings {
     pub colors: Vec<(R, G, B)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempSource {
-    /// The internal name for this Temperature Source. NOT the TempInfo Label.
+    /// The internal name for this Temperature Source. NOT the `TempInfo` Label.
     pub temp_name: TempName,
 
     /// The associated device uid containing current temp values
     pub device_uid: DeviceUID,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdSettings {
     /// The Lcd mode name
     pub mode: String,
@@ -111,8 +111,10 @@ pub struct LcdSettings {
     /// The LCD Image orientation (0,90,180,270)
     pub orientation: Option<u16>,
 
-    /// The LCD Image tmp file path location, where the preprocessed image is located
+    /// The LCD Image processed file path location, where the preprocessed image is located.
     pub image_file_processed: Option<String>,
+
+    pub carousel: Option<LcdCarouselSettings>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(R, G, B)>,
@@ -121,8 +123,35 @@ pub struct LcdSettings {
     pub temp_source: Option<TempSource>,
 }
 
+/// Settings for the LCD Carousel.
+///
+/// This can be used to have a carousel of images (static or gif), of sensor data,
+/// or a combination of both.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct LcdCarouselSettings {
+    /// The absolute path directory location for images for the carousel. All applicable images
+    /// present are processed when the setting is applied.
+    pub images_path: Option<String>,
+
+    /// The interval in seconds (2-900) in which to change images in the carousel.
+    pub interval: u64,
+    // The list of channel sources to display.
+    // pub channel_sources: Vec<ChannelSource>,
+}
+
+impl Default for LcdCarouselSettings {
+    fn default() -> Self {
+        Self {
+            images_path: None,
+            interval: 4,
+            // channel_sources: Vec::new(),
+        }
+    }
+}
+
 /// General Settings for `CoolerControl`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
     pub no_init: bool,
@@ -134,20 +163,24 @@ pub struct CoolerControlSettings {
     pub ipv4_address: Option<String>,
     pub ipv6_address: Option<String>,
     pub compress: bool,
+    pub poll_rate: f64,
 }
 
 /// General Device Settings for `CoolerControl`
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
     pub name: DeviceName,
 
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
+
+    /// A list of channels to disable communication with.
+    pub disable_channels: Vec<ChannelName>,
 }
 
 /// Profile Settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Profile {
     /// The Unique Identifier for this Profile
     pub uid: ProfileUID,
@@ -193,7 +226,7 @@ impl Default for Profile {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum ProfileType {
     Default,
     Fixed,
@@ -201,7 +234,7 @@ pub enum ProfileType {
     Mix,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Function {
     /// The Unique identifier for this function
     pub uid: FunctionUID,
@@ -247,14 +280,16 @@ impl Default for Function {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionType {
     Identity,
     Standard,
     ExponentialMovingAvg,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema,
+)]
 pub enum ProfileMixFunctionType {
     Min,
     Max,
@@ -267,13 +302,13 @@ impl Default for ProfileMixFunctionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum CustomSensorType {
     Mix,
     File,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum CustomSensorMixFunctionType {
     Min,
     Max,
@@ -282,18 +317,40 @@ pub enum CustomSensorMixFunctionType {
     WeightedAvg,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomTempSourceData {
     pub temp_source: TempSource,
     pub weight: Weight,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensor {
-    /// ID MUST be unique, as temp_name must be unique.
+    /// ID MUST be unique, as `temp_name` must be unique.
     pub id: String,
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
     pub file_path: Option<PathBuf>,
+}
+
+/// A source for displaying sensor data that is related to a particular channel.
+/// This is like `TempSource` but not limited to temperature sensors. (Load, Duty, etc.)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelSource {
+    /// The associated device uid containing current values
+    pub device_uid: DeviceUID,
+
+    /// The internal name for this channel source. NOT the Label.
+    pub channel_name: ChannelName,
+
+    pub channel_metric: ChannelMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
+pub enum ChannelMetric {
+    Temp,
+    Duty,
+    Load,
+    RPM,
+    Freq,
 }

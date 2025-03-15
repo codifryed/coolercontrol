@@ -18,15 +18,15 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
+use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::config::Config;
@@ -39,9 +39,11 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 pub const GPU_FREQ_NAME: &str = "GPU Freq";
 pub const GPU_LOAD_NAME: &str = "GPU Load";
+pub const GPU_POWER_NAME: &str = "GPU Power";
 pub const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
     Nvidia,
@@ -59,24 +61,25 @@ pub struct GpuRepo {
 }
 
 impl GpuRepo {
-    pub async fn new(config: Arc<Config>, nvidia_cli: bool) -> Result<Self> {
-        Ok(Self {
-            gpus_nvidia: GpuNVidia::new(Arc::clone(&config)),
+    pub fn new(config: Rc<Config>, nvidia_cli: bool) -> Self {
+        Self {
+            gpus_nvidia: GpuNVidia::new(Rc::clone(&config)),
             gpus_amd: GpuAMD::new(config),
             devices: HashMap::new(),
             gpu_type_count: HashMap::new(),
             nvml_active: false,
             force_nvidia_cli: nvidia_cli,
-        })
+        }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn detect_gpu_types(&mut self) {
         let nvidia_dev_count = if self.force_nvidia_cli {
             self.gpus_nvidia
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
                 .await
                 .len() as u8
-        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices().await {
+        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices() {
             self.nvml_active = true;
             num_nvml_devices
         } else {
@@ -89,46 +92,32 @@ impl GpuRepo {
             .insert(GpuType::Nvidia, nvidia_dev_count);
         self.gpu_type_count
             .insert(GpuType::AMD, self.gpus_amd.init_devices().await.len() as u8);
-        let number_of_gpus = self.gpu_type_count.values().sum::<u8>();
-        if number_of_gpus == 0 {
-            warn!("No GPU Devices detected");
-        }
     }
 
-    pub async fn load_amd_statuses(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
-        // todo: refactor handling concurrent access to Self and logic for gpus
+    pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.read().await.type_index;
-                let self_ref = Arc::clone(&self);
-                let amd_driver = Arc::clone(amd_driver);
-                let join_handle = tokio::task::spawn(async move {
-                    let statuses = self_ref.gpus_amd.get_amd_status(&amd_driver).await;
-                    self_ref
-                        .gpus_amd
+                let type_index = device_lock.borrow().type_index;
+                scope.spawn(async move {
+                    let statuses = self.gpus_amd.get_amd_status(amd_driver).await;
+                    self.gpus_amd
                         .amd_preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(type_index, statuses);
                 });
-                tasks.push(join_handle);
             }
         }
     }
 
-    async fn load_nvml_status(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
+    fn load_nvml_status<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
-                let type_index = device_lock.read().await.type_index;
-                let self_ref = Arc::clone(&self);
-                let nv_info = Arc::clone(nv_info);
-                let join_handle = tokio::task::spawn(async move {
-                    let nvml_status = self_ref.gpus_nvidia.request_nvml_status(nv_info).await;
-                    self_ref
-                        .gpus_nvidia
+                let type_index = device_lock.borrow().type_index;
+                scope.spawn(async move {
+                    let nvml_status = self.gpus_nvidia.request_nvml_status(nv_info);
+                    self.gpus_nvidia
                         .nvidia_preloaded_statuses
-                        .write()
-                        .await
+                        .borrow_mut()
                         .insert(
                             type_index,
                             StatusNvidiaDeviceSMI {
@@ -138,25 +127,23 @@ impl GpuRepo {
                             },
                         );
                 });
-                tasks.push(join_handle);
             }
         }
     }
 
-    fn load_nvidia_smi_status(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
-        let join_handle = tokio::task::spawn(async move {
+    fn load_nvidia_smi_status<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+        scope.spawn(async move {
             let mut nv_status_map = HashMap::new();
             for nv_status in self.gpus_nvidia.try_request_nv_smi_statuses().await {
                 nv_status_map.insert(nv_status.index, nv_status);
             }
             for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
                 if let Some(device_lock) = self.devices.get(uid) {
-                    let type_index = device_lock.read().await.type_index;
+                    let type_index = device_lock.borrow().type_index;
                     if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
                         self.gpus_nvidia
                             .nvidia_preloaded_statuses
-                            .write()
-                            .await
+                            .borrow_mut()
                             .insert(type_index, nv_status);
                     } else {
                         error!("GPU Index not found in Nvidia status response");
@@ -164,11 +151,10 @@ impl GpuRepo {
                 }
             }
         });
-        tasks.push(join_handle);
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for GpuRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::GPU
@@ -191,7 +177,7 @@ impl Repository for GpuRepo {
         };
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
-            init_devices.insert(uid.clone(), device.read().await.clone());
+            init_devices.insert(uid.clone(), device.borrow().clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized GPU Devices: {:?}", init_devices);
@@ -232,22 +218,20 @@ impl Repository for GpuRepo {
         self.devices.values().cloned().collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        if self.devices.is_empty().not() {
-            let mut tasks = Vec::new();
-            Arc::clone(&self).load_amd_statuses(&mut tasks).await;
-            if self.nvml_active {
-                self.load_nvml_status(&mut tasks).await;
-            } else {
-                self.load_nvidia_smi_status(&mut tasks);
-            }
-            for task in tasks {
-                if let Err(err) = task.await {
-                    error!("{}", err);
+        let self_c = Rc::clone(&self);
+        moro_local::async_scope!(|scope| {
+            if self.devices.is_empty().not() {
+                self_c.load_amd_statuses(scope);
+                if self.nvml_active {
+                    self_c.load_nvml_status(scope);
+                } else {
+                    self.load_nvidia_smi_status(scope);
                 }
             }
-        }
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()
@@ -255,13 +239,8 @@ impl Repository for GpuRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        let start_update = Instant::now();
-        self.gpus_amd.update_all_statuses().await;
-        self.gpus_nvidia.update_all_statuses().await;
-        trace!(
-            "STATUS SNAPSHOT Time taken for all GPU devices: {:?}",
-            start_update.elapsed()
-        );
+        self.gpus_amd.update_all_statuses();
+        self.gpus_nvidia.update_all_statuses();
         Ok(())
     }
 
@@ -289,6 +268,15 @@ impl Repository for GpuRepo {
         }
     }
 
+    /// Applying manual control is handled internally for GPU devices.
+    async fn apply_setting_manual_control(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,
@@ -296,11 +284,10 @@ impl Repository for GpuRepo {
         speed_fixed: u8,
     ) -> Result<()> {
         debug!(
-            "Applying GPU device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
+            "Applying GPU device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         if speed_fixed > 100 {
-            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
+            return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
         let is_amd = self.gpus_amd.amd_driver_infos.contains_key(device_uid);
         if is_amd {
@@ -357,5 +344,9 @@ impl Repository for GpuRepo {
         Err(anyhow!(
             "Applying pwm modes are not supported for GPU devices"
         ))
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

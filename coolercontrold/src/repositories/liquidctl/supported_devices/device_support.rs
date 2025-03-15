@@ -35,6 +35,21 @@ pub fn get_firmware_ver(status_map: &StatusMap) -> Option<String> {
     status_map.get("firmware version").cloned()
 }
 
+#[allow(clippy::ptr_arg)]
+pub fn parse_float(value: &String) -> Option<f64> {
+    parse_float_inner(value)
+}
+fn parse_float_inner(value: &str) -> Option<f64> {
+    value.parse::<f64>().ok()
+}
+#[allow(clippy::ptr_arg)]
+pub fn parse_u32(value: &String) -> Option<u32> {
+    parse_u32_inner(value)
+}
+fn parse_u32_inner(value: &str) -> Option<u32> {
+    value.parse::<u32>().ok()
+}
+
 pub struct ColorMode {
     pub name: String,
     pub min_colors: u8,
@@ -64,7 +79,7 @@ impl ColorMode {
 /// It is a general purpose trait and each supported device struct must implement this trait.
 /// Many of the default methods will cover all use cases, but it is advisable to override them
 /// for increased efficiency and performance.
-pub trait DeviceSupport: Debug + Sync + Send {
+pub trait DeviceSupport: Debug {
     fn supported_driver(&self) -> BaseDriver;
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo;
@@ -82,7 +97,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         locations
     }
 
-    fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
+    fn extract_status(&self, status_map: &StatusMap, device_index: u8) -> Status {
         Status {
             temps: self.get_temperatures(status_map),
             channels: self.get_channel_statuses(status_map, device_index),
@@ -107,9 +122,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let liquid_temp = status_map
-            .get("liquid temperature")
-            .and_then(|s| self.parse_float(s));
+        let liquid_temp = status_map.get("liquid temperature").and_then(parse_float);
         if let Some(temp) = liquid_temp {
             temps.push(TempStatus {
                 name: "liquid".to_string(),
@@ -119,9 +132,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let water_temp = status_map
-            .get("water temperature")
-            .and_then(|s| self.parse_float(s));
+        let water_temp = status_map.get("water temperature").and_then(parse_float);
         if let Some(temp) = water_temp {
             temps.push(TempStatus {
                 name: "water".to_string(),
@@ -131,9 +142,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let plain_temp = status_map
-            .get("temperature")
-            .and_then(|s| self.parse_float(s));
+        let plain_temp = status_map.get("temperature").and_then(parse_float);
         if let Some(temp) = plain_temp {
             temps.push(TempStatus {
                 name: "temp".to_string(),
@@ -149,7 +158,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
         for (probe_name, value) in status_map {
             if TEMP_PROB_PATTERN.is_match(probe_name) {
-                if let Some(temp) = self.parse_float(value) {
+                if let Some(temp) = parse_float_inner(value) {
                     if let Some(probe_number) =
                         NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2)
                     {
@@ -163,9 +172,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     /// Voltage Regulator temp for PSUs
     fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let vrm_temp = status_map
-            .get("vrm temperature")
-            .and_then(|s| self.parse_float(s));
+        let vrm_temp = status_map.get("vrm temperature").and_then(parse_float);
         if let Some(temp) = vrm_temp {
             temps.push(TempStatus {
                 name: "vrm".to_string(),
@@ -175,9 +182,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_case_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let case_temp = status_map
-            .get("case temperature")
-            .and_then(|s| self.parse_float(s));
+        let case_temp = status_map.get("case temperature").and_then(parse_float);
         if let Some(temp) = case_temp {
             temps.push(TempStatus {
                 name: "case".to_string(),
@@ -193,7 +198,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
         for (sensor_name, value) in status_map {
             if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
-                if let Some(temp) = self.parse_float(value) {
+                if let Some(temp) = parse_float_inner(value) {
                     if let Some(sensor_number) =
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
@@ -207,9 +212,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     #[allow(dead_code)]
     fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        let noise_lvl = status_map
-            .get("noise level")
-            .and_then(|s| self.parse_float(s));
+        let noise_lvl = status_map.get("noise level").and_then(parse_float);
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
@@ -222,7 +225,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     fn get_channel_statuses(
         &self,
         status_map: &StatusMap,
-        _device_index: &u8,
+        _device_index: u8,
     ) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_single_fan_status(status_map, &mut channel_statuses);
@@ -237,8 +240,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let fan_rpm = status_map.get("fan speed").and_then(|s| self.parse_u32(s));
-        let fan_duty = status_map.get("fan duty").and_then(|s| self.parse_float(s));
+        let fan_rpm = status_map.get("fan speed").and_then(parse_u32);
+        let fan_duty = status_map.get("fan duty").and_then(parse_float);
         if fan_rpm.is_some() || fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "fan".to_string(),
@@ -254,10 +257,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let pump_rpm = status_map.get("pump speed").and_then(|s| self.parse_u32(s));
-        let pump_duty = status_map
-            .get("pump duty")
-            .and_then(|s| self.parse_float(s));
+        let pump_rpm = status_map.get("pump speed").and_then(parse_u32);
+        let pump_duty = status_map.get("pump duty").and_then(parse_float);
         if pump_rpm.is_some() || pump_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "pump".to_string(),
@@ -289,15 +290,15 @@ pub trait DeviceSupport: Debug + Sync + Send {
         for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
-                .and_then(|number| self.parse_u32(number.as_str()))
+                .and_then(|number| parse_u32_inner(number.as_str()))
             {
                 let fan_name = format!("fan{fan_number}");
                 if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
-                    *rpm = self.parse_u32(value);
+                    *rpm = parse_u32_inner(value);
                 } else if MULTIPLE_FAN_DUTY.is_match(name) {
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
-                    *duty = self.parse_float(value);
+                    *duty = parse_float_inner(value);
                 }
             }
         }
@@ -329,14 +330,6 @@ pub trait DeviceSupport: Debug + Sync + Send {
             });
         }
         channel_lighting_modes
-    }
-
-    fn parse_float(&self, value: &str) -> Option<f64> {
-        value.parse::<f64>().ok()
-    }
-
-    fn parse_u32(&self, value: &str) -> Option<u32> {
-        value.parse::<u32>().ok()
     }
 }
 
@@ -560,7 +553,7 @@ mod tests {
 
     fn assert_channel_statuses_eq(
         device_support: KrakenX3Support,
-        device_id: &u8,
+        device_id: u8,
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
         for (given, expected) in given_expected {
@@ -592,7 +585,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -608,7 +601,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -624,7 +617,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -645,7 +638,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -661,7 +654,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -677,7 +670,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 
     #[test]
@@ -734,6 +727,6 @@ mod tests {
                 },
             ],
         )];
-        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
     }
 }

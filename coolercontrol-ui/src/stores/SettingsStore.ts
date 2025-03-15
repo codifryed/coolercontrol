@@ -19,13 +19,14 @@
 import { defineStore } from 'pinia'
 import { Function, FunctionsDTO, Profile, ProfilesDTO } from '@/models/Profile'
 import type { Ref } from 'vue'
-import { reactive, ref, toRaw, watch } from 'vue'
+import { reactive, inject, ref, toRaw, watch } from 'vue'
 import {
     type AllDeviceSettings,
+    CustomThemeSettings,
+    defaultCustomTheme,
     DeviceUISettings,
     DeviceUISettingsDTO,
     SensorAndChannelSettings,
-    type SystemOverviewOptions,
     ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
@@ -45,20 +46,19 @@ import {
 } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
-import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
-import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
+import { Dashboard } from '@/models/Dashboard.ts'
+import { Emitter, EventType } from 'mitt'
+import _ from 'lodash'
+import { Alert, AlertLog, AlertState } from '@/models/Alert.ts'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
 
     const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
-
+    const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
     const predefinedColorOptions: Ref<Array<string>> = ref([
         '#FFFFFF',
         '#000000',
@@ -76,9 +76,14 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const modes: Ref<Array<Mode>> = ref([])
 
-    const modeActive: Ref<UID | undefined> = ref()
+    const modeActiveCurrent: Ref<UID | undefined> = ref()
+    const modeActivePrevious: Ref<UID | undefined> = ref()
 
     const modeInEdit: Ref<UID | undefined> = ref()
+
+    const alerts: Ref<Array<Alert>> = ref([])
+    const alertLogs: Ref<Array<AlertLog>> = ref([])
+    const alertsActive: Ref<Array<UID>> = ref([])
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -97,33 +102,29 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
-    const systemOverviewOptions: SystemOverviewOptions = reactive({
-        selectedTimeRange: { name: '1 min', seconds: 60 },
-        selectedChartType: 'TimeChart',
-        temp: true,
-        duty: true,
-        load: true,
-        rpm: false,
-        freq: false,
-        timeChartLineScale: 1.5,
-    })
+    const dashboards: Array<Dashboard> = reactive([...Dashboard.defaults()])
+    const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
-    const displayHiddenItems: Ref<boolean> = ref(true)
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
-    const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
-    const showSetupInstructions: Ref<boolean> = ref(true)
-
-    /**
-     * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
-     * Currently used to watch for changes indirectly.
-     */
-    function sidebarMenuUpdate(): void {
-        console.debug('Sidebar Menu Update Triggered')
-    }
+    const collapsedMenuNodeIds: Ref<Array<string>> = ref([])
+    const collapsedMainMenu: Ref<boolean> = ref(false)
+    const hideMenuCollapseIcon: Ref<boolean> = ref(false)
+    const menuEntitiesAtBottom: Ref<boolean> = ref(false)
+    const mainMenuWidthRem: Ref<number> = ref(24)
+    const frequencyPrecision: Ref<number> = ref(1)
+    const customTheme: CustomThemeSettings = reactive({
+        accent: defaultCustomTheme.accent,
+        bgOne: defaultCustomTheme.bgOne,
+        bgTwo: defaultCustomTheme.bgTwo,
+        borderOne: defaultCustomTheme.borderOne,
+        textColor: defaultCustomTheme.textColor,
+        textColorSecondary: defaultCustomTheme.textColorSecondary,
+    })
+    const showOnboarding: Ref<boolean> = ref(true)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         await loadCCSettings()
@@ -143,6 +144,11 @@ export const useSettingsStore = defineStore('settings', () => {
                         new SensorAndChannelSettings(),
                     )
                 } else if (channel.name.toLowerCase().includes('freq')) {
+                    deviceSettings.sensorsAndChannels.set(
+                        channel.name,
+                        new SensorAndChannelSettings(),
+                    )
+                } else if (channel.name.toLowerCase().includes('power')) {
                     deviceSettings.sensorsAndChannels.set(
                         channel.name,
                         new SensorAndChannelSettings(),
@@ -177,42 +183,41 @@ export const useSettingsStore = defineStore('settings', () => {
 
         // load settings from persisted settings, overwriting those that are set
         const uiSettings = await deviceStore.daemonClient.loadUISettings()
-        if (uiSettings.systemOverviewOptions != null) {
-            systemOverviewOptions.selectedTimeRange =
-                uiSettings.systemOverviewOptions.selectedTimeRange
-            systemOverviewOptions.selectedChartType =
-                uiSettings.systemOverviewOptions.selectedChartType
-            systemOverviewOptions.temp = uiSettings.systemOverviewOptions.temp ?? true
-            systemOverviewOptions.duty = uiSettings.systemOverviewOptions.duty ?? true
-            systemOverviewOptions.load = uiSettings.systemOverviewOptions.load ?? true
-            systemOverviewOptions.rpm = uiSettings.systemOverviewOptions.rpm ?? false
-            systemOverviewOptions.freq = uiSettings.systemOverviewOptions.freq ?? false
-            systemOverviewOptions.timeChartLineScale =
-                uiSettings.systemOverviewOptions.timeChartLineScale ?? 1.5
+        if (uiSettings.dashboards.length > 0) {
+            dashboards.length = 0
+            dashboards.push(...uiSettings.dashboards)
         }
-        if (deviceStore.isTauriApp()) {
+        chartLineScale.value = uiSettings.chartLineScale
+        if (deviceStore.isQtApp()) {
+            // @ts-ignore
+            const ipc = window.ipc
             try {
-                startInSystemTray.value = await invoke('get_start_in_tray')
+                startInSystemTray.value = await ipc.getStartInTray()
+                desktopStartupDelay.value = await ipc.getStartupDelay()
+                closeToSystemTray.value = await ipc.getCloseToTray()
+                uiScale.value = (await ipc.getZoomFactor()) * 100
             } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
-            }
-            try {
-                desktopStartupDelay.value = await invoke('get_startup_delay')
-            } catch (err: any) {
-                console.error('Failed to get desktop startup delay: ', err)
+                console.error('Failed to get desktop setting: ', err)
             }
         }
-        closeToSystemTray.value = uiSettings.closeToSystemTray
-        displayHiddenItems.value = uiSettings.displayHiddenItems
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
-        uiScale.value = uiSettings.uiScale
-        menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
-        showSetupInstructions.value = uiSettings.showSetupInstructions
-        const layout = useLayout()
-        layout.setScale(uiSettings.uiScale)
-        layout.layoutConfig.menuMode.value = uiSettings.menuMode
+        collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
+        collapsedMainMenu.value = uiSettings.collapsedMainMenu
+        mainMenuWidthRem.value = uiSettings.mainMenuWidthRem
+        hideMenuCollapseIcon.value = uiSettings.hideMenuCollapseIcon
+        menuEntitiesAtBottom.value = uiSettings.menuEntitiesAtBottom
+        frequencyPrecision.value = uiSettings.frequencyPrecision
+        customTheme.accent = uiSettings.customTheme.accent
+        customTheme.bgOne = uiSettings.customTheme.bgOne
+        customTheme.bgTwo = uiSettings.customTheme.bgTwo
+        customTheme.borderOne = uiSettings.customTheme.borderOne
+        customTheme.textColor = uiSettings.customTheme.textColor
+        customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
+        showOnboarding.value = uiSettings.showOnboarding
+        // const layout = useLayout()
+        // layout.setScale(uiSettings.uiScale)
         if (
             uiSettings.devices != null &&
             uiSettings.deviceSettings != null &&
@@ -254,11 +259,11 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadDaemonDeviceSettings()
         await loadCCAllDeviceSettings()
 
+        await loadAlertsAndLogs()
         await loadFunctions()
         await loadProfiles()
         await loadModes()
-        await getActiveMode()
-        await listenForTauriModeActivation()
+        await getActiveModes()
 
         await startWatchingToSaveChanges()
     }
@@ -281,7 +286,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (device.status_history.length) {
                 for (const channelStatus of device.status.channels) {
                     if (channelStatus.name.toLowerCase().includes('load')) {
-                        settings.sensorsAndChannels.get(channelStatus.name)!.displayName =
+                        settings.sensorsAndChannels.get(channelStatus.name)!.channelLabel =
                             channelStatus.name
                     }
                 }
@@ -289,19 +294,19 @@ export const useSettingsStore = defineStore('settings', () => {
             if (device.info != null) {
                 for (const [channelName, channelInfo] of device.info.channels.entries()) {
                     if (channelInfo.speed_options != null) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelInfo.label != null
                                 ? channelInfo.label
                                 : deviceStore.toTitleCase(channelName)
                     } else if (channelInfo.lighting_modes.length > 0) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             deviceStore.toTitleCase(channelName)
                     } else if (channelInfo.lcd_modes.length > 0) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelName.toUpperCase()
                     } else {
                         // must be Frequency
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelInfo.label != null
                                 ? channelInfo.label
                                 : deviceStore.toTitleCase(channelName)
@@ -309,7 +314,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 }
                 for (const [tempName, tempInfo] of device.info.temps.entries()) {
                     if (settings.sensorsAndChannels.get(tempName) != null) {
-                        settings.sensorsAndChannels.get(tempName)!.displayName = tempInfo.label
+                        settings.sensorsAndChannels.get(tempName)!.channelLabel = tempInfo.label
                     }
                 }
             }
@@ -335,6 +340,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     async function loadCCAllDeviceSettings(): Promise<void> {
+        // The daemon returns all devices, both enabled and disabled.
         for (const deviceSetting of (await deviceStore.daemonClient.loadCCAllDeviceSettings())
             .devices) {
             ccDeviceSettings.value.set(deviceSetting.uid, deviceSetting)
@@ -452,7 +458,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modesDTO = await deviceStore.daemonClient.getModes()
         modes.value.length = 0
         modes.value = modesDTO.modes
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
     async function saveModeOrder(): Promise<void> {
@@ -460,25 +466,46 @@ export const useSettingsStore = defineStore('settings', () => {
         const modeOrderDTO = new ModeOrderDTO()
         modeOrderDTO.mode_uids = modes.value.map((mode) => mode.uid)
         await deviceStore.daemonClient.saveModesOrder(modeOrderDTO)
-        await setTauriModes()
+        await syncSysTrayModes()
     }
 
-    async function createMode(name: string): Promise<void> {
+    async function createMode(name: string): Promise<UID | undefined> {
         console.debug('Creating Mode')
         const createModeDTO = new CreateModeDTO(name)
         const response = await deviceStore.daemonClient.createMode(createModeDTO)
         if (response instanceof Mode) {
+            const modeUID = response.uid
             modes.value.push(response)
-            await setTauriModes()
-            await getActiveMode() // deactivate if this mode was active
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully created',
+                detail: 'Mode Created',
                 life: 3000,
             })
+            return modeUID
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return undefined
+        }
+    }
+
+    async function duplicateMode(modeUID: UID): Promise<Mode | undefined> {
+        console.debug('Duplicating Mode')
+        const response = await deviceStore.daemonClient.duplicateMode(modeUID)
+        if (response instanceof Mode) {
+            modes.value.push(response)
+            await syncSysTrayModes()
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode Duplicated',
+                life: 3000,
+            })
+            return response
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return undefined
         }
     }
 
@@ -494,11 +521,11 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.name = newName
             }
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully updated',
+                detail: 'Mode Name Updated',
                 life: 3000,
             })
             return true
@@ -513,11 +540,10 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.device_settings = response.device_settings
             }
-            await getActiveMode() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully updated with current settings',
+                detail: 'Mode updated with current settings',
                 life: 3000,
             })
             return true
@@ -537,21 +563,22 @@ export const useSettingsStore = defineStore('settings', () => {
             if (index > -1) {
                 modes.value.splice(index, 1)
             }
-            await getActiveMode() // clears active mode if it was deleted
-            await setTauriModes()
+            await syncSysTrayModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully Deleted',
+                detail: 'Mode Deleted',
                 life: 3000,
             })
         }
     }
 
-    async function getActiveMode(): Promise<void> {
-        console.debug('Getting Active Mode')
-        modeActive.value = await deviceStore.daemonClient.getActiveModeUID()
-        await setTauriActiveMode()
+    async function getActiveModes(): Promise<void> {
+        console.debug('Getting Active Modes')
+        const activeModes = await deviceStore.daemonClient.getActiveModeUIDs()
+        modeActiveCurrent.value = activeModes.current_mode_uid
+        modeActivePrevious.value = activeModes.previous_mode_uid
+        emitter.emit('active-modes-change-menu')
     }
 
     async function activateMode(modeUID: UID): Promise<boolean> {
@@ -561,52 +588,25 @@ export const useSettingsStore = defineStore('settings', () => {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
             return false
         } else {
-            modeActive.value = modeUID
-            await loadDaemonDeviceSettings() // need to reload all settings after applying mode
-            await setTauriActiveMode()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully Activated',
+                detail: 'Mode Activated',
                 life: 3000,
             })
             return true
         }
     }
 
-    async function setTauriModes(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            const modeTauris = modes.value.map((mode) => {
+    async function syncSysTrayModes(): Promise<void> {
+        // This is used to refresh the Modes system tray menu contents: (from CRUD operations)
+        if (deviceStore.isQtApp()) {
+            const sysTrayModes = modes.value.map((mode) => {
                 return { uid: mode.uid, name: mode.name }
             })
-            await invoke('set_modes', { modes: modeTauris })
-        }
-    }
-
-    async function setTauriActiveMode(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            await invoke('set_active_mode', { activeModeUid: modeActive.value })
-        }
-    }
-
-    async function listenForTauriModeActivation(): Promise<void> {
-        if (deviceStore.isTauriApp()) {
-            interface EventPayload {
-                active_mode_uid: UID
-            }
-            await listen<EventPayload>('mode-activated', (event): void => {
-                console.debug('Tauri Mode activation event received', event.payload)
-                if (event.payload.active_mode_uid === modeActive.value) {
-                    toast.add({
-                        severity: 'success',
-                        summary: 'Success',
-                        detail: 'Mode Already Active',
-                        life: 3000,
-                    })
-                } else {
-                    activateMode(event.payload.active_mode_uid)
-                }
-            })
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.setModes(JSON.stringify({ modes: sysTrayModes }))
         }
     }
 
@@ -682,7 +682,7 @@ export const useSettingsStore = defineStore('settings', () => {
      * The function `deleteCustomSensor` is an asynchronous function that deletes a custom sensor
      * and refreshed the UI if successful.
      * @param {UID} deviceUID - The deviceUID parameter is the unique identifier of the custom
-     * sensors device. Used to remove any associated user UI settings as well.
+     * sensor's device. Used to remove any associated user UI settings as well.
      * @param {string} customSensorID - The `customSensorID` parameter is a string that represents
      * the unique identifier of the custom sensor that you want to delete.
      */
@@ -708,6 +708,91 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
+    async function loadAlertsAndLogs(): Promise<void> {
+        console.debug('Loading Alerts')
+        const alertsDTO = await deviceStore.daemonClient.loadAlertsAndLogs()
+        alertsActive.value.length = 0
+        alertsDTO.alerts
+            .filter((alert) => alert.state === AlertState.Active)
+            .forEach((alert) => {
+                alertsActive.value.push(alert.uid)
+            })
+        alerts.value.length = 0
+        alerts.value = alertsDTO.alerts
+        alertLogs.value.length = 0
+        alertLogs.value = alertsDTO.logs
+    }
+
+    async function createAlert(alert: Alert): Promise<boolean> {
+        console.debug('Creating Alert')
+        const response = await deviceStore.daemonClient.createAlert(alert)
+        if (response == null) {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Saved',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
+    async function updateAlert(alertUID: UID): Promise<boolean> {
+        console.debug('Updating Alert')
+        const alert_to_update = alerts.value.find((alert) => alert.uid === alertUID)
+        if (alert_to_update == null) {
+            console.error('Alert to update not found: ' + alertUID)
+            toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Alert not found to Update',
+                life: 4000,
+            })
+            return false
+        }
+        const response = await deviceStore.daemonClient.updateAlert(alert_to_update)
+        if (response == null) {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Updated',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
+    async function deleteAlert(alertUID: UID): Promise<boolean> {
+        console.debug('Deleting Alert')
+        const response = await deviceStore.daemonClient.deleteAlert(alertUID)
+        if (response == null) {
+            const index = alerts.value.findIndex((alert) => alert.uid === alertUID)
+            if (index > -1) {
+                alerts.value.splice(index, 1)
+            }
+            const activeIndex = alertsActive.value.findIndex((uid) => uid === alertUID)
+            if (activeIndex > -1) {
+                alertsActive.value.splice(activeIndex, 1)
+            }
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Alert Deleted',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
     /**
      * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
      */
@@ -715,67 +800,82 @@ export const useSettingsStore = defineStore('settings', () => {
         watch(
             [
                 allUIDeviceSettings.value,
-                systemOverviewOptions,
+                dashboards,
+                chartLineScale,
                 startInSystemTray,
                 closeToSystemTray,
                 desktopStartupDelay,
-                displayHiddenItems,
                 themeMode,
                 uiScale,
-                menuMode,
                 time24,
-                showSetupInstructions,
+                collapsedMenuNodeIds.value,
+                collapsedMainMenu,
+                hideMenuCollapseIcon,
+                menuEntitiesAtBottom,
+                mainMenuWidthRem,
+                frequencyPrecision,
+                customTheme,
+                showOnboarding,
             ],
-            async () => {
-                console.debug('Saving UI Settings')
-                const uiSettings = new UISettingsDTO()
-                for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
-                    uiSettings.devices?.push(toRaw(uid))
-                    const deviceSettingsDto = new DeviceUISettingsDTO()
-                    deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
-                    deviceSettingsDto.userName = deviceSettings.userName
-                    deviceSettings.sensorsAndChannels.forEach((sensorAndChannelSettings, name) => {
-                        deviceSettingsDto.names.push(name)
-                        deviceSettingsDto.sensorAndChannelSettings.push(sensorAndChannelSettings)
-                    })
-                    uiSettings.deviceSettings?.push(deviceSettingsDto)
-                }
-                uiSettings.systemOverviewOptions = systemOverviewOptions
-                if (deviceStore.isTauriApp()) {
-                    if (startInSystemTray.value) {
-                        await invoke('start_in_tray_enable')
-                    } else {
-                        await invoke('start_in_tray_disable')
+            _.debounce(
+                // we debounce to not continuously save changes
+                async () => {
+                    console.debug('Saving UI Settings')
+                    const uiSettings = new UISettingsDTO()
+                    for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
+                        uiSettings.devices?.push(toRaw(uid))
+                        const deviceSettingsDto = new DeviceUISettingsDTO()
+                        deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
+                        deviceSettingsDto.userName = deviceSettings.userName
+                        deviceSettings.sensorsAndChannels.forEach(
+                            (sensorAndChannelSettings, name) => {
+                                deviceSettingsDto.names.push(name)
+                                deviceSettingsDto.sensorAndChannelSettings.push(
+                                    sensorAndChannelSettings,
+                                )
+                            },
+                        )
+                        uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                }
-                uiSettings.closeToSystemTray = closeToSystemTray.value
-                if (deviceStore.isTauriApp()) {
-                    await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
-                }
-                uiSettings.displayHiddenItems = displayHiddenItems.value
-                uiSettings.themeMode = themeMode.value
-                uiSettings.uiScale = uiScale.value
-                uiSettings.menuMode = menuMode.value
-                uiSettings.time24 = time24.value
-                uiSettings.showSetupInstructions = showSetupInstructions.value
-                await deviceStore.daemonClient.saveUISettings(uiSettings)
-            },
+                    uiSettings.dashboards = dashboards
+                    uiSettings.chartLineScale = chartLineScale.value
+                    if (deviceStore.isQtApp()) {
+                        try {
+                            // @ts-ignore
+                            const ipc = window.ipc
+                            await ipc.setStartInTray(startInSystemTray.value)
+                            await ipc.setStartupDelay(desktopStartupDelay.value)
+                            await ipc.setCloseToTray(closeToSystemTray.value)
+                            await ipc.setZoomFactor(uiScale.value / 100)
+                        } catch (e) {
+                            console.error('Failed to set Desktop settings: ', e)
+                        }
+                    }
+                    uiSettings.themeMode = themeMode.value
+                    uiSettings.time24 = time24.value
+                    uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
+                    uiSettings.collapsedMainMenu = collapsedMainMenu.value
+                    uiSettings.hideMenuCollapseIcon = hideMenuCollapseIcon.value
+                    uiSettings.menuEntitiesAtBottom = menuEntitiesAtBottom.value
+                    uiSettings.mainMenuWidthRem = mainMenuWidthRem.value
+                    uiSettings.frequencyPrecision = frequencyPrecision.value
+                    uiSettings.customTheme.accent = customTheme.accent
+                    uiSettings.customTheme.bgOne = customTheme.bgOne
+                    uiSettings.customTheme.bgTwo = customTheme.bgTwo
+                    uiSettings.customTheme.borderOne = customTheme.borderOne
+                    uiSettings.customTheme.textColor = customTheme.textColor
+                    uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
+                    uiSettings.showOnboarding = showOnboarding.value
+                    await deviceStore.daemonClient.saveUISettings(uiSettings)
+                },
+                750,
+            ),
         )
 
         watch(ccSettings.value, async () => {
             console.debug('Saving CC Settings')
             await deviceStore.daemonClient.saveCCSettings(ccSettings.value)
         })
-
-        if (deviceStore.isTauriApp()) {
-            await getCurrentWebviewWindow().onCloseRequested(async (event: CloseRequestedEvent) => {
-                if (closeToSystemTray.value) {
-                    event.preventDefault()
-                    await invoke('save_window_state')
-                    await getCurrentWebviewWindow().hide()
-                }
-            })
-        }
     }
 
     function applyThemeMode(): void {
@@ -783,17 +883,34 @@ export const useSettingsStore = defineStore('settings', () => {
         document.documentElement.classList.remove('high-contrast-dark')
         document.documentElement.classList.remove('high-contrast-light')
         document.documentElement.classList.remove('light-theme')
+        document.documentElement.classList.remove('dark-theme')
         if (themeMode.value === ThemeMode.SYSTEM) {
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            // considered Alpha and doesn't always work as expected:
+            // document.documentElement.classList.add('system-theme')
+            if (
+                window.matchMedia('(prefers-color-scheme: dark) and (prefers-contrast: more)')
+                    .matches
+            ) {
+                document.documentElement.classList.add('high-contrast-dark')
+            } else if (
+                window.matchMedia('(prefers-color-scheme: light) and (prefers-contrast: more)')
+                    .matches
+            ) {
+                document.documentElement.classList.add('high-contrast-light')
+            } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
                 document.documentElement.classList.add('light-theme')
-            } // else dark default
-        } else if (themeMode.value === ThemeMode.LIGHT) {
-            document.documentElement.classList.add('light-theme')
+            } else {
+                document.documentElement.classList.add('dark-theme')
+            }
         } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_DARK) {
             document.documentElement.classList.add('high-contrast-dark')
         } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_LIGHT) {
             document.documentElement.classList.add('high-contrast-light')
-        } // else dark is the default cc color scheme
+        } else if (themeMode.value === ThemeMode.LIGHT) {
+            document.documentElement.classList.add('light-theme')
+        } else {
+            document.documentElement.classList.add('dark-theme')
+        }
     }
 
     async function handleSaveDeviceSettingResponse(
@@ -929,24 +1046,31 @@ export const useSettingsStore = defineStore('settings', () => {
     console.debug(`Settings Store created`)
     return {
         initializeSettings,
+        loadDaemonDeviceSettings,
         predefinedColorOptions,
         profiles,
         functions,
         modes,
-        modeActive,
+        modeActiveCurrent,
+        modeActivePrevious,
         modeInEdit,
         allUIDeviceSettings,
-        sidebarMenuUpdate,
-        systemOverviewOptions,
+        dashboards,
+        chartLineScale,
         startInSystemTray,
         closeToSystemTray,
         desktopStartupDelay,
-        displayHiddenItems,
         themeMode,
         uiScale,
-        menuMode,
         time24,
-        showSetupInstructions,
+        collapsedMenuNodeIds,
+        collapsedMainMenu,
+        hideMenuCollapseIcon,
+        menuEntitiesAtBottom,
+        mainMenuWidthRem,
+        frequencyPrecision,
+        customTheme,
+        showOnboarding,
         allDaemonDeviceSettings,
         ccSettings,
         ccDeviceSettings,
@@ -970,15 +1094,23 @@ export const useSettingsStore = defineStore('settings', () => {
         deleteProfile,
         saveModeOrder,
         createMode,
-        updateMode: updateModeName,
+        duplicateMode,
+        updateModeName,
         updateModeSettings,
         deleteMode,
-        getActiveMode,
+        getActiveModes,
         activateMode,
         getCustomSensors,
         getCustomSensor,
         saveCustomSensor,
         updateCustomSensor,
         deleteCustomSensor,
+        alerts,
+        alertLogs,
+        alertsActive,
+        loadAlertsAndLogs,
+        createAlert,
+        updateAlert,
+        deleteAlert,
     }
 })

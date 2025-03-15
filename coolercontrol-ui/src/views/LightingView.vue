@@ -17,22 +17,29 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/DaemonSettings'
 import { LightingMode, LightingModeType } from '@/models/LightingMode'
 import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
-import Dropdown from 'primevue/dropdown'
 import InputNumber from 'primevue/inputnumber'
-import ToggleButton from 'primevue/togglebutton'
-import { ElColorPicker } from 'element-plus'
+import { ElColorPicker, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/color-picker/style/css'
 import Button from 'primevue/button'
+import { mdiContentSaveOutline } from '@mdi/js'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+import Select from 'primevue/select'
+import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
+import Slider from 'primevue/slider'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
     deviceId: UID
-    name: string
+    channelName: string
 }
 
 const props = defineProps<Props>()
@@ -40,7 +47,13 @@ const props = defineProps<Props>()
 const absoluteMaxColors = 48 // Current device max is 40
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const confirm = useConfirm()
 
+const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
+const channelLabel =
+    settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
+        ?.name ?? props.channelName
+let contextIsDirty: boolean = false
 const lightingModes: Array<LightingMode> = []
 const noneLightingMode = new LightingMode('none', 'None', 0, 0, false, false, LightingModeType.NONE)
 lightingModes.push(noneLightingMode)
@@ -49,7 +62,7 @@ for (const device of deviceStore.allDevices()) {
     if (device.uid != props.deviceId) {
         continue
     }
-    for (const mode of device.info?.channels.get(props.name)?.lighting_modes ?? []) {
+    for (const mode of device.info?.channels.get(props.channelName)?.lighting_modes ?? []) {
         lightingModes.push(mode)
     }
     for (const speed of device.info?.lighting_speeds ?? []) {
@@ -70,7 +83,7 @@ let startingBackwardEnabled = false
 let startingNumberOfColors: number = 0
 let colorsUI: Array<Ref<string>> = []
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
-    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
+    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.channelName)
 if (startingDeviceSetting?.lighting != null) {
     startingMode =
         lightingModes.find(
@@ -115,8 +128,14 @@ const setNewColor = (colorIndex: number, newColor: string | null) => {
             const rgbTuple = startingDeviceSetting.lighting.colors[colorIndex]
             colorsUI[colorIndex].value = `rgb(${rgbTuple[0]}, ${rgbTuple[1]}, ${rgbTuple[2]})`
         } else {
-            colorsUI[colorIndex].value = 'rbg(255, 255, 255)'
+            colorsUI[colorIndex].value = 'rgb(255, 255, 255)'
         }
+    } else {
+        if (startingDeviceSetting?.lighting == null) {
+            return
+        }
+        const newRgbTuple = parseRgbString(newColor)
+        colorsUI[colorIndex].value = `rgb(${newRgbTuple[0]}, ${newRgbTuple[1]}, ${newRgbTuple[2]})`
     }
 }
 
@@ -132,7 +151,9 @@ const parseRgbString = (rgbColor: string): [number, number, number] => {
 
 const saveLighting = async (): Promise<void> => {
     if (selectedMode.value.type === LightingModeType.NONE) {
-        return await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.name)
+        await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
+        contextIsDirty = false
+        return
     }
     const setting = new DeviceSettingWriteLightingDTO(selectedMode.value.name)
     if (selectedMode.value.speed_enabled) {
@@ -146,7 +167,15 @@ const saveLighting = async (): Promise<void> => {
             setting.colors.push(parseRgbString(colorsUI[i].value))
         }
     }
-    await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.name, setting)
+    await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.channelName, setting)
+    contextIsDirty = false
+}
+
+const changeLightingSpeed = (event: ListboxChangeEvent): void => {
+    if (event.value === null) {
+        return // do not update on unselect
+    }
+    selectedSpeed.value = event.value
 }
 
 const numberColorsScrolled = (event: WheelEvent): void => {
@@ -178,171 +207,263 @@ watch(selectedMode, () => {
     }
 })
 
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to these Lighting Settings.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
+
 onMounted(() => {
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
     addScrollEventListeners()
     watch(selectedMode, () => {
         nextTick(addScrollEventListeners)
+    })
+    watch([selectedMode, selectedSpeed, selectedBackwardEnabled, selectedNumberOfColors], () => {
+        contextIsDirty = true
     })
 })
 </script>
 
 <template>
-    <div class="card pt-3">
-        <div class="flex">
-            <div class="flex-inline control-column">
-                <div class="p-float-label mt-4">
-                    <Dropdown
-                        v-model="selectedMode"
-                        inputId="dd-lighting-mode"
-                        :options="lightingModes"
-                        option-label="frontend_name"
-                        placeholder="Mode"
-                        class="w-full"
-                        scroll-height="400px"
+    <div class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
+            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
+            <span class="font-bold">{{ channelLabel }}</span>
+        </div>
+        <div class="flex flex-wrap gap-x-1 justify-end">
+            <div class="p-2 flex flex-row">
+                <Button
+                    class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    label="Save"
+                    v-tooltip.bottom="'Save LCD Settings'"
+                    @click="saveLighting"
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiContentSaveOutline"
+                        :size="deviceStore.getREMSize(1.5)"
                     />
-                    <label for="dd-lighting-mode">Lighting Mode</label>
-                </div>
-                <div v-if="selectedMode.speed_enabled" class="p-float-label mt-6">
-                    <Dropdown
-                        v-model="selectedSpeed"
-                        :options="lightingSpeeds"
-                        class="w-full"
-                        :option-label="(value: string) => deviceStore.toTitleCase(value)"
-                        scroll-height="400px"
-                        placeholder="Speed"
-                    />
-                    <label for="dd-speed">Speed</label>
-                </div>
-                <div v-if="selectedMode.backward_enabled" class="mt-5">
-                    <div class="direction-label-wrapper">
-                        <label for="direction">Direction</label>
-                    </div>
-                    <ToggleButton
-                        v-model="selectedBackwardEnabled"
-                        on-label="Backward"
-                        off-label="Forward"
-                        class="w-full"
-                    />
-                </div>
-                <div v-if="selectedMode.max_colors > 0" class="p-float-label mt-6">
-                    <InputNumber
-                        v-model="selectedNumberOfColors"
-                        showButtons
-                        buttonLayout="horizontal"
-                        class="number-colors-input w-full"
-                        :min="selectedMode.min_colors"
-                        :max="selectedMode.max_colors"
-                        :input-style="{ width: '58px' }"
-                        incrementButtonIcon="pi pi-plus"
-                        decrementButtonIcon="pi pi-minus"
-                    />
-                    <label for="dd-number-of-colors">Number of Colors</label>
-                </div>
-                <div class="mt-8">
-                    <Button label="Apply" class="w-full" @click="saveLighting">
-                        <span class="p-button-label">Apply</span>
-                    </Button>
-                </div>
-            </div>
-            <div v-if="selectedMode.max_colors > 0" class="flex-1 text-center mt-4 color-wrapper">
-                <el-color-picker
-                    v-for="(color, index) in colorsToShow"
-                    :key="index"
-                    v-model="color.value"
-                    color-format="rgb"
-                    @change="(newColor: string | null) => setNewColor(index, newColor)"
-                    :predefine="settingsStore.predefinedColorOptions"
-                />
+                </Button>
             </div>
         </div>
     </div>
+    <ScrollAreaRoot style="--scrollbar-size: 10px">
+        <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <div class="w-full flex flex-col lg:flex-row">
+                <div id="left-side">
+                    <div class="mt-0 mr-4 w-96">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Lighting Mode<br />
+                        </small>
+                        <Select
+                            v-model="selectedMode"
+                            :options="lightingModes"
+                            option-label="frontend_name"
+                            placeholder="Mode"
+                            class="w-full mt-1"
+                            dropdown-icon="pi pi-sun"
+                            scroll-height="40rem"
+                            v-tooltip.bottom="'Lighting Mode'"
+                            filter
+                            size="large"
+                            variant="filled"
+                        />
+                    </div>
+                    <div v-if="selectedMode.speed_enabled" class="mt-4 mr-4 w-96">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Speed
+                        </small>
+                        <Listbox
+                            :model-value="selectedSpeed"
+                            :options="lightingSpeeds"
+                            :option-label="(value: string) => deviceStore.toTitleCase(value)"
+                            class="w-full"
+                            checkmark
+                            placeholder="Speed"
+                            list-style="max-height: 100%"
+                            v-tooltip.right="'The speed of the Lighting Mode'"
+                            @change="changeLightingSpeed"
+                        />
+                    </div>
+                    <div v-if="selectedMode.backward_enabled" class="mt-4 mr-4 w-96">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Direction<br />
+                        </small>
+                        <div
+                            class="bg-bg-two border border-border-one p-1 rounded-lg text-center items-center"
+                        >
+                            <el-switch
+                                v-model="selectedBackwardEnabled"
+                                size="large"
+                                active-text="Backward"
+                                inactive-text="Forward"
+                                style="--el-switch-off-color: rgb(var(--colors-accent))"
+                            />
+                        </div>
+                    </div>
+                    <div
+                        v-if="selectedMode.max_colors > 0"
+                        class="mt-4 mr-4 w-96 border-border-one"
+                    >
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Number of Colors<br />
+                        </small>
+                        <InputNumber
+                            placeholder="Number of Colors"
+                            v-model="selectedNumberOfColors"
+                            mode="decimal"
+                            class="mt-0.5 w-full"
+                            showButtons
+                            :min="selectedMode.min_colors"
+                            :max="selectedMode.max_colors"
+                            :use-grouping="false"
+                            :step="1"
+                            button-layout="horizontal"
+                            :input-style="{ width: '8rem' }"
+                            v-tooltip.bottom="
+                                'Number of Colors to use for the chosen Lighting Mode.'
+                            "
+                            :disabled="selectedMode.min_colors == selectedMode.max_colors"
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                        <Slider
+                            v-model="selectedNumberOfColors"
+                            class="!w-[23.25rem] ml-1.5"
+                            :step="1"
+                            :min="selectedMode.min_colors"
+                            :max="selectedMode.max_colors"
+                            :disabled="selectedMode.min_colors == selectedMode.max_colors"
+                        />
+                    </div>
+                </div>
+                <div
+                    id="right-side"
+                    v-if="selectedMode.max_colors > 0"
+                    class="flex h-full mt-4 ml-1"
+                >
+                    <div class="content-center flex justify-center">
+                        <div class="color-wrapper mt-1">
+                            <el-color-picker
+                                v-for="(color, index) in colorsToShow"
+                                class="m-2"
+                                :key="index"
+                                v-model="color.value"
+                                color-format="rgb"
+                                :predefine="settingsStore.predefinedColorOptions"
+                                :validate-event="false"
+                                @change="(newColor: string | null) => setNewColor(index, newColor)"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </ScrollAreaViewport>
+        <ScrollAreaScrollbar
+            class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+            orientation="vertical"
+        >
+            <ScrollAreaThumb
+                class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+            />
+        </ScrollAreaScrollbar>
+    </ScrollAreaRoot>
 </template>
 
 <style scoped lang="scss">
-.control-column {
-    width: 14rem;
-    padding-right: 1rem;
+.el-switch {
+    --el-switch-on-color: rgb(var(--colors-accent));
+    --el-switch-off-color: rgb(var(--colors-bg-one));
+    --el-color-white: rgb(var(--colors-bg-two));
+    // switch active text color:
+    --el-color-primary: rgb(var(--colors-text-color));
+    // switch inactive text color:
+    --el-text-color-primary: rgb(var(--colors-text-color));
 }
 
-.direction-label-wrapper {
-    margin-left: 0.75rem;
-    margin-bottom: 0.25rem;
-    padding: 0;
-    font-size: 0.75rem;
-    color: var(--text-color-secondary);
+.color-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    line-height: normal;
+    min-width: 10rem;
 }
 
 .color-wrapper :deep(.el-color-picker__trigger) {
     border: 0 !important;
-    padding: 1rem !important;
-    height: 10rem !important;
-    width: 10rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: 4rem !important;
+    width: 4rem !important;
 }
 
 .color-wrapper :deep(.el-color-picker__mask) {
     border: 0 !important;
-    padding: 1rem !important;
-    height: 10rem !important;
-    width: 10rem !important;
-    top: 0;
-    left: 0;
-    background-color: rgba(0, 0, 0, 0.7);
+    padding: 0 !important;
+    margin: 0 !important;
+    height: 4rem !important;
+    width: 4rem !important;
+    border-radius: 0.5rem !important;
+    background-color: rgba(0, 0, 0, 0);
+    cursor: default;
 }
 
 .color-wrapper :deep(.el-color-picker__color) {
     border: 0 !important;
-    //border-radius: 10px !important;
+    border-radius: 0.5rem !important;
+}
+
+.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__trigger) {
+    cursor: default;
+}
+
+.color-wrapper :deep(.el-color-picker.is-disabled) {
+    cursor: default;
 }
 
 .color-wrapper :deep(.el-color-picker__color-inner) {
-    border-radius: 4px !important;
+    border-radius: 0.5rem !important;
+    opacity: 1;
+    width: 4rem !important;
+    height: 4rem !important;
+}
+
+.color-wrapper :deep(.el-color-picker__color-inner):hover {
+    opacity: 1;
 }
 
 .color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
     display: none;
+    height: 0;
+    width: 0;
+}
+
+.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
+    display: none;
+    height: 0;
+    width: 0;
 }
 </style>
 
-<style>
-.el-color-picker__panel {
-    padding: 1rem;
-    border-radius: 12px;
-    background-color: var(--surface-card);
-}
-
-.el-color-picker__panel.el-popper {
-    border-color: var(--surface-border);
-}
-
-.el-button {
-    border-color: var(--surface-border);
-    background-color: var(--cc-bg-two);
-}
-
-el-button:focus,
-.el-button:hover {
-    color: var(--text-color);
-    border-color: var(--surface-border);
-    background-color: var(--cc-bg-three);
-}
-
-.el-button.is-text:not(.is-disabled):focus,
-.el-button.is-text:not(.is-disabled):hover {
-    background-color: var(--surface-card);
-}
-
-.el-input__wrapper {
-    background-color: var(--cc-bg-three);
-    box-shadow: none;
-}
-
-.el-input__inner {
-    color: var(--text-color-secondary);
-}
-
-.el-input__wrapper:hover,
-.el-input__wrapper:active,
-.el-input__wrapper:focus {
-    box-shadow: var(--cc-context-color);
-}
-</style>
+<style></style>

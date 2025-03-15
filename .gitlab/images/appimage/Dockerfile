@@ -40,20 +40,18 @@ RUN apt update && apt install -y --no-install-recommends \
     # npm:
     ca-certificates \
     gnupg \
-    # tauri:
-    # already used above:  build-essential \
-    # already used above: curl \
-    wget \
-    file \
-    # libwebkit2gtk-4.0-dev \
-    libwebkit2gtk-4.1-dev \
-    libssl-dev \
-    libxdo-dev \
-    libgtk-3-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev \
+    # daemon
     libdrm-dev \
-    # python symlink
+    # qt:
+    # already used above:  build-essential \
+    cmake \
+    xvfb \
+    libgl1-mesa-dev \
+    libqt6opengl6-dev \
+    qt6-base-dev \
+    qt6-webengine-dev \
+    qt6-webengine-dev-tools \
+    # python symlink:
     python-is-python3 \
     # debian package helper
     debhelper

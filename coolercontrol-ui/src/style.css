@@ -1,0 +1,83 @@
+/*
+ * CoolerControl - monitor and control your cooling and other devices
+ * Copyright (c) 2021-2024  Guy Boldon and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@tailwind variants;
+
+/* width */
+::-webkit-scrollbar {
+    width: 0.4rem;
+    height: 0.4rem;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+    background: rgb(var(--colors-bg-one) / 0);
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+    background: rgb(var(--colors-text-color-secondary) / 0.4);
+    border-radius: 0.2rem;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+}
+
+::-webkit-scrollbar-corner {
+    background: rgb(var(--colors-bg-one) / 0);
+}
+
+/* Buttons */
+/*::-webkit-scrollbar-button:single-button {*/
+/*background-color: #bbbbbb;*/
+/*display: block;*/
+/*border-style: solid;*/
+/*height: 0.5rem;*/
+/*}*/
+
+/* There is some odd WebKit issue where backdrop-filter can't handle vars */
+/* see: https://github.com/tailwindlabs/tailwindcss/issues/13844 */
+.backdrop-blur {
+    --tw-backdrop-blur: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: var(--tw-backdrop-blur);
+}
+
+.backdrop-blur-sm {
+    --tw-backdrop-blur: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: var(--tw-backdrop-blur);
+}
+
+@layer base {
+    html {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+            sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+        /*In general, 14px seems to be the modern standard and fits better with other apps*/
+        font-size: 87.5%;
+    }
+
+    :root {
+        --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+            sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    }
+}

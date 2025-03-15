@@ -27,14 +27,13 @@ import {
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import VChart from 'vue-echarts'
-import { type EChartsOption } from 'echarts'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
-import { ProfileMixFunctionType, Profile } from '@/models/Profile'
+import { ProfileMixFunctionType, Profile, FunctionType } from '@/models/Profile'
 
 echarts.use([
     GridComponent,
@@ -82,20 +81,47 @@ const calculatedDutyLineData: [LineData, LineData] = [{ value: [] }, { value: []
 const getTempLineColor = (profileIndex: number): string => {
     const profile = props.profiles[profileIndex]
     if (profile.temp_source == null) {
-        return colors.themeColors.yellow
+        return colors.themeColors.accent
     }
     return (
         settingsStore.allUIDeviceSettings
             .get(profile.temp_source.device_uid)
             ?.sensorsAndChannels.get(profile.temp_source.temp_name)!.color ??
-        colors.themeColors.yellow
+        colors.themeColors.accent
     )
 }
+const calcSmoothness = (profileIndex: number): number => {
+    const profile = props.profiles[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 0.0
+    } else {
+        return 0.3
+    }
+}
+const calcLineShadowColor = (profileIndex: number): string => {
+    const profile = props.profiles[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return colors.themeColors.bg_one
+    } else {
+        return colors.themeColors.accent
+    }
+}
+const calcLineShadowSize = (profileIndex: number): number => {
+    const profile = props.profiles[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 10
+    } else {
+        return 20
+    }
+}
 
-const option: EChartsOption = {
+const option = {
     grid: {
         show: false,
-        top: deviceStore.getREMSize(1),
+        top: deviceStore.getREMSize(0.75),
         left: 0,
         right: deviceStore.getREMSize(0.9),
         bottom: 0,
@@ -107,8 +133,8 @@ const option: EChartsOption = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
-            formatter: '{value}°',
+            fontSize: deviceStore.getREMSize(0.95),
+            formatter: '{value}° ',
         },
         axisLine: {
             lineStyle: {
@@ -118,7 +144,8 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
+                width: 0.5,
                 type: 'dotted',
             },
         },
@@ -129,7 +156,7 @@ const option: EChartsOption = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}%',
         },
         axisLine: {
@@ -140,7 +167,8 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
+                width: 0.5,
                 type: 'dotted',
             },
         },
@@ -228,10 +256,10 @@ const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
 
-// series is dynamic and dependant on member profiles
+// series is dynamic and dependent on member profiles
 for (let i = 0; i < props.profiles.length; i++) {
-    // @ts-ignore
     option.series.push(
+        // @ts-ignore
         {
             id: 'tempLine' + i,
             type: 'line',
@@ -241,6 +269,10 @@ for (let i = 0; i < props.profiles.length; i++) {
                 color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.1),
                 type: 'dashed',
+                shadowColor: colors.themeColors.bg_one,
+                shadowBlur: 5,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0,
             },
             emphasis: {
                 disabled: true,
@@ -250,7 +282,7 @@ for (let i = 0; i < props.profiles.length; i++) {
                 symbolSize: 0,
                 label: {
                     position: 'top',
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: getTempLineColor(i),
                     rotate: 90,
                     offset: [0, -2],
@@ -258,6 +290,8 @@ for (let i = 0; i < props.profiles.length; i++) {
                         if (params.value == null) return ''
                         return Number(params.value).toFixed(1) + '°'
                     },
+                    shadowColor: colors.themeColors.bg_one,
+                    shadowBlur: 10,
                 },
                 data: [
                     {
@@ -272,7 +306,7 @@ for (let i = 0; i < props.profiles.length; i++) {
         {
             id: 'graphLine' + i,
             type: 'line',
-            smooth: 0.03,
+            smooth: calcSmoothness(i),
             symbol: 'circle',
             itemStyle: {
                 color: getTempLineColor(i),
@@ -284,6 +318,21 @@ for (let i = 0; i < props.profiles.length; i++) {
                 width: 2,
                 type: 'solid',
                 cap: 'round',
+                shadowColor: calcLineShadowColor(i),
+                shadowBlur: calcLineShadowSize(i),
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.2),
+                    },
+                    {
+                        offset: 1,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.0),
+                    },
+                ]),
+                opacity: 1.0,
             },
             emphasis: {
                 disabled: true,
@@ -301,8 +350,8 @@ option.series.push({
     smooth: false,
     symbol: 'none',
     lineStyle: {
-        color: `${colors.themeColors.accent}80`,
-        width: 7,
+        color: `${colors.themeColors.accent}`,
+        width: 4,
         type: 'solid',
     },
     emphasis: {
@@ -313,7 +362,7 @@ option.series.push({
         symbolSize: 0,
         label: {
             position: getDutyPosition(calculateDuty()),
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(1.0),
             color: colors.themeColors.accent,
             formatter: (params: any): string => {
                 if (params.value == null) return ''
@@ -326,6 +375,19 @@ option.series.push({
                 value: calculateDuty(),
             },
         ],
+    },
+    areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            {
+                offset: 0,
+                color: colors.convertColorToRGBA(colors.themeColors.accent, 0.3),
+            },
+            {
+                offset: 1,
+                color: colors.convertColorToRGBA(colors.themeColors.accent, 0.0),
+            },
+        ]),
+        opacity: 1.0,
     },
     z: 100,
     silent: true,
@@ -407,6 +469,22 @@ watch(settingsStore.allUIDeviceSettings, () => {
                 {
                     id: 'graphLine' + i,
                     lineStyle: { color: tempLineColor },
+                    itemStyle: {
+                        color: tempLineColor,
+                        borderColor: tempLineColor,
+                    },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            {
+                                offset: 0,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.2),
+                            },
+                            {
+                                offset: 1,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.0),
+                            },
+                        ]),
+                    },
                 },
             ],
         })
@@ -416,7 +494,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="mix-graph pr-3"
+        id="control-graph"
+        class="pt-6 pr-11 pl-4 pb-6"
         ref="mixGraph"
         :option="option"
         :autoresize="true"
@@ -425,8 +504,8 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </template>
 
 <style scoped lang="scss">
-.mix-graph {
-    height: max(70vh, 40rem);
-    width: max(calc(90vw - 17rem), 20rem);
+#control-graph {
+    height: max(95vh, 20rem);
+    //width: max(calc(90vw - 17rem), 20rem);
 }
 </style>

@@ -19,8 +19,7 @@
 <script setup lang="ts">
 import 'reflect-metadata'
 import { RouterView } from 'vue-router'
-import ProgressSpinner from 'primevue/progressspinner'
-import { Ref, onMounted, ref } from 'vue'
+import { Ref, onMounted, ref, inject } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -30,13 +29,21 @@ import Dialog from 'primevue/dialog'
 import DynamicDialog from 'primevue/dynamicdialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
-import Checkbox from 'primevue/checkbox'
+import { ElLoading, ElSwitch } from 'element-plus'
+import 'element-plus/es/components/loading/style/css'
+import { ThemeMode } from '@/models/UISettings.ts'
+import { useDaemonState } from '@/stores/DaemonState.ts'
+import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboarding'
+import { Emitter, EventType } from 'mitt'
+import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
+import FloatLabel from 'primevue/floatlabel'
 
-const loading = ref(true)
+const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
-const showSetupInstructions = ref(false)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const daemonState = useDaemonState()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const reloadPage = () => window.location.reload()
 
@@ -55,45 +62,321 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
+const loading = ElLoading.service({
+    lock: true,
+    text: 'Initializing...',
+    background: svgLoaderBackground,
+    svg: svgLoader,
+    svgViewBox: svgLoaderViewBox,
+})
+const applyCustomTheme = (): void => {
+    if (settingsStore.themeMode !== ThemeMode.CUSTOM) return
+    if (settingsStore.customTheme.accent) {
+        document.documentElement.style.setProperty(
+            '--colors-accent',
+            settingsStore.customTheme.accent,
+        )
+    }
+    if (settingsStore.customTheme.bgOne) {
+        document.documentElement.style.setProperty(
+            '--colors-bg-one',
+            settingsStore.customTheme.bgOne,
+        )
+    }
+    if (settingsStore.customTheme.bgTwo) {
+        document.documentElement.style.setProperty(
+            '--colors-bg-two',
+            settingsStore.customTheme.bgTwo,
+        )
+    }
+    if (settingsStore.customTheme.borderOne) {
+        document.documentElement.style.setProperty(
+            '--colors-border-one',
+            settingsStore.customTheme.borderOne,
+        )
+    }
+    if (settingsStore.customTheme.textColor) {
+        document.documentElement.style.setProperty(
+            '--colors-text-color',
+            settingsStore.customTheme.textColor,
+        )
+    }
+    if (settingsStore.customTheme.textColorSecondary) {
+        document.documentElement.style.setProperty(
+            '--colors-text-color-secondary',
+            settingsStore.customTheme.textColorSecondary,
+        )
+    }
+}
+
+const onboardingWrapper = ref(null)
+const { start, finish } = useVOnboarding(onboardingWrapper)
+emitter.on('start-tour', start)
+const steps = [
+    {
+        attachTo: { element: '#logo' },
+        content: {
+            title: 'Welcome to CoolerControl!',
+            description: 'Filled by template - special message',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    // {
+    //     attachTo: { element: '#system-menu' },
+    //     content: {
+    //         title: 'System Menu',
+    //         description:
+    //             "This is the start of the main menu where this system's devices and sensors can be viewed and controlled.",
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    {
+        attachTo: { element: '#dashboards' },
+        content: {
+            title: 'Dashboards',
+            description:
+                "Dashboards are a curated collection of charts to view your system's sensor data.",
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#profiles' },
+        content: {
+            title: 'Profiles',
+            description:
+                'Profiles define customizable settings for controlling fan speeds. ' +
+                'The same Profile can be used for multiple fans and devices.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#functions' },
+        content: {
+            title: 'Functions',
+            description:
+                'Functions are configurable algorithms that can be applied to a ' +
+                "Profile's output. This can be helpful for managing when fan speed changes occur.",
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    // {
+    //     attachTo: { element: '#custom-sensors' },
+    //     content: {
+    //         title: 'Custom Sensors',
+    //         description:
+    //             'Custom Sensors allow you to combine existing sensor data in various ways, ' +
+    //             'and enable you to use your own custom scripted sensor output.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#modes' },
+    //     content: {
+    //         title: 'Modes',
+    //         description:
+    //             'Modes are saved collections of your settings, allowing you to switch ' +
+    //             'between silent and performance modes easily',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#alerts' },
+    //     content: {
+    //         title: 'Alerts',
+    //         description: 'Alerts will notify you when sensors values exceed chosen thresholds',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    {
+        attachTo: { element: '#logo' },
+        content: {
+            title: 'Application and Daemon Information',
+            description:
+                'Clicking the logo opens the Application Information page, where you can ' +
+                "to get information about the application, the system daemon, and logs. It's a " +
+                "good place to go when troubleshooting issues and there's a small daemon-status " +
+                'badge here to notify you of any potential issues.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#add' },
+        content: {
+            title: 'Quick Add',
+            description: 'This is a menu to easily add new items like Dashboards, Profiles, etc.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#dashboard-quick' },
+        content: {
+            title: 'Dashboard Quick Menu',
+            description:
+                'This is a menu to quickly jump to your dashboards, even if the main menu is collapsed.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    // {
+    //     attachTo: { element: '#modes-quick' },
+    //     content: {
+    //         title: 'Modes Quick Menu',
+    //         description: 'This is a menu to quickly switch between your saved Modes.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#collapse-menu' },
+    //     content: {
+    //         title: 'Collapse / Expand Main Menu',
+    //         description: 'Use this to expand or collapse the main menu.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    // {
+    //     attachTo: { element: '#alerts-quick' },
+    //     content: {
+    //         title: 'Alerts Overview',
+    //         description: 'This is where you can view all the alert statuses and logs.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    {
+        attachTo: { element: '#settings' },
+        content: {
+            title: 'Settings',
+            description:
+                'This button will open up the settings page containing different UI and daemon settings.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    // {
+    //     attachTo: { element: '#access' },
+    //     content: {
+    //         title: 'Access Menu',
+    //         description: 'This is where you manage your password and verify your access level.',
+    //     },
+    //     options: {
+    //         popper: {
+    //             placement: 'right',
+    //         },
+    //     },
+    // },
+    {
+        attachTo: { element: '#restart' },
+        content: {
+            title: 'Restart Menu',
+            description:
+                'Here you can choose whether to reload the UI or restart the system daemon.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+]
 
 /**
- * Startup procedure for the application.
+ * This is the Startup procedure for the UI application:
  */
 onMounted(async () => {
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    deviceStore.connectToQtIPC()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
+        loading.close()
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
-    await sleep(200) // give the engine a moment to catch up for a smoother start
-    loading.value = false
-    showSetupInstructions.value = settingsStore.showSetupInstructions
+    applyCustomTheme()
+    await daemonState.init()
+    loaded.value = true
+    loading.close()
     await deviceStore.login()
-
-    const loopTickMS = 1000
-    let timeStarted = Date.now()
-    while (true) {
-        // this will be automatically paused by the browser when going inactive/sleep
-        const waitTime = Math.max(0, loopTickMS - (Date.now() - timeStarted))
-        await sleep(waitTime)
-        timeStarted = Date.now()
-        await deviceStore.updateStatus()
+    await deviceStore.loadLogs()
+    // Some other dialogs, like the password dialog, will wait until Onboarding has closed
+    if (settingsStore.showOnboarding) start()
+    let signalLoadFinished = async (): Promise<void> => {
+        if (deviceStore.isQtApp()) {
+            // Helps with Qt startup handling, i.e. startInTray
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
+        }
     }
+    // async functions that run for the lifetime of the application:
+    await Promise.all([
+        deviceStore.updateStatusFromSSE(),
+        deviceStore.updateLogsFromSSE(),
+        deviceStore.updateAlertsFromSSE(),
+        deviceStore.updateActiveModeFromSSE(),
+        signalLoadFinished(),
+    ])
 })
 </script>
 
 <template>
-    <div v-if="loading">
-        <div
-            class="flex align-items-center align-items-stretch flex-wrap"
-            style="min-height: 100vh"
-        >
-            <ProgressSpinner />
-        </div>
-    </div>
-    <RouterView v-else />
-    <Toast />
+    <RouterView v-if="loaded" />
+    <Toast position="top-center" />
     <DynamicDialog />
     <ConfirmDialog
         :pt="{
@@ -101,7 +384,18 @@ onMounted(async () => {
                 style: 'backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);',
             },
         }"
-    />
+    >
+        <template #message="slotProps">
+            <div class="flex flex-col items-center">
+                <i
+                    v-if="slotProps.message.icon"
+                    class="text-text-color-secondary text-4xl mb-2"
+                    :class="slotProps.message.icon"
+                />
+                <p class="w-96">{{ slotProps.message.message }}</p>
+            </div>
+        </template>
+    </ConfirmDialog>
     <ConfirmDialog
         group="AseTek690"
         :pt="{
@@ -111,9 +405,7 @@ onMounted(async () => {
         }"
     >
         <template #message="slotProps">
-            <div
-                class="flex flex-column align-items-left w-30rem gap-3 border-bottom-1 surface-border"
-            >
+            <div class="flex flex-col w-[34rem] gap-3 text-wrap">
                 <p>
                     The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and
                     CoolerControl can not determine which device is connected. This is required for
@@ -132,6 +424,7 @@ onMounted(async () => {
         </template>
     </ConfirmDialog>
     <Dialog
+        class="leading-loose"
         :visible="!initSuccessful"
         header="CoolerControl Connection Error"
         :style="{ width: '50vw' }"
@@ -144,68 +437,90 @@ onMounted(async () => {
             Check the
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/"
-                style="color: var(--cc-context-color)"
+                target="_blank"
+                style="color: rgb(var(--colors-accent))"
             >
                 project page</a
             >
             for installation instructions.
         </p>
-        <p>Some helpful commands:</p>
+        <br />
+        <p>Some helpful commands to enable and verify the daemon:</p>
         <p>
             <code>
                 sudo systemctl enable --now coolercontrold<br />
                 sudo systemctl status coolercontrold<br />
             </code>
         </p>
-        <hr />
+        <br />
         <p>
             If you have configured a non-standard address to connect to the daemon, you can set it
             here:
         </p>
-        <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
-        <h6 v-else>Daemon Address - Web UI</h6>
+        <br />
+        <h6 v-if="deviceStore.isQtApp()" class="text-lg">Daemon Address - Desktop App</h6>
+        <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
         <div>
-            <div>
-                <InputText
-                    v-model="daemonAddress"
-                    class="mb-2 w-6"
-                    :input-style="{ width: '10rem' }"
-                    v-tooltip.right="
-                        'The IP address to use to communicate with the daemon. ' +
-                        'This can be an IPv4 or IPv6 address.'
-                    "
-                />
+            <div class="mt-8 flex flex-row">
+                <FloatLabel variant="on">
+                    <InputText
+                        id="host-address"
+                        v-model="daemonAddress"
+                        class="mb-2 w-60"
+                        v-tooltip.top="
+                            'The IP address to use to communicate with the daemon. ' +
+                            'This can be an IPv4 or IPv6 address.'
+                        "
+                        :invalid="daemonAddress.length === 0"
+                    />
+                    <label for="host-address">Address</label>
+                </FloatLabel>
+                <span class="mx-2">:</span>
+                <FloatLabel variant="on">
+                    <InputNumber
+                        id="daemon-port"
+                        v-model="daemonPort"
+                        showButtons
+                        :min="80"
+                        :max="65535"
+                        :useGrouping="false"
+                        class="mb-2"
+                        :input-style="{ width: '6rem' }"
+                        v-tooltip.top="'The port to use to communicate with the daemon'"
+                        button-layout="horizontal"
+                        :allow-empty="false"
+                    >
+                        <template #incrementicon>
+                            <span class="pi pi-plus" />
+                        </template>
+                        <template #decrementicon>
+                            <span class="pi pi-minus" />
+                        </template>
+                    </InputNumber>
+                    <label for="daemon-port">Port</label>
+                </FloatLabel>
             </div>
-            <InputNumber
-                v-model="daemonPort"
-                showButtons
-                :min="80"
-                :max="65535"
-                :useGrouping="false"
-                class="mb-2"
-                :input-style="{ width: '10rem' }"
-                v-tooltip.right="'The port to use to communicate with the daemon'"
-            />
-            <div class="mb-3">
-                <Checkbox
-                    v-model="daemonSslEnabled"
-                    inputId="ssl-enable"
-                    :binary="true"
-                    v-tooltip.right="'Whether to connect to the daemon using SSL/TLS'"
-                />
-                <label for="ssl-enable" class="ml-2"> SSL/TLS </label>
+            <div class="flex flex-col mb-3 w-12 leading-none align-middle">
+                <small class="ml-3 font-light text-sm text-text-color-secondary">Protocol</small>
+                <div
+                    class="flex flex-row items-center"
+                    v-tooltip.left="'Enable or disable SSL/TLS (HTTPS)'"
+                >
+                    <el-switch v-model="daemonSslEnabled" size="large" />
+                    <span class="ml-2 m-1">SSL/TLS</span>
+                </div>
             </div>
             <div>
                 <Button
                     label="Save and Refresh"
-                    class="mb-2"
-                    v-tooltip.right="'Saves the daemon settings and reloads the UI.'"
+                    class="mb-2 w-44"
+                    v-tooltip.left="'Saves the daemon settings and reloads the UI.'"
                     @click="saveDaemonSettings"
                 />
             </div>
             <Button
                 label="Reset"
-                v-tooltip.right="'Resets the daemon settings to their defaults and reloads the UI.'"
+                v-tooltip.left="'Resets the daemon settings to their defaults and reloads the UI.'"
                 @click="resetDaemonSettings"
             />
         </div>
@@ -213,91 +528,151 @@ onMounted(async () => {
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
         </template>
     </Dialog>
-    <Dialog
-        :visible="showSetupInstructions"
-        header="Welcome to CoolerControl!"
-        :style="{ width: '75vw' }"
+    <VOnboardingWrapper
+        ref="onboardingWrapper"
+        :steps="steps"
+        :options="{
+            autoFinishByExit: true,
+            scrollToStep: { enabled: !settingsStore.showOnboarding },
+            overlay: { preventOverlayInteraction: settingsStore.showOnboarding },
+        }"
+        @finish="settingsStore.showOnboarding = false"
     >
-        <h5>Important Information</h5>
-        <p>
-            CoolerControl depends on open source drivers to communicate with your hardware.<br /><br />
+        <template #default="{ previous, next, step, isFirst, isLast }">
+            <VOnboardingStep>
+                <div class="bg-bg-two shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <div class="sm:flex sm:justify-between">
+                            <div v-if="step.content">
+                                <h3
+                                    v-if="step.content.title"
+                                    class="text-2xl leading-6 text-text-color"
+                                >
+                                    {{ step.content.title }}
+                                </h3>
+                                <div
+                                    v-if="step.content.description"
+                                    class="mt-4 max-w-xl text-base text-text-color-secondary"
+                                >
+                                    <div v-if="isFirst">
+                                        <p>
+                                            This is a short introduction to get you started with
+                                            CoolerControl.
+                                        </p>
+                                        <p class="mt-4">
+                                            Before we get started, one of them most important things
+                                            to know about is settings up your hardware drivers.
+                                        </p>
+                                        <br />
+                                        <p>
+                                            If your fans are not showing up or cannot be controlled,
+                                            then likely there is an issue with your currently
+                                            installed kernel drivers.<br /><br />
 
-            If CoolerControl does not list or cannot control your fans, then likely there is an
-            issue with your currently installed kernel drivers.<br /><br />
-
-            Before opening an issue, please confirm that all drivers have been properly loaded by
-            checking
-            <a
-                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
-                style="color: var(--cc-context-color)"
-            >
-                HWMon Support
-            </a>
-            and
-            <a
-                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
-                style="color: var(--cc-context-color)"
-            >
-                Adding Device Support</a
-            >.<br /><br />
-
-            Note that this popup is simply a reminder and does not signify any problems with your
-            system.
-        </p>
-
-        <template #footer>
-            <Button label="Remind me later" @click="() => (showSetupInstructions = false)" />
-            <Button
-                label="Do not show again (I know what I'm doing)"
-                @click="
-                    () => {
-                        showSetupInstructions = false
-                        settingsStore.showSetupInstructions = false
-                    }
-                "
-            />
+                                            Before opening an issue, please confirm that all drivers
+                                            have been properly loaded by checking the
+                                            <a
+                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                                                target="_blank"
+                                                class="text-accent outline-0"
+                                            >
+                                                HWMon Support
+                                            </a>
+                                            and
+                                            <a
+                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
+                                                target="_blank"
+                                                class="text-accent outline-0"
+                                            >
+                                                Adding Device Support
+                                            </a>
+                                            pages. <br /><br />
+                                            <span class="italic"
+                                                >Note: you can start this tour again at any time
+                                                from the settings page.</span
+                                            >
+                                            <br /><br />
+                                            Ok, let's get started!
+                                        </p>
+                                    </div>
+                                    <div v-else-if="isLast">
+                                        {{ step.content.description }}
+                                        <br /><br />
+                                        Ok, that's it. You're ready to get started!
+                                    </div>
+                                    <p v-else>{{ step.content.description }}</p>
+                                </div>
+                            </div>
+                            <div
+                                class="mt-5 space-x-4 sm:mt-0 sm:ml-6 sm:flex sm:flex-shrink-0 sm:items-end relative"
+                            >
+                                <!--<span class="absolute right-0 bottom-full mb-2 mr-2 text-text-color-secondary font-medium text-xs">{{ `${index + 1}/${steps.length}` }}</span>-->
+                                <button
+                                    @click="finish"
+                                    class="absolute right-0 bottom-full mb-[-1.0rem] text-text-color-secondary font-medium text-base pi pi-times outline-0"
+                                />
+                                <template v-if="!isFirst">
+                                    <button
+                                        @click="previous"
+                                        type="button"
+                                        class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
+                                    >
+                                        Previous
+                                    </button>
+                                </template>
+                                <button
+                                    @click="next"
+                                    type="button"
+                                    class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
+                                >
+                                    {{ isLast ? 'Finish' : 'Next' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </VOnboardingStep>
         </template>
-    </Dialog>
+    </VOnboardingWrapper>
 </template>
 
 <style>
-@font-face {
-    font-family: 'rounded';
-    font-style: normal;
-    font-weight: normal;
-    src:
-        local('Rounded Elegance Regular'),
-        url('/Rounded_Elegance.woff') format('woff');
+:root {
+    background-color: rgb(var(--colors-bg-one));
+    --el-color-primary: rgb(var(--colors-accent));
+    --v-onboarding-overlay-z: 60;
+    --v-onboarding-step-z: 70;
+}
+[data-v-onboarding-wrapper] [data-popper-arrow]::before {
+    content: '';
+    background: rgb(var(--colors-bg-two));
+    top: 0;
+    left: 0;
+    transition:
+        transform 0.2s ease-out,
+        visibility 0.2s ease-out;
+    visibility: visible;
+    transform: translateX(0px) rotate(45deg);
+    transform-origin: center;
+    width: 1rem;
+    height: 1rem;
+    position: absolute;
+    z-index: -1;
 }
 
-#app {
-    /* Foreground, Background */
-    scrollbar-color: var(--cc-context-pressed) var(--cc-bg-two);
+[data-v-onboarding-wrapper] [data-popper-placement^='top'] > [data-popper-arrow] {
+    bottom: 7px;
 }
 
-::-webkit-scrollbar {
-    width: 8px;
+[data-v-onboarding-wrapper] [data-popper-placement^='right'] > [data-popper-arrow] {
+    left: -6px;
 }
 
-/* Track */
-::-webkit-scrollbar-track {
-    /* Background */
-    -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3);
-    border-radius: 6px;
-    background: var(--cc-bg-two);
+[data-v-onboarding-wrapper] [data-popper-placement^='bottom'] > [data-popper-arrow] {
+    top: -6px;
 }
 
-/* Handle */
-::-webkit-scrollbar-thumb {
-    /* Foreground */
-    border-radius: 6px;
-    -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3);
-    background: var(--cc-context-pressed);
-}
-
-/* Handle on hover */
-::-webkit-scrollbar-thumb:hover {
-    /* Foreground Hover */
-    background: var(--cc-context-color);
+[data-v-onboarding-wrapper] [data-popper-placement^='left'] > [data-popper-arrow] {
+    right: -6px;
 }
 </style>

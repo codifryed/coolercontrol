@@ -1,11 +1,11 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
-docker_image_tag := v18
+docker_image_tag := v20
 ap_id := 'org.coolercontrol.CoolerControl'
 liqctld_dir := 'coolercontrol-liqctld'
 daemon_dir := 'coolercontrold'
 ui_dir := 'coolercontrol-ui'
-tauri_dir := '$(ui_dir)/src-tauri'
+qt_dir := 'coolercontrol'
 appimage_daemon_dir := 'appimage-build-daemon'
 appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
@@ -16,13 +16,13 @@ appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
 # Release goals
 # can be run in parallel with make -j2
-build: build-daemon build-tauri
+build: build-daemon build-qt
 
 build-daemon: build-ui
 	@$(MAKE) -C $(daemon_dir) build
 
-build-tauri: build-ui
-	@$(MAKE) -C $(tauri_dir) build
+build-qt:
+	@$(MAKE) -C $(qt_dir) build
 
 build-ui:
 	@$(MAKE) -C $(ui_dir) build
@@ -31,27 +31,21 @@ build-source: build
 	@$(MAKE) -C $(liqctld_dir) $@
 
 # parallelize with make -j3
-build-appimages: build-daemon build-tauri-appimage build-liqctld-binary
+build-appimages: build-daemon build-liqctld-binary
 
 build-liqctld-binary:
 	@$(MAKE) -C $(liqctld_dir) build-binary
 
-build-tauri-appimage:
-	@$(MAKE) -C $(tauri_dir) build-appimage
-
-build-offline: build-daemon-offline build-tauri-offline
+build-offline: build-daemon-offline build-qt
 
 build-daemon-offline: build-ui-offline
 	@$(MAKE) -C $(daemon_dir) build
-
-build-tauri-offline: build-ui-offline
-	@$(MAKE) -C $(tauri_dir) build
 
 build-ui-offline:
 	@$(MAKE) -C $(ui_dir) offline
 
 # parallelize with make -j4
-test: validate-metadata test-liqctld test-daemon test-ui test-tauri
+test: validate-metadata test-liqctld test-daemon test-ui test-qt
 
 test-liqctld:
 	@$(MAKE) -C $(liqctld_dir) test
@@ -62,10 +56,10 @@ test-daemon:
 test-ui:
 	@$(MAKE) -C $(ui_dir) test
 
-test-tauri: test-ui
-	@$(MAKE) -C $(tauri_dir) test
+test-qt:
+	@$(MAKE) -C $(qt_dir) test
  
-ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-tauri
+ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-qt
 
 ci-test-liqctld:
 	@$(MAKE) -C $(liqctld_dir) ci-test
@@ -76,8 +70,8 @@ ci-test-daemon:
 ci-test-ui:
 	@$(MAKE) -C $(ui_dir) ci-test
 
-ci-test-tauri: ci-test-ui
-	@$(MAKE) -C $(tauri_dir) ci-test
+ci-test-qt:
+	@$(MAKE) -C $(qt_dir) ci-test
 
 ci-check-all:
 	@./trunk check --ci --all
@@ -93,12 +87,12 @@ clean:
 	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
-	@$(MAKE) -C $(tauri_dir) $@
+	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -rf assets-built
 
 install:
 	@$(MAKE) -C $(daemon_dir) $@
-	@$(MAKE) -C $(tauri_dir) $@
+	@$(MAKE) -C $(qt_dir) $@ 
 
 install-source: build-source install
 	@$(MAKE) -C $(liqctld_dir) $@
@@ -112,7 +106,7 @@ install-source: build-source install
 uninstall:
 	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
-	@$(MAKE) -C $(tauri_dir) $@
+	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
 	@-$(RM) -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
 	@-$(RM) -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
@@ -120,8 +114,16 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
+# helpful std development & testing targets
+# For testing these make targets require that a system package is already installed
+# (excludes building coolercontrol-liqctld due to python dep/install issues)
+
+# full clean release build of daemon and UI binaries:
 dev-build: clean build
 
+dev-test: clean validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
+
+# installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)
 dev-install:
 	@sudo $(MAKE) install
 	@sudo systemctl restart coolercontrold
@@ -139,7 +141,7 @@ ubuntu-source-package:
 	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
 # should be executed after the build targets
-assets: assets-daemon assets-ui
+assets: assets-daemon assets-ui assets-qt
 
 assets-daemon:
 	@mkdir -p assets-built
@@ -150,14 +152,15 @@ assets-daemon:
 assets-ui:
 	@mkdir -p assets-built
 	@cd $(ui_dir) && tar --zstd -cf ../assets-built/coolercontrol-ui-vendor.tzst node_modules
-	@$(MAKE) -C $(tauri_dir) vendor
-	@cp $(tauri_dir)/target/release/coolercontrol ./assets-built/
-	@cd $(tauri_dir) && tar --zstd -cf ../../assets-built/coolercontrol-vendor.tzst vendor
+
+assets-qt: build-qt
+	@mkdir -p assets-built
+	@cp $(qt_dir)/build/coolercontrol ./assets-built/
 
 # AppImages:
 ############################################################################################################################################
 
-appimages: appimage-daemon appimage-ui
+appimages: appimage-daemon
 
 appimage-daemon:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
@@ -180,9 +183,6 @@ appimage-daemon:
 	@ln -s $(appimage_daemon_dir)/coolercontrold.png $(appimage_daemon_dir)/.DirIcon
 	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
 	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
-
-appimage-ui:
-	@cp coolercontrol-ui/src-tauri/target/release/bundle/appimage/coolercontrol_*_amd64.AppImage $(appimage_ui_name)
 
 
 # Release

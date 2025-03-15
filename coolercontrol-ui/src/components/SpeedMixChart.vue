@@ -18,21 +18,28 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { GridComponent, MarkPointComponent } from 'echarts/components'
+import { GridComponent, MarkPointComponent, TitleComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { type EChartsOption } from 'echarts'
-import { Profile } from '@/models/Profile'
+import { FunctionType, Profile } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { Ref, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-echarts.use([GridComponent, MarkPointComponent, LineChart, CanvasRenderer, UniversalTransition])
+echarts.use([
+    GridComponent,
+    MarkPointComponent,
+    LineChart,
+    CanvasRenderer,
+    UniversalTransition,
+    TitleComponent,
+])
 
 interface Props {
     profile: Profile
@@ -46,6 +53,7 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
+const router = useRouter()
 
 const axisXTempMin: number = 0
 const axisXTempMax: number = 100
@@ -90,15 +98,16 @@ const getTempLineColor = (profileIndex: number): string => {
         colors.themeColors.yellow
     )
 }
-const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): string => {
-    const color: string = getTempLineColor(profileIndex)
-    if (color.startsWith('rgb(')) {
-        const decimalAlpha = parseInt(hexAlpha, 16) / 255
-        return color.replace('rgb', 'rgba').replace(')', `,${decimalAlpha})`)
-    } else {
-        return `${color}${hexAlpha}`
-    }
-}
+// todo: this could be useful later:
+// const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): string => {
+//     const color: string = getTempLineColor(profileIndex)
+//     if (color.startsWith('rgb(')) {
+//         const decimalAlpha = parseInt(hexAlpha, 16) / 255
+//         return color.replace('rgb', 'rgba').replace(')', `,${decimalAlpha})`)
+//     } else {
+//         return `${color}${hexAlpha}`
+//     }
+// }
 
 const getDuty = (): number => {
     return Number(
@@ -124,31 +133,75 @@ const getTemp = (profileIndex: number): number => {
 const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
+const calcSmoothness = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 0.0
+    } else {
+        return 0.3
+    }
+}
+const calcLineShadowColor = (profileIndex: number): string => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return colors.themeColors.bg_one
+    } else {
+        return colors.themeColors.accent
+    }
+}
+const calcLineShadowSize = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
+    if (fun == null || fun.f_type === FunctionType.Identity) {
+        return 10
+    } else {
+        return 20
+    }
+}
 
-const option: EChartsOption = {
+const profileTitle = (): string => {
+    let title = `Applied Profile: ${props.profile.name}`
+    if (deviceStore.isSafariWebKit()) {
+        // add some extra length for WebKit to keep default profile text all linkable
+        title = title + '                      '
+    }
+    return title
+}
+const option = {
+    title: {
+        show: true,
+        text: profileTitle(),
+        link: props.profile.uid !== '0' ? '' : undefined,
+        target: 'self',
+        top: '5%',
+        left: '5%',
+        textStyle: {
+            color: colors.themeColors.text_color,
+            fontStyle: 'italic',
+            fontSize: '1.2rem',
+            textShadowColor: colors.themeColors.bg_one,
+            textShadowBlur: 10,
+        },
+        triggerEvent: props.profile.uid !== '0',
+        // z: 0,
+    },
     grid: {
         show: false,
-        top: deviceStore.getREMSize(1),
-        left: deviceStore.getREMSize(1.2),
+        top: deviceStore.getREMSize(0.5),
+        left: 0,
         right: deviceStore.getREMSize(0.9),
-        bottom: deviceStore.getREMSize(1.5),
+        bottom: 0,
         containLabel: true,
     },
     xAxis: {
         min: axisXTempMin,
         max: axisXTempMax,
-        name: 'temperature °C',
-        nameLocation: 'middle',
-        nameGap: deviceStore.getREMSize(1.8),
-        nameTextStyle: {
-            fontSize: deviceStore.getREMSize(0.9),
-            fontWeight: 'bold',
-            color: colors.themeColors.text_color,
-        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}°',
         },
         axisLine: {
@@ -159,7 +212,8 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
+                width: 1,
                 type: 'dotted',
             },
         },
@@ -167,18 +221,11 @@ const option: EChartsOption = {
     yAxis: {
         min: dutyMin,
         max: dutyMax,
-        name: 'duty %',
-        nameLocation: 'middle',
-        nameGap: deviceStore.getREMSize(2.2),
-        nameTextStyle: {
-            fontSize: deviceStore.getREMSize(0.9),
-            fontWeight: 'bold',
-            color: colors.themeColors.text_color,
-        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
+            formatter: '{value}%',
         },
         axisLine: {
             lineStyle: {
@@ -188,21 +235,22 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
+                width: 1,
                 type: 'dotted',
             },
         },
     },
     series: [],
     animation: true,
-    animationDuration: 300,
-    animationDurationUpdate: 300,
+    animationDuration: 200,
+    animationDurationUpdate: 200,
 }
 
-// series is dynamic and dependant on member profiles
+// series is dynamic and dependent on member profiles
 for (let i = 0; i < memberProfiles.value.length; i++) {
-    // @ts-ignore
     option.series.push(
+        // @ts-ignore
         {
             id: 'tempLine' + i,
             type: 'line',
@@ -212,6 +260,10 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.1),
                 type: 'dashed',
+                shadowColor: colors.themeColors.bg_one,
+                shadowBlur: 5,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0,
             },
             emphasis: {
                 disabled: true,
@@ -221,7 +273,7 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 symbolSize: 0,
                 label: {
                     position: 'top',
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: getTempLineColor(i),
                     rotate: 90,
                     offset: [0, -2],
@@ -229,6 +281,8 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                         if (params.value == null) return ''
                         return Number(params.value).toFixed(1) + '°'
                     },
+                    shadowColor: colors.themeColors.bg_one,
+                    shadowBlur: 10,
                 },
                 data: [
                     {
@@ -243,43 +297,30 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
         {
             id: 'graphLine' + i,
             type: 'line',
-            smooth: 0.03,
+            smooth: calcSmoothness(i),
             symbol: 'none',
             lineStyle: {
-                color: {
-                    type: 'linear',
-                    x: 0,
-                    y: 0,
-                    x2: 1,
-                    y2: 0,
-                    colorStops: [
-                        {
-                            offset: 0,
-                            color: `${getTempLineColorWithAlpha(i, '00')}`,
-                        },
-                        {
-                            offset: 0.04,
-                            color: `${getTempLineColorWithAlpha(i, '80')}`,
-                        },
-                        {
-                            offset: 0.5,
-                            color: `${getTempLineColorWithAlpha(i, '80')}`,
-                        },
-                        {
-                            offset: 0.96,
-                            color: `${getTempLineColorWithAlpha(i, '80')}`,
-                        },
-                        {
-                            offset: 1,
-                            color: `${getTempLineColorWithAlpha(i, '80')}`,
-                        },
-                    ],
-                },
+                color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.5),
                 cap: 'round',
+                shadowColor: calcLineShadowColor(i),
+                shadowBlur: calcLineShadowSize(i),
             },
             emphasis: {
                 disabled: true,
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    {
+                        offset: 0,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.2),
+                    },
+                    {
+                        offset: 1,
+                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.0),
+                    },
+                ]),
+                opacity: 1.0,
             },
             data: graphLineData[i],
             z: 1,
@@ -295,8 +336,11 @@ option.series.push({
     symbol: 'none',
     lineStyle: {
         color: getDeviceDutyLineColor(),
-        width: deviceStore.getREMSize(0.2),
+        width: deviceStore.getREMSize(0.3),
         type: 'solid',
+        cap: 'round',
+        shadowColor: colors.themeColors.bg_one,
+        shadowBlur: 10,
     },
     emphasis: {
         disabled: true,
@@ -306,12 +350,14 @@ option.series.push({
         symbolSize: 0,
         label: {
             position: getDutyPosition(getDuty()),
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(1.0),
             color: getDeviceDutyLineColor(),
             formatter: (params: any): string => {
                 if (params.value == null) return ''
                 return Number(params.value).toFixed(0) + '%'
             },
+            shadowColor: colors.themeColors.bg_one,
+            shadowBlur: 10,
         },
         data: [
             {
@@ -319,6 +365,19 @@ option.series.push({
                 value: getDuty(),
             },
         ],
+    },
+    areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            {
+                offset: 0,
+                color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.3),
+            },
+            {
+                offset: 1,
+                color: colors.convertColorToRGBA(getDeviceDutyLineColor(), 0.0),
+            },
+        ]),
+        opacity: 1.0,
     },
     z: 100,
     silent: true,
@@ -347,6 +406,16 @@ const setDutyData = (): number => {
     return duty
 }
 setDutyData()
+
+const handleGraphClick = (params: any): void => {
+    if (params.target?.style?.text === option.title.text) {
+        if (props.profile.uid == '0') {
+            return
+        }
+        // handle click on Profile Title in graph:
+        router.push({ name: 'profiles', params: { profileUID: props.profile.uid } })
+    }
+}
 
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
@@ -406,6 +475,22 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     lineStyle: { color: tempLineColor },
                     markPoint: { label: { color: tempLineColor } },
                 },
+                {
+                    id: 'graphLine' + i,
+                    lineStyle: { color: tempLineColor },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            {
+                                offset: 0,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.2),
+                            },
+                            {
+                                offset: 1,
+                                color: colors.convertColorToRGBA(tempLineColor, 0.0),
+                            },
+                        ]),
+                    },
+                },
             ],
         })
     }
@@ -414,17 +499,18 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="mix-graph"
+        id="control-graph"
+        class="pt-6 pr-11 pl-4 pb-6"
         ref="mixGraph"
         :option="option"
         :autoresize="true"
         :manual-update="true"
+        @zr:click="handleGraphClick"
     />
 </template>
 
 <style scoped lang="scss">
-.mix-graph {
-    height: calc(100vh - 8rem);
-    width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
+#control-graph {
+    height: max(calc(100vh - 4rem), 20rem);
 }
 </style>

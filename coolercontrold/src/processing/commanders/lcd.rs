@@ -16,23 +16,25 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use anyhow::{anyhow, bail, Context, Result};
+use log::{debug, error, trace, warn};
+use moro_local::Scope;
+use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
-
-use anyhow::{anyhow, Context, Result};
-use log::{debug, error, trace};
-use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
+use std::rc::Rc;
+use std::time::Duration;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point,
     PremultipliedColorU8, Rect, SpreadMode, Transform,
 };
-use tokio::sync::RwLock;
-use tokio::task;
 use tokio::time::Instant;
 
+use crate::api::CCError;
 use crate::config::DEFAULT_CONFIG_DIR;
-use crate::device::{Temp, TempLabel, UID};
+use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
+use crate::processing::processors;
 use crate::processing::settings::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
@@ -47,8 +49,8 @@ const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Reg
 pub struct LcdCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    pub scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
-    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
+    pub scheduled_settings: RefCell<HashMap<UID, HashMap<String, LcdSettings>>>,
+    scheduled_settings_metadata: RefCell<HashMap<UID, HashMap<String, SettingMetadata>>>,
     font_mono: Font,
     font_variable: Font,
 }
@@ -58,14 +60,14 @@ impl LcdCommander {
         Self {
             all_devices,
             repos,
-            scheduled_settings: RwLock::new(HashMap::new()),
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings: RefCell::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
             font_mono: Font::from_bytes(FONT_MONO_BYTES, 100.0).expect("font to load"),
             font_variable: Font::from_bytes(FONT_VARIABLE_BYTES, 100.0).expect("font to load"),
         }
     }
 
-    pub async fn schedule_setting(
+    pub fn schedule_single_temp(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -88,82 +90,154 @@ impl LcdCommander {
             format!("Target Device to schedule lcd update must be present: {device_uid}")
         })?;
         self.scheduled_settings
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(channel_name.to_string(), lcd_settings.clone());
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), SettingMetadata::new());
+            .or_default()
+            .insert(channel_name.to_string(), SettingMetadata::default());
         Ok(())
     }
 
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+    pub async fn schedule_carousel(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lcd_settings: &LcdSettings,
+    ) -> Result<()> {
+        let carousel = lcd_settings
+            .carousel
+            .clone()
+            .with_context(|| "CarouselSettings should be present for LCD Carousel Scheduling")?;
+        let images_path = carousel
+            .images_path
+            .as_ref()
+            .with_context(|| "Images Path should be present for LCD Carousel Scheduling")?;
+        if carousel.interval < 5 || carousel.interval > 900 {
+            bail!("Interval should be between 5 and 900 for LCD Carousel Scheduling");
+        }
+        let lcd_info = self
+            .all_devices
+            .get(device_uid)
+            .ok_or_else(|| CCError::NotFound {
+                msg: format!("Device with UID:{device_uid}"),
+            })?
+            .borrow()
+            .info
+            .channels
+            .get(channel_name)
+            .ok_or_else(|| CCError::NotFound {
+                msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}"),
+            })?
+            .lcd_info
+            .clone()
+            .ok_or_else(|| CCError::NotFound {
+                msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
+            })?;
+        let processed_images =
+            processors::image::process_carousel_images(images_path, lcd_info).await?;
+        // This makes it so the carousel starts right after scheduling:
+        let interval_instant = Instant::now() - Duration::from_secs(carousel.interval);
+        let setting_metadata = SettingMetadata {
+            interval_instant,
+            processed_images,
+            ..Default::default()
+        };
+        self.scheduled_settings
+            .borrow_mut()
+            .entry(device_uid.clone())
+            .or_default()
+            .insert(channel_name.to_string(), lcd_settings.clone());
+        self.scheduled_settings_metadata
+            .borrow_mut()
+            .entry(device_uid.clone())
+            .or_default()
+            .insert(channel_name.to_string(), setting_metadata);
+        Ok(())
+    }
+
+    pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
         if let Some(device_channel_settings) =
-            self.scheduled_settings.write().await.get_mut(device_uid)
+            self.scheduled_settings.borrow_mut().get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
         }
         if let Some(device_channel_settings) = self
             .scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .get_mut(device_uid)
         {
             device_channel_settings.remove(channel_name);
         }
     }
 
-    pub async fn update_lcd(self: Arc<Self>) {
-        trace!("LCD Scheduler triggered");
-        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
+    pub async fn update_lcd(self: Rc<Self>) {
+        moro_local::async_scope!(|scope| {
+            self.set_single_temp_image(scope);
+            self.set_carousel_lcd_image(scope);
+        })
+        .await;
+    }
+
+    /// Applies all Single-Temp scheduled settings
+    fn set_single_temp_image<'s>(self: &Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+        for (device_uid, channel_name, lcd_settings, current_source_temp_data) in
+            self.determine_single_temps_to_display()
+        {
+            scope.spawn(self.clone().set_single_temp_lcd_image(
+                device_uid,
+                channel_name,
+                lcd_settings,
+                Rc::new(current_source_temp_data),
+            ));
+        }
+    }
+
+    #[allow(clippy::float_cmp)]
+    fn determine_single_temps_to_display(
+        &self,
+    ) -> Vec<(DeviceUID, ChannelName, LcdSettings, TempData)> {
+        let mut temps_to_display = Vec::new();
+        for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
                 if lcd_settings.mode != "temp" {
-                    return;
+                    continue;
                 }
-                if let Some(current_source_temp_data) =
-                    self.get_source_temp_data(lcd_settings).await
-                {
+                if let Some(current_source_temp_data) = self.get_source_temp_data(lcd_settings) {
                     let last_temp_set = self
                         .scheduled_settings_metadata
-                        .read()
-                        .await
+                        .borrow()
                         .get(device_uid)
                         .expect("lcd scheduler metadata for device should be present")
                         .get(channel_name)
                         .expect("lcd scheduler metadata by channel should be present")
                         .last_temp_set;
-                    if last_temp_set.is_none()
-                        || (last_temp_set.is_some()
-                            && last_temp_set.unwrap() != current_source_temp_data.temp)
-                    {
-                        self.clone()
-                            .set_lcd_image(
-                                device_uid,
-                                channel_name,
-                                lcd_settings,
-                                Arc::new(current_source_temp_data),
-                            )
-                            .await;
-                    } else {
+                    if last_temp_set == current_source_temp_data.temp {
                         trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_data.temp);
+                    } else {
+                        temps_to_display.push((
+                            device_uid.clone(),
+                            channel_name.clone(),
+                            lcd_settings.clone(),
+                            current_source_temp_data.clone(),
+                        ));
                     }
                 }
             }
         }
+        temps_to_display
     }
 
-    async fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
+    fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
         let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
         if let Some(temp_source_device_lock) = self
             .all_devices
             .get(setting_temp_source.device_uid.as_str())
         {
-            let device_read_lock = temp_source_device_lock.read().await;
+            let device_read_lock = temp_source_device_lock.borrow();
             let label = device_read_lock
                 .info
                 .temps
@@ -187,7 +261,7 @@ impl LcdCommander {
                         .last()
                 })
                 .map(|temp_status|
-                    // rounded to nearest 10th degree to avoid updating on really small degree changes
+                    // rounded to nearest 10th degree to avoid updating on minuscule degree changes
                     (temp_status.temp * 10.).round() / 10.)?;
             Some(TempData { temp, label })
         } else {
@@ -199,57 +273,53 @@ impl LcdCommander {
         }
     }
 
-    /// The self: Arc<Self> is a 'trick' to be able to call methods that belong to self in another thread
-    async fn set_lcd_image(
-        self: Arc<Self>,
-        device_uid: &UID,
-        channel_name: &str,
-        lcd_settings: &LcdSettings,
-        temp_data_to_display: Arc<TempData>,
+    /// The self: Rc<Self> is a 'trick' to be able to call methods that belong to self in another thread
+    async fn set_single_temp_lcd_image(
+        self: Rc<Self>,
+        device_uid: UID,
+        channel_name: ChannelName,
+        lcd_settings: LcdSettings,
+        temp_data_to_display: Rc<TempData>,
     ) {
         if lcd_settings.mode != "temp" {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
-        let self_clone = Arc::clone(&self);
-        let temp_data = Arc::clone(&temp_data_to_display);
+        let start = Instant::now();
+        let self_clone = Rc::clone(&self);
+        let temp_data = Rc::clone(&temp_data_to_display);
         let image_template = self
             .scheduled_settings_metadata
-            .read()
-            .await
-            .get(device_uid)
+            .borrow()
+            .get(&device_uid)
             .unwrap()
-            .get(channel_name)
+            .get(&channel_name)
             .unwrap()
             .image_template
             .clone();
-        let generate_image = task::spawn_blocking(move || {
-            self_clone.generate_single_temp_image(&temp_data, image_template)
-        });
-        let (image_path, image_template) = match generate_image.await {
-            Ok(image_data_result) => match image_data_result {
-                Ok(image_data) => image_data,
-                Err(err) => {
-                    error!("Error generating image for lcd scheduler: {}", err);
-                    return;
-                }
-            },
-            Err(err) => {
-                error!("Error running image generation task: {}", err);
-                return;
-            }
+        let generate_image =
+            moro_local::async_scope!(|scope| -> Result<(String, Option<Image<Rgba>>)> {
+                scope
+                    .spawn(async move {
+                        self_clone.generate_single_temp_image(&temp_data, image_template)
+                    })
+                    .await
+            })
+            .await;
+        let Ok((image_path, image_template)) = generate_image
+            .inspect_err(|err| error!("Error generating image for lcd scheduler: {}", err))
+        else {
+            return;
         };
 
-        let last_temp_set = self
+        let is_first_application = self
             .scheduled_settings_metadata
-            .read()
-            .await
-            .get(device_uid)
+            .borrow()
+            .get(&device_uid)
             .unwrap()
-            .get(channel_name)
+            .get(&channel_name)
             .unwrap()
-            .last_temp_set;
-        let is_first_application = last_temp_set.is_none();
+            .is_first_application;
         let brightness = if is_first_application {
             lcd_settings.brightness
         } else {
@@ -265,33 +335,39 @@ impl LcdCommander {
             brightness,
             orientation,
             image_file_processed: Some(image_path),
+            carousel: None,
             colors: Vec::new(),
             temp_source: None,
         };
         {
-            let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+            let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
             let metadata = metadata_lock
-                .get_mut(device_uid)
+                .get_mut(&device_uid)
                 .unwrap()
-                .get_mut(channel_name)
+                .get_mut(&channel_name)
                 .unwrap();
-            metadata.last_temp_set = Some(temp_data_to_display.temp);
+            metadata.last_temp_set = temp_data_to_display.temp;
             metadata.image_template = image_template;
+            metadata.is_first_application = false;
         }
-        // this will block if reference is held, thus clone()
-        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
+        let device_type = self.all_devices[&device_uid].borrow().d_type.clone();
+        trace!("Time to generate LCD image: {:?}", start.elapsed());
         debug!(
             "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
             device_uid, lcd_settings
         );
         if let Some(repo) = self.repos.get(&device_type) {
             if let Err(err) = repo
-                .apply_setting_lcd(device_uid, channel_name, &lcd_settings)
+                .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
                 .await
             {
-                error!("Error applying scheduled lcd setting: {}", err);
+                warn!("Error applying scheduled lcd setting for single-temp: {err}");
             }
         }
+        trace!(
+            "Time to generate LCD image and update device: {:?}",
+            start.elapsed()
+        );
     }
 
     /// Generates and saves an appropriate image and returns the path location for liquidctl
@@ -306,7 +382,7 @@ impl LcdCommander {
         let mut image = if let Some(image_template) = image_template {
             image_template
         } else {
-            self.generate_single_temp_image_template(&temp_data_to_display, now)?
+            self.generate_single_temp_image_template(temp_data_to_display, now)?
         };
         now = Instant::now();
         let image_template = Some(image.clone());
@@ -334,6 +410,7 @@ impl LcdCommander {
         now = Instant::now();
 
         let image_path = Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_SINGLE_TEMP);
+        // std blocking save being used here:
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
             return Err(anyhow!("{}", e.to_string()));
         }
@@ -347,9 +424,10 @@ impl LcdCommander {
         ))
     }
 
+    #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
     fn generate_single_temp_image_template(
         &self,
-        temp_data_to_display: &&TempData,
+        temp_data_to_display: &TempData,
         now: Instant,
     ) -> Result<Image<Rgba>> {
         let circle_center_x = 160.0_f32;
@@ -562,6 +640,94 @@ impl LcdCommander {
         trace!("Single Temp Image Template created in: {:?}", now.elapsed());
         Ok(image)
     }
+
+    /// Applies all Carousel scheduled settings
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    fn set_carousel_lcd_image<'s>(&'s self, scope: &'s Scope<'s, 's, ()>) {
+        for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
+            for (channel_name, lcd_settings) in channel_settings {
+                if lcd_settings.mode != "carousel" {
+                    continue;
+                }
+                let elapsed_secs = self
+                    .scheduled_settings_metadata
+                    .borrow()
+                    .get(device_uid)
+                    .expect("lcd scheduler metadata for device should be present")
+                    .get(channel_name)
+                    .expect("lcd scheduler metadata by channel should be present")
+                    .interval_instant
+                    .elapsed()
+                    .as_secs_f64()
+                    .round() as u64;
+                if elapsed_secs
+                    < lcd_settings
+                        .carousel
+                        .as_ref()
+                        .expect("carousel lcd settings should be present")
+                        .interval
+                {
+                    continue;
+                }
+                let (is_first_application, image_path) = {
+                    let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
+                    let metadata = metadata_lock
+                        .get_mut(device_uid)
+                        .unwrap()
+                        .get_mut(channel_name)
+                        .unwrap();
+                    let is_first_application = metadata.is_first_application;
+                    let image_path = metadata
+                        .processed_images
+                        .get(metadata.image_index)
+                        .unwrap()
+                        .to_owned();
+                    // circular indexing:
+                    metadata.image_index =
+                        (metadata.image_index + 1) % metadata.processed_images.len();
+                    metadata.interval_instant = Instant::now();
+                    metadata.is_first_application = false;
+                    (is_first_application, image_path)
+                };
+                let brightness = if is_first_application {
+                    lcd_settings.brightness
+                } else {
+                    None
+                };
+                let orientation = if is_first_application {
+                    lcd_settings.orientation
+                } else {
+                    None
+                };
+                let lcd_settings = LcdSettings {
+                    mode: "image".to_string(),
+                    brightness,
+                    orientation,
+                    image_file_processed: Some(image_path),
+                    carousel: None,
+                    colors: Vec::new(),
+                    temp_source: None,
+                };
+                let device_type = self.all_devices[device_uid].borrow().d_type.clone();
+                debug!(
+                    "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
+                    device_uid, lcd_settings
+                );
+                let device_uid = device_uid.to_owned();
+                let channel_name = channel_name.to_owned();
+                scope.spawn(async move {
+                    if let Some(repo) = self.repos.get(&device_type) {
+                        if let Err(err) = repo
+                            .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
+                            .await
+                        {
+                            warn!("Error applying scheduled lcd setting for carousel: {err}");
+                        }
+                    }
+                });
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -572,15 +738,28 @@ struct TempData {
 
 #[derive(Clone)]
 pub struct SettingMetadata {
-    pub last_temp_set: Option<f64>,
+    /// single-temp metadata
+    pub last_temp_set: f64,
     pub image_template: Option<Image<Rgba>>,
+
+    /// carousel metadata
+    pub interval_instant: Instant,
+    pub processed_images: Vec<String>,
+    pub image_index: usize,
+
+    /// All
+    pub is_first_application: bool,
 }
 
-impl SettingMetadata {
-    pub fn new() -> Self {
+impl Default for SettingMetadata {
+    fn default() -> Self {
         Self {
-            last_temp_set: None,
+            last_temp_set: f64::default(),
             image_template: None,
+            interval_instant: Instant::now(),
+            processed_images: Vec::new(),
+            image_index: 0,
+            is_first_application: true,
         }
     }
 }

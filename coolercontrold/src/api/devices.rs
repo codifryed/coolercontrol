@@ -16,217 +16,158 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::io::Read;
-use std::ops::{Deref, Not};
-use std::sync::Arc;
-
-use actix_multipart::form::text::Text;
-use actix_multipart::form::{tempfile::TempFile, MultipartForm};
-use actix_session::Session;
-use actix_web::web::{Data, Json, Path};
-use actix_web::{get, patch, post, put, HttpResponse, Responder};
-use mime::Mime;
-use serde::{Deserialize, Serialize};
-
-use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
-use crate::config::Config;
-use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
+use crate::api::auth::verify_admin_permissions;
+use crate::api::{handle_error, AppState, CCError};
+use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
 use crate::processing::processors::image;
-use crate::processing::settings::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
-use crate::{AllDevices, Device};
+use crate::Device;
+use aide::axum::IntoApiResponse;
+use aide::NoApi;
+use axum::extract::{Path, State};
+use axum::http::header;
+use axum::Json;
+use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
+use mime::Mime;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::io::Read;
+use std::ops::Not;
+use std::str::FromStr;
+use tempfile::NamedTempFile;
+use tower_sessions::Session;
 
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
-#[get("/devices")]
-async fn get_devices(all_devices: Data<AllDevices>) -> impl Responder {
-    let mut all_devices_list = vec![];
-    for device_lock in all_devices.values() {
-        all_devices_list.push(device_lock.read().await.deref().into());
-    }
-    Json(DevicesResponse {
-        devices: all_devices_list,
-    })
+pub async fn get(
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<DevicesResponse>, CCError> {
+    let all_devices = device_handle.devices_get().await?;
+    Ok(Json(DevicesResponse {
+        devices: all_devices,
+    }))
 }
 
 /// Returns all the currently applied settings for the given device.
 /// It returns the Config Settings model, which includes all possibilities for each channel.
-#[get("/devices/{device_uid}/settings")]
-async fn get_device_settings(
-    device_uid: Path<String>,
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    config
-        .get_device_settings(device_uid.as_str())
+pub async fn device_settings_get(
+    Path(path): Path<DevicePath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<Json<SettingsResponse>, CCError> {
+    device_handle
+        .device_settings_get(path.device_uid)
         .await
-        .map(|settings| HttpResponse::Ok().json(Json(SettingsResponse { settings })))
+        .map(|settings| Json(SettingsResponse { settings }))
         .map_err(handle_error)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/manual")]
-async fn apply_device_setting_manual(
-    path_params: Path<(String, String)>,
-    manual_request: Json<SettingManualRequest>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_manual_modify(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(manual_request): Json<SettingManualRequest>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    settings_controller
-        .set_fixed_speed(
-            &device_uid,
-            channel_name.as_str(),
+    device_handle
+        .device_setting_manual(
+            path.device_uid,
+            path.channel_name,
             manual_request.speed_fixed,
         )
         .await
-        .map_err(handle_error)?;
-    let config_settings = Setting {
-        channel_name,
-        speed_fixed: Some(manual_request.speed_fixed),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_settings)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/profile")]
-async fn apply_device_setting_profile(
-    path_params: Path<(String, String)>,
-    profile_uid_json: Json<SettingProfileUID>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_profile_modify(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(profile_uid_json): Json<SettingProfileUID>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    settings_controller
-        .set_profile(
-            &device_uid,
-            channel_name.as_str(),
-            &profile_uid_json.profile_uid,
+    device_handle
+        .device_setting_profile(
+            path.device_uid,
+            path.channel_name,
+            profile_uid_json.profile_uid,
         )
         .await
-        .map_err(handle_error)?;
-    let config_setting = Setting {
-        channel_name,
-        profile_uid: Some(profile_uid_json.into_inner().profile_uid),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/lcd")]
-async fn apply_device_setting_lcd(
-    path_params: Path<(String, String)>,
-    lcd_settings_json: Json<LcdSettings>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_lcd_modify(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(lcd_settings): Json<LcdSettings>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    let lcd_settings = lcd_settings_json.into_inner();
-    settings_controller
-        .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
+    device_handle
+        .device_setting_lcd(path.device_uid, path.channel_name, lcd_settings)
         .await
-        .map_err(handle_error)?;
-    let config_setting = Setting {
-        channel_name,
-        lcd: Some(lcd_settings),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
 /// To retrieve the currently applied image
-#[get("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
-async fn get_device_lcd_images(
-    path_params: Path<(String, String)>,
-    settings_controller: Data<Arc<SettingsController>>,
-) -> Result<impl Responder, CCError> {
-    let (device_uid, channel_name) = path_params.into_inner();
-    let (content_type, image_data) = settings_controller
-        .get_lcd_image(&device_uid, &channel_name)
+pub async fn get_device_lcd_image(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<impl IntoApiResponse, CCError> {
+    let (content_type, image_data) = device_handle
+        .device_image_get(path.device_uid, path.channel_name)
         .await?;
-    Ok(HttpResponse::Ok()
-        .content_type(content_type)
-        .body(image_data))
+    Ok((
+        [(header::CONTENT_TYPE, content_type.to_string())],
+        image_data,
+    ))
 }
 
 /// Used to apply LCD settings that contain images.
-#[put("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
-async fn apply_device_setting_lcd_images(
-    path_params: Path<(String, String)>,
-    MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn update_device_setting_lcd_image(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    NoApi(session): NoApi<Session>,
+    NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    let mut file_data = validate_form_images(&mut form)?;
-    let processed_image_data = settings_controller
-        .process_lcd_images(&device_uid, &channel_name, &mut file_data)
+    let file_data = validate_form_images(&mut form)?;
+    device_handle
+        .device_image_update(
+            path.device_uid,
+            path.channel_name,
+            form.mode.clone(),
+            form.brightness,
+            form.orientation,
+            file_data,
+        )
         .await
-        .map_err(<anyhow::Error as Into<CCError>>::into)?;
-    let image_path = settings_controller
-        .save_lcd_image(&processed_image_data.0, processed_image_data.1)
-        .await?;
-    let lcd_settings = LcdSettings {
-        mode: form.mode.into_inner(),
-        brightness: form.brightness.map(Text::into_inner),
-        orientation: form.orientation.map(Text::into_inner),
-        image_file_processed: Some(image_path),
-        temp_source: None,
-        colors: Vec::with_capacity(0),
-    };
-    settings_controller
-        .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
-        .await
-        .map_err(<anyhow::Error as Into<CCError>>::into)?;
-    let config_setting = Setting {
-        channel_name,
-        lcd: Some(lcd_settings),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
 /// Used to process image files for previewing
-#[post("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
-async fn process_device_lcd_images(
-    path_params: Path<(String, String)>,
-    MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
-    settings_controller: Data<Arc<SettingsController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn process_device_lcd_images(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    NoApi(session): NoApi<Session>,
+    NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
+) -> Result<impl IntoApiResponse, CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    let mut file_data = validate_form_images(&mut form)?;
-    settings_controller
-        .process_lcd_images(&device_uid, &channel_name, &mut file_data)
+    let file_data = validate_form_images(&mut form)?;
+    device_handle
+        .device_image_process(path.device_uid, path.channel_name, file_data)
         .await
         .map(|(content_type, file_data)| {
-            HttpResponse::Ok()
-                .content_type(content_type)
-                .body(file_data)
+            (
+                [(header::CONTENT_TYPE, content_type.to_string())],
+                file_data,
+            )
         })
         .map_err(handle_error)
 }
 
-fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
+fn validate_form_images(
+    form: &mut TypedMultipart<LcdImageSettingsForm>,
+) -> Result<Vec<(Mime, Vec<u8>)>, CCError> {
     if form.images.is_empty() {
         return Err(CCError::UserError {
             msg: "At least one image is required".to_string(),
@@ -238,18 +179,15 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
     }
     let mut file_data = Vec::new();
     for file in form.images.as_mut_slice() {
-        if file.size > 50_000_000 {
-            return Err(CCError::UserError {
-                msg: format!(
-                    "No single file can be bigger than 50MB. Found: {}MB",
-                    file.size / 1_000_000
-                ),
-            });
-        }
         let mut file_bytes = Vec::new();
-        file.file.read_to_end(&mut file_bytes)?;
-        let content_type = file.content_type.as_ref().unwrap_or(&mime::IMAGE_PNG);
-        if image::supported_image_types().contains(content_type).not() {
+        file.contents.read_to_end(&mut file_bytes)?;
+        let content_type = file
+            .metadata
+            .content_type
+            .as_ref()
+            .and_then(|ct| Mime::from_str(ct.as_str()).ok())
+            .unwrap_or(mime::IMAGE_PNG);
+        if image::supported_image_types().contains(&content_type).not() {
             return Err(CCError::UserError {
                 msg: format!(
                     "Only image types {:?} are supported. Found:{content_type}",
@@ -262,111 +200,71 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
     Ok(file_data)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/lighting")]
-async fn apply_device_setting_lighting(
-    path_params: Path<(String, String)>,
-    lighting_settings_json: Json<LightingSettings>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_lighting_modify(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(lighting_settings): Json<LightingSettings>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    let lighting_settings = lighting_settings_json.into_inner();
-    settings_controller
-        .set_lighting(&device_uid, channel_name.as_str(), &lighting_settings)
+    device_handle
+        .device_setting_lighting(path.device_uid, path.channel_name, lighting_settings)
         .await
-        .map_err(handle_error)?;
-    let config_setting = Setting {
-        channel_name,
-        lighting: Some(lighting_settings),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/pwm")]
-async fn apply_device_setting_pwm(
-    path_params: Path<(String, String)>,
-    pwm_mode_json: Json<SettingPWMMode>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_pwm_mode_modify(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(pwm_mode_json): Json<SettingPWMMode>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    settings_controller
-        .set_pwm_mode(&device_uid, channel_name.as_str(), pwm_mode_json.pwm_mode)
+    device_handle
+        .device_setting_pwm_mode(path.device_uid, path.channel_name, pwm_mode_json.pwm_mode)
         .await
-        .map_err(handle_error)?;
-    let config_setting = Setting {
-        channel_name,
-        pwm_mode: Some(pwm_mode_json.into_inner().pwm_mode),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[put("/devices/{device_uid}/settings/{channel_name}/reset")]
-async fn apply_device_setting_reset(
-    path_params: Path<(String, String)>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn device_setting_reset(
+    Path(path): Path<DeviceChannelPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    let (device_uid, channel_name) = path_params.into_inner();
-    settings_controller
-        .set_reset(&device_uid, channel_name.as_str())
+    device_handle
+        .device_setting_reset(path.device_uid, path.channel_name)
         .await
-        .map_err(handle_error)?;
-    let config_setting = Setting {
-        channel_name,
-        reset_to_default: Some(true),
-        ..Default::default()
-    };
-    config
-        .set_device_setting(&device_uid, &config_setting)
-        .await;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-/// Set AseTek Cooler driver type
-/// This is needed to set Legacy690Lc or Modern690Lc device driver type
-#[patch("/devices/{device_id}/asetek690")]
-async fn asetek(
-    device_uid: Path<String>,
-    asetek690_request: Json<AseTek690Request>,
-    config: Data<Arc<Config>>,
-    all_devices: Data<AllDevices>,
-) -> Result<impl Responder, CCError> {
-    config
-        .set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690)
-        .await;
-    config.save_config_file().await.map_err(handle_error)?;
-    // Device is now known. Legacy690Lc devices still require a restart of the daemon.
-    if let Some(device) = all_devices.get(&device_uid.to_string()) {
-        if device.read().await.lc_info.is_some() {
-            device
-                .write()
-                .await
-                .lc_info
-                .as_mut()
-                .unwrap()
-                .unknown_asetek = false;
-        }
-    }
-    Ok(HttpResponse::Ok().finish())
+/// Set `AseTek` Cooler driver type
+/// This is needed to set `Legacy690Lc` or `Modern690Lc` device driver type
+pub async fn asetek_type_update(
+    Path(path): Path<DevicePath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(asetek690_request): Json<AseTek690Request>,
+) -> Result<(), CCError> {
+    device_handle
+        .device_asetek_type(path.device_uid, asetek690_request.is_legacy690)
+        .await
+        .map_err(handle_error)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeviceDto {
+pub async fn thinkpad_fan_control_modify(
+    NoApi(session): NoApi<Session>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    Json(fan_control_request): Json<ThinkPadFanControlRequest>,
+) -> Result<(), CCError> {
+    verify_admin_permissions(&session).await?;
+    device_handle
+        .thinkpad_fan_control(fan_control_request.enable)
+        .await
+        .map_err(handle_error)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceDto {
     pub name: String,
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
@@ -389,41 +287,58 @@ impl From<&Device> for DeviceDto {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DevicesResponse {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DevicesResponse {
     devices: Vec<DeviceDto>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SettingsResponse {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SettingsResponse {
     settings: Vec<Setting>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AseTek690Request {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AseTek690Request {
     is_legacy690: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SettingManualRequest {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SettingManualRequest {
     speed_fixed: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SettingProfileUID {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SettingProfileUID {
     profile_uid: UID,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SettingPWMMode {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SettingPWMMode {
     pwm_mode: u8,
 }
 
-#[derive(Debug, MultipartForm)]
-struct LcdImageSettingsForm {
-    mode: Text<String>,
-    brightness: Option<Text<u8>>,
-    orientation: Option<Text<u16>>,
-    #[multipart(rename = "images[]", limit = "50 MiB")]
-    images: Vec<TempFile>,
+#[derive(Debug, TryFromMultipart)]
+pub struct LcdImageSettingsForm {
+    mode: String,
+    brightness: Option<u8>,
+    orientation: Option<u16>,
+    // limited to the request body size limit
+    #[form_data(field_name = "images[]", limit = "unlimited")]
+    images: Vec<FieldData<NamedTempFile>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ThinkPadFanControlRequest {
+    enable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DevicePath {
+    pub device_uid: DeviceUID,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceChannelPath {
+    pub device_uid: DeviceUID,
+    pub channel_name: ChannelName,
 }

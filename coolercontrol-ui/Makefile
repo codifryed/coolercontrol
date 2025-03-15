@@ -9,6 +9,9 @@ dist:
 
 build: dist
 
+dev:
+	@npm run dev
+
 offline:
 	@npm run build --offline
 
@@ -22,7 +25,7 @@ clean:
 	@-$(RM) -rf dist
 
 install:
-	@$(MAKE) -C src-tauri $@
+	#@$(MAKE) -C src-tauri $@
 
 uninstall:
-	@$(MAKE) -C src-tauri $@
+	#@$(MAKE) -C src-tauri $@

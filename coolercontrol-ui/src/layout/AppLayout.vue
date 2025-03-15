@@ -16,97 +16,157 @@
   - along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
 
-<script setup>
-import { computed, watch, ref } from 'vue'
-import AppTopbar from './AppTopbar.vue'
-import AppSidebar from './AppSidebar.vue'
-import AppConfig from './AppConfig.vue'
-import { useLayout } from '@/layout/composables/layout'
+<script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import {
+    ScrollAreaRoot,
+    ScrollAreaScrollbar,
+    ScrollAreaThumb,
+    ScrollAreaViewport,
+    SplitterGroup,
+    SplitterPanel,
+    SplitterResizeHandle,
+} from 'radix-vue'
+import AppSideTopbar from '@/layout/AppSideTopbar.vue'
+import AppTreeMenu from '@/layout/AppTreeMenu.vue'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { computed, inject, onMounted, Ref, ref } from 'vue'
+import { Emitter, EventType } from 'mitt'
 
-const { layoutConfig, layoutState, isSidebarActive } = useLayout()
+const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
+const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
+const splitterGroupRef = ref<InstanceType<typeof SplitterGroup>>()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const minMenuWidthRem: number = 14
+const minViewWidthRem: number = 18
+const splitterGroupWidthPx: Ref<number> = ref(1900)
 
-const outsideClickListener = ref(null)
+const calculateSplitterWidthPercent = (rem: number): number =>
+    (deviceStore.getREMSize(rem) / splitterGroupWidthPx.value) * 100
+const menuPanelWidthPercent = ref(calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem))
+const minMenuWidthPx: number = minMenuWidthRem * deviceStore.getREMSize(1)
 
-watch(isSidebarActive, (newVal) => {
-    if (newVal) {
-        bindOutsideClickListener()
-    } else {
-        unbindOutsideClickListener()
+const calculateMenuRemWidth = (percent: number): number => {
+    const widthPx = (percent / 100) * splitterGroupWidthPx.value
+    const widthRem = widthPx / deviceStore.getREMSize(1)
+    return Math.round(widthRem * 10) / 10
+}
+const menuPanelMinWidth = computed((): number =>
+    Math.min(calculateSplitterWidthPercent(minMenuWidthRem), 50),
+)
+const viewPanelMinWidth = computed((): number =>
+    Math.min(calculateSplitterWidthPercent(minViewWidthRem), 50),
+)
+let onResize = (_: number): void => {
+    // overridden after being mounted to avoid pre-mount issues
+}
+
+const toggleSideMenu = (): void => {
+    menuPanelRef.value?.isCollapsed ? menuPanelRef.value?.expand() : menuPanelRef.value?.collapse()
+    settingsStore.collapsedMainMenu = menuPanelRef.value?.isCollapsed ?? false
+}
+emitter.on('toggle-side-menu', toggleSideMenu)
+
+onMounted(async () => {
+    // apply the saved change on startup to the menu itself.
+    // Note: Expand automatically happens on startup for the Splitter
+    if (settingsStore.collapsedMainMenu) {
+        // timeout needed as the auto-expand happens after onMounted code.
+        setTimeout(menuPanelRef.value!.collapse)
     }
+    const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
+    splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
+    menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
+    // This is called when the Splitter Handle is dragged and the REM size will change:
+    onResize = (sizePercent: number): void => {
+        if (
+            menuPanelWidthPercent.value === sizePercent ||
+            menuPanelRef.value?.isCollapsed ||
+            sizePercent < menuPanelMinWidth.value
+        )
+            return
+        menuPanelWidthPercent.value = sizePercent
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(sizePercent)
+    }
+    // This is called when the window is resized,
+    // which resizes the Menu Splitter to maintain a certain REM size:
+    const resizeObserver = new ResizeObserver((_) => {
+        if (
+            menuPanelRef.value?.isCollapsed ||
+            splitterEl.getBoundingClientRect().width < minMenuWidthPx
+        )
+            return
+        splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
+        // We need to first use the previous REM width to recalculate the new menu width
+        menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
+        settingsStore.mainMenuWidthRem = calculateMenuRemWidth(menuPanelWidthPercent.value)
+    })
+    resizeObserver.observe(splitterEl)
 })
-
-const containerClass = computed(() => {
-    return {
-        'layout-overlay': layoutConfig.menuMode.value === 'overlay',
-        'layout-static': layoutConfig.menuMode.value === 'static',
-        'layout-static-inactive':
-            layoutState.staticMenuDesktopInactive.value && layoutConfig.menuMode.value === 'static',
-        'layout-overlay-active': layoutState.overlayMenuActive.value,
-        'layout-mobile-active': layoutState.staticMenuMobileActive.value,
-        'p-input-filled': layoutConfig.inputStyle.value === 'filled',
-        'p-ripple-disabled': !layoutConfig.ripple.value,
-    }
-})
-const bindOutsideClickListener = () => {
-    if (!outsideClickListener.value) {
-        outsideClickListener.value = (event) => {
-            if (isOutsideClicked(event)) {
-                layoutState.overlayMenuActive.value = false
-                layoutState.staticMenuMobileActive.value = false
-                layoutState.menuHoverActive.value = false
-            }
-        }
-        document.addEventListener('click', outsideClickListener.value)
-    }
-}
-const unbindOutsideClickListener = () => {
-    if (outsideClickListener.value) {
-        document.removeEventListener('click', outsideClickListener)
-        outsideClickListener.value = null
-    }
-}
-const isOutsideClicked = (event) => {
-    const sidebarEl = document.querySelector('.layout-sidebar')
-    const topbarEl = document.querySelector('.layout-menu-button')
-
-    return !(
-        sidebarEl.isSameNode(event.target) ||
-        sidebarEl.contains(event.target) ||
-        topbarEl.isSameNode(event.target) ||
-        topbarEl.contains(event.target)
-    )
-}
 </script>
 
 <template>
-    <div class="layout-wrapper" :class="containerClass">
-        <app-topbar></app-topbar>
-        <div class="layout-sidebar">
-            <app-sidebar></app-sidebar>
+    <div class="flex flex-row h-screen w-full bg-bg-two text-text-color">
+        <div class="flex-col w-18 py-2 px-3 mx-auto h-screen bg-bg-two">
+            <app-side-topbar />
         </div>
-        <div class="layout-main-container">
-            <div class="layout-main" ref="laymain">
+        <SplitterGroup
+            ref="splitterGroupRef"
+            direction="horizontal"
+            :keyboard-resize-by="10"
+            class="flex-auto py-2 pr-2"
+        >
+            <SplitterPanel
+                ref="menuPanelRef"
+                class="bg-bg-one border-border-one rounded-lg"
+                :class="{
+                    invisible: settingsStore.collapsedMainMenu,
+                    border: !settingsStore.collapsedMainMenu,
+                }"
+                collapsible
+                :default-size="menuPanelWidthPercent"
+                :min-size="menuPanelMinWidth"
+                @resize="onResize"
+                @collapse="settingsStore.collapsedMainMenu = true"
+            >
+                <ScrollAreaRoot class="h-full p-2" type="hover" :scroll-hide-delay="100">
+                    <ScrollAreaViewport class="h-full">
+                        <AppTreeMenu />
+                    </ScrollAreaViewport>
+                    <ScrollAreaScrollbar
+                        class="flex select-none touch-none py-2 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-1.5"
+                        orientation="vertical"
+                    >
+                        <ScrollAreaThumb
+                            class="flex-1 bg-text-color-secondary opacity-40 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+                        />
+                    </ScrollAreaScrollbar>
+                </ScrollAreaRoot>
+            </SplitterPanel>
+            <SplitterResizeHandle
+                class="bg-bg-two"
+                :class="{
+                    'w-3': !settingsStore.collapsedMainMenu,
+                    'w-0': settingsStore.collapsedMainMenu,
+                }"
+                :disabled="settingsStore.collapsedMainMenu"
+            >
+            </SplitterResizeHandle>
+            <SplitterPanel
+                class="truncate bg-bg-one border border-border-one rounded-lg"
+                :min-size="viewPanelMinWidth"
+            >
                 <router-view v-slot="{ Component, route }">
-                    <!--          <transition name="fade">-->
-                    <component :is="Component" :key="route.path" />
-                    <!--          </transition>-->
+                    <Suspense>
+                        <component :is="Component" :key="route.path" />
+                    </Suspense>
                 </router-view>
-            </div>
-        </div>
-        <app-config></app-config>
-        <div class="layout-mask"></div>
+            </SplitterPanel>
+        </SplitterGroup>
     </div>
 </template>
 
-<style lang="scss" scoped>
-// todo: perhaps I can get this to work 'properly' someday:
-//.fade-enter-active,
-//.fade-leave-active {
-//  transition: all 0.3s ease;
-//}
-//
-//.fade-enter-from,
-//.fade-leave-to {
-//  opacity: 0;
-//}
-</style>
+<style lang="scss" scoped></style>

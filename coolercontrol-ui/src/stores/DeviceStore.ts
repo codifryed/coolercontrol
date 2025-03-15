@@ -20,13 +20,23 @@ import { defineStore } from 'pinia'
 import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
-import { DeviceResponseDTO } from '@/stores/DataTransferModels'
-import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
-import { useLayout } from '@/layout/composables/layout'
+import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
+import { defineAsyncComponent, inject, Ref, ref, shallowRef, triggerRef } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useDialog } from 'primevue/usedialog'
+import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { plainToInstance } from 'class-transformer'
+import { HealthCheck } from '@/models/HealthCheck.ts'
+import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { ElLoading } from 'element-plus'
+import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { AlertLog, AlertState } from '@/models/Alert.ts'
+import { TempInfo } from '@/models/TempInfo.ts'
+import { Emitter, EventType } from 'mitt'
+import { ModeActivated } from '@/models/Mode.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -36,6 +46,7 @@ export interface ChannelValues {
     rpm?: string
     duty?: string
     freq?: string
+    watts?: string
 }
 
 export const DEFAULT_NAME_STRING_LENGTH: number = 40
@@ -43,9 +54,9 @@ export const DEFAULT_NAME_STRING_LENGTH: number = 40
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
-    const DEFAULT_DAEMON_ADDRESS = 'localhost'
-    const DEFAULT_DAEMON_PORT = 11987
-    const DEFAULT_DAEMON_SSL_ENABLED = false
+    // const DEFAULT_DAEMON_ADDRESS = 'localhost'
+    // const DEFAULT_DAEMON_PORT = 11987
+    // const DEFAULT_DAEMON_SSL_ENABLED = false
     const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
     const CONFIG_DAEMON_PORT = 'daemonPort'
     const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
@@ -55,15 +66,16 @@ export const useDeviceStore = defineStore('device', () => {
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
     const dialog = useDialog()
     const toast = useToast()
-    const reloadAllStatusesThreshold: number = 30_000 // 30 seconds to better handle network latency
+    const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+    const reloadAllStatusesThreshold: number = 5_000 // 5 seconds to handle when closing to tray & network latency
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
 
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
-    const fontScale = ref(useLayout().layoutConfig.scale.value)
     const loggedIn: Ref<boolean> = ref(false)
+    const logs: Ref<string> = ref('')
 
     // Getters ---------------------------------------------------------------------------------------------------------
     function allDevices(): IterableIterator<Device> {
@@ -75,13 +87,28 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function waitAndReload(secs: number = 3): Promise<void> {
-        await sleep(secs * 1000)
+        ElLoading.service({
+            lock: true,
+            text: 'Restarting...',
+            background: svgLoaderBackground,
+            svg: svgLoader,
+            svgViewBox: svgLoaderViewBox,
+        })
+        let s = 0
+        const daemonState = useDaemonState()
+        while (s < 30) {
+            await sleep(1000)
+            if (s > secs && daemonState.connected) {
+                break
+            }
+            s++
+        }
         reloadUI()
     }
 
     function reloadUI(): void {
         // When accessing the UI directly from the daemon, we need to refresh on the base URL.
-        window.location.replace('/')
+        window.location.reload()
     }
 
     function toTitleCase(str: string): string {
@@ -105,13 +132,47 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getREMSize(rem: number): number {
-        fontScale.value // used to reactively recalculate the following values:
         const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
         return parseFloat(fontSize) * rem
     }
 
-    function isTauriApp(): boolean {
-        return '__TAURI__' in window
+    function isQtApp(): boolean {
+        return 'ipc' in window
+    }
+
+    function isSafariWebKit(): boolean {
+        return /apple computer/.test(navigator.vendor.toLowerCase())
+    }
+
+    function connectToQtIPC(): void {
+        try {
+            if (!('qt' in window)) {
+                return
+            }
+            function loadScript(src: string, onload: () => void) {
+                let script = document.createElement('script')
+                // @ts-ignore
+                script.onload = onload
+                    ? onload
+                    : function (e) {
+                          // @ts-ignore
+                          console.log(e.target.src + ' is loaded.')
+                      }
+                script.src = src
+                script.async = false
+                document.head.appendChild(script)
+            }
+            loadScript('qrc:///qtwebchannel/qwebchannel.js', (): void => {
+                // @ts-ignore
+                new QWebChannel(qt.webChannelTransport, async function (channel: any) {
+                    // @ts-ignore
+                    window.ipc = channel.objects.ipc
+                    console.debug('Connected to Qt WebChannel, ready to send/receive messages!')
+                })
+            })
+        } catch (e) {
+            console.debug('Could not connect to Qt: ' + e)
+        }
     }
 
     // Private methods ------------------------------------------------
@@ -154,17 +215,35 @@ export const useDeviceStore = defineStore('device', () => {
                 }),
             )
         }
+        if (device.info?.temps) {
+            device.info.temps = new Map<string, TempInfo>(
+                [...device.info.temps.entries()].sort(([c1name], [c2name]) => {
+                    return c1name.localeCompare(c2name, undefined, {
+                        numeric: true,
+                        sensitivity: 'base',
+                    })
+                }),
+            )
+        }
     }
 
     function getChannelPrio(channelInfo: ChannelInfo): number {
+        // freq, power, load, fans, lightings, lcds, others by name only
+        // multiple channels of the same type are sorted by name numerically
         if (channelInfo.speed_options != null) {
-            return 1
+            return 11
         } else if (channelInfo.lighting_modes.length > 0) {
-            return 2
+            return 12
         } else if (channelInfo.lcd_info != null) {
+            return 13
+        } else if (channelInfo.label?.toLowerCase().includes('freq')) {
+            return 1
+        } else if (channelInfo.label?.toLowerCase().includes('power')) {
+            return 2
+        } else if (channelInfo.label?.toLowerCase().includes('load')) {
             return 3
         }
-        return 4
+        return 14
     }
 
     async function unauthorizedCallback(error: any): Promise<void> {
@@ -179,49 +258,57 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function requestPasswd(retryCount: number = 1): Promise<void> {
-        dialog.open(passwordDialog, {
-            props: {
-                header: 'Enter Your Password',
-                position: 'center',
-                modal: true,
-                dismissableMask: false,
-            },
-            data: {
-                setPasswd: false,
-            },
-            onClose: async (options: any) => {
-                if (options.data && options.data.passwd) {
-                    const passwdSuccess = await daemonClient.login(options.data.passwd)
-                    if (passwdSuccess) {
+        setTimeout(async () => {
+            // wait until the Onboarding dialog isn't open without blocking:
+            const settingsStore = useSettingsStore()
+            while (settingsStore.showOnboarding) {
+                await sleep(1000)
+            }
+            dialog.open(passwordDialog, {
+                props: {
+                    header: 'Enter Your Password',
+                    position: 'center',
+                    modal: true,
+                    dismissableMask: false,
+                },
+                data: {
+                    setPasswd: false,
+                },
+                onClose: async (options: any) => {
+                    if (options.data && options.data.passwd) {
+                        const passwdSuccess = await daemonClient.login(options.data.passwd)
+                        if (passwdSuccess) {
+                            toast.add({
+                                severity: 'success',
+                                summary: 'Success',
+                                detail: 'Login successful.',
+                                life: 3000,
+                            })
+                            loggedIn.value = true
+                            console.info('Login successful')
+                            return
+                        }
                         toast.add({
-                            severity: 'success',
-                            summary: 'Success',
-                            detail: 'Login successful.',
+                            severity: 'error',
+                            summary: 'Login Failed',
+                            detail: 'Invalid Password',
                             life: 3000,
                         })
-                        loggedIn.value = true
-                        console.info('Login successful')
-                        return
+                        if (retryCount > 2) {
+                            return
+                        }
+                        await requestPasswd(++retryCount)
                     }
-                    toast.add({
-                        severity: 'error',
-                        summary: 'Login Failed',
-                        detail: 'Invalid Password',
-                        life: 3000,
-                    })
-                    if (retryCount > 2) {
-                        return
-                    }
-                    await requestPasswd(++retryCount)
-                }
-            },
+                },
+            })
         })
     }
 
     function getDaemonAddress(): string {
-        const defaultAddress: string = isTauriApp()
-            ? DEFAULT_DAEMON_ADDRESS
-            : window.location.hostname
+        // const defaultAddress: string = isQtApp()
+        //     ? DEFAULT_DAEMON_ADDRESS
+        //     : window.location.hostname
+        const defaultAddress: string = window.location.hostname
         return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || defaultAddress
     }
 
@@ -234,9 +321,11 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonPort(): number {
-        const defaultPort: string = isTauriApp()
-            ? DEFAULT_DAEMON_PORT.toString()
-            : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        // const defaultPort: string = isQtApp()
+        //     ? DEFAULT_DAEMON_PORT.toString()
+        //     : window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
+        const defaultPort: string =
+            window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
         return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
     }
 
@@ -249,9 +338,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonSslEnabled(): boolean {
-        const defaultSslEnabled: boolean = isTauriApp()
-            ? DEFAULT_DAEMON_SSL_ENABLED
-            : window.location.protocol === 'https:'
+        // const defaultSslEnabled: boolean = isQtApp()
+        //     ? DEFAULT_DAEMON_SSL_ENABLED
+        //     : window.location.protocol === 'https:'
+        const defaultSslEnabled: boolean = window.location.protocol === 'https:'
         return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
             ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
             : defaultSslEnabled
@@ -267,19 +357,19 @@ export const useDeviceStore = defineStore('device', () => {
 
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
-        if (!isTauriApp()) {
-            const sessionIsValid = await daemonClient.sessionIsValid()
-            if (sessionIsValid) {
-                loggedIn.value = true
-                console.info('Login Session still valid')
-                toast.add({
-                    severity: 'info',
-                    summary: 'Login',
-                    detail: 'Login successful.',
-                    life: 1500,
-                })
-                return
-            }
+        // Likely no long needed to skip for Qt (persisted session cookie in Qt)
+        // if (!isQtApp()) {
+        const sessionIsValid = await daemonClient.sessionIsValid()
+        if (sessionIsValid) {
+            loggedIn.value = true
+            console.info('Login Session still valid')
+            toast.add({
+                severity: 'info',
+                summary: 'Login',
+                detail: 'Login successful.',
+                life: 1500,
+            })
+            return
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
@@ -342,6 +432,18 @@ export const useDeviceStore = defineStore('device', () => {
         })
     }
 
+    async function health(): Promise<HealthCheck> {
+        return await daemonClient.health()
+    }
+
+    async function loadLogs(): Promise<void> {
+        logs.value = await daemonClient.logs()
+    }
+
+    async function acknowledgeIssues(): Promise<void> {
+        return await daemonClient.acknowledgeIssues()
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
         const handshakeSuccessful = await daemonClient.handshake()
@@ -358,21 +460,28 @@ export const useDeviceStore = defineStore('device', () => {
                 isThinkPad.value = true
             }
             if (device.lc_info?.unknown_asetek) {
-                confirm.require({
-                    group: 'AseTek690',
-                    message: `${device.type_index}`,
-                    header: 'Unknown Device Detected',
-                    icon: 'pi pi-exclamation-triangle',
-                    acceptLabel: "Yes, It's a legacy Kraken Device",
-                    rejectLabel: "No, It's a EVGA CLC Device",
-                    accept: async () => {
-                        console.debug(`Setting device ${device.uid} as a Legacy 690`)
-                        await handleAseTekResponse(device.uid, true)
-                    },
-                    reject: async () => {
-                        console.debug(`Setting device ${device.uid} as a EVGA CLC`)
-                        await handleAseTekResponse(device.uid, false)
-                    },
+                // wait until the Onboarding dialog isn't open without blocking:
+                setTimeout(async () => {
+                    const settingsStore = useSettingsStore()
+                    while (settingsStore.showOnboarding) {
+                        await sleep(1000)
+                    }
+                    confirm.require({
+                        group: 'AseTek690',
+                        message: `${device.type_index}`,
+                        header: 'Unknown Device Detected',
+                        icon: 'pi pi-exclamation-triangle',
+                        acceptLabel: "Yes, It's a legacy Kraken Device",
+                        rejectLabel: "No, It's a EVGA CLC Device",
+                        accept: async () => {
+                            console.debug(`Setting device ${device.uid} as a Legacy 690`)
+                            await handleAseTekResponse(device.uid, true)
+                        },
+                        reject: async () => {
+                            console.debug(`Setting device ${device.uid} as a EVGA CLC`)
+                            await handleAseTekResponse(device.uid, false)
+                        },
+                    })
                 })
             }
             sortChannels(device)
@@ -425,10 +534,11 @@ export const useDeviceStore = defineStore('device', () => {
      * Requests the most recent status for all devices and adds it to the current status array.
      * @return boolean true if only the most recent status was updated. False if all statuses were updated.
      */
-    async function updateStatus(): Promise<boolean> {
+    async function updateStatus(dto: StatusResponseDTO): Promise<boolean> {
         let onlyLatestStatus: boolean = true
         let timeDiffMillis: number = 0
-        const dto = await daemonClient.recentStatus()
+        // now handled by server side events:
+        // const dto = await daemonClient.recentStatus()
         if (dto.devices.length === 0 || dto.devices[0].status_history.length === 0) {
             return onlyLatestStatus // we can't update anything without data, which happens on daemon restart & resuming from sleep
         }
@@ -449,7 +559,6 @@ export const useDeviceStore = defineStore('device', () => {
                 if (devices.has(dtoDevice.uid)) {
                     const statuses = devices.get(dtoDevice.uid)!.status_history
                     statuses.push(...dtoDevice.status_history)
-                    // todo: verify that the new status is indeed "new" / timestamp != last timestamp:
                     statuses.shift()
                 }
             }
@@ -458,11 +567,164 @@ export const useDeviceStore = defineStore('device', () => {
             console.debug(
                 `[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(
                     timeDiffMillis,
-                )}ms, reloading all.`,
+                )}ms, reloading all states and statuses.`,
             )
+            const settingsStore = useSettingsStore()
+            await settingsStore.loadAlertsAndLogs()
+            await settingsStore.getActiveModes()
+            const healthCheck = await health()
+            const daemonState = useDaemonState()
+            daemonState.warnings = healthCheck.details.warnings
+            daemonState.errors = healthCheck.details.errors
+            if (daemonState.errors > 0) {
+                await daemonState.setStatus(DaemonStatus.ERROR)
+            } else if (daemonState.warnings > 0) {
+                await daemonState.setStatus(DaemonStatus.WARN)
+            } else {
+                await daemonState.setStatus(DaemonStatus.OK)
+            }
+            await loadLogs()
             await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
+    }
+
+    async function updateStatusFromSSE(): Promise<void> {
+        const thisStore = useDeviceStore()
+        const daemonState = useDaemonState()
+        async function startSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
+                async onmessage(event) {
+                    const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
+                    await thisStore.updateStatus(dto)
+                    await daemonState.setConnected(true)
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await daemonState.setConnected(false)
+                    thisStore.loggedIn = false
+                    await sleep(1000)
+                    await startSSE()
+                },
+                // @ts-ignore
+                // changing onerror to async causes spam retry loop
+                onerror() {
+                    daemonState.setConnected(false)
+                    thisStore.loggedIn = false
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startSSE()
+    }
+
+    async function updateLogsFromSSE(): Promise<void> {
+        const daemonState = useDaemonState()
+        async function startLogSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
+                async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
+                    const newLog = event.data
+                    logs.value = `${logs.value}${newLog}`
+                    if (newLog.includes('ERROR')) {
+                        await daemonState.setStatus(DaemonStatus.ERROR)
+                    } else if (newLog.includes('WARN')) {
+                        if (daemonState.status !== DaemonStatus.ERROR) {
+                            await daemonState.setStatus(DaemonStatus.WARN)
+                        }
+                    }
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await sleep(1000)
+                    await startLogSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startLogSSE()
+    }
+
+    async function updateActiveModeFromSSE(): Promise<void> {
+        const settingsStore = useSettingsStore()
+        async function startModeSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
+                async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
+                    const modeMessage = plainToInstance(
+                        ModeActivated,
+                        JSON.parse(event.data) as object,
+                    )
+                    settingsStore.modeActiveCurrent = modeMessage.uid
+                    settingsStore.modeActivePrevious = modeMessage.previous_uid
+                    await settingsStore.loadDaemonDeviceSettings() // need to reload all settings after applying mode
+                    emitter.emit('active-modes-change-menu')
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await sleep(1000)
+                    await startModeSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startModeSSE()
+    }
+
+    async function updateAlertsFromSSE(): Promise<void> {
+        const settingsStore = useSettingsStore()
+        async function startAlertSSE(): Promise<void> {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/alerts`, {
+                async onmessage(event) {
+                    if (event.data.length === 0) return // keep-alive message
+                    const alertMessage = plainToInstance(AlertLog, JSON.parse(event.data) as object)
+                    console.debug('Received Alert: ', alertMessage)
+                    settingsStore.alertLogs.push(alertMessage)
+                    let foundAlert = settingsStore.alerts.find(
+                        (alert) => alert.uid === alertMessage.uid,
+                    )
+                    if (foundAlert) {
+                        foundAlert.state = alertMessage.state
+                    }
+                    if (alertMessage.state === AlertState.Active) {
+                        if (!settingsStore.alertsActive.includes(alertMessage.uid)) {
+                            settingsStore.alertsActive.push(alertMessage.uid)
+                        }
+                        toast.add({
+                            severity: 'error',
+                            summary: 'Alert Triggered',
+                            detail: `${alertMessage.name} - ${alertMessage.message}`,
+                            life: 5000,
+                        })
+                    } else {
+                        const activeIndex = settingsStore.alertsActive.findIndex(
+                            (uid) => uid === alertMessage.uid,
+                        )
+                        if (activeIndex > -1) {
+                            settingsStore.alertsActive.splice(activeIndex, 1)
+                        }
+                        toast.add({
+                            severity: 'info',
+                            summary: 'Alert Recovered',
+                            detail: `${alertMessage.name} - ${alertMessage.message}`,
+                            life: 3000,
+                        })
+                    }
+                },
+                async onclose() {
+                    // attempt to re-establish connection automatically (resume/restart)
+                    await startAlertSSE()
+                },
+                onerror() {
+                    // auto-retry every second
+                },
+            })
+        }
+        return await startAlertSSE()
     }
 
     function updateRecentDeviceStatus(): void {
@@ -484,11 +746,13 @@ export const useDeviceStore = defineStore('device', () => {
                     deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(0)
                     deviceStatuses.get(channel.name)!.rpm = channel.rpm?.toFixed(0)
                     deviceStatuses.get(channel.name)!.freq = channel.freq?.toFixed(0)
+                    deviceStatuses.get(channel.name)!.watts = channel.watts?.toFixed(1)
                 } else {
                     deviceStatuses.set(channel.name, {
                         duty: channel.duty?.toFixed(0),
                         rpm: channel.rpm?.toFixed(0),
                         freq: channel.freq?.toFixed(0),
+                        watts: channel.watts?.toFixed(1),
                     })
                 }
             }
@@ -515,17 +779,26 @@ export const useDeviceStore = defineStore('device', () => {
         clearDaemonSslEnabled,
         login,
         logout,
+        health,
+        logs,
+        acknowledgeIssues,
+        loadLogs,
         setPasswd,
         initializeDevices,
-        fontScale,
         loggedIn,
         loadCompleteStatusHistory,
         updateStatus,
+        updateStatusFromSSE,
+        updateLogsFromSSE,
+        updateAlertsFromSSE,
+        updateActiveModeFromSSE,
         currentDeviceStatus,
         round,
         sanitizeString,
         getREMSize,
-        isTauriApp,
+        isQtApp,
+        isSafariWebKit,
         isThinkPad,
+        connectToQtIPC,
     }
 })

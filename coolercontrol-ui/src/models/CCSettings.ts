@@ -30,6 +30,7 @@ export class CoolerControlSettingsDTO {
     hide_duplicate_devices: boolean = true
     liquidctl_integration: boolean = true
     compress: boolean = false
+    poll_rate: number = 1.0
 }
 
 /**
@@ -39,10 +40,12 @@ export class CoolerControlDeviceSettingsDTO {
     uid: UID
     name: string
     disable: boolean = false
+    disable_channels: Array<string> = []
 
-    constructor(uid: UID, name: string) {
+    constructor(uid: UID, name: string, disable_channels: Array<string> = []) {
         this.uid = uid
         this.name = name
+        this.disable_channels = disable_channels
     }
 }
 

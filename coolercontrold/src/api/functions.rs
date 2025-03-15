@@ -16,92 +16,80 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
-
-use actix_session::Session;
-use actix_web::web::{Data, Json, Path};
-use actix_web::{delete, get, post, put, HttpResponse, Responder};
+use crate::api::auth::verify_admin_permissions;
+use crate::api::{handle_error, AppState, CCError};
+use crate::setting::{Function, FunctionUID};
+use aide::NoApi;
+use axum::extract::{Path, State};
+use axum::Json;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
-use crate::config::Config;
-use crate::processing::settings::SettingsController;
-use crate::setting::Function;
+use tower_sessions::Session;
 
 use super::validate_name_string;
 
 /// Retrieves the persisted Function list
-#[get("/functions")]
-async fn get_functions(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
-    config
-        .get_functions()
+pub async fn get_all(
+    State(AppState {
+        function_handle, ..
+    }): State<AppState>,
+) -> Result<Json<FunctionsDto>, CCError> {
+    function_handle
+        .get_all()
         .await
-        .map(|functions| HttpResponse::Ok().json(Json(FunctionsDto { functions })))
+        .map(|functions| Json(FunctionsDto { functions }))
         .map_err(handle_error)
 }
 
 /// Set the function order in the array of functions
-#[post("/functions/order")]
-async fn save_functions_order(
-    functions_dto: Json<FunctionsDto>,
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    config
-        .set_functions_order(&functions_dto.functions)
+pub async fn save_order(
+    State(AppState {
+        function_handle, ..
+    }): State<AppState>,
+    Json(functions_dto): Json<FunctionsDto>,
+) -> Result<(), CCError> {
+    function_handle
+        .save_order(functions_dto.functions)
         .await
-        .map_err(handle_error)?;
-    handle_simple_result(config.save_config_file().await)
+        .map_err(handle_error)
 }
 
-#[post("/functions")]
-async fn save_function(
-    function: Json<Function>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn create(
+    NoApi(session): NoApi<Session>,
+    State(AppState {
+        function_handle, ..
+    }): State<AppState>,
+    Json(function): Json<Function>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     validate_function(&function)?;
-    config
-        .set_function(function.into_inner())
-        .await
-        .map_err(handle_error)?;
-    handle_simple_result(config.save_config_file().await)
+    function_handle.create(function).await.map_err(handle_error)
 }
 
-#[put("/functions")]
-async fn update_function(
-    function: Json<Function>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn update(
+    NoApi(session): NoApi<Session>,
+    State(AppState {
+        function_handle, ..
+    }): State<AppState>,
+    Json(function): Json<Function>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
     validate_function(&function)?;
-    let function_uid = function.uid.clone();
-    config
-        .update_function(function.into_inner())
-        .await
-        .map_err(handle_error)?;
-    settings_controller.function_updated(&function_uid).await;
-    config.save_config_file().await.map_err(handle_error)?;
-    Ok(HttpResponse::Ok().finish())
+    function_handle.update(function).await.map_err(handle_error)
 }
 
-#[delete("/functions/{function_uid}")]
-async fn delete_function(
-    function_uid: Path<String>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
+pub async fn delete(
+    Path(path): Path<FunctionPath>,
+    NoApi(session): NoApi<Session>,
+    State(AppState {
+        function_handle, ..
+    }): State<AppState>,
+) -> Result<(), CCError> {
     verify_admin_permissions(&session).await?;
-    config
-        .delete_function(&function_uid)
+    function_handle
+        .delete(path.function_uid)
         .await
-        .map_err(handle_error)?;
-    settings_controller.function_deleted(&function_uid).await;
-    config.save_config_file().await.map_err(handle_error)?;
-    Ok(HttpResponse::Ok().finish())
+        .map_err(handle_error)
 }
 
 fn validate_function(function: &Function) -> Result<(), CCError> {
@@ -127,7 +115,12 @@ fn validate_function(function: &Function) -> Result<(), CCError> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct FunctionsDto {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FunctionsDto {
     functions: Vec<Function>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct FunctionPath {
+    function_uid: FunctionUID,
 }

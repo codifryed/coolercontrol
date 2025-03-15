@@ -17,238 +17,226 @@
   -->
 
 <script setup lang="ts">
-import { useSettingsStore } from '@/stores/SettingsStore'
-import { type Ref, ref } from 'vue'
-import DataTable, {
-    type DataTableRowReorderEvent,
-    type DataTableRowSelectEvent,
-} from 'primevue/datatable'
-import Column from 'primevue/column'
-import Tag from 'primevue/tag'
-import Button from 'primevue/button'
-import ModeOptions from '@/components/ModeOptions.vue'
-import { useDialog } from 'primevue/usedialog'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiInformationVariantCircleOutline } from '@mdi/js'
+import { mdiBookmarkCheckOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import { computed, onMounted, type Ref, ref, watch } from 'vue'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Mode } from '@/models/Mode.ts'
-import ModeEditor from '@/components/ModeEditor.vue'
 import { UID } from '@/models/Device.ts'
-import { useToast } from 'primevue/usetoast'
+import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
+import Button from 'primevue/button'
+
+interface Props {
+    modeUID: UID
+}
+
+const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const dialog = useDialog()
-const toast = useToast()
 
-settingsStore.getActiveMode() // verify what settings/mode is active
+const currentMode: Ref<Mode> = computed(
+    () => settingsStore.modes.find((mode) => mode.uid === props.modeUID)!,
+)
+const deviceTableData: Ref<Array<DeviceData>> = ref([])
 
-const selectedMode: Ref<Mode | undefined> = ref()
-
-const createNewMode = (): void => {
-    const newOrderId: number = settingsStore.modes.length + 1
-    const newModeName = `Mode ${newOrderId}`
-    settingsStore.createMode(newModeName)
+interface DeviceData {
+    rowID: string
+    deviceUID: string
+    deviceName: string
+    channelID: string
+    channelColor: string
+    channelLabel: string
+    settingType: string
+    settingInfo: string
 }
 
-const modesReordered = (event: DataTableRowReorderEvent) => {
-    settingsStore.modes = event.value
-    settingsStore.saveModeOrder()
-}
-
-const modeRowSelected = (_event: DataTableRowSelectEvent) => {
-    if (selectedMode.value == null) {
-        return
+const initTableData = () => {
+    deviceTableData.value.length = 0
+    const modeSettings: Map<UID, Map<string, DeviceSettingReadDTO>> = new Map()
+    for (const [deviceUID, settings] of currentMode.value.device_settings) {
+        const channelSettings = new Map()
+        for (const setting of settings) {
+            channelSettings.set(setting.channel_name, setting)
+        }
+        modeSettings.set(deviceUID, channelSettings)
     }
-    dialog.open(ModeEditor, {
-        props: {
-            header: 'Mode Settings',
-            position: 'center',
-            modal: true,
-            dismissableMask: false,
-        },
-        data: {
-            modeUID: selectedMode.value.uid,
-        },
-        onClose: () => (selectedMode.value = undefined),
+
+    for (const device of deviceStore.allDevices()) {
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)
+        if (deviceSettings == null || device.info == null) {
+            continue
+        }
+        // Devices and Channels have been pre-sorted, unlike mode device settings.
+        for (const [channelName, channelInfo] of device.info.channels.entries()) {
+            const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
+            if (channelSettings == null) {
+                continue
+            }
+            const channelModeSetting = modeSettings.get(device.uid)?.get(channelName)
+            let settingType = 'Unknown'
+            let settingInfo: string = 'Unknown'
+            if (channelInfo.speed_options != null) {
+                if (channelModeSetting == null) {
+                    // This means there doesn't exist a setting for this channel.
+                    continue
+                    // info = 'Default Profile'
+                    // Displaying 'null' as a Default Profile is an issue if one mode has a
+                    // setting for a channel and another mode doesn't. Then switching won't set
+                    //  it back to 'default'. By not displaying the setting, as least we are
+                    // indicating to the user that there is no setting for this channel.
+                } else if (channelModeSetting.speed_fixed != null) {
+                    settingType = 'Manual'
+                    settingInfo = `${channelModeSetting.speed_fixed}%`
+                } else if (channelModeSetting.profile_uid != null) {
+                    settingType = 'Profile'
+                    settingInfo =
+                        channelModeSetting.profile_uid === '0'
+                            ? 'Default Profile'
+                            : (settingsStore.profiles.find(
+                                  (profile) => profile.uid === channelModeSetting.profile_uid,
+                              )?.name ?? 'Unknown')
+                }
+            } else if (channelInfo.lighting_modes.length > 0) {
+                if (channelModeSetting == null) {
+                    continue
+                    // info = 'Lighting Mode: None'
+                } else {
+                    settingType = 'Lighting Mode'
+                    settingInfo = `${
+                        channelModeSetting.lighting?.mode ?? 'Unknown'
+                    } ; Colors: ${channelModeSetting.lighting?.colors.length ?? 'Unknown'}`
+                }
+            } else if (channelInfo.lcd_info != null) {
+                if (channelModeSetting == null) {
+                    continue
+                    // info = 'LCD Mode: None'
+                } else {
+                    settingType = 'LCD Mode'
+                    settingInfo = channelModeSetting.lcd?.mode ?? 'Unknown'
+                }
+            } else {
+                // Then this channel is not controllable. i.e. Load or Freq.
+                continue
+            }
+            deviceTableData.value.push({
+                rowID: `${device.uid}-${channelName}`,
+                deviceUID: device.uid,
+                deviceName: device.name,
+                channelID: channelName,
+                channelColor: channelSettings.color,
+                channelLabel: channelSettings.name,
+                settingType: settingType,
+                settingInfo: settingInfo,
+            })
+        }
+    }
+}
+initTableData()
+
+const isActivated = false
+const activateMode = async (): Promise<void> => {
+    await settingsStore.activateMode(props.modeUID)
+}
+
+onMounted(async () => {
+    watch(settingsStore.allUIDeviceSettings, () => {
+        initTableData()
     })
-}
-
-const modeDeleted = (): void => {
-    selectedMode.value = undefined // cleanup after delete
-}
-
-const activateMode = async (modeUID: UID): Promise<void> => {
-    await settingsStore.getActiveMode() // verify what settings/mode is active
-    if (settingsStore.modeActive === modeUID) {
-        toast.add({
-            severity: 'success',
-            summary: 'Success',
-            detail: 'Mode Already Active',
-            life: 3000,
-        })
-    } else {
-        await settingsStore.activateMode(modeUID)
-    }
-}
-
-const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
-    await settingsStore.getActiveMode() // verify what settings/mode is active
-    if (settingsStore.modeActive === modeUID) {
-        settingsStore.modeInEdit = undefined
-        toast.add({
-            severity: 'success',
-            summary: 'Success',
-            detail: 'No changes made',
-            life: 3000,
-        })
-    } else {
-        await settingsStore.updateModeSettings(modeUID)
-        settingsStore.modeInEdit = undefined
-    }
-}
+})
 </script>
 
 <template>
-    <div class="card">
-        <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
-            <div class="col table-wrapper p-0">
-                <div
-                    class="flex flex-wrap align-items-center justify-content-between gap-2 mb-2 ml-2"
-                >
-                    <span class="text-xl text-800 font-bold"
-                        >Modes
-                        <Button
-                            link
-                            v-tooltip.bottom="{
-                                value:
-                                    'Modes are saved snapshots of all your device\'s settings. ' +
-                                    'They can be used to quickly switch between different configurations. ' +
-                                    'Note that internal Profile and Function settings are not saved ' +
-                                    'in Modes, only the base device settings.',
-                                autoHide: false,
-                            }"
-                            class="p-0 ml-1 vertical-align-top"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                :path="mdiInformationVariantCircleOutline"
-                                :size="deviceStore.getREMSize(1.1)"
-                            />
-                        </Button>
-                    </span>
-                    <Button
-                        rounded
-                        icon="pi pi-plus"
-                        label="New Mode from Current Settings"
-                        aria-label="Create New Mode"
-                        size="small"
-                        @click="createNewMode"
-                    />
-                </div>
-                <DataTable
-                    v-model:selection="selectedMode"
-                    :value="settingsStore.modes"
-                    data-key="uid"
-                    :meta-key-selection="false"
-                    selection-mode="single"
-                    @row-reorder="modesReordered"
-                    size="small"
-                    @row-select="modeRowSelected"
-                >
-                    <Column row-reorder header-style="width: 2.5rem" />
-                    <Column field="name" header="Name" />
-                    <Column field="active" header="" header-style="width: 6rem">
-                        <template #body="slotProps">
-                            <Tag
-                                style="background-color: var(--cc-red)"
-                                v-if="slotProps.data.uid === settingsStore.modeActive"
-                                value="Active"
-                            />
-                        </template>
-                    </Column>
-                    <Column field="edit" header="" header-style="width: 15rem" class="text-right">
-                        <template #body="slotProps">
-                            <div v-if="settingsStore.modeInEdit === slotProps.data.uid">
-                                <Button
-                                    class="mr-3"
-                                    icon="pi pi-save"
-                                    label="Save"
-                                    rounded
-                                    size="small"
-                                    @click="saveModeDeviceSettings(slotProps.data.uid)"
-                                />
-                                <Button
-                                    icon="pi pi-spin pi-cog"
-                                    class="w-7rem"
-                                    label="Editing"
-                                    rounded
-                                    outlined
-                                    size="small"
-                                    @click="settingsStore.modeInEdit = undefined"
-                                />
-                            </div>
-                            <div v-else>
-                                <Button
-                                    :disabled="slotProps.data.uid !== settingsStore.modeActive"
-                                    class="w-7rem"
-                                    icon="pi pi-cog"
-                                    label="Edit"
-                                    rounded
-                                    outlined
-                                    size="small"
-                                    @click="settingsStore.modeInEdit = slotProps.data.uid"
-                                    v-tooltip.bottom="{
-                                        value:
-                                            'This enables edit mode, which allows you to make ' +
-                                            'changes to your current device settings, and then save ' +
-                                            'or discard them once you are finished.',
-                                        showDelay: 500,
-                                    }"
-                                />
-                            </div>
-                        </template>
-                    </Column>
-                    <Column field="activate" header="" header-style="width: 8rem">
-                        <template #body="slotProps">
-                            <Button
-                                :disabled="
-                                    settingsStore.modeInEdit != null ||
-                                    slotProps.data.uid === settingsStore.modeActive
-                                "
-                                icon="pi pi-play"
-                                label="Activate"
-                                rounded
-                                size="small"
-                                @click="activateMode(slotProps.data.uid)"
-                            />
-                        </template>
-                    </Column>
-                    <Column header-style="width: 3rem">
-                        <template #body="slotProps">
-                            <ModeOptions :mode="slotProps.data" @delete="modeDeleted" />
-                        </template>
-                    </Column>
-                </DataTable>
+    <div class="flex h-[3.6rem] border-b-4 border-border-one items-center justify-between">
+        <div class="flex flex-row overflow-hidden">
+            <div class="flex pl-4 py-2 text-2xl overflow-hidden">
+                <span class="font-bold overflow-hidden overflow-ellipsis">{{
+                    currentMode.name
+                }}</span>
+            </div>
+            <div
+                class="px-4 py-2 flex flex-row leading-none items-center"
+                v-tooltip.top="
+                    'Note: Modes do not include Profile or Function settings, only channel configurations.'
+                "
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiInformationSlabCircleOutline"
+                    :size="deviceStore.getREMSize(1.25)"
+                />
             </div>
         </div>
+        <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated }">
+            <Button
+                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                label="Save"
+                v-tooltip.bottom="'Activate Mode'"
+                :disabled="isActivated"
+                @click="activateMode"
+            >
+                <svg-icon
+                    class="outline-0"
+                    type="mdi"
+                    :path="mdiBookmarkCheckOutline"
+                    :size="deviceStore.getREMSize(1.5)"
+                />
+            </Button>
+        </div>
+    </div>
+    <div class="h-full pb-14">
+        <DataTable
+            :value="deviceTableData"
+            row-group-mode="rowspan"
+            :group-rows-by="['deviceName', 'rowID']"
+            scrollable
+            scroll-height="flex"
+            :pt="{
+                tableContainer: () => ({
+                    class: ['rounded-none border-0 border-border-one'],
+                }),
+            }"
+        >
+            <Column field="deviceName" header="Device">
+                <template #body="slotProps">
+                    <div class="flex leading-none items-center">
+                        <div class="mr-2">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiMemory"
+                                :size="deviceStore.getREMSize(1.3)"
+                            />
+                        </div>
+                        <div>{{ slotProps.data.deviceName }}</div>
+                    </div>
+                </template>
+            </Column>
+            <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
+            <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
+            <Column field="rowID" header="Channel">
+                <template #body="slotProps">
+                    <span
+                        class="pi pi-minus mr-2"
+                        :style="{ color: slotProps.data.channelColor }"
+                    />{{ slotProps.data.channelLabel }}
+                </template>
+            </Column>
+            <Column field="settingType" header="Setting">
+                <template #body="slotProps">
+                    {{ slotProps.data.settingType }}
+                </template>
+            </Column>
+            <Column field="settingInfo" header="">
+                <template #body="slotProps">
+                    {{ slotProps.data.settingInfo }}
+                </template>
+            </Column>
+        </DataTable>
     </div>
 </template>
 
-<style scoped lang="scss">
-.fade-enter-active,
-.fade-leave-active {
-    transition: all 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    height: 0;
-    opacity: 0;
-}
-
-.table-wrapper :deep(.p-datatable-wrapper) {
-    border-radius: 12px;
-}
-</style>
+<style scoped lang="scss"></style>

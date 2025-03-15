@@ -16,11 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use crate::device::{ChannelName, DeviceUID, Duty, Temp};
 use crate::setting::{Function, ProfileUID, TempSource};
@@ -45,15 +43,15 @@ pub enum DeviceChannelProfileSetting {
 impl DeviceChannelProfileSetting {
     pub fn device_uid(&self) -> &DeviceUID {
         match self {
-            DeviceChannelProfileSetting::Mix { device_uid, .. } => device_uid,
-            DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
+            DeviceChannelProfileSetting::Mix { device_uid, .. }
+            | DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
         }
     }
 
     pub fn channel_name(&self) -> &ChannelName {
         match self {
-            DeviceChannelProfileSetting::Mix { channel_name, .. } => channel_name,
-            DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
+            DeviceChannelProfileSetting::Mix { channel_name, .. }
+            | DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
         }
     }
 }
@@ -84,6 +82,7 @@ pub struct NormalizedGraphProfile {
     speed_profile: Vec<(Temp, Duty)>,
     temp_source: TempSource,
     function: Function,
+    poll_rate: f64,
 }
 
 impl Default for NormalizedGraphProfile {
@@ -96,7 +95,8 @@ impl Default for NormalizedGraphProfile {
                 temp_name: String::default(),
                 device_uid: String::default(),
             },
-            function: Default::default(),
+            function: Function::default(),
+            poll_rate: 1.0,
         }
     }
 }
@@ -117,29 +117,28 @@ impl Hash for NormalizedGraphProfile {
     }
 }
 
-#[async_trait]
-trait Processor: Send + Sync {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
-    async fn init_state(&self, profile_uid: &ProfileUID);
-    async fn clear_state(&self, profile_uid: &ProfileUID);
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
+trait Processor {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool;
+    fn init_state(&self, profile_uid: &ProfileUID);
+    fn clear_state(&self, profile_uid: &ProfileUID);
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
 }
 
 #[derive(Debug, Clone)]
 struct SpeedProfileData {
     temp: Option<Temp>,
     duty: Option<Duty>,
-    profile: Arc<NormalizedGraphProfile>,
+    profile: Rc<NormalizedGraphProfile>,
     processing_started: bool,
-    /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
+    /// When this is triggered by the `SafetyLatchProcessor`, all subsequent processors
     /// MUST return a temp or duty value
     safety_latch_triggered: bool,
 }
 
 impl SpeedProfileData {
-    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &'a mut Self {
-        if processor.is_applicable(self).await {
-            processor.process(self).await
+    fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
+        if processor.is_applicable(self) {
+            processor.process(self)
         } else {
             self
         }
@@ -150,7 +149,7 @@ impl SpeedProfileData {
     }
 
     // could use in future for special cases:
-    // async fn apply_if(&mut self, processor: Arc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
+    // async fn apply_if(&mut self, processor: Rc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
     //     if predicate() {
     //         processor.process(self).await
     //     } else {

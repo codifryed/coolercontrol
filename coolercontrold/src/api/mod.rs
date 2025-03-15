@@ -16,270 +16,400 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
-use std::ops::Not;
-use std::str::FromStr;
-use std::sync::Arc;
-
-use actix_cors::Cors;
-use actix_session::config::CookieContentSecurity;
-use actix_session::storage::CookieSessionStore;
-use actix_session::{Session, SessionMiddleware};
-use actix_web::dev::{RequestHead, Server};
-use actix_web::http::header::{HeaderValue, AUTHORIZATION};
-use actix_web::http::StatusCode;
-use actix_web::middleware::{Compat, Compress, Condition, Logger, NormalizePath};
-use actix_web::web::{Data, Json};
-use actix_web::{
-    cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
-};
-use anyhow::{anyhow, Result};
-use derive_more::{Display, Error};
-use http_auth_basic::Credentials;
-use log::{debug, info, warn, LevelFilter};
-use nix::sys::signal;
-use nix::sys::signal::Signal;
-use nix::unistd::Pid;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use strum::EnumString;
-use tokio::net::{TcpListener, ToSocketAddrs};
-
-use crate::config::Config;
-use crate::modes::ModeController;
-use crate::processing::settings::SettingsController;
-use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::{admin, AllDevices};
-
+pub mod actor;
+mod alerts;
+mod auth;
+mod base;
 mod custom_sensors;
 mod devices;
 mod functions;
-mod modes;
+pub mod modes;
 mod profiles;
+mod router;
 mod settings;
+mod sse;
 mod status;
 
+use crate::alerts::AlertController;
+use crate::api::actor::{
+    AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
+    ModeHandle, ProfileHandle, SettingHandle, StatusHandle,
+};
+use crate::config::Config;
+use crate::logger::LogBufHandle;
+use crate::modes::ModeController;
+use crate::processing::settings::SettingsController;
+use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
+use crate::{AllDevices, Repos, VERSION};
+use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
+use aide::transform::TransformOpenApi;
+use aide::OperationOutput;
+use anyhow::{anyhow, Result};
+use axum::extract::rejection::JsonRejection;
+use axum::extract::DefaultBodyLimit;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::{Extension, Json, Router};
+use axum_extra::typed_header::TypedHeaderRejection;
+use derive_more::{Display, Error};
+use log::{debug, info, warn};
+use moro_local::Scope;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::net::{TcpListener, ToSocketAddrs};
+use tokio_util::sync::CancellationToken;
+use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::GovernorLayer;
+use tower_http::compression::CompressionLayer;
+use tower_http::cors;
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::normalize_path::NormalizePathLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+use tower_sessions::cookie::{Key, SameSite};
+use tower_sessions::service::PrivateCookie;
+use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+
 const API_SERVER_PORT_DEFAULT: Port = 11987;
-const API_SERVER_WORKERS: usize = 1;
 const SESSION_COOKIE_NAME: &str = "cc";
-const SESSION_PERMISSIONS: &str = "permissions";
-const SESSION_USER_ID: &str = "CCAdmin";
+const API_RATE_BURST: u32 = 50;
+const API_RATE_REQ_PER_SEC: u64 = 10;
 
 type Port = u16;
 
-include!(concat!(env!("OUT_DIR"), "/generated.rs"));
+pub async fn start_server<'s>(
+    all_devices: AllDevices,
+    repos: Repos,
+    settings_controller: Rc<SettingsController>,
+    config: Rc<Config>,
+    custom_sensors_repo: Rc<CustomSensorsRepo>,
+    modes_controller: Rc<ModeController>,
+    alert_controller: Rc<AlertController>,
+    log_buf_handle: LogBufHandle,
+    status_handle: StatusHandle,
+    cancel_token: CancellationToken,
+    main_scope: &'s Scope<'s, 's, Result<()>>,
+) -> Result<()> {
+    let port = config
+        .get_settings()?
+        .port
+        .unwrap_or(API_SERVER_PORT_DEFAULT);
+    let ipv4 = determine_ipv4_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv4 bind error: {err}"));
+    let ipv6 = determine_ipv6_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv6 bind error: {err}"));
+    if ipv4.is_err() && ipv6.is_err() {
+        return Err(anyhow!(
+            "Could not bind API to any address. No API and UI connection available."
+        ));
+    }
 
-/// Returns a simple handshake to verify established connection
-#[get("/handshake")]
-async fn handshake() -> Result<impl Responder, CCError> {
-    Ok(Json(json!({"shake": true})))
+    let compress_enabled = config.get_settings()?.compress;
+    let app_state = create_app_state(
+        all_devices,
+        repos,
+        &settings_controller,
+        config,
+        &custom_sensors_repo,
+        &modes_controller,
+        &alert_controller,
+        log_buf_handle,
+        status_handle,
+        &cancel_token,
+        main_scope,
+    );
+    // Note: to persist user login session across daemon restarts would require a
+    //  persisted master key and local db backend for the session data.
+    let session_layer = SessionManagerLayer::new(MemoryStore::default())
+        .with_name(SESSION_COOKIE_NAME)
+        .with_private(Key::generate())
+        .with_secure(false)
+        .with_http_only(true)
+        .with_same_site(SameSite::Strict)
+        .with_expiry(Expiry::OnSessionEnd);
+    let governor_layer = GovernorLayer {
+        config: Arc::new(
+            GovernorConfigBuilder::default()
+                // startup has quite a few requests (e.g. per device)
+                .burst_size(API_RATE_BURST)
+                // 10 req/s
+                .per_millisecond(1000 / API_RATE_REQ_PER_SEC)
+                .finish()
+                .unwrap(),
+        ),
+    };
+
+    if let Ok(ipv4) = ipv4 {
+        main_scope.spawn(create_api_server(
+            SocketAddr::from(ipv4),
+            app_state.clone(),
+            compress_enabled,
+            session_layer.clone(),
+            governor_layer.clone(),
+            cancel_token.clone(),
+        ));
+    }
+    if let Ok(ipv6) = ipv6 {
+        main_scope.spawn(create_api_server(
+            SocketAddr::from(ipv6),
+            app_state,
+            compress_enabled,
+            session_layer,
+            governor_layer,
+            cancel_token,
+        ));
+    }
+    Ok(())
 }
 
-#[post("/shutdown")]
-async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    signal::kill(Pid::this(), Signal::SIGQUIT)
-        .map(|()| HttpResponse::Ok().finish())
-        .map_err(|err| CCError::InternalError {
-            msg: err.to_string(),
-        })
-}
-
-/// Enables or disables ThinkPad Fan Control
-#[put("/thinkpad-fan-control")]
-async fn thinkpad_fan_control(
-    fan_control_request: Json<ThinkPadFanControlRequest>,
-    settings_controller: Data<Arc<SettingsController>>,
-    session: Session,
-) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    handle_simple_result(
-        settings_controller
-            .thinkpad_fan_control(&fan_control_request.enable)
-            .await,
+async fn create_api_server(
+    addr: SocketAddr,
+    app_state: AppState,
+    compress_enabled: bool,
+    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    governor_layer: GovernorLayer,
+    cancel_token: CancellationToken,
+) -> Result<()> {
+    aide::gen::on_error(|error| {
+        debug!("OpenApi Generation Error: {error}");
+    });
+    let mut open_api = OpenApi::default();
+    let router = router::init(app_state)
+        .finish_api_with(&mut open_api, api_docs)
+        .layer(Extension(Arc::new(open_api)));
+    let listener = TcpListener::bind(addr).await?;
+    info!("API bound to address: {}", addr);
+    axum::serve(
+        listener,
+        optional_layers(compress_enabled, router)
+            .layer(cors_layer())
+            .layer(NormalizePathLayer::trim_trailing_slash())
+            .layer(session_layer)
+            .layer(governor_layer)
+            .layer((
+                TraceLayer::new_for_http(),
+                TimeoutLayer::new(Duration::from_secs(30)),
+            ))
+            // 2MB is the default payload limit:
+            .layer(DefaultBodyLimit::disable())
+            // Limits the size of the payload in bytes: (Max 50MB for image files)
+            .layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+            .into_make_service(),
     )
+    .with_graceful_shutdown(async move { cancel_token.cancelled().await })
+    .await?;
+    Ok(())
 }
-
-#[post("/login")]
-async fn login(req: HttpRequest, session: Session) -> Result<impl Responder, CCError> {
-    let auth_header = req.headers().get(AUTHORIZATION);
-    if auth_header.is_none() {
-        return Err(CCError::InvalidCredentials {
-            msg: "Basic Authentication not properly set".to_string(),
-        });
-    }
-    let auth_header_value = auth_header
-        .unwrap()
-        .to_str()
-        .map_err(|err| CCError::InvalidCredentials {
-            msg: err.to_string(),
-        })?
-        .to_string();
-    let creds =
-        Credentials::from_header(auth_header_value).map_err(|err| CCError::InvalidCredentials {
-            msg: err.to_string(),
-        })?;
-    if creds.user_id == SESSION_USER_ID && admin::passwd_matches(&creds.password).await {
-        session
-            .insert(SESSION_PERMISSIONS, Permission::Admin.to_string())
-            .map_err(|err| CCError::InternalError {
-                msg: err.to_string(),
-            })?;
-        Ok(HttpResponse::Ok().finish())
-    } else {
-        Err(CCError::InvalidCredentials {
-            msg: "Invalid Credentials".to_string(),
+fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
+    let version = VERSION.unwrap_or("unknown");
+    api.title("CoolerControl Daemon API")
+        .summary("CoolerControl Rest Endpoints")
+        .description("Basic OpenAPI documentation for the CoolerControl Daemon API")
+        .contact(Contact {
+            name: Some("CoolerControl".to_string()),
+            url: Some("https://coolercontrol.org".to_string()),
+            ..Contact::default()
         })
-    }
-}
-
-/// This endpoint is used to verify if the login session is still valid
-#[post("/verify-session")]
-async fn verify_session(session: Session) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    Ok(HttpResponse::Ok().finish())
-}
-
-#[post("/set-passwd")]
-async fn set_passwd(req: HttpRequest, session: Session) -> Result<impl Responder, CCError> {
-    verify_admin_permissions(&session).await?;
-    let auth_header = req.headers().get(AUTHORIZATION);
-    if auth_header.is_none() {
-        return Err(CCError::InvalidCredentials {
-            msg: "New Authentication not properly set".to_string(),
-        });
-    }
-    let auth_header_value = auth_header
-        .unwrap()
-        .to_str()
-        .map_err(|err| CCError::InvalidCredentials {
-            msg: err.to_string(),
-        })?
-        .to_string();
-    let creds =
-        Credentials::from_header(auth_header_value).map_err(|err| CCError::InvalidCredentials {
-            msg: err.to_string(),
-        })?;
-    if creds.user_id == SESSION_USER_ID && creds.password.is_empty().not() {
-        admin::save_passwd(&creds.password).await?;
-        session.renew();
-        Ok(HttpResponse::Ok().finish())
-    } else {
-        Err(CCError::InvalidCredentials {
-            msg: "Invalid New Credentials".to_string(),
+        .license(License {
+            name: "GPL3+".to_string(),
+            identifier: Some("GPL3+".to_string()),
+            ..License::default()
         })
+        .version(version)
+        .security_scheme(
+            "CookieAuth",
+            SecurityScheme::ApiKey {
+                location: ApiKeyLocation::Cookie,
+                name: SESSION_COOKIE_NAME.to_string(),
+                description: Some(
+                    "The private session cookie used for authentication.".to_string(),
+                ),
+                extensions: Default::default(),
+            },
+        )
+        .security_scheme(
+            "BasicAuth",
+            SecurityScheme::Http {
+                scheme: "basic".to_string(),
+                bearer_format: Some(String::new()),
+                description: Some(
+                    "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
+                        .to_string(),
+                ),
+                extensions: Default::default(),
+            },
+        )
+        .tag(Tag {
+            name: "base".to_string(),
+            description: Some("Foundational endpoints for this API".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "auth".to_string(),
+            description: Some("Authentication".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "device".to_string(),
+            description: Some("Device Interaction".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "status".to_string(),
+            description: Some("Device Status".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "profile".to_string(),
+            description: Some("Profiles".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "function".to_string(),
+            description: Some("Functions".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "custom-sensor".to_string(),
+            description: Some("Custom Sensors".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "mode".to_string(),
+            description: Some("Modes".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "setting".to_string(),
+            description: Some("Settings".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "alert".to_string(),
+            description: Some("Alerts".to_string()),
+            ..Tag::default()
+        })
+        .tag(Tag {
+            name: "sse".to_string(),
+            description: Some("Server Side Events".to_string()),
+            ..Tag::default()
+        })
+}
+
+fn create_app_state<'s>(
+    all_devices: AllDevices,
+    repos: Repos,
+    settings_controller: &Rc<SettingsController>,
+    config: Rc<Config>,
+    custom_sensors_repo: &Rc<CustomSensorsRepo>,
+    modes_controller: &Rc<ModeController>,
+    alert_controller: &Rc<AlertController>,
+    log_buf_handle: LogBufHandle,
+    status_handle: StatusHandle,
+    cancel_token: &CancellationToken,
+    main_scope: &'s Scope<'s, 's, Result<()>>,
+) -> AppState {
+    let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
+    let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
+    let device_handle = DeviceHandle::new(
+        all_devices.clone(),
+        settings_controller.clone(),
+        modes_controller.clone(),
+        config.clone(),
+        cancel_token.clone(),
+        main_scope,
+    );
+    let profile_handle = ProfileHandle::new(
+        settings_controller.clone(),
+        config.clone(),
+        modes_controller.clone(),
+        cancel_token.clone(),
+        main_scope,
+    );
+    let function_handle = FunctionHandle::new(
+        settings_controller.clone(),
+        config.clone(),
+        cancel_token.clone(),
+        main_scope,
+    );
+    let custom_sensor_handle = CustomSensorHandle::new(
+        custom_sensors_repo.clone(),
+        settings_controller.clone(),
+        config.clone(),
+        cancel_token.clone(),
+        main_scope,
+    );
+    let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
+    let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
+    let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
+    AppState {
+        health,
+        auth_handle,
+        device_handle,
+        status_handle,
+        profile_handle,
+        function_handle,
+        custom_sensor_handle,
+        mode_handle,
+        setting_handle,
+        alert_handle,
+        log_buf_handle,
     }
 }
 
-pub async fn verify_admin_permissions(session: &Session) -> Result<(), CCError> {
-    let permissions = session
-        .get::<String>(SESSION_PERMISSIONS)
-        .unwrap_or_else(|_| Some(Permission::Guest.to_string()))
-        .unwrap_or_else(|| Permission::Guest.to_string());
-    let permission = Permission::from_str(&permissions).unwrap_or(Permission::Guest);
-    match permission {
-        Permission::Admin => Ok(()),
-        Permission::Guest => Err(CCError::InvalidCredentials {
-            msg: "Invalid Credentials".to_string(),
-        }),
+fn optional_layers(compress_enabled: bool, router: Router) -> Router {
+    if compress_enabled {
+        router.layer(CompressionLayer::new())
+    } else {
+        router
     }
 }
 
-#[post("/logout")]
-async fn logout(session: Session) -> Result<impl Responder, CCError> {
-    session.purge();
-    Ok(HttpResponse::Ok().finish())
-}
+fn cors_layer() -> cors::CorsLayer {
+    cors::CorsLayer::new()
+        .allow_credentials(true)
+        .allow_headers(cors::AllowHeaders::mirror_request())
+        .allow_methods(cors::AllowMethods::mirror_request())
+        // We don't really care about Origin security, as it runs on each person's server
+        // and may also limit access through a proxy. Alternative impl below.
+        // Note: We can't use wildcard any with credentials.
+        .allow_origin(cors::AllowOrigin::mirror_request())
+        .max_age(Duration::from_secs(60) * 5)
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ThinkPadFanControlRequest {
-    enable: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ErrorResponse {
-    error: String,
-}
-
-#[derive(Debug, Clone, Display, EnumString)]
-pub enum Permission {
-    Admin,
-    Guest,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
-pub enum CCError {
-    #[display("Internal Error: {msg}")]
-    InternalError { msg: String },
-
-    #[display("Error with external library: {msg}")]
-    ExternalError { msg: String },
-
-    #[display("Resource not found: {msg}")]
-    NotFound { msg: String },
-
-    #[display("{msg}")]
-    UserError { msg: String },
-
-    #[display("{msg}")]
-    InvalidCredentials { msg: String },
-
-    #[display("{msg}")]
-    InsufficientScope { msg: String },
-}
-
-impl actix_web::error::ResponseError for CCError {
-    fn status_code(&self) -> StatusCode {
-        match *self {
-            CCError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            CCError::ExternalError { .. } => StatusCode::BAD_GATEWAY,
-            CCError::NotFound { .. } => StatusCode::NOT_FOUND,
-            CCError::UserError { .. } => StatusCode::BAD_REQUEST,
-            CCError::InvalidCredentials { .. } => StatusCode::UNAUTHORIZED,
-            CCError::InsufficientScope { .. } => StatusCode::FORBIDDEN,
-        }
-    }
-
-    fn error_response(&self) -> HttpResponse {
-        match self {
-            // we don't want to confuse the user with these errors, which can happen regularly
-            CCError::InvalidCredentials { .. } => debug!("{:?}", self.to_string()),
-            _ => warn!("{:?}", self.to_string()),
-        }
-        HttpResponse::build(self.status_code()).json(Json(ErrorResponse {
-            error: self.to_string(),
-        }))
-    }
-}
-
-impl From<std::io::Error> for CCError {
-    fn from(err: std::io::Error) -> Self {
-        CCError::InternalError {
-            msg: err.to_string(),
-        }
-    }
-}
-
-impl From<anyhow::Error> for CCError {
-    fn from(err: anyhow::Error) -> Self {
-        if let Some(underlying_error) = err.downcast_ref::<CCError>() {
-            underlying_error.clone()
-        } else {
-            CCError::InternalError {
-                msg: err.to_string(),
-            }
-        }
-    }
+    // Alternative:
+    //     let mut allowed_addresses = vec![
+    //         // always allowed standard addresses:
+    //         "//localhost:".to_string(),
+    //         "//127.0.0.1:".to_string(),
+    //         "//[::1]:".to_string(),
+    //     ];
+    //     if let Some(ipv4) = ipv4 {
+    //         allowed_addresses.push(format!("//{}:", ipv4.ip()));
+    //     }
+    //     if let Some(ipv6) = ipv6 {
+    //         allowed_addresses.push(format!("//[{}]:", ipv6.ip()));
+    //     }
+    //     Cors::default()
+    //         .allow_any_method()
+    //         .allow_any_header()
+    //         .supports_credentials()
+    //         .allowed_origin_fn(move |origin: &HeaderValue, _req_head: &RequestHead| {
+    //             if let Ok(str) = origin.to_str() {
+    //                 allowed_addresses.iter().any(|addr| str.contains(addr))
+    //             } else {
+    //                 false
+    //             }
+    //         })
 }
 
 fn handle_error(err: anyhow::Error) -> CCError {
     err.into()
-}
-
-fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
-    result
-        .map(|()| HttpResponse::Ok().finish())
-        .map_err(handle_error)
 }
 
 pub fn validate_name_string(name: &str) -> Result<(), CCError> {
@@ -372,8 +502,8 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn determine_ipv4_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV4> {
-    match config.get_settings().await?.ipv4_address {
+async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
+    match config.get_settings()?.ipv4_address {
         Some(ipv4_str) => {
             if ipv4_str.is_empty() {
                 Err(anyhow!("IPv4 address disabled"))
@@ -385,8 +515,8 @@ async fn determine_ipv4_address(config: &Arc<Config>, port: u16) -> Result<Socke
     }
 }
 
-async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV6> {
-    match config.get_settings().await?.ipv6_address {
+async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
+    match config.get_settings()?.ipv6_address {
         Some(ipv6_str) => {
             if ipv6_str.is_empty() {
                 Err(anyhow!("IPv6 address disabled"))
@@ -398,181 +528,190 @@ async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<Socke
     }
 }
 
-fn config_server(
-    cfg: &mut web::ServiceConfig,
-    all_devices: AllDevices,
-    settings_controller: Arc<SettingsController>,
-    config: Arc<Config>,
-    cs_repo: Arc<CustomSensorsRepo>,
-    mode_controller: Arc<ModeController>,
-) {
-    cfg
-        // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
-        .app_data(Data::new(all_devices))
-        .app_data(Data::new(settings_controller))
-        .app_data(Data::new(config))
-        .app_data(Data::new(cs_repo))
-        .app_data(Data::new(mode_controller))
-        .service(handshake)
-        .service(login)
-        .service(verify_session)
-        .service(set_passwd)
-        .service(logout)
-        .service(shutdown)
-        .service(thinkpad_fan_control)
-        .service(devices::get_devices)
-        .service(status::get_status)
-        .service(devices::get_device_settings)
-        .service(devices::apply_device_setting_manual)
-        .service(devices::apply_device_setting_profile)
-        .service(devices::apply_device_setting_lcd)
-        .service(devices::get_device_lcd_images)
-        .service(devices::apply_device_setting_lcd_images)
-        .service(devices::process_device_lcd_images)
-        .service(devices::apply_device_setting_lighting)
-        .service(devices::apply_device_setting_pwm)
-        .service(devices::apply_device_setting_reset)
-        .service(devices::asetek)
-        .service(profiles::get_profiles)
-        .service(profiles::save_profiles_order)
-        .service(profiles::save_profile)
-        .service(profiles::update_profile)
-        .service(profiles::delete_profile)
-        .service(functions::get_functions)
-        .service(functions::save_functions_order)
-        .service(functions::save_function)
-        .service(functions::update_function)
-        .service(functions::delete_function)
-        .service(custom_sensors::get_custom_sensors)
-        .service(custom_sensors::get_custom_sensor)
-        .service(custom_sensors::save_custom_sensors_order)
-        .service(custom_sensors::save_custom_sensor)
-        .service(custom_sensors::update_custom_sensor)
-        .service(custom_sensors::delete_custom_sensor)
-        .service(modes::get_modes)
-        .service(modes::get_mode)
-        .service(modes::set_modes_order)
-        .service(modes::create_mode)
-        .service(modes::update_mode)
-        .service(modes::update_mode_settings)
-        .service(modes::delete_mode)
-        .service(modes::get_active_mode)
-        .service(modes::activate_mode)
-        .service(settings::get_cc_settings)
-        .service(settings::apply_cc_settings)
-        .service(settings::get_cc_settings_for_all_devices)
-        .service(settings::get_cc_settings_for_device)
-        .service(settings::save_cc_settings_for_device)
-        .service(settings::save_ui_settings)
-        .service(settings::get_ui_settings)
-        .service(actix_web_static_files::ResourceFiles::new("/", generate()));
+/// How we want errors responses to be serialized
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct ErrorResponse {
+    error: String,
 }
 
-fn config_logger() -> Condition<Compat<Logger>> {
-    Condition::new(
-        log::max_level() == LevelFilter::Trace,
-        Compat::new(Logger::default()),
-    )
+#[derive(Debug, Serialize, Deserialize, Display, Error, Clone, JsonSchema)]
+pub enum CCError {
+    #[display("Internal Error: {msg}")]
+    InternalError { msg: String },
+
+    #[display("Error with external library: {msg}")]
+    ExternalError { msg: String },
+
+    #[display("Resource not found: {msg}")]
+    NotFound { msg: String },
+
+    #[display("{msg}")]
+    UserError { msg: String },
+
+    // #[display("Json serialization error: {}", _0.body_text())]
+    // JsonRejection(JsonRejection),
+    #[display("{msg}")]
+    InvalidCredentials { msg: String },
+
+    #[display("{msg}")]
+    InsufficientScope { msg: String },
 }
 
-fn config_cors(ipv4: Option<SocketAddrV4>, ipv6: Option<SocketAddrV6>) -> Cors {
-    let mut allowed_addresses = vec![
-        // always allowed standard addresses:
-        "//localhost:".to_string(),
-        "//127.0.0.1:".to_string(),
-        "//[::1]:".to_string(),
-    ];
-    if let Some(ipv4) = ipv4 {
-        allowed_addresses.push(format!("//{}:", ipv4.ip()));
-    }
-    if let Some(ipv6) = ipv6 {
-        allowed_addresses.push(format!("//[{}]:", ipv6.ip()));
-    }
-    Cors::default()
-        .allow_any_method()
-        .allow_any_header()
-        .supports_credentials()
-        .allowed_origin_fn(move |origin: &HeaderValue, _req_head: &RequestHead| {
-            if let Ok(str) = origin.to_str() {
-                allowed_addresses.iter().any(|addr| str.contains(addr))
-            } else {
-                false
+impl IntoResponse for CCError {
+    fn into_response(self) -> Response {
+        let (status, error) = match self {
+            CCError::InternalError { .. } => {
+                // We use the Display trait to format our errors
+                let err_msg = self.to_string();
+                warn!("{err_msg}");
+                (StatusCode::INTERNAL_SERVER_ERROR, err_msg)
             }
-        })
+            CCError::ExternalError { .. } => {
+                let err_msg = self.to_string();
+                warn!("{err_msg}");
+                (StatusCode::BAD_GATEWAY, err_msg)
+            }
+            CCError::NotFound { .. } => {
+                let err_msg = self.to_string();
+                warn!("{err_msg}");
+                (StatusCode::NOT_FOUND, err_msg)
+            }
+            CCError::UserError { .. } => {
+                let err_msg = self.to_string();
+                warn!("{err_msg}");
+                (StatusCode::BAD_REQUEST, err_msg)
+            }
+            CCError::InvalidCredentials { .. } => {
+                let err_msg = self.to_string();
+                // we don't want to confuse the user with these errors, which can happen regularly:
+                debug!("{err_msg}");
+                (StatusCode::UNAUTHORIZED, err_msg)
+            }
+            CCError::InsufficientScope { .. } => {
+                let err_msg = self.to_string();
+                warn!("{err_msg}");
+                (StatusCode::FORBIDDEN, err_msg)
+            }
+        };
+
+        (status, Json(ErrorResponse { error })).into_response()
+    }
 }
 
-pub async fn init_server(
-    all_devices: AllDevices,
-    settings_controller: Arc<SettingsController>,
-    config: Arc<Config>,
-    custom_sensors_repo: Arc<CustomSensorsRepo>,
-    modes_controller: Arc<ModeController>,
-) -> Result<Server> {
-    let port = config
-        .get_settings()
-        .await?
-        .port
-        .unwrap_or(API_SERVER_PORT_DEFAULT);
-    let ipv4_result = determine_ipv4_address(&config, port)
-        .await
-        .inspect_err(|err| warn!("IPv4 bind error: {err}"));
-    let ipv6_result = determine_ipv6_address(&config, port)
-        .await
-        .inspect_err(|err| warn!("IPv6 bind error: {err}"));
-    if ipv4_result.is_err() && ipv6_result.is_err() {
-        return Err(anyhow!(
-            "Could not bind API to any address. No API and UI connection available."
-        ));
+impl From<std::io::Error> for CCError {
+    fn from(err: std::io::Error) -> Self {
+        CCError::InternalError {
+            msg: err.to_string(),
+        }
     }
-    let compression_enabled = config.get_settings().await?.compress;
-    let ipv4 = ipv4_result.ok();
-    let ipv6 = ipv6_result.ok();
-    let move_all_devices = all_devices.clone();
-    let move_settings_controller = settings_controller.clone();
-    let move_config = config.clone();
-    let move_cs_repo = custom_sensors_repo.clone();
-    let move_mode_controller = modes_controller.clone();
-    let session_key = cookie::Key::generate(); // sessions do not persist across restarts
-    let server = HttpServer::new(move || {
-        App::new()
-            .wrap(config_logger())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
-                    .cookie_content_security(CookieContentSecurity::Private)
-                    .cookie_secure(false)
-                    .cookie_http_only(true)
-                    .cookie_same_site(cookie::SameSite::Strict)
-                    .cookie_name(SESSION_COOKIE_NAME.to_string())
-                    .build(),
-            )
-            .wrap(config_cors(ipv4, ipv6))
-            .wrap(NormalizePath::trim()) // removes trailing slashes for more flexibility
-            .wrap(Condition::new(compression_enabled, Compress::default()))
-            .configure(|cfg| {
-                config_server(
-                    cfg,
-                    move_all_devices.clone(),
-                    move_settings_controller.clone(),
-                    move_config.clone(),
-                    move_cs_repo.clone(),
-                    move_mode_controller.clone(),
-                );
-            })
-    })
-    .workers(API_SERVER_WORKERS);
-    let bound_server = if ipv4.is_some() && ipv6.is_none() {
-        let ipv4_addr = ipv4.unwrap();
-        info!("API bound to IPv4 address: {ipv4_addr}");
-        server.bind(ipv4_addr)?.run()
-    } else if ipv6.is_some() && ipv4.is_none() {
-        let ipv6_addr = ipv6.unwrap();
-        info!("API bound to IPv6 address: {ipv6_addr}");
-        server.bind(ipv6_addr)?.run()
-    } else {
-        let ipv4_addr = ipv4.unwrap();
-        let ipv6_addr = ipv6.unwrap();
-        info!("API bound to IPv4 and IPv6 addresses: {ipv4_addr}, {ipv6_addr}");
-        server.bind(ipv4_addr)?.bind(ipv6_addr)?.run()
-    };
-    Ok(bound_server)
+}
+
+impl From<anyhow::Error> for CCError {
+    fn from(err: anyhow::Error) -> Self {
+        if let Some(underlying_error) = err.downcast_ref::<CCError>() {
+            underlying_error.clone()
+        } else {
+            CCError::InternalError {
+                msg: err.to_string(),
+            }
+        }
+    }
+}
+
+impl From<JsonRejection> for CCError {
+    fn from(jr: JsonRejection) -> Self {
+        CCError::UserError {
+            msg: jr.body_text(),
+        }
+    }
+}
+
+impl From<TypedHeaderRejection> for CCError {
+    fn from(thr: TypedHeaderRejection) -> Self {
+        CCError::InvalidCredentials {
+            msg: format!("Header: {}, Reason: {:?}", thr.name(), thr.reason()),
+        }
+    }
+}
+
+/// Fills in `OpenApi` info for our Error type.
+impl OperationOutput for CCError {
+    type Inner = ();
+
+    fn operation_response(
+        _ctx: &mut aide::gen::GenContext,
+        _operation: &mut aide::openapi::Operation,
+    ) -> Option<aide::openapi::Response> {
+        Some(aide::openapi::Response::default())
+    }
+
+    fn inferred_responses(
+        ctx: &mut aide::gen::GenContext,
+        operation: &mut aide::openapi::Operation,
+    ) -> Vec<(Option<u16>, aide::openapi::Response)> {
+        if let Some(res) = Self::operation_response(ctx, operation) {
+            vec![
+                (
+                    Some(400),
+                    aide::openapi::Response {
+                        description: "Bad Request. The request is invalid".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(401),
+                    aide::openapi::Response {
+                        description: "Unauthorized. Invalid credentials were provided.".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(403),
+                    aide::openapi::Response {
+                        description: "Forbidden. Insufficient permissions.".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(404),
+                    aide::openapi::Response {
+                        description: "Whatever you're looking for, it's not here.".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(500),
+                    aide::openapi::Response {
+                        description: "An internal error has occurred.".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(502),
+                    aide::openapi::Response {
+                        description: "Bad Gateway. An error has occurred with an external library."
+                            .to_owned(),
+                        ..res
+                    },
+                ),
+            ]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub health: HealthHandle,
+    pub auth_handle: AuthHandle,
+    pub device_handle: DeviceHandle,
+    pub status_handle: StatusHandle,
+    pub profile_handle: ProfileHandle,
+    pub function_handle: FunctionHandle,
+    pub custom_sensor_handle: CustomSensorHandle,
+    pub mode_handle: ModeHandle,
+    pub setting_handle: SettingHandle,
+    pub alert_handle: AlertHandle,
+    pub log_buf_handle: LogBufHandle,
 }

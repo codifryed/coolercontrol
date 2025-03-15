@@ -19,6 +19,7 @@
 import type { Color } from '@/models/Device'
 import { Exclude, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
+import { Dashboard } from '@/models/Dashboard.ts'
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
@@ -26,17 +27,31 @@ import type { UID } from '@/models/Device'
  * store that data and do the transformation.
  */
 export class UISettingsDTO {
-    devices: Array<UID> | undefined = []
+    devices?: Array<UID> = []
+
     @Type(() => DeviceUISettingsDTO)
-    deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
-    systemOverviewOptions: SystemOverviewOptions | undefined
-    closeToSystemTray: boolean = false
-    displayHiddenItems: boolean = true
+    deviceSettings?: Array<DeviceUISettingsDTO> = []
+
+    @Type(() => Dashboard)
+    dashboards: Array<Dashboard> = []
     themeMode: ThemeMode = ThemeMode.SYSTEM
-    uiScale: number = 100
-    menuMode: string = 'static'
+    chartLineScale: number = 1.5
     time24: boolean = false
-    showSetupInstructions: boolean = true
+    collapsedMenuNodeIds: Array<string> = []
+    collapsedMainMenu: boolean = false
+    hideMenuCollapseIcon: boolean = false
+    menuEntitiesAtBottom: boolean = false
+    mainMenuWidthRem: number = 24
+    frequencyPrecision: number = 1
+    customTheme: CustomThemeSettings = {
+        accent: defaultCustomTheme.accent,
+        bgOne: defaultCustomTheme.bgOne,
+        bgTwo: defaultCustomTheme.bgTwo,
+        borderOne: defaultCustomTheme.borderOne,
+        textColor: defaultCustomTheme.textColor,
+        textColorSecondary: defaultCustomTheme.textColorSecondary,
+    }
+    showOnboarding: boolean = true
 }
 
 export enum ThemeMode {
@@ -45,28 +60,33 @@ export enum ThemeMode {
     LIGHT = 'light',
     HIGH_CONTRAST_DARK = 'high-contrast-dark',
     HIGH_CONTRAST_LIGHT = 'high-contrast-light',
+    CUSTOM = 'custom theme',
+}
+
+export interface CustomThemeSettings {
+    accent: Color
+    bgOne: Color
+    bgTwo: Color
+    borderOne: Color
+    textColor: Color
+    textColorSecondary: Color
+}
+export const defaultCustomTheme: CustomThemeSettings = {
+    // default dark-theme
+    accent: '86 138 242', //'#568af2'
+    bgOne: '27 30 35', //'#1b1e23'
+    bgTwo: '44 49 60', //'#2c313c'
+    borderOne: '138 149 170 0.25', //'#8a95aa40'
+    textColor: '220 225 236', //'#dce1ec'
+    textColorSecondary: '138 149 170', //'#8a95aa'
 }
 
 export class DeviceUISettingsDTO {
     menuCollapsed: boolean = false
-    userName: string | undefined
+    userName?: string
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
-}
-
-export interface SystemOverviewOptions {
-    selectedTimeRange: {
-        name: string
-        seconds: number
-    }
-    selectedChartType: string
-    temp: boolean
-    duty: boolean
-    load: boolean
-    rpm: boolean
-    freq: boolean
-    timeChartLineScale: number
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>
@@ -80,7 +100,7 @@ export class DeviceUISettings {
      */
     menuCollapsed: boolean = false
     displayName: string = ''
-    userName: string | undefined
+    userName?: string
 
     /**
      * A Map of Sensor and Channel Names to associated Settings.
@@ -95,17 +115,18 @@ export class DeviceUISettings {
 export class SensorAndChannelSettings {
     @Exclude() // we don't want to persist this, it should be generated anew on each start
     defaultColor: Color
-
-    userColor: Color | undefined
-    hide: boolean
+    userColor?: Color
 
     @Exclude() // we don't want to persist this
-    displayName: string = ''
-    userName: string | undefined
+    channelLabel: string = ''
+    userName?: string
 
-    constructor(defaultColor: Color = '#568af2', hide: boolean = false) {
+    viewType: ChannelViewType = ChannelViewType.Control
+    @Type(() => Dashboard)
+    channelDashboard?: Dashboard
+
+    constructor(defaultColor: Color = '#568af2') {
         this.defaultColor = defaultColor
-        this.hide = hide
     }
 
     get color(): Color {
@@ -113,6 +134,11 @@ export class SensorAndChannelSettings {
     }
 
     get name(): string {
-        return this.userName != null ? this.userName : this.displayName
+        return this.userName != null ? this.userName : this.channelLabel
     }
+}
+
+export enum ChannelViewType {
+    Control = 'Control',
+    Dashboard = 'Dashboard',
 }

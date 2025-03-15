@@ -1,5 +1,5 @@
 variables:
-  IMAGE_VERSION: v18
+  IMAGE_VERSION: v20
   CARGO_HOME: '${CI_PROJECT_DIR}/.cargo'
   PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.pip'
   NPM_CONFIG_CACHE: '${CI_PROJECT_DIR}/.npm'
@@ -13,7 +13,7 @@ variables:
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}'
   PACKAGE_REGISTRY_URL_BETA: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta${CI_MERGE_REQUEST_IID}'
-  ARTIFACT_NAME_APPIMAGE: CoolerControl-x86_64.AppImage
+  #ARTIFACT_NAME_APPIMAGE: CoolerControl-x86_64.AppImage
   ARTIFACT_NAME_APPIMAGE_DAEMON: CoolerControlD-x86_64.AppImage
   ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_amd64.deb'
   ARTIFACT_NAME_DEB_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64.deb'
@@ -45,7 +45,6 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
     - key:
         files:
           - coolercontrold/Cargo.lock
-          - coolercontrol-ui/src-tauri/Cargo.lock
       paths:
         - .cargo
     - key: '${CI_JOB_NAME}'
@@ -55,7 +54,6 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         # ~/.cache/trunk
         # this can add up over time to a very large cache and isn't very clean, but could speed up compilation:
         #- coolercontrold/target
-        #- coolercontrol-ui/src-tauri/target
 
 .main_image_template: &main_image_template
   before_script:
@@ -81,6 +79,7 @@ test_all:
     - rustc --version
     - npm --version
     - node --version
+    - cmake --version
   script:
     # For Trunk to detect changes, it needs to compare to main and gitlab does a shallow clone by default:
     - git fetch origin main
@@ -92,7 +91,7 @@ test_all:
       junit: coolercontrold/results.xml
     name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
     paths:
-      - coolercontrol-ui/src-tauri/target/debug/coolercontrol
+      - coolercontrol/build/coolercontrol
       - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
 
@@ -113,7 +112,7 @@ compile_artifacts:
       allow_failure: true
   needs: []
   script:
-    - make ci-check
+    #- make ci-check
     - echo "All release compilation jobs triggered."
 
 ####################################### AppImages (Ubuntu 22.04)
@@ -136,6 +135,7 @@ build_appimages:
     - rustc --version
     - npm --version
     - node --version
+    - cmake --version
   script:
     - make build-appimages -j1
     - make appimages -j2
@@ -148,7 +148,6 @@ build_appimages:
       - assets-built/coolercontrold
       - assets-built/coolercontrol
       - assets-built/coolercontrold-vendor.tzst
-      - assets-built/coolercontrol-vendor.tzst
       - assets-built/coolercontrol-ui-vendor.tzst
     expire_in: 5 days
 
@@ -179,12 +178,10 @@ build_deb_bookworm:
       nodejs
       npm
       build-essential
-      libwebkit2gtk-4.1-dev
-      libssl-dev
-      libxdo-dev
-      libgtk-3-dev
-      libayatana-appindicator3-dev
-      librsvg2-dev
+      cmake
+      qt6-base-dev
+      qt6-webengine-dev
+      qt6-webengine-dev-tools
       libdrm-dev
       cargo
     - |
@@ -193,6 +190,7 @@ build_deb_bookworm:
       rustc --version
       npm --version
       node --version
+      cmake --version
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
     - cp ../coolercontrol*_amd64.* ./
@@ -230,12 +228,10 @@ build_ubuntu:
       python3-uvicorn
       nodejs
       build-essential
-      libwebkit2gtk-4.1-dev
-      libssl-dev
-      libxdo-dev
-      libgtk-3-dev
-      libayatana-appindicator3-dev
-      librsvg2-dev
+      cmake
+      qt6-base-dev
+      qt6-webengine-dev
+      qt6-webengine-dev-tools
       libdrm-dev
       cargo
     - |
@@ -244,6 +240,7 @@ build_ubuntu:
       rustc --version
       npm --version
       node --version
+      cmake --version
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
     - cp ../coolercontrol*_amd64.* ./
@@ -349,9 +346,7 @@ upload_package_appimage:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_package_appimage_beta:
@@ -369,9 +364,7 @@ upload_package_appimage_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_package_deb_bookworm:
@@ -385,12 +378,9 @@ upload_package_deb_bookworm:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB
@@ -437,54 +427,27 @@ upload_package_ubuntu:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    # 22.04 (LTS) based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
+    # Ubuntu 22.04 (LTS) based packages, used for any:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/any-version $ARTIFACT_NAME_DEB
     # not yet available on CloudSmith:
-    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/horus $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB
-    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/virginia $ARTIFACT_NAME_DEB
-    # 22.10 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB
-    # 23.04 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB
-    # 23.10 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB
-    # 24.04 LTS based: (move to own build job)
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/wilma $ARTIFACT_NAME_DEB
-    # 24.10 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/oracular $ARTIFACT_NAME_DEB
-    # Debian Testing based:
-    # Kali is no longer supported as they have removed liquidctl from their repositories:
-    # This can change with 2.0 by NOT uploading a liqctld package (minimal support, but again supported)
-    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
-    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
-    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/any-version $ARTIFACT_NAME_DEB
+    # Kali has removed liquidctl from their repositories:
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/otherdeb/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/otherdeb/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/otherdeb/any-version $ARTIFACT_NAME_DEB
     - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_UBUNTU_LIQCTLD
     - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_UBUNTU_D
     - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
@@ -573,10 +536,6 @@ create_release:
           filepath: '/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
           link_type: other
-        - name: AppImage GUI
-          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE}'
-          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}'
-          link_type: other
         # Assets:
         - name: Daemon Binary
           filepath: '/packages/coolercontrold_${CI_COMMIT_TAG}'
@@ -589,10 +548,6 @@ create_release:
         - name: Daemon Vendored Dependencies
           filepath: '/packages/coolercontrold-vendor.tzst'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
-          link_type: other
-        - name: Desktop Application Vendored Dependencies
-          filepath: '/packages/coolercontrol-vendor.tzst'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst'
           link_type: other
         - name: UI Build Assets
           filepath: '/packages/coolercontrol-ui.tzst'

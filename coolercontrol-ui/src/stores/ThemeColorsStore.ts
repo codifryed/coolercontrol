@@ -24,28 +24,44 @@ import { ref } from 'vue'
  */
 export const useThemeColorsStore = defineStore('theme-colors', () => {
     const cssRoot = document.querySelector(':root')
-    const getStyle = (varName: string) => getComputedStyle(cssRoot!).getPropertyValue(varName)
+    const getStyle = (varName: string): string =>
+        `rgb(${getComputedStyle(cssRoot!).getPropertyValue(varName)})`
     const themeColors = ref({
-        dark_one: getStyle('--cc-dark-one'),
-        dark_four: getStyle('--cc-dark-four'),
-        bg_one: getStyle('--cc-bg-one'),
-        bg_two: getStyle('--cc-bg-two'),
-        bg_three: getStyle('--cc-bg-three'),
-        context_color: getStyle('--cc-context-color'),
-        context_hover: getStyle('--cc-context-hover'),
-        context_pressed: getStyle('--cc-context-pressed'),
-        text_color: getStyle('--text-color'),
-        text_color_secondary: getStyle('--text-color-secondary'),
-        white: getStyle('--cc-white'),
-        pink: getStyle('--cc-ping'),
-        green: getStyle('--cc-green'),
-        red: getStyle('--cc-red'),
-        yellow: getStyle('--cc-yellow'),
-        gray_600: getStyle('--gray-600'),
-        surface_card: getStyle('--surface-card'),
-        accent: getStyle('--cc-accent'),
-        primary: getStyle('--primary-color'),
+        accent: getStyle('--colors-accent'),
+        bg_one: getStyle('--colors-bg-one'),
+        bg_two: getStyle('--colors-bg-two'),
+        border: getStyle('--colors-border-one'),
+        text_color: getStyle('--colors-text-color'),
+        text_color_secondary: getStyle('--colors-text-color-secondary'),
+        white: getStyle('--colors-white'),
+        pink: getStyle('--colors-pink'),
+        green: getStyle('--colors-success'),
+        red: getStyle('--colors-error'),
+        yellow: getStyle('--colors-warning'),
+        info: getStyle('--colors-info'),
     })
+
+    function hexToRgb(hex: string): Array<number> {
+        return hex
+            .replace(
+                /^#?([a-f\d])([a-f\d])([a-f\d])$/i,
+                (_m, r, g, b) => '#' + r + r + g + g + b + b,
+            )!
+            .substring(1)
+            .match(/.{2}/g)!
+            .map((x) => parseInt(x, 16))
+    }
+    function convertColorToRGBA(color: string, opacity: number): string {
+        if (color.includes('#')) {
+            const rgbArray = hexToRgb(color)
+            return `rgba(${rgbArray[0]}, ${rgbArray[1]}, ${rgbArray[2]}, ${opacity})`
+        } else if (color.includes(',')) {
+            return color.replace(')', `, ${opacity})`).replace('rgb', 'rgba')
+        } else {
+            return color.replace(')', ` / ${opacity})`).replace('rgb', 'rgba')
+        }
+    }
+
     console.debug(`Theme Colors Store created`)
-    return { themeColors }
+    return { themeColors, hexToRgb, convertColorToRGBA }
 })

@@ -16,18 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
-use async_trait::async_trait;
 use log::{error, trace};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
 use crate::device::Temp;
-use crate::processing::{Processor, SpeedProfileData};
+use crate::processing::{NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileUID};
 use crate::AllDevices;
@@ -36,9 +35,9 @@ pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
 const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
-const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 30;
-const MIN_NO_DUTY_SET_COUNT: u8 = 30;
-const MAX_NO_DUTY_SET_COUNT: u8 = 60;
+const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
+const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
+const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
 
 /// The default function returns the source temp as-is.
@@ -52,18 +51,17 @@ impl FunctionIdentityPreProcessor {
     }
 }
 
-#[async_trait]
 impl Processor for FunctionIdentityPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -74,8 +72,7 @@ impl Processor for FunctionIdentityPreProcessor {
         }
         data.temp = temp_source_device_option
             .unwrap()
-            .read()
-            .await
+            .borrow()
             .status_history
             .iter()
             .last() // last = latest temp
@@ -98,14 +95,14 @@ impl Processor for FunctionIdentityPreProcessor {
 /// The standard Function with Hysteresis control
 pub struct FunctionStandardPreProcessor {
     all_devices: AllDevices,
-    channel_settings_metadata: RwLock<HashMap<ProfileUID, ChannelSettingMetadata>>,
+    channel_settings_metadata: RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>,
 }
 
 impl FunctionStandardPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
         Self {
             all_devices,
-            channel_settings_metadata: RwLock::new(HashMap::new()),
+            channel_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
@@ -125,7 +122,7 @@ impl FunctionStandardPreProcessor {
         true
     }
 
-    async fn fill_temp_stack(
+    fn fill_temp_stack(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
         temp_source_device_option: Option<&DeviceLock>,
@@ -138,7 +135,7 @@ impl FunctionStandardPreProcessor {
             metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
             return;
         }
-        let temp_source_device = temp_source_device_option.unwrap().read().await;
+        let temp_source_device = temp_source_device_option.unwrap().borrow();
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
             let mut latest_temps = temp_source_device
@@ -188,30 +185,32 @@ impl FunctionStandardPreProcessor {
         temp_to_verify <= (last_applied_temp + deviance)
             && temp_to_verify >= (last_applied_temp - deviance)
     }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
+        (f64::from(profile.function.response_delay.unwrap()) / profile.poll_rate).ceil() as u8 + 1
+    }
 }
 
-#[async_trait]
 impl Processor for FunctionStandardPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), ChannelSettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -220,15 +219,14 @@ impl Processor for FunctionStandardPreProcessor {
         }
 
         // setup metadata:
-        let mut metadata_lock = self.channel_settings_metadata.write().await;
+        let mut metadata_lock = self.channel_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
-            metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE
-                .max(data.profile.function.response_delay.unwrap() + 1)
-                as usize;
+            metadata.ideal_stack_size =
+                MIN_TEMP_HIST_STACK_SIZE.max(Self::calc_ideal_stack_size(&data.profile)) as usize;
         }
-        Self::fill_temp_stack(metadata, data, temp_source_device_option).await;
+        Self::fill_temp_stack(metadata, data, temp_source_device_option);
 
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
             metadata.temp_hist_stack.pop_front();
@@ -347,18 +345,17 @@ impl FunctionEMAPreProcessor {
     }
 }
 
-#[async_trait]
 impl Processor for FunctionEMAPreProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
         // preprocessor only
     }
 
-    async fn init_state(&self, _: &ProfileUID) {}
+    fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _: &ProfileUID) {}
+    fn clear_state(&self, _: &ProfileUID) {}
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
@@ -369,7 +366,7 @@ impl Processor for FunctionEMAPreProcessor {
         }
         let mut temps = {
             // scoped for the device read lock
-            let temp_source_device = temp_source_device_option.unwrap().read().await;
+            let temp_source_device = temp_source_device_option.unwrap().borrow();
             temp_source_device
                 .status_history
                 .iter()
@@ -381,7 +378,7 @@ impl Processor for FunctionEMAPreProcessor {
                 .map(|temp_status| temp_status.temp)
                 .collect::<Vec<f64>>()
         };
-        temps.reverse(); // re-order temps so last is last
+        temps.reverse(); // re-order temps so last temp is again last
         data.temp = if temps.is_empty() {
             log_missing_temp_sensor(data);
             Some(EMERGENCY_MISSING_TEMP)
@@ -398,26 +395,24 @@ impl Processor for FunctionEMAPreProcessor {
 /// This post-processor keeps a set of last-applied-duties and applies only duties within set upper and
 /// lower thresholds. It also handles improvements for edge cases.
 pub struct FunctionDutyThresholdPostProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, DutySettingMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, DutySettingMetadata>>,
 }
 
 impl FunctionDutyThresholdPostProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
         }
     }
 
-    async fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
-        if self.scheduled_settings_metadata.read().await[&data.profile.profile_uid]
+    fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
+        if self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
             .last_manual_speeds_set
             .is_empty()
         {
             return data.duty; // first application (startup)
         }
-        let last_duty = self
-            .get_appropriate_last_duty(&data.profile.profile_uid)
-            .await;
+        let last_duty = self.get_appropriate_last_duty(&data.profile.profile_uid);
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
         if diff_to_last_duty < data.profile.function.duty_minimum
             && data.safety_latch_triggered.not()
@@ -437,38 +432,35 @@ impl FunctionDutyThresholdPostProcessor {
     /// This returns the last duty that was set manually. This used to also do extra work to
     /// determine if it was a true value of the device, but with the introduction of the
     /// safety-latch, that is superfluous.
-    async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
-        *self.scheduled_settings_metadata.read().await[profile_uid]
+    fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
+        *self.scheduled_settings_metadata.borrow()[profile_uid]
             .last_manual_speeds_set
             .back()
             .unwrap() // already checked to exist
     }
 }
 
-#[async_trait]
 impl Processor for FunctionDutyThresholdPostProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.duty.is_some()
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), DutySettingMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        if let Some(duty_to_set) = self.duty_within_thresholds(data).await {
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        if let Some(duty_to_set) = self.duty_within_thresholds(data) {
             {
-                let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+                let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
                 let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
@@ -482,11 +474,7 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             trace!("Duty not above threshold to be applied to device. Skipping");
             trace!(
                 "Last applied duties: {:?}",
-                self.scheduled_settings_metadata
-                    .read()
-                    .await
-                    .get(&data.profile.profile_uid)
-                    .unwrap()
+                self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
                     .last_manual_speeds_set
             );
             data
@@ -515,53 +503,57 @@ impl DutySettingMetadata {
 /// are hit, regardless of thresholds set. It also makes sure that the device is actually doing
 /// what it should. This processor needs to run at both the start and end of the processing chain.
 pub struct FunctionSafetyLatchProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, SafetyLatchMetadata>>,
+    scheduled_settings_metadata: RefCell<HashMap<ProfileUID, SafetyLatchMetadata>>,
 }
 
 impl FunctionSafetyLatchProcessor {
     pub fn new() -> Self {
         Self {
-            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+            scheduled_settings_metadata: RefCell::new(HashMap::new()),
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn initial_max_no_duty_set_count(profile: &NormalizedGraphProfile) -> u8 {
+        if profile.function.response_delay.is_some() {
+            let response_delay_secs = f64::from(profile.function.response_delay.unwrap());
+            let response_delay_count = response_delay_secs / profile.poll_rate;
+            // use response_delay but within a reasonable limit
+            let min_count = (MIN_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil();
+            let max_count = (MAX_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil();
+            response_delay_count.clamp(min_count, max_count) as u8
+        } else {
+            (DEFAULT_MAX_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil() as u8
         }
     }
 }
 
-#[async_trait]
 impl Processor for FunctionSafetyLatchProcessor {
-    async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
+    fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
         true
     }
 
-    async fn init_state(&self, profile_uid: &ProfileUID) {
+    fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .insert(profile_uid.clone(), SafetyLatchMetadata::new());
     }
 
-    async fn clear_state(&self, profile_uid: &ProfileUID) {
+    fn clear_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
-            .write()
-            .await
+            .borrow_mut()
             .remove(profile_uid);
     }
 
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
         let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if data.processing_started.not() {
             // Check whether to trigger the latch at the start of processing
             if metadata.max_no_duty_set_count == 0 {
                 // first run, set the max_count
-                let max_count = if data.profile.function.response_delay.is_some() {
-                    let response_delay = data.profile.function.response_delay.unwrap();
-                    // use response_delay but within a reasonable limit
-                    response_delay.clamp(MIN_NO_DUTY_SET_COUNT, MAX_NO_DUTY_SET_COUNT)
-                } else {
-                    DEFAULT_MAX_NO_DUTY_SET_COUNT
-                };
-                metadata.max_no_duty_set_count = max_count;
+                metadata.max_no_duty_set_count = Self::initial_max_no_duty_set_count(&data.profile);
             }
             if metadata.no_duty_set_counter >= metadata.max_no_duty_set_count {
                 data.safety_latch_triggered = true;
@@ -599,9 +591,9 @@ pub struct SafetyLatchMetadata {
 impl SafetyLatchMetadata {
     pub fn new() -> Self {
         Self {
-            // Settings the default value to max will force the SafetyLatch to trigger on
-            // latch initialization. (such as when applying the profile to a second device channel)
-            no_duty_set_counter: MAX_NO_DUTY_SET_COUNT,
+            // This will force the SafetyLatch to trigger on latch initialization. (such as when
+            // applying the profile to a second device channel)
+            no_duty_set_counter: u8::MAX,
             max_no_duty_set_count: 0,
         }
     }

@@ -95,7 +95,7 @@ impl DeviceMapper {
         &self,
         driver_type: &BaseDriver,
         status_map: &StatusMap,
-        device_index: &u8,
+        device_index: u8,
     ) -> Status {
         self.supported_devices
             .get(driver_type)

@@ -46,23 +46,27 @@ import {
     ModesDTO,
     UpdateModeDTO,
 } from '@/models/Mode'
+import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
+import { Alert, AlertsDTO } from '@/models/Alert.ts'
+// @ts-ignore
+import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private readonly daemonURL: string
+    public readonly daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
-    private daemonTimeout: number = 2_000
-    private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
+    private daemonTimeout: number = 10_000
+    private daemonTimeoutExtended: number = 15_000 // this is for image processing calls that can take significantly longer
     private daemonInitialConnectionTimeout: number = 20_000 // to allow extra time for the daemon to come up
     private daemonCompleteHistoryTimeout: number = 30_000 // takes a long time on a slow connection
-    private killClientTimeout: number = 3_000
-    private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
+    private killClientTimeout: number = 11_000
+    private killClientTimeoutExtended: number = 16_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
-    private userId: string = 'CCAdmin'
-    private defaultPasswd: string = 'coolAdmin'
+    private readonly userId: string = 'CCAdmin'
+    public readonly defaultPasswd: string = 'coolAdmin'
     private unauthorizedCallback: (error: any) => Promise<void> = async (
         _error: any,
     ): Promise<void> => {}
@@ -153,6 +157,54 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return false
+        }
+    }
+
+    async health(): Promise<HealthCheck> {
+        try {
+            const response = await this.getClient().get('/health', {
+                'axios-retry': {
+                    retries: 1,
+                },
+            })
+            this.logDaemonResponse(response, 'Health')
+            return response.data
+        } catch (err) {
+            this.logError(err)
+            return defaultHealthCheck()
+        }
+    }
+
+    async logs(): Promise<string> {
+        try {
+            const response = await this.getClient().get('/logs', {
+                responseType: 'text',
+                'axios-retry': {
+                    retries: 1,
+                },
+            })
+            // this.logDaemonResponse(response, 'Logs')
+            return response.data
+        } catch (err) {
+            this.logError(err)
+            return ''
+        }
+    }
+
+    async acknowledgeIssues(): Promise<void> {
+        try {
+            const response = await this.getClient().post(
+                '/acknowledge',
+                {},
+                {
+                    'axios-retry': {
+                        retries: 1,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Acknowledge Issues')
+        } catch (err) {
+            this.logError(err)
         }
     }
 
@@ -324,6 +376,10 @@ export default class DaemonClient {
         try {
             const response = await this.getClient().get('/settings/ui')
             this.logDaemonResponse(response, 'Load UI Settings')
+            if ((response.data as string).length == 0) {
+                // new blank config file
+                return new UISettingsDTO()
+            }
             return plainToInstance(UISettingsDTO, response.data as object)
         } catch (err) {
             this.logError(err)
@@ -489,6 +545,10 @@ export default class DaemonClient {
             const response = await this.getClient().put(
                 `/devices/${deviceUID}/settings/${channelName}/lcd`,
                 instanceToPlain(setting),
+                {
+                    timeout: this.daemonTimeoutExtended,
+                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+                },
             )
             this.logDaemonResponse(response, 'Apply Device Setting LCD')
             return true
@@ -577,8 +637,8 @@ export default class DaemonClient {
                     'images[]': files,
                 },
                 {
-                    timeout: this.daemonTimeoutExtended,
-                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+                    timeout: this.daemonCompleteHistoryTimeout,
+                    signal: AbortSignal.timeout(this.daemonCompleteHistoryTimeout),
                     responseType: 'arraybuffer',
                 },
             )
@@ -869,6 +929,21 @@ export default class DaemonClient {
         }
     }
 
+    async duplicateMode(modeUID: UID): Promise<Mode | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/modes/${modeUID}/duplicate`)
+            this.logDaemonResponse(response, 'Duplicate Mode')
+            return plainToInstance(Mode, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
     async updateMode(updateModeDto: UpdateModeDTO): Promise<void | ErrorResponse> {
         try {
             const response = await this.getClient().put('/modes', instanceToPlain(updateModeDto))
@@ -912,15 +987,15 @@ export default class DaemonClient {
         }
     }
 
-    async getActiveModeUID(): Promise<UID | undefined> {
+    async getActiveModeUIDs(): Promise<ActiveModeDTO> {
         // This action will also deactivate the mode if it is not currently active
         try {
             const response = await this.getClient().get('/modes-active')
             this.logDaemonResponse(response, 'Get Active Mode')
-            return plainToInstance(ActiveModeDTO, response.data as object).mode_uid
+            return plainToInstance(ActiveModeDTO, response.data as object)
         } catch (err) {
             this.logError(err)
-            return undefined
+            return new ActiveModeDTO()
         }
     }
 
@@ -1044,6 +1119,62 @@ export default class DaemonClient {
             const response = await this.getClient().delete(`/custom-sensors/${customSensorID}`)
             this.logDaemonResponse(response, 'Delete Custom Sensor')
             return
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async loadAlertsAndLogs(): Promise<AlertsDTO> {
+        try {
+            const response = await this.getClient().get('/alerts')
+            this.logDaemonResponse(response, 'Load Alerts')
+            return plainToInstance(AlertsDTO, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return new AlertsDTO()
+        }
+    }
+
+    async createAlert(alert: Alert): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/alerts', instanceToPlain(alert))
+            this.logDaemonResponse(response, 'Create Alert')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async updateAlert(alert: Alert): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().put('/alerts', instanceToPlain(alert))
+            this.logDaemonResponse(response, 'Update Alert')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async deleteAlert(alertUID: UID): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(`/alerts/${alertUID}`)
+            this.logDaemonResponse(response, 'Delete Alert')
+            return undefined
         } catch (err: any) {
             this.logError(err)
             if (err.response) {

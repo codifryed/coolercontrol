@@ -23,16 +23,20 @@ use std::{
 };
 
 use chrono::{DateTime, Local};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
-pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
+const STATUS_SIZE_SECONDS: f64 = 3600.; // only store the last 60 min. of recorded data
 
+#[allow(clippy::upper_case_acronyms)]
 pub type UID = String;
+#[allow(clippy::upper_case_acronyms)]
 pub type DeviceUID = UID;
+#[allow(clippy::upper_case_acronyms)]
 pub type DeviceName = String;
 pub type ChannelName = String;
 pub type TempName = String;
@@ -40,14 +44,16 @@ pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
+#[allow(clippy::upper_case_acronyms)]
 pub type RPM = u32;
 pub type Mhz = u32;
+pub type Watts = f64;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct Device {
     pub name: DeviceName,
 
-    /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
+    /// The `DeviceType`. This combines with the `type_id` are treated as unique identifiers for things like settings.
     pub d_type: DeviceType,
 
     /// The index from the type's device list. Most of the time this is stable.
@@ -104,29 +110,35 @@ impl Device {
         lc_info: Option<LcInfo>,
         info: DeviceInfo,
         device_id: Option<String>,
+        poll_rate: f64,
     ) -> Self {
-        let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);
+        let uid = Self::create_uid_from(&name, &d_type, type_index, device_id.as_ref());
+        let status_history = VecDeque::with_capacity(Self::calc_history_stack_size(poll_rate));
         Device {
             name,
             d_type,
             type_index,
             uid,
             device_id,
-            status_history: VecDeque::with_capacity(STATUS_SIZE),
+            status_history,
             lc_info,
             info,
         }
+    }
+
+    fn calc_history_stack_size(poll_rate: f64) -> usize {
+        (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
     }
 
     /// This returns a sha256 hash string of an attempted unique identifier for a device.
     /// Unique in the sense, that we try to follow the same device even if, for example:
     ///     - another device has been removed and the order has changed.
     ///     - the device has been swapped with another device plugged into the system
-    fn create_uid_from(
+    pub fn create_uid_from(
         name: &str,
         d_type: &DeviceType,
         type_index: u8,
-        device_id: &Option<String>,
+        device_id: Option<&String>,
     ) -> UID {
         let mut hasher = Sha256::new();
         hasher.update(d_type.clone().to_string());
@@ -157,7 +169,8 @@ impl Device {
     /// Arguments:
     ///
     /// * `status`: of type `Status`. It represents the current status of a system or device.
-    pub fn initialize_status_history_with(&mut self, status: Status) {
+    #[allow(clippy::cast_precision_loss)]
+    pub fn initialize_status_history_with(&mut self, status: Status, poll_rate: f64) {
         let zeroed_temps = status
             .temps
             .iter()
@@ -173,13 +186,15 @@ impl Device {
                 rpm: if c.rpm.is_some() { Some(0) } else { None },
                 duty: if c.duty.is_some() { Some(0.0) } else { None },
                 freq: if c.freq.is_some() { Some(0) } else { None },
+                watts: if c.watts.is_some() { Some(0.0) } else { None },
                 ..c.clone()
             })
             .collect::<Vec<ChannelStatus>>();
         self.status_history.clear();
-        for pos in (1..STATUS_SIZE).rev() {
+        let status_stack_size = Self::calc_history_stack_size(poll_rate);
+        for pos in (1..status_stack_size).rev() {
             let zeroed_status = Status {
-                timestamp: status.timestamp - Duration::from_secs(pos as u64),
+                timestamp: status.timestamp - Duration::from_secs_f64(pos as f64 * poll_rate),
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };
@@ -200,13 +215,13 @@ impl Device {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TempStatus {
     pub name: TempName,
     pub temp: Temp,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ChannelStatus {
     pub name: ChannelName,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -216,10 +231,12 @@ pub struct ChannelStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub freq: Option<Mhz>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub watts: Option<Watts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
@@ -239,9 +256,13 @@ impl Default for Status {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize, JsonSchema,
+)]
 pub enum DeviceType {
+    #[allow(clippy::upper_case_acronyms)]
     CPU,
+    #[allow(clippy::upper_case_acronyms)]
     GPU,
     Liquidctl,
     Hwmon,
@@ -249,7 +270,7 @@ pub enum DeviceType {
 }
 
 /// Needed Device info per device
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
     pub temps: HashMap<String, TempInfo>,
@@ -262,7 +283,7 @@ pub struct DeviceInfo {
     pub profile_min_length: u8,
     pub model: Option<String>,
 
-    /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
+    /// When present, then this is a `ThinkPad` device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
     pub thinkpad_fan_control: Option<bool>,
     pub driver_info: DriverInfo,
@@ -285,7 +306,7 @@ impl Default for DeviceInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ChannelInfo {
     pub label: Option<String>,
     pub speed_options: Option<SpeedOptions>,
@@ -294,13 +315,13 @@ pub struct ChannelInfo {
     pub lcd_info: Option<LcdInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct TempInfo {
     pub label: TempLabel,
     pub number: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SpeedOptions {
     /// The minimum fan duty for this speed channel
     pub min_duty: Duty,
@@ -327,14 +348,14 @@ impl Default for SpeedOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum LightingModeType {
     None,
     Liquidctl,
     Custom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LightingMode {
     pub name: String,
     pub frontend_name: String,
@@ -346,14 +367,14 @@ pub struct LightingMode {
     pub type_: LightingModeType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 pub enum LcdModeType {
     None,
     Liquidctl,
     Custom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdMode {
     pub name: String,
     pub frontend_name: String,
@@ -366,7 +387,7 @@ pub struct LcdMode {
     pub type_: LcdModeType,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// Specific LCD Screen info
 pub struct LcdInfo {
     pub screen_width: u32,
@@ -374,7 +395,7 @@ pub struct LcdInfo {
     pub max_image_size_bytes: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 /// Specific Liquidctl device information
 pub struct LcInfo {
     /// An Enum representation of the various Liquidctl driver classes
@@ -385,7 +406,7 @@ pub struct LcInfo {
     pub unknown_asetek: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 /// Device Driver Information
 pub struct DriverInfo {
     pub drv_type: DriverType,
@@ -407,11 +428,12 @@ pub struct DriverInfo {
     pub locations: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
 /// The Driver Type, or source of the driver actively being used for this device.
 pub enum DriverType {
     Kernel,
     Liquidctl,
+    #[allow(clippy::upper_case_acronyms)]
     NVML,
     NvidiaCLI,
     CoolerControl, // For things like CustomSensors

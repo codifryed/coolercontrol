@@ -67,5 +67,17 @@ export class CreateModeDTO {
 }
 
 export class ActiveModeDTO {
-    mode_uid?: UID = undefined
+    current_mode_uid?: UID
+    previous_mode_uid?: UID
+}
+
+export class ModeActivated {
+    uid?: UID
+    name?: string
+    previous_uid?: UID
+
+    constructor(uid: UID, name: string) {
+        this.uid = uid
+        this.name = name
+    }
 }

@@ -17,7 +17,7 @@
  */
 
 import { ChannelInfo } from '@/models/ChannelInfo'
-import { plainToInstance, Transform } from 'class-transformer'
+import { plainToInstance, Transform, Type } from 'class-transformer'
 import { TempInfo } from '@/models/TempInfo.ts'
 
 export class DeviceInfo {
@@ -56,6 +56,9 @@ export class DeviceInfo {
     readonly model?: string
     readonly thinkpad_fan_control?: boolean
 
+    @Type(() => DriverInfo)
+    readonly driver_info: DriverInfo
+
     constructor(
         channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>(),
         lighting_speeds: string[] = [],
@@ -65,6 +68,7 @@ export class DeviceInfo {
         profile_min_length: number = 2,
         model?: string,
         thinkpad_fan_control?: boolean,
+        driver_info: DriverInfo = new DriverInfo(),
     ) {
         this.channels = channels
         this.lighting_speeds = lighting_speeds
@@ -74,5 +78,21 @@ export class DeviceInfo {
         this.profile_min_length = profile_min_length
         this.model = model
         this.thinkpad_fan_control = thinkpad_fan_control
+        this.driver_info = driver_info
     }
+}
+
+export class DriverInfo {
+    readonly drv_type: DriverType = DriverType.COOLERCONTROL
+    readonly name?: string
+    readonly version?: string
+    readonly locations: string[] = []
+}
+
+export enum DriverType {
+    KERNEL = 'Kernel',
+    LIQUIDCTL = 'Liquidctl',
+    NVML = 'NVML',
+    NVIDIA_CLI = 'NvidiaCLI',
+    COOLERCONTROL = 'CoolerControl', // For things like CustomSensors
 }

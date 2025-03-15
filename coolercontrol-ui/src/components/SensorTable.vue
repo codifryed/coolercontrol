@@ -17,27 +17,51 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiMemory } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import { Ref, onMounted, ref, watch } from 'vue'
+import { onMounted, Ref, ref, watch } from 'vue'
 import { Status } from '@/models/Status'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiChip } from '@mdi/js'
+import { Dashboard, DataType } from '@/models/Dashboard.ts'
+import { UID } from '@/models/Device.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
-const deviceTableData: Ref<Array<DeviceData>> = ref([])
-
-enum ChannelType {
-    duty = 'duty',
-    rpm = 'rpm',
-    temp = 'temp',
-    freq = 'freq',
+interface Props {
+    dashboard: Dashboard
 }
+
+const props = defineProps<Props>()
+const includesTemps: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.TEMP)
+const includedDuties: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.DUTY)
+const includesLoads: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.LOAD)
+const includesFreqs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.FREQ)
+const includesRPMs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.RPM)
+const includesWatts: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.WATTS)
+const includesDevice = (deviceUID: UID): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) => deviceChannel.deviceUID === deviceUID,
+    )
+const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) =>
+            deviceChannel.deviceUID === deviceUID && deviceChannel.channelName === channelName,
+    )
+
+const deviceTableData: Ref<Array<DeviceData>> = ref([])
 
 interface DeviceData {
     rowID: string
@@ -46,32 +70,40 @@ interface DeviceData {
     channelID: string
     channelColor: string
     channelLabel: string
-    channelType: ChannelType
+    dataType: DataType // we include LOAD in with DUTY since they are both percents.
     value: number
     min: number
     max: number
+    avg: number
+    count: number // number of values we're calculating
 }
 
-const calcMaxMinValues = (
+const getData = (status: Status, channel_name: string, dataType: DataType): number => {
+    switch (dataType) {
+        case DataType.DUTY:
+            return status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
+        case DataType.RPM:
+            return status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
+        case DataType.FREQ:
+            return status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
+        case DataType.WATTS:
+            return status.channels.find((channel) => channel.name === channel_name)?.watts ?? 0
+        case DataType.TEMP:
+            return status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
+        default:
+            return 0
+    }
+}
+
+// We collect and calculate them all together to keep init processing time down
+const calcMinMaxAvg = (
     channel_name: string,
     status_history: Array<Status>,
-    channelType: ChannelType,
-): [number, number] => {
-    const channelValues: Array<number> = []
-    status_history
-        .map((status) =>
-            channelType == ChannelType.duty
-                ? (status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0)
-                : channelType == ChannelType.rpm
-                  ? (status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0)
-                  : channelType == ChannelType.freq
-                    ? (status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0)
-                    : channelType == ChannelType.temp
-                      ? (status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0)
-                      : 0,
-        )
-        .forEach((value) => channelValues.push(value))
-
+    dataType: DataType,
+): [number, number, number, number] => {
+    const channelValues: Array<number> = status_history.map((status) =>
+        getData(status, channel_name, dataType),
+    )
     const min = channelValues.reduce(
         (accumulator, currentValue) => Math.min(accumulator, currentValue),
         Number.MAX_SAFE_INTEGER,
@@ -80,53 +112,67 @@ const calcMaxMinValues = (
         (accumulator, currentValue) => Math.max(accumulator, currentValue),
         0,
     )
-    return [min, max]
+    const avg =
+        channelValues.reduce((accumulator, currentValue) => accumulator + currentValue, 0) /
+        channelValues.length
+    const count = channelValues.length
+    return [min, max, avg, count]
 }
 
 const initTableData = () => {
     deviceTableData.value.length = 0
     for (const device of deviceStore.allDevices()) {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+        if (!includesDevice(device.uid)) continue
         for (const temp of device.status.temps) {
             const channelSettings = deviceSettings.sensorsAndChannels.get(temp.name)
-            if (channelSettings?.hide) {
+            if (!includesDeviceChannel(device.uid, temp.name) || !includesTemps) {
                 continue
             }
-            const [min, max] = calcMaxMinValues(temp.name, device.status_history, ChannelType.temp)
+            const [min, max, avg, count] = calcMinMaxAvg(
+                temp.name,
+                device.status_history,
+                DataType.TEMP,
+            )
             deviceTableData.value.push({
                 rowID: device.uid + temp.name,
                 deviceUID: device.uid,
                 deviceName: deviceSettings.name,
                 channelID: temp.name,
                 channelColor: channelSettings?.color ?? 'white',
-                channelType: ChannelType.temp,
+                dataType: DataType.TEMP,
                 channelLabel: channelSettings?.name ?? temp.name,
                 value: temp.temp,
                 min: min,
                 max: max,
+                avg: avg,
+                count: count,
             })
         }
         if (device.info == null) {
             continue
         }
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.lcd_info != null || channelInfo.lighting_modes.length > 0) {
+            if (
+                !includesDeviceChannel(device.uid, channelName) ||
+                channelInfo.lcd_info != null ||
+                channelInfo.lighting_modes.length > 0
+            ) {
                 continue
             }
             const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
-            if (channelSettings?.hide) {
-                continue
-            }
             for (const channel of device.status.channels) {
                 if (channel.name !== channelName) {
                     continue
                 }
                 if (channel.duty != null) {
+                    if (!includesLoads && channel.name.endsWith('Load')) continue
+                    if (!includedDuties && !channel.name.endsWith('Load')) continue
                     // handles both duty and load
-                    const [min, max] = calcMaxMinValues(
+                    const [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
-                        ChannelType.duty,
+                        DataType.DUTY,
                     )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
@@ -135,17 +181,19 @@ const initTableData = () => {
                         channelID: channel.name,
                         channelColor: channelSettings?.color ?? 'white',
                         channelLabel: channelSettings?.name ?? channel.name,
-                        channelType: ChannelType.duty,
+                        dataType: DataType.DUTY,
                         value: channel.duty,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
-                if (channel.rpm != null) {
-                    const [min, max] = calcMaxMinValues(
+                if (includesRPMs && channel.rpm != null) {
+                    const [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
-                        ChannelType.rpm,
+                        DataType.RPM,
                     )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
@@ -154,17 +202,45 @@ const initTableData = () => {
                         channelID: channel.name,
                         channelColor: channelSettings?.color ?? 'white',
                         channelLabel: channelSettings?.name ?? channel.name,
-                        channelType: ChannelType.rpm,
+                        dataType: DataType.RPM,
                         value: channel.rpm,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
-                if (channel.freq != null) {
-                    const [min, max] = calcMaxMinValues(
+                if (includesFreqs && channel.freq != null) {
+                    let [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
-                        ChannelType.freq,
+                        DataType.FREQ,
+                    )
+                    if (settingsStore.frequencyPrecision > 1) {
+                        min = min / settingsStore.frequencyPrecision
+                        max = max / settingsStore.frequencyPrecision
+                        avg = avg / settingsStore.frequencyPrecision
+                    }
+                    deviceTableData.value.push({
+                        rowID: device.uid + channel.name,
+                        deviceUID: device.uid,
+                        deviceName: deviceSettings.name,
+                        channelID: channel.name,
+                        channelColor: channelSettings?.color ?? 'white',
+                        channelLabel: channelSettings?.name ?? channel.name,
+                        dataType: DataType.FREQ,
+                        value: channel.freq / settingsStore.frequencyPrecision,
+                        min: min,
+                        max: max,
+                        avg: avg,
+                        count: count,
+                    })
+                }
+                if (includesWatts && channel.watts != null) {
+                    let [min, max, avg, count] = calcMinMaxAvg(
+                        channel.name,
+                        device.status_history,
+                        DataType.WATTS,
                     )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
@@ -173,10 +249,12 @@ const initTableData = () => {
                         channelID: channel.name,
                         channelColor: channelSettings?.color ?? 'white',
                         channelLabel: channelSettings?.name ?? channel.name,
-                        channelType: ChannelType.freq,
-                        value: channel.freq,
+                        dataType: DataType.WATTS,
+                        value: channel.watts,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
             }
@@ -186,47 +264,87 @@ const initTableData = () => {
 
 initTableData()
 
+// Allows us to efficiently calculate averages in real time
+const calcCumulativeAverage = (row: DeviceData, newValue: number, newCount: number): number =>
+    (row.avg * row.count + newValue) / newCount
+
 const updateTableData = () => {
     for (const row of deviceTableData.value) {
         let newValue: number
-        switch (row.channelType) {
-            case ChannelType.temp:
+        switch (row.dataType) {
+            case DataType.TEMP:
                 newValue = Number(
                     deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.temp,
                 )
                 break
-            case ChannelType.duty:
+            case DataType.DUTY:
                 newValue = Number(
                     deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.duty,
                 )
                 break
-            case ChannelType.rpm:
+            case DataType.RPM:
                 newValue = Number(
                     deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.rpm,
                 )
                 break
-            case ChannelType.freq:
+            case DataType.FREQ:
+                newValue =
+                    Number(
+                        deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!
+                            .freq,
+                    ) / settingsStore.frequencyPrecision
+                break
+            case DataType.WATTS:
                 newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.freq,
+                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.watts,
                 )
                 break
+            default:
+                newValue = 0
         }
         row.value = newValue
         row.min = Math.min(row.min, newValue)
         row.max = Math.max(row.max, newValue)
+        const newCount = row.count + 1
+        row.avg = calcCumulativeAverage(row, newValue, newCount)
+        row.count = newCount
     }
 }
 
-const format = (value: number, channelType: ChannelType): string => {
-    switch (channelType) {
-        case ChannelType.temp:
-            return value.toFixed(1) + ' °'
-        case ChannelType.duty:
-            return value.toFixed(0) + ' %'
-        case ChannelType.rpm:
-            return value.toFixed(0) + ' rpm'
-        case ChannelType.freq:
-            return value.toFixed(0) + ' mhz'
+const format = (value: number, dataType: DataType): string => {
+    if (dataType === DataType.TEMP || dataType === DataType.WATTS) {
+        return value.toFixed(1)
+    } else if (dataType === DataType.FREQ && settingsStore.frequencyPrecision > 1) {
+        return value.toFixed(2)
+    } else {
+        return value.toFixed(0)
+    }
+}
+const suffix = (dataType: DataType): string => {
+    switch (dataType) {
+        case DataType.TEMP:
+            return ' °'
+        case DataType.DUTY:
+            return ' %'
+        case DataType.RPM:
+            return ' rpm'
+        case DataType.FREQ:
+            return settingsStore.frequencyPrecision === 1 ? ' Mhz' : ' Ghz'
+        case DataType.WATTS:
+            return ' W'
+        default:
+            return ' %'
+    }
+}
+const suffixStyle = (dataType: DataType): string => {
+    switch (dataType) {
+        case DataType.TEMP:
+            return ''
+        case DataType.FREQ:
+        case DataType.WATTS:
+            return 'font-size: 0.62rem'
+        default:
+            return 'font-size: 0.7rem'
     }
 }
 
@@ -252,20 +370,26 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="table-wrapper">
+    <div class="h-full pb-14">
         <DataTable
-            class="mt-3"
             :value="deviceTableData"
             row-group-mode="rowspan"
             :group-rows-by="['deviceName', 'rowID']"
+            scrollable
+            scroll-height="flex"
+            :pt="{
+                tableContainer: () => ({
+                    class: ['rounded-none border-0 border-border-one'],
+                }),
+            }"
         >
             <Column field="deviceName" header="Device">
                 <template #body="slotProps">
-                    <div class="flex align-items-center">
-                        <div class="flex-inline mr-2 pt-1">
+                    <div class="flex leading-none items-center">
+                        <div class="mr-2">
                             <svg-icon
                                 type="mdi"
-                                :path="mdiChip"
+                                :path="mdiMemory"
                                 :size="deviceStore.getREMSize(1.3)"
                             />
                         </div>
@@ -283,27 +407,40 @@ onMounted(async () => {
                     />{{ slotProps.data.channelLabel }}
                 </template>
             </Column>
-            <Column field="value" header="Value">
+            <Column field="value" header="Current">
                 <template #body="slotProps">
-                    {{ format(slotProps.data.value, slotProps.data.channelType) }}
+                    {{ format(slotProps.data.value, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
             <Column field="min" header="Min">
                 <template #body="slotProps">
-                    {{ format(slotProps.data.min, slotProps.data.channelType) }}
+                    {{ format(slotProps.data.min, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
             <Column field="max" header="Max">
                 <template #body="slotProps">
-                    {{ format(slotProps.data.max, slotProps.data.channelType) }}
+                    {{ format(slotProps.data.max, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
+                </template>
+            </Column>
+            <Column field="avg" header="Average">
+                <template #body="slotProps">
+                    {{ format(slotProps.data.avg, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
         </DataTable>
     </div>
 </template>
 
-<style scoped>
-.table-wrapper :deep(.p-datatable-wrapper) {
-    border-radius: 12px;
-}
-</style>
+<style lang="scss" scoped></style>

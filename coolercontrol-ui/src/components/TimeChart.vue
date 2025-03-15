@@ -20,17 +20,19 @@
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { onMounted } from 'vue'
-import { Device } from '@/models/Device'
+import { Device, UID } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import {
     columnHighlightPlugin,
+    DeviceLineProperties,
     mouseWheelZoomPlugin,
-    tooltipPlugin,
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
-    DeviceLineProperties,
+    SCALE_KEY_WATTS,
+    tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
+import { Dashboard, DataType } from '@/models/Dashboard.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -43,14 +45,34 @@ const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
 
 interface Props {
-    temp: boolean
-    load: boolean
-    duty: boolean
-    rpm: boolean
-    freq: boolean
+    dashboard: Dashboard
 }
 
 const props = defineProps<Props>()
+const includesTemps: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.TEMP)
+const includedDuties: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.DUTY)
+const includesLoads: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.LOAD)
+const includesFreqs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.FREQ)
+const includesRPMs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.RPM)
+const includesWatts: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.WATTS)
+const includesDevice = (deviceUID: UID): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) => deviceChannel.deviceUID === deviceUID,
+    )
+const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) =>
+            deviceChannel.deviceUID === deviceUID && deviceChannel.channelName === channelName,
+    )
+const timeRangeSeconds = props.dashboard.timeRangeSeconds
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
@@ -70,28 +92,27 @@ const initUSeriesData = () => {
     uLineNames.length = 0
 
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
-    const uTimeData = new Uint32Array(currentStatusLength)
+    const currentStatusLength = timeRangeSeconds / settingsStore.ccSettings.poll_rate
+    const uTimeData = new Float64Array(currentStatusLength)
     for (const [statusIndex, status] of firstDevice.status_history
         .slice(-currentStatusLength)
         .entries()) {
-        uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
+        uTimeData[statusIndex] = new Date(status.timestamp).getTime() / 1000 // Status' Unix timestamp
     }
 
-    // line values should not be greater than 100 and not less than 0,
-    //  but we need to use decimal values for at least temps, so Float32.
+    // We need to use decimal values for at least temps, so Float32.
     // TypedArrays have a fixed length, so we need to manage this ourselves
     const uLineData = new Map<string, Float32Array>()
 
     for (const device of deviceStore.allDevices()) {
+        if (!includesDevice(device.uid)) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const [statusIndex, status] of device.status_history
             .slice(-currentStatusLength)
             .entries()) {
             for (const tempStatus of status.temps) {
-                if (!props.temp) {
-                    break
-                }
+                if (!includesTemps) break
+                if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
                 const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
                 const lineName = createLineName(device, tempStatus.name + '_temp')
                 if (!uLineNames.includes(lineName)) {
@@ -100,7 +121,6 @@ const initUSeriesData = () => {
                 if (!allDevicesLineProperties.has(lineName)) {
                     allDevicesLineProperties.set(lineName, {
                         color: tempSettings.color,
-                        hidden: tempSettings.hide,
                         name: tempSettings.name,
                     })
                 }
@@ -112,9 +132,10 @@ const initUSeriesData = () => {
                 floatArray[statusIndex] = tempStatus.temp
             }
             for (const channelStatus of status.channels) {
+                if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
                 if (channelStatus.duty != null) {
-                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                    const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
+                    const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
                     if (isLoadChannel || isFanDutyChannel) {
                         const channelSettings = deviceSettings.sensorsAndChannels.get(
                             channelStatus.name,
@@ -127,7 +148,6 @@ const initUSeriesData = () => {
                         if (!allDevicesLineProperties.has(lineName)) {
                             allDevicesLineProperties.set(lineName, {
                                 color: channelSettings.color,
-                                hidden: channelSettings.hide,
                                 name: channelSettings.name,
                             })
                         }
@@ -139,7 +159,7 @@ const initUSeriesData = () => {
                         floatArray[statusIndex] = channelStatus.duty
                     }
                 }
-                if (props.rpm && channelStatus.rpm != null) {
+                if (includesRPMs && channelStatus.rpm != null) {
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -150,7 +170,6 @@ const initUSeriesData = () => {
                     if (!allDevicesLineProperties.has(lineName)) {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
-                            hidden: channelSettings.hide,
                             name: channelSettings.name,
                         })
                     }
@@ -159,9 +178,9 @@ const initUSeriesData = () => {
                         floatArray = new Float32Array(currentStatusLength)
                         uLineData.set(lineName, floatArray)
                     }
-                    floatArray[statusIndex] = channelStatus.rpm
+                    floatArray[statusIndex] = channelStatus.rpm / settingsStore.frequencyPrecision
                 }
-                if (props.freq && channelStatus.freq != null) {
+                if (includesFreqs && channelStatus.freq != null) {
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -172,7 +191,6 @@ const initUSeriesData = () => {
                     if (!allDevicesLineProperties.has(lineName)) {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
-                            hidden: channelSettings.hide,
                             name: channelSettings.name,
                         })
                     }
@@ -181,7 +199,28 @@ const initUSeriesData = () => {
                         floatArray = new Float32Array(currentStatusLength)
                         uLineData.set(lineName, floatArray)
                     }
-                    floatArray[statusIndex] = channelStatus.freq
+                    floatArray[statusIndex] = channelStatus.freq / settingsStore.frequencyPrecision
+                }
+                if (includesWatts && channelStatus.watts != null) {
+                    const channelSettings = deviceSettings.sensorsAndChannels.get(
+                        channelStatus.name,
+                    )!
+                    const lineName = createLineName(device, channelStatus.name + '_watts')
+                    if (!uLineNames.includes(lineName)) {
+                        uLineNames.push(lineName)
+                    }
+                    if (!allDevicesLineProperties.has(lineName)) {
+                        allDevicesLineProperties.set(lineName, {
+                            color: channelSettings.color,
+                            name: channelSettings.name,
+                        })
+                    }
+                    let floatArray = uLineData.get(lineName)
+                    if (floatArray == null) {
+                        floatArray = new Float32Array(currentStatusLength)
+                        uLineData.set(lineName, floatArray)
+                    }
+                    floatArray[statusIndex] = channelStatus.watts
                 }
             }
         }
@@ -205,25 +244,26 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
+    const currentStatusLength = timeRangeSeconds / settingsStore.ccSettings.poll_rate
     shiftSeriesData(1)
 
     const newTimestamp = firstDevice.status.timestamp
-    uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
+    uSeriesData[0][currentStatusLength - 1] = new Date(newTimestamp).getTime() / 1000
 
     for (const device of deviceStore.allDevices()) {
+        if (!includesDevice(device.uid)) continue
         const newStatus = device.status
         for (const tempStatus of newStatus.temps) {
-            if (!props.temp) {
-                break
-            }
+            if (!includesTemps) break
+            if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
             const lineName = createLineName(device, tempStatus.name + '_temp')
             uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
         }
         for (const channelStatus of newStatus.channels) {
+            if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
             if (channelStatus.duty != null) {
-                const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
+                const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
                 if (isLoadChannel || isFanDutyChannel) {
                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                     const lineName = createLineName(device, channelStatus.name + lineNameExt)
@@ -231,15 +271,20 @@ const updateUSeriesData = () => {
                         channelStatus.duty
                 }
             }
-            if (props.rpm && channelStatus.rpm != null) {
+            if (includesRPMs && channelStatus.rpm != null) {
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.rpm
+                    channelStatus.rpm / settingsStore.frequencyPrecision
             }
-            if (props.freq && channelStatus.freq != null) {
+            if (includesFreqs && channelStatus.freq != null) {
                 const lineName = createLineName(device, channelStatus.name + '_freq')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.freq
+                    channelStatus.freq / settingsStore.frequencyPrecision
+            }
+            if (includesWatts && channelStatus.watts != null) {
+                const lineName = createLineName(device, channelStatus.name + '_watts')
+                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
+                    channelStatus.watts
             }
         }
     }
@@ -269,43 +314,69 @@ const getLineStyle = (lineName: string): Array<number> => {
         return [6, 3]
     } else if (lineLower.endsWith('duty')) {
         return [10, 3, 2, 3]
+    } else if (lineLower.endsWith('watts')) {
+        return [6, 3, 2, 6]
     } else {
         return []
     }
 }
+
+let hasDegreeAxis: boolean = false
+let hasFrequencyAxis: boolean = false
+let hasWattsAxis: boolean = false
 for (const lineName of uLineNames) {
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
+        hasFrequencyAxis = true
         uPlotSeries.push({
-            show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
             scale: SCALE_KEY_RPM,
-            auto: true,
+            auto: props.dashboard.autoScaleFrequency,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
                 show: false,
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: settingsStore.systemOverviewOptions.timeChartLineScale,
+            width: settingsStore.chartLineScale,
             // min: 0,
             // max: 10000,
             // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
+            // value: (_, rawValue) => {
+            //     // if (props.dashboard.frequencyPrecision === 1)
+            //     //     return rawValue != null ? rawValue.toFixed(0) : rawValue
+            //     // else
+            //         return rawValue != null ? (rawValue / 1000).toFixed(1) : rawValue
+            // },
         })
-    } else {
+    } else if (lineName.endsWith('_watts')) {
+        hasWattsAxis = true
         uPlotSeries.push({
-            show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
-            scale: SCALE_KEY_PERCENT,
-            auto: false,
+            scale: SCALE_KEY_WATTS,
+            auto: props.dashboard.autoScaleWatts,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
                 show: false,
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: settingsStore.systemOverviewOptions.timeChartLineScale,
-            min: 0,
-            max: 100,
+            width: settingsStore.chartLineScale,
+        })
+    } else {
+        hasDegreeAxis = true
+        uPlotSeries.push({
+            label: lineName,
+            scale: SCALE_KEY_PERCENT,
+            auto: props.dashboard.autoScaleDegree,
+            stroke: allDevicesLineProperties.get(lineName)?.color,
+            points: {
+                show: false,
+            },
+            dash: getLineStyle(lineName),
+            spanGaps: true,
+            width: settingsStore.chartLineScale,
+            // min: 0,
+            // max: 100,
             value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
         })
     }
@@ -319,7 +390,9 @@ const uOptions: uPlot.Options = {
     axes: [
         {
             stroke: colors.themeColors.text_color,
-            size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
+            size: deviceStore.isSafariWebKit()
+                ? Math.max(deviceStore.getREMSize(2.0), 38)
+                : deviceStore.getREMSize(2.0),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
@@ -328,9 +401,10 @@ const uOptions: uPlot.Options = {
                 size: 5,
             },
             space: deviceStore.getREMSize(6.25),
-            incrs: [15, 60, 300],
+            incrs: [15, 60, 300, 900],
             values: [
                 // min tick incr | default | year | month | day | hour | min | sec | mode
+                [900, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [300, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [60, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [15, `{${hourFormat}}:{mm}:{ss}`, null, null, null, null, null, null, 0],
@@ -338,28 +412,28 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.gray_600,
+                stroke: colors.themeColors.border,
                 width: 1,
-                dash: [1, 3],
+                dash: [1, 2],
             },
         },
         {
             scale: SCALE_KEY_PERCENT,
-            label: 'duty %  |  temperature °C',
+            label: '%  /  °C',
             labelGap: 0,
-            labelSize: deviceStore.getREMSize(1.3),
-            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
+            labelSize: deviceStore.getREMSize(1.4),
+            labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             gap: 3,
             ticks: {
                 show: true,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
                 width: 1,
                 size: 5,
             },
@@ -368,70 +442,173 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.gray_600,
+                stroke: colors.themeColors.border,
                 width: 1,
-                dash: [1, 3],
+                dash: [1, 2],
             },
         },
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: 'rpm  |  mhz',
-            labelGap: deviceStore.getREMSize(1.6),
-            labelSize: deviceStore.getREMSize(2.7),
-            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
+            label: settingsStore.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
+            labelGap: settingsStore.frequencyPrecision === 1 ? deviceStore.getREMSize(1.0) : 0,
+            labelSize:
+                settingsStore.frequencyPrecision === 1
+                    ? deviceStore.getREMSize(2.9)
+                    : hasWattsAxis
+                      ? deviceStore.getREMSize(2.25)
+                      : deviceStore.getREMSize(1.4),
+            // labelFont, unlike font, seems to take rem values properly, and by is 1rem by default:
+            labelFont: `sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
-                stroke: colors.themeColors.surface_card,
+                stroke: colors.themeColors.text_color_secondary,
                 width: 1,
                 size: 5,
             },
+            values: (_, axisValues) =>
+                axisValues.map((rawValue) =>
+                    settingsStore.frequencyPrecision === 1
+                        ? rawValue.toFixed(0)
+                        : rawValue.toFixed(1),
+                ),
+            incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
+                if (settingsStore.frequencyPrecision === 1) {
+                    if (scaleMax > 7000) {
+                        return [1000]
+                    } else if (scaleMax > 3000) {
+                        return [500]
+                    } else if (scaleMax > 1300) {
+                        return [200]
+                    } else if (scaleMax > 700) {
+                        return [100]
+                    } else {
+                        return [50]
+                    }
+                } else {
+                    return [1]
+                }
+            },
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors.text_color_secondary,
+            },
+            grid: {
+                show: !hasDegreeAxis && hasFrequencyAxis,
+                stroke: colors.themeColors.border,
+                width: 1,
+                dash: [1, 2],
+            },
+        },
+        {
+            side: 1,
+            scale: SCALE_KEY_WATTS,
+            label: 'watts',
+            labelGap: 0,
+            labelSize: deviceStore.getREMSize(1.4),
+            labelFont: `sans-serif`,
+            stroke: colors.themeColors.text_color,
+            size: deviceStore.getREMSize(2.5),
+            font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            gap: 3,
+            ticks: {
+                show: true,
+                stroke: colors.themeColors.text_color_secondary,
+                width: 1,
+                size: 5,
+            },
+
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (scaleMax > 7000) {
                     return [1000]
                 } else if (scaleMax > 3000) {
                     return [500]
-                } else if (scaleMax > 1300) {
+                } else if (scaleMax > 1200) {
                     return [200]
-                } else if (scaleMax > 700) {
+                } else if (scaleMax > 500) {
                     return [100]
-                } else {
+                } else if (scaleMax > 180) {
                     return [50]
+                } else if (scaleMax > 120) {
+                    return [20]
+                } else if (scaleMax > 50) {
+                    return [10]
+                } else if (scaleMax > 23) {
+                    return [5]
+                } else if (scaleMax > 13) {
+                    return [2]
+                } else if (scaleMax > 7) {
+                    return [1]
+                } else if (scaleMax > 1) {
+                    return [0.5]
                 }
+                return [0.1]
+            },
+            // values: (_, ticks) => ticks.map((rawValue) => rawValue + ' W'),
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
-                show: false,
+                show: !hasDegreeAxis && !hasFrequencyAxis && hasWattsAxis,
+                stroke: colors.themeColors.border,
+                width: 1,
+                dash: [1, 2],
             },
         },
     ],
     scales: {
         '%': {
-            auto: false,
-            range: [0, 100],
+            auto: props.dashboard.autoScaleDegree,
+            range: (_self, _dataMin, dataMax) => {
+                if (!hasDegreeAxis) return [null, null]
+                return props.dashboard.autoScaleDegree
+                    ? uPlot.rangeNum(0, dataMax || 10.5, 0.1, true)
+                    : [props.dashboard.degreeMin, props.dashboard.degreeMax]
+            },
         },
         rpm: {
-            auto: true,
+            auto: props.dashboard.autoScaleFrequency,
             // @ts-ignore
             range: (_self, _dataMin, dataMax) => {
-                if (!props.rpm && !props.freq) {
-                    return [null, null]
-                }
-                return uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                if (!hasFrequencyAxis) return [null, null]
+                return props.dashboard.autoScaleFrequency
+                    ? uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                    : [
+                          props.dashboard.frequencyMin / settingsStore.frequencyPrecision,
+                          props.dashboard.frequencyMax / settingsStore.frequencyPrecision,
+                      ]
+            },
+        },
+        W: {
+            auto: props.dashboard.autoScaleWatts,
+            range: (_self, _dataMin, dataMax) => {
+                if (!hasWattsAxis) return [null, null]
+                return props.dashboard.autoScaleWatts
+                    ? uPlot.rangeNum(0, dataMax || 10.5, 0.1, true)
+                    : [props.dashboard.wattsMin, props.dashboard.wattsMax]
             },
         },
         x: {
             auto: true,
             time: true,
-            // range: (min, max) => [uSeriesData[0].splice(-61)[0], uSeriesData[0].splice(-1)[0]],
-            // range: timeRange(),
-            // range: (min, max) => [((Date.now() / 1000) - 60), uPlotSeries[]],
+            // @ts-ignore
+            range: (self, newMin, newMax) => {
+                let curMin = self.scales.x.min
+                let curMax = self.scales.x.max
+                // prevent zooming in too far, < 10 seconds
+                if (newMax - newMin < 10) return [curMin, curMax]
+                return [newMin, newMax]
+            },
         },
     },
     legend: {
@@ -446,8 +623,26 @@ const uOptions: uPlot.Options = {
             show: false,
         },
         drag: {
-            x: false,
+            // enable zoom selection of x-axis
+            x: true,
             y: false,
+            // distance to cover before starting selection
+            dist: 10,
+        },
+        bind: {
+            // @ts-ignore
+            mousedown: (u, targ, handler) => {
+                return (e) => {
+                    if (e.button == 0) {
+                        const pxPerXUnitSecond = u.valToPos(1, 'x') - u.valToPos(0, 'x')
+                        // 10 seconds max zoom-in
+                        u.cursor.drag!.dist = pxPerXUnitSecond * 10
+                        // if (e.ctrlKey) {
+                        // }
+                        handler(e)
+                    }
+                }
+            },
         },
     },
     plugins: [
@@ -503,96 +698,31 @@ onMounted(async () => {
             })
         }
     })
-
-    // watch(settingsStore.systemOverviewOptions, () => {
-    //     // needed to apply line thickness:
-    //     for (const [index, _] of uLineNames.entries()) {
-    //         const seriesIndex = index + 1
-    //         uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
-    //         uPlotChart.delSeries(seriesIndex)
-    //         uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-    //     }
-    //     callRefreshSeriesListData()
-    //     uPlotChart.redraw()
-    //     uPlotChart.setData(uSeriesData)
-    // })
-
-    // watch(settingsStore.allUIDeviceSettings, () => {
-    //     // re-set all line colors on device settings change
-    //     for (const device of deviceStore.allDevices()) {
-    //         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-    //         for (const tempStatus of device.status.temps) {
-    //             if (!props.temp) {
-    //                 break
-    //             }
-    //             allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
-    //                 color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
-    //                 hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
-    //                 name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
-    //             })
-    //         }
-    //         for (const channelStatus of device.status.channels) {
-    //             if (channelStatus.duty != null) {
-    //                 const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-    //                 const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
-    //                 if (isLoadChannel || isFanDutyChannel) {
-    //                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
-    //                     allDevicesLineProperties.set(
-    //                         createLineName(device, channelStatus.name + lineNameExt),
-    //                         {
-    //                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-    //                                 .color,
-    //                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-    //                                 .hide,
-    //                             name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-    //                                 .name,
-    //                         },
-    //                     )
-    //                 }
-    //             }
-    //             if (props.rpm && channelStatus.rpm != null) {
-    //                 allDevicesLineProperties.set(
-    //                     createLineName(device, channelStatus.name + '_rpm'),
-    //                     {
-    //                         color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-    //                         hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-    //                         name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
-    //                     },
-    //                 )
-    //             } else if (props.freq && channelStatus.freq != null) {
-    //                 allDevicesLineProperties.set(
-    //                     createLineName(device, channelStatus.name + '_freq'),
-    //                     {
-    //                         color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-    //                         hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-    //                         name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
-    //                     },
-    //                 )
-    //             }
-    //         }
-    //     }
-    //     for (const [index, lineName] of uLineNames.entries()) {
-    //         const seriesIndex = index + 1
-    //         uPlotSeries[seriesIndex].show = !allDevicesLineProperties.get(lineName)?.hidden
-    //         uPlotSeries[seriesIndex].stroke = allDevicesLineProperties.get(lineName)?.color
-    //         uPlotChart.delSeries(seriesIndex)
-    //         uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-    //     }
-    //     uPlotChart.redraw()
-    // })
 })
 </script>
 
 <template>
-    <div id="u-plot-chart" class="chart"></div>
+    <div class="p-2">
+        <div id="u-plot-chart"></div>
+    </div>
 </template>
 
-<style scoped>
-.chart {
+<style scoped lang="scss">
+#u-plot-chart {
     width: 100%;
-    height: calc(100vh - 11.2rem);
+    height: calc(100vh - 5.75rem);
 }
 
+// zoom selection style
+#u-plot-chart :deep(.u-select) {
+    background: linear-gradient(
+        0deg,
+        rgba(var(--colors-accent) / 0.03) 0%,
+        rgba(var(--colors-accent) / 0.4) 100%
+    );
+    position: absolute;
+    pointer-events: none;
+}
 /** To add a crosshair to the y-axis:
 .chart :deep(.u-hz .u-cursor-y) {
     border-bottom: v-bind(yCrosshair);
