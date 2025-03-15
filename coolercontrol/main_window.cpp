@@ -137,7 +137,6 @@ void MainWindow::initWizard() {
     delay(300);  // give signals a moment to process.
     m_startup = true;
     m_changeAddress = false;
-    m_isDaemonConnected = false;
     m_uiLoadingStopped = false;
     m_view->load(getDaemonUrl());
   });
@@ -249,8 +248,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     event->ignore();
     return;
   }
-  m_isDaemonConnected = false;  // stops from trying to reconnect
-  m_retryTimer->stop();
+  m_retryTimer->stop();  // stop reconnecting if running
   emit dropConnections();
   m_ipc->syncSettings();
   event->accept();
@@ -514,8 +512,7 @@ void MainWindow::watchConnectionAndLogs() const {
     const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Log Watch SSE closed with status: " << status;
     // on error or dropped connection will be re-connected once connection is re-established.
-    if (m_isDaemonConnected && !m_changeAddress) {
-      m_isDaemonConnected = false;
+    if (!m_forceQuit && !m_changeAddress) {
       notifyDaemonDisconnected();
       emit daemonConnectionLost();
       qInfo() << "Connection to the Daemon Lost";
@@ -525,7 +522,7 @@ void MainWindow::watchConnectionAndLogs() const {
 }
 
 void MainWindow::reestablishDaemonConnection() const {
-  if (m_isDaemonConnected || m_changeAddress) {
+  if (m_changeAddress) {
     return;
   }
   emit dropConnections();
@@ -539,21 +536,18 @@ void MainWindow::tryDaemonConnection() const {
   const auto healthReply = m_manager->get(healthRequest);
   qDebug() << "Attempting to establish connection to the daemon...";
   connect(healthReply, &QNetworkReply::readyRead, [this, healthReply]() {
-    if (!m_isDaemonConnected) {
-      m_isDaemonConnected = true;
-      m_retryTimer->stop();
-      if (m_startup) {
-        requestDaemonErrors();
-        requestAllModes();
-        requestActiveMode();
-        emit watchForSSE();
-        qInfo() << "Successfully connected to the Daemon";
-        m_startup = false;
-      } else {
-        qInfo() << "Connection to the Daemon Reestablished";
-        notifyDaemonConnectionRestored();
-        emit watchForSSE();
-      }
+    m_retryTimer->stop();
+    if (m_startup) {
+      requestDaemonErrors();
+      requestAllModes();
+      requestActiveMode();
+      emit watchForSSE();
+      qInfo() << "Successfully connected to the Daemon";
+      m_startup = false;
+    } else {
+      qInfo() << "Connection to the Daemon Reestablished";
+      notifyDaemonConnectionRestored();
+      emit watchForSSE();
     }
     healthReply->deleteLater();
   });
