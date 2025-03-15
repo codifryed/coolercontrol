@@ -112,12 +112,13 @@ void MainWindow::initWizard() {
   m_wizard->setButtonText(QWizard::HelpButton, "&Quit App");
   m_wizard->setOption(QWizard::HaveHelpButton, true);
   m_wizard->addPage(new IntroPage(m_wizard));
-  auto addressPage = new AddressPage(m_wizard);
+  const auto addressPage = new AddressPage(m_wizard);
   m_wizard->addPage(addressPage);
   m_wizard->setMinimumSize(640, 480);
-  connect(m_wizard, &QWizard::helpRequested, []() { QApplication::quit(); });
+  connect(m_wizard, &QWizard::helpRequested, this, &MainWindow::forceQuit, Qt::QueuedConnection);
   connect(m_wizard, &QWizard::customButtonClicked, [this](const int which) {
     if (which == 6) {  // Retry CustomButton1
+      m_uiLoadingStopped = false;
       m_view->load(getDaemonUrl());
       m_wizard->hide();
     }
@@ -133,6 +134,7 @@ void MainWindow::initWizard() {
     m_startup = true;
     m_changeAddress = false;
     m_isDaemonConnected = false;
+    m_uiLoadingStopped = false;
     m_view->load(getDaemonUrl());
   });
 }
@@ -209,9 +211,11 @@ void MainWindow::initWebUI() {
   m_view->load(getDaemonUrl());
   connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
     if (!pageLoadedSuccessfully) {
+      m_uiLoadingStopped = true;
       displayAddressWizard();
       notifyDaemonConnectionError();
     } else {
+      m_uiLoadingStopped = false;
       qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
       if (m_startup) {  // don't do this for Wizard retries
         while (!m_isDaemonConnected) {
@@ -236,7 +240,7 @@ void MainWindow::forceQuit() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-  if (m_startup) {
+  if (m_startup && !m_uiLoadingStopped) {
     // Killing the app during initialization can cause a crash
     event->ignore();
     return;

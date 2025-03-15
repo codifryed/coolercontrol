@@ -87,6 +87,7 @@ class MainWindow final : public QMainWindow {
   IPC* m_ipc;
   bool m_forceQuit{false};
   bool m_startup{true};
+  bool m_uiLoadingStopped{false};
   bool m_changeAddress{false};
   QSystemTrayIcon* m_sysTrayIcon;
   QMenu* m_trayIconMenu;
