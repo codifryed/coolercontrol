@@ -26,7 +26,7 @@
 CoolerControl is a feature-rich cooling device control and monitoring application for Linux.
 </p>
 
-![Preview Video](screenshots/coolercontrol.webm)
+![](screenshots/coolercontrol.webm)
 
 <!-- <img src="screenshots/coolercontrol-overview.png" alt="Screenshot" width="700"/> -->
 
