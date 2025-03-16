@@ -462,13 +462,12 @@ pub async fn set_pwm_enable_to_default(
     base_path: &PathBuf,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
-    if let Some(default_value) = channel_info.pwm_enable_default {
-        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-        let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
-            .await
-            .and_then(check_parsing_8)?;
-        if current_pwm_enable != default_value {
-            cc_fs::write_string(
+    let Some(default_value) = channel_info.pwm_enable_default else {
+        // not all devices have pwm_enable available
+        return Ok(());
+    };
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    cc_fs::write_string(
                 &path_pwm_enable,
                 default_value.to_string(),
             ).await.with_context(|| {
@@ -476,12 +475,10 @@ pub async fn set_pwm_enable_to_default(
                 error!("{}", msg);
                 msg
             })?;
-            info!(
-                "Hwmon value at {:?}pwm{}_enable reset to starting default value of {}",
-                base_path, channel_info.number, default_value
-            );
-        }
-    }
+    info!(
+        "Hwmon value at {base_path:?}pwm{}_enable reset to starting default value of {default_value}",
+        channel_info.number
+    );
     Ok(())
 }
 
@@ -517,26 +514,28 @@ pub async fn set_pwm_enable_if_not_already(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
-    if channel_info.pwm_enable_default.is_some() {
-        // set to manual control if applicable
-        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-        let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
-            .await
-            .and_then(check_parsing_8)?;
-        if current_pwm_enable != pwm_enable_value {
-            cc_fs::write_string(&path_pwm_enable, pwm_enable_value.to_string())
-                .await
-                .with_context(|| {
-                    let msg = format!(
-                        "Unable to set fan control for {path_pwm_enable:?} to {pwm_enable_value}. \
-                        Most likely because of a limitation set by the driver or a BIOS setting."
-                    );
-                    error!("{msg}");
-                    msg
-                })?;
-        }
+    if channel_info.pwm_enable_default.is_none() {
+        // not all devices have pwm_enable available
+        return Ok(());
     }
-    Ok(())
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
+        .await
+        .and_then(check_parsing_8)?;
+    if current_pwm_enable == pwm_enable_value {
+        Ok(())
+    } else {
+        cc_fs::write_string(&path_pwm_enable, pwm_enable_value.to_string())
+            .await
+            .with_context(|| {
+                let msg = format!(
+                    "Unable to set fan control for {path_pwm_enable:?} to {pwm_enable_value}. \
+                        Most likely because of a limitation set by the driver or a BIOS setting."
+                );
+                error!("{msg}");
+                msg
+            })
+    }
 }
 
 /// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
