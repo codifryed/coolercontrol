@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
           "33mWARN%{endif}%{if-critical}\033[0;31mCRIT%{endif}%{if-fatal}\033[0;31mFATAL%{endif}"
           "\033[0m [%{category}]: %{message}");
   // Standard Qt Paths:
-  // https://doc.qt.io/qt-6/qstandardpaths.htm
+  // https://doc.qt.io/qt-6/qstandardpaths.html
   // settings: ~/.config/{app_id}/{app_id}.conf
   const QApplication a(argc, argv);
   QApplication::setWindowIcon(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.png")));
