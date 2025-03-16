@@ -490,6 +490,10 @@ pub async fn set_pwm_enable(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
+    if channel_info.pwm_enable_default.is_none() {
+        // not all devices have pwm_enable available
+        return Ok(());
+    }
     if pwm_enable_value > 5 {
         return Err(anyhow!(
             "pwm_enable value must be between 0 and 5 (inclusive)"
@@ -891,6 +895,38 @@ mod tests {
             teardown(&ctx);
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "1");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_doesnt_exist() {
+        // test to make sure we don't return an Err if pwm_enable doesn't exist
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+            };
+
+            // when:
+            let result =
+                set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, test_base_path, &channel_info).await;
+
+            // then:
+            let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .is_err();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert!(pwm_enable_doesnt_exist);
         });
     }
 
