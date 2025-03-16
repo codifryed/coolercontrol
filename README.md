@@ -31,7 +31,7 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 <!-- <img src="screenshots/coolercontrol-overview.png" alt="Screenshot" width="700"/> -->
 
 </div>
-
+<br/>
 <div align="center">
 <h2>
 
