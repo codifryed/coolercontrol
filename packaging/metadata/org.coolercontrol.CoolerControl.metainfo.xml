@@ -38,16 +38,6 @@
                 https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-overview.png
             </image>
         </screenshot>
-        <screenshot>
-            <image>
-                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-speed.png
-            </image>
-        </screenshot>
-        <screenshot>
-            <image>
-                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-lighting.png
-            </image>
-        </screenshot>
     </screenshots>
     <launchable type="desktop-id">org.coolercontrol.CoolerControl.desktop</launchable>
     <launchable type="service">coolercontrold.service</launchable>
