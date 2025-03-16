@@ -53,7 +53,9 @@ void setLogFilters(const bool debug, const bool fullDebug) {
         "*.debug=true\n"
         "qt.webenginecontext.debug=true");
   } else {
-    QLoggingCategory::setFilterRules("js.warning=false");
+    QLoggingCategory::setFilterRules(
+        "*.debug=false\n"
+        "js.warning=false");
   }
 }
 
