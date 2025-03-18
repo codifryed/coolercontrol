@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
@@ -266,7 +266,7 @@ impl Config {
         } else {
             // If there's nothing to set, this is an invalid/empty setting.
             warn!(
-                "Invalid Setting: {device_uid} | {} - has no setting present. This shouldn't happen, removing setting.",
+                "Invalid Setting: {device_uid} | {} - has nothing to set. This shouldn't happen, removing setting.",
                 setting.channel_name
             );
             *channel_setting = Item::None; // removes channel from settings
@@ -403,9 +403,9 @@ impl Config {
                     && profile_uid.is_none()
                     && pwm_mode.is_none()
                 {
-                    warn!(
+                    debug!(
                         "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
-                        This setting will be ignored from here on."
+                        This setting will be ignored."
                     );
                     continue;
                 }
