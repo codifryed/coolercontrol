@@ -840,7 +840,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_set_pwm_enable_to_default_doesnt_exit() {
+    fn test_set_pwm_enable_to_default_doesnt_exist() {
         cc_fs::test_runtime(async {
             let ctx = setup();
             // given:
@@ -859,8 +859,12 @@ mod tests {
             let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
 
             // then:
+            let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .is_err();
             teardown(&ctx);
             assert!(result.is_ok());
+            assert!(pwm_enable_doesnt_exist);
         });
     }
 
