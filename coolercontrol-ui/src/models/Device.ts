@@ -72,7 +72,7 @@ export class Device {
 
     get status(): Status {
         // @ts-ignore
-        return this.status_history[this.status_history.length -1]
+        return this.status_history[this.status_history.length - 1]
     }
 
     set status(status: Status) {
