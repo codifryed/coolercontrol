@@ -61,11 +61,12 @@
         "vite": "^6.2.1",
         "vite-svg-loader": "^5.1.0",
         "vitest": "^3.0.8",
-        "abortcontroller-polyfill": "^1.7.8"
+        "abortcontroller-polyfill": "^1.7.8",
+        "@vitejs/plugin-legacy": "^6.0.2"
     },
     "browserslist": [
         "defaults",
         "safari >= 12",
-        "chrome >= 102"
+        "chrome >= 90"
     ]
 }
