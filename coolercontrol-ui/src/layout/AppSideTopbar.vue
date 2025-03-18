@@ -98,7 +98,7 @@ const dashboardItems = computed(() => {
     }
     return dashboardItems
 })
-const homeDashboardUID = computed(() => settingsStore.dashboards.at(0)?.uid)
+const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {

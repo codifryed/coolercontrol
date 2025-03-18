@@ -213,18 +213,23 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 // out of range for the watt scale
                                 continue
                             }
+                            // @ts-ignore
                             const lineName = allDevicesLineProperties.get(series.label!)?.name
                             let lineValue: string = ''
                             let suffix: string = ''
+                            // @ts-ignore
                             if (series.label!.endsWith('duty')) {
                                 lineValue = seriesValue.toString()
                                 suffix = '%'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('temp')) {
                                 lineValue = seriesValue.toFixed(1)
                                 suffix = '°'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('load')) {
                                 lineValue = seriesValue.toString()
                                 suffix = '%'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('freq')) {
                                 const frequencyPrecision = seriesValue.toString().includes('.')
                                     ? 1000
@@ -236,16 +241,19 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                     lineValue = seriesValue.toFixed(2)
                                     suffix = 'Ghz'
                                 }
+                                // @ts-ignore
                             } else if (series.label!.endsWith('rpm')) {
                                 const frequencyPrecision = seriesValue.toString().includes('.')
                                     ? 1000
                                     : 1
                                 suffix = 'rpm'
                                 lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                                // @ts-ignore
                             } else if (series.label!.endsWith('watts')) {
                                 lineValue = seriesValue.toFixed(1)
                                 suffix = 'W'
                             }
+                            // @ts-ignore
                             const lineColor = allDevicesLineProperties.get(series.label!)?.color
                             seriesTexts.push(
                                 `<tr><td><i class="pi pi-minus" style="color:${lineColor};"/></td><td>${lineName}&nbsp;</td><td>${lineValue} ${suffix}</td></tr>`,
@@ -389,8 +397,8 @@ export const mouseWheelZoomPlugin = () => {
                     const rect = u.over.getBoundingClientRect()
                     u.over.addEventListener('wheel', (e) => {
                         e.preventDefault()
-                        const xMin = u.data[0].at(0)!
-                        const xMax = u.data[0].at(-1)!
+                        const xMin = u.data[0][0]!
+                        const xMax = u.data[0][u.data[0].length - 1]!
                         const xRange = xMax - xMin
 
                         const left: number = u.cursor.left!
@@ -428,8 +436,8 @@ export const mouseWheelZoomPlugin = () => {
                         u.over.style.cursor = 'move'
                         e.preventDefault()
 
-                        const xMin = u.data[0].at(0)!
-                        const xMax = u.data[0].at(-1)!
+                        const xMin = u.data[0][0]!
+                        const xMax = u.data[0][u.data[0].length - 1]!
 
                         const left0 = e.clientX
                         //	let top0 = e.clientY
