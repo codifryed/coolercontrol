@@ -215,7 +215,7 @@ const dashboardsTree = (): any => {
         }),
     }
 }
-const homeDashboardUID = computed(() => settingsStore.dashboards.at(0)?.uid)
+const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesTree = (): any => {
     return {
         id: 'modes',

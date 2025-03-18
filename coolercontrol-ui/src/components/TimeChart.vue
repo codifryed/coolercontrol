@@ -679,8 +679,8 @@ onMounted(async () => {
             after((onlyRecentStatus: boolean) => {
                 // zoom handling:
                 if (
-                    uPlotChart.scales.x.min != uPlotChart.data[0].at(0) ||
-                    uPlotChart.scales.x.max != uPlotChart.data[0].at(-1)
+                    uPlotChart.scales.x.min != uPlotChart.data[0][0] ||
+                    uPlotChart.scales.x.max != uPlotChart.data[0][uPlotChart.data.length - 1]
                 ) {
                     isZoomed = true
                     return

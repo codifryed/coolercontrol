@@ -389,8 +389,8 @@ export const mouseWheelZoomPlugin = () => {
                     const rect = u.over.getBoundingClientRect()
                     u.over.addEventListener('wheel', (e) => {
                         e.preventDefault()
-                        const xMin = u.data[0].at(0)!
-                        const xMax = u.data[0].at(-1)!
+                        const xMin = u.data[0][0]!
+                        const xMax = u.data[0][u.data[0].length - 1]!
                         const xRange = xMax - xMin
 
                         const left: number = u.cursor.left!
@@ -428,8 +428,8 @@ export const mouseWheelZoomPlugin = () => {
                         u.over.style.cursor = 'move'
                         e.preventDefault()
 
-                        const xMin = u.data[0].at(0)!
-                        const xMax = u.data[0].at(-1)!
+                        const xMin = u.data[0][0]!
+                        const xMax = u.data[0][u.data[0].length - 1]!
 
                         const left0 = e.clientX
                         //	let top0 = e.clientY
