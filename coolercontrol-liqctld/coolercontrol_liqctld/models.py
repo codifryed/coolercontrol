@@ -66,7 +66,13 @@ class FixedSpeedRequest(BaseModel):
 
 class SpeedProfileRequest(BaseModel):
     channel: str
-    profile: List[Tuple[float, int]]
+    # Pydantic will auto cast floats sent by the daemon to int.
+    # This is wanted because several liquidctl drivers require int as temps.
+    # Also, the default liquidctl CLI operation uses int for temps,
+    #  so it is consistent with the daemon and the UI doesn't allow <1C intervals.
+    # If one wants more precise control, the user should use a Standard Function to avoid
+    # use of the in-built speed profiles.
+    profile: List[Tuple[int, int]]
     temperature_sensor: Optional[int]
 
 
