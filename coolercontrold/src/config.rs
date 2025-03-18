@@ -263,6 +263,13 @@ impl Config {
             Self::set_setting_lcd(channel_setting, lcd);
         } else if let Some(profile_uid) = &setting.profile_uid {
             Self::set_profile_uid(channel_setting, profile_uid);
+        } else {
+            // If there's nothing to set, this is an invalid/empty setting.
+            warn!(
+                "Invalid Setting: {device_uid} | {} - has no setting present. This shouldn't happen, removing setting.",
+                setting.channel_name
+            );
+            *channel_setting = Item::None; // removes channel from settings
         }
     }
 
@@ -390,6 +397,18 @@ impl Config {
                 let pwm_mode = None;
                 // Self::get_pwm_mode(&setting_table)?;
                 let profile_uid = Self::get_profile_uid(&setting_table)?;
+                if speed_fixed.is_none()
+                    && lighting.is_none()
+                    && lcd.is_none()
+                    && profile_uid.is_none()
+                    && pwm_mode.is_none()
+                {
+                    warn!(
+                        "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
+                        This setting will be ignored from here on."
+                    );
+                    continue;
+                }
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
                     speed_fixed,
