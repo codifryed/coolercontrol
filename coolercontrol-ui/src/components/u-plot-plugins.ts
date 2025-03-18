@@ -213,18 +213,23 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 // out of range for the watt scale
                                 continue
                             }
+                            // @ts-ignore
                             const lineName = allDevicesLineProperties.get(series.label!)?.name
                             let lineValue: string = ''
                             let suffix: string = ''
+                            // @ts-ignore
                             if (series.label!.endsWith('duty')) {
                                 lineValue = seriesValue.toString()
                                 suffix = '%'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('temp')) {
                                 lineValue = seriesValue.toFixed(1)
                                 suffix = '°'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('load')) {
                                 lineValue = seriesValue.toString()
                                 suffix = '%'
+                                // @ts-ignore
                             } else if (series.label!.endsWith('freq')) {
                                 const frequencyPrecision = seriesValue.toString().includes('.')
                                     ? 1000
@@ -236,16 +241,19 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                     lineValue = seriesValue.toFixed(2)
                                     suffix = 'Ghz'
                                 }
+                                // @ts-ignore
                             } else if (series.label!.endsWith('rpm')) {
                                 const frequencyPrecision = seriesValue.toString().includes('.')
                                     ? 1000
                                     : 1
                                 suffix = 'rpm'
                                 lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                                // @ts-ignore
                             } else if (series.label!.endsWith('watts')) {
                                 lineValue = seriesValue.toFixed(1)
                                 suffix = 'W'
                             }
+                            // @ts-ignore
                             const lineColor = allDevicesLineProperties.get(series.label!)?.color
                             seriesTexts.push(
                                 `<tr><td><i class="pi pi-minus" style="color:${lineColor};"/></td><td>${lineName}&nbsp;</td><td>${lineValue} ${suffix}</td></tr>`,
