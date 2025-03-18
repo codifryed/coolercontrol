@@ -137,7 +137,9 @@ def system_info() -> str:
                 System:"""
         )
         if platform.system() == "Linux":
-            sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
+            sys_info += (
+                f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'
+            )  # type: ignore
         sys_info += textwrap.dedent(
             f"""
                     {platform.platform()}
