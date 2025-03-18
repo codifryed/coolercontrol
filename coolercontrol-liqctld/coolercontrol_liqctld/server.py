@@ -24,7 +24,6 @@ from http import HTTPStatus
 from typing import List
 
 import uvicorn
-
 from coolercontrol_liqctld.device_service import DeviceService
 from coolercontrol_liqctld.models import (
     ColorRequest,
@@ -105,9 +104,8 @@ def set_speed_profile(
     #  so it is consistent with the daemon and the UI doesn't allow <1C intervals.
     # If one wants more precise control, the user should use a Standard Function to avoid
     # use of the in-built speed profiles.
-    speed_kwargs['profile'] = [
-        (int(temp_duty[0]), temp_duty[1])
-        for temp_duty in speed_request.profile
+    speed_kwargs["profile"] = [
+        (int(temp_duty[0]), temp_duty[1]) for temp_duty in speed_request.profile
     ]
     device_service.set_speed_profile(device_id, speed_kwargs)
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
