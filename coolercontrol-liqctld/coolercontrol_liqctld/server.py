@@ -24,6 +24,7 @@ from http import HTTPStatus
 from typing import List
 
 import uvicorn
+
 from coolercontrol_liqctld.device_service import DeviceService
 from coolercontrol_liqctld.models import (
     ColorRequest,
@@ -98,6 +99,16 @@ def set_speed_profile(
     device_id: int, speed_request: SpeedProfileRequest
 ) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
+    # Pydantic used to auto cast floats sent by the daemon to int.
+    # This is still wanted because several liquidctl drivers require int as temps.
+    # Also, the default liquidctl CLI operation uses int for temps,
+    #  so it is consistent with the daemon and the UI doesn't allow <1C intervals.
+    # If one wants more precise control, the user should use a Standard Function to avoid
+    # use of the in-built speed profiles.
+    speed_kwargs['profile'] = [
+        (int(temp_duty[0]), temp_duty[1])
+        for temp_duty in speed_request.profile
+    ]
     device_service.set_speed_profile(device_id, speed_kwargs)
     return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
