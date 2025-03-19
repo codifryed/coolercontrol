@@ -619,7 +619,7 @@ struct FixedSpeedRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SpeedProfileRequest {
     channel: String,
-    // INFO: There is a possibility that some liquidctl device drivers could cast temps to int
+    // INFO: Some liquidctl device drivers need ints. coolercontrol-liqctld will handle this.
     profile: Vec<(f64, u8)>,
     temperature_sensor: Option<u8>,
 }

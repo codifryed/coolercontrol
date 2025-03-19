@@ -129,24 +129,29 @@ def main() -> None:
 
 
 def system_info() -> str:
-    sys_info: str = textwrap.dedent(
-        f"""
-            CoolerControl-Liqctld v{__version__}
+    try:
+        sys_info: str = textwrap.dedent(
+            f"""
+                CoolerControl-Liqctld v{__version__}
 
-            System:"""
-    )
-    if platform.system() == "Linux":
-        sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
-    sys_info += textwrap.dedent(
-        f"""
-                {platform.platform()}
+                System:"""
+        )
+        if platform.system() == "Linux":
+            sys_info += (
+                f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'
+            )  # type: ignore
+        sys_info += textwrap.dedent(
+            f"""
+                    {platform.platform()}
 
-            Dependency versions:
-                Python     {platform.python_version()}
-                Liquidctl  {_get_package_version("liquidctl")}
-            """
-    )
-    return sys_info
+                Dependency versions:
+                    Python     {platform.python_version()}
+                    Liquidctl  {_get_package_version("liquidctl")}
+                """
+        )
+        return sys_info
+    except BaseException:
+        return f"CoolerControl - Liqctld v{__version__}"
 
 
 def _get_package_version(package_name: str) -> str:
