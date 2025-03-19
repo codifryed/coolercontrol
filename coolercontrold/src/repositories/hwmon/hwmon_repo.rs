@@ -105,8 +105,8 @@ pub struct HwmonRepo {
     /// responding from the previous polling loop.
     device_permits: HashMap<TypeIndex, Semaphore>,
 
-    /// Used to avoid logging a device-delay warning more than once
-    delay_logged: HashMap<TypeIndex, Cell<bool>>,
+    /// Used to avoid logging a device-delay warning more than once and not on startup
+    delay_logged: HashMap<TypeIndex, Cell<u8>>,
 
     /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
@@ -241,7 +241,7 @@ impl HwmonRepo {
             device.initialize_status_history_with(status, poll_rate);
             self.device_permits
                 .insert(type_index, Semaphore::const_new(1));
-            self.delay_logged.insert(type_index, Cell::new(false));
+            self.delay_logged.insert(type_index, Cell::new(0));
             self.devices.insert(
                 device.uid.clone(),
                 (Rc::new(RefCell::new(device)), Rc::new(driver)),
@@ -283,14 +283,22 @@ impl HwmonRepo {
         locations
     }
 
+    /// Allows the slow log to be triggered twice, but only logged on the 2nd occurance.
+    /// This allows some leeway during initialization, but logs if it happens during normal operation.
     fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
-        if self.delay_logged.get(&type_index).unwrap().get() {
+        let slow_device_trigger_count = self.delay_logged.get(&type_index).unwrap().get();
+        if slow_device_trigger_count > 1 {
             return;
         }
-        warn!(
-            "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
-        );
-        self.delay_logged.get(&type_index).unwrap().replace(true);
+        if slow_device_trigger_count == 1 {
+            warn!(
+                "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
+            );
+        }
+        self.delay_logged
+            .get(&type_index)
+            .unwrap()
+            .replace(slow_device_trigger_count + 1);
     }
 
     async fn get_permit_with_write_timeout(
