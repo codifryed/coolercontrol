@@ -111,8 +111,8 @@ impl LiqctldClient {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    warn!("Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",retry_count + 1);
-                    Self::handle_retry(&mut retry_count).await;
+                    debug!("Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",retry_count + 1);
+                    Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
             };
@@ -122,8 +122,8 @@ impl LiqctldClient {
             {
                 Ok((sender, connection)) => (sender, connection),
                 Err(err) => {
-                    error!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}", retry_count + 1);
-                    Self::handle_retry(&mut retry_count).await;
+                    warn!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}", retry_count + 1);
+                    Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
             };
@@ -153,9 +153,12 @@ impl LiqctldClient {
     ///
     /// * `retry_count`: A mutable reference to an unsigned integer variable representing the number of
     ///   retries.
-    async fn handle_retry(retry_count: &mut usize) {
-        sleep(Duration::from_secs(1)).await;
+    async fn handle_retry(retry_count: &mut usize, max_tries: usize) {
         *retry_count += 1;
+        if *retry_count < max_tries {
+            // If we still have retries left, then pause a moment.
+            sleep(Duration::from_secs(1)).await;
+        }
     }
 
     /// Attempts to retrieve a free socket connection from the connection pool,
