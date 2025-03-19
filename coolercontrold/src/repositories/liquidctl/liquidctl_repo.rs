@@ -73,6 +73,7 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::Disabled.into());
         }
+        info!("Attempting to connect to coolercontrol-liqctld...");
         let liqctld_client = LiqctldClient::new(LIQCTLD_CONNECTION_TRIES)
             .await
             .map_err(|err| InitError::Connection {
@@ -84,7 +85,7 @@ impl LiquidctlRepo {
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),
             })?;
-        info!("Communication established with Liqctld.");
+        info!("Communication established with coolercontrol-liqctld.");
         Ok(LiquidctlRepo {
             config,
             liqctld_client,

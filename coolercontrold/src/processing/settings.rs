@@ -125,7 +125,7 @@ impl SettingsController {
             )
             .await
         } else {
-            Err(anyhow!("Invalid Setting combination: {:?}", setting))
+            Err(anyhow!("Invalid Setting combination: {setting:?}"))
         }
     }
 

@@ -7,8 +7,8 @@ advanced features like fan curves and using sensor outputs from various sources.
 offers ways to monitor cooling related data, so that the user can see and adjust to the effects of
 their changes in real time.
 
-This folder contains the UI assets used for both the Web UI and the Tauri Desktop Application. The
-`src-tauri` folder contains the Desktop Application specific code.
+This folder contains the UI assets served by the deamon for both the Web UI and the Desktop
+Application.
 
 The UI is a javascript SPA using the Vue framework. It communicates with the `coolercontrold` daemon
 using a REST API. Cosmetic-specific features are handled completely by the UI, whereas core logic
@@ -22,14 +22,15 @@ and processes are handled by the daemon.
 
 ## Installation
 
-Since these assets are used in other binaries, this folder itself doesn't install anything. See
-`src-tauri` for the Desktop Application and `coolercontrold` for the daemon which contains the Web
-UI.
+Since these assets are embedded in the daemon binary, this folder itself doesn't install anything.
+See `coolercontrold` for the daemon which contains the Web UI, and is also where the desktop
+application retrieves the web assets.
 
 ## Development
 
-Development can mostly done using `npm`. Note that testing the Tauri desktop application is also
-required to make sure things work as expected also with WebKit.
+Development can mostly done using `npm`. Note that the Qt Desktop application uses an older chromium
+brower engine on older distros. Such as Chrome v90 for Qt 6.2.4 on Ubuntu 22.04 LTS. This means one
+needs to test functions and feature for compatibility with those older engines.
 
 Install NPM dependencies & Build:
 
