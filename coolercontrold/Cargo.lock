@@ -2128,7 +2128,7 @@ dependencies = [
 [[package]]
 name = "nvml-wrapper"
 version = "0.10.0"
-source = "git+https://github.com/codifryed/nvml-wrapper?branch=coolercontrol#c8dd9b97a872f6252a48c61dfc6e1c0b61eab39b"
+source = "git+https://github.com/codifryed/nvml-wrapper?branch=updates-with-rpm#e75c2710b14af885c3440c3a5268f633c4c44146"
 dependencies = [
  "bitflags 2.8.0",
  "libloading",
@@ -2141,7 +2141,7 @@ dependencies = [
 [[package]]
 name = "nvml-wrapper-sys"
 version = "0.8.0"
-source = "git+https://github.com/codifryed/nvml-wrapper?branch=coolercontrol#c8dd9b97a872f6252a48c61dfc6e1c0b61eab39b"
+source = "git+https://github.com/codifryed/nvml-wrapper?branch=updates-with-rpm#e75c2710b14af885c3440c3a5268f633c4c44146"
 dependencies = [
  "libloading",
 ]
