@@ -26,13 +26,16 @@ import { mdiInformationSlabCircleOutline } from '@mdi/js'
 interface Props {}
 
 defineProps<Props>()
+const emit = defineEmits<{
+    (e: 'open', value: boolean): void
+}>()
 
 const deviceStore = useDeviceStore()
 </script>
 
 <template>
     <div v-tooltip.top="{ value: 'Overview' }">
-        <popover-root>
+        <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
             >
