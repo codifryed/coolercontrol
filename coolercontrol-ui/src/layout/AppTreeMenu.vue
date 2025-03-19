@@ -977,7 +977,10 @@ onMounted(async () => {
                                     :device-u-i-d="data.deviceUID"
                                     @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
-                                <menu-dashboard-info v-else-if="option.dashboardInfo" />
+                                <menu-dashboard-info
+                                    v-else-if="option.dashboardInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-dashboard-add
                                     v-else-if="option.dashboardAdd"
                                     @added="addDashbaord"
@@ -1003,7 +1006,10 @@ onMounted(async () => {
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
                                 />
-                                <menu-mode-info v-else-if="option.modeInfo" />
+                                <menu-mode-info
+                                    v-else-if="option.modeInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
                                 <menu-mode-update
                                     v-else-if="option.modeUpdate"
@@ -1026,7 +1032,10 @@ onMounted(async () => {
                                     :mode-u-i-d="data.uid"
                                     @deleted="deleteMode"
                                 />
-                                <menu-profile-info v-else-if="option.profileInfo" />
+                                <menu-profile-info
+                                    v-else-if="option.profileInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-profile-add
                                     v-else-if="option.profileAdd"
                                     @added="addProfile"
@@ -1047,7 +1056,10 @@ onMounted(async () => {
                                     :profile-u-i-d="data.uid"
                                     @deleted="deleteProfile"
                                 />
-                                <menu-function-info v-else-if="option.functionInfo" />
+                                <menu-function-info
+                                    v-else-if="option.functionInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-function-add
                                     v-else-if="option.functionAdd"
                                     @added="addFunction"
@@ -1068,7 +1080,10 @@ onMounted(async () => {
                                     :function-u-i-d="data.uid"
                                     @deleted="deleteFunction"
                                 />
-                                <menu-alert-info v-else-if="option.alertInfo" />
+                                <menu-alert-info
+                                    v-else-if="option.alertInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-alert-add v-else-if="option.alertAdd" />
                                 <menu-alert-rename
                                     v-else-if="option.alertRename"
@@ -1081,7 +1096,10 @@ onMounted(async () => {
                                     :alert-u-i-d="data.uid"
                                     @deleted="deleteAlert"
                                 />
-                                <menu-custom-sensor-info v-else-if="option.customSensorInfo" />
+                                <menu-custom-sensor-info
+                                    v-else-if="option.customSensorInfo"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
+                                />
                                 <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
                                 <menu-custom-sensor-delete
                                     v-else-if="option.customSensorDelete"
