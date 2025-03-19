@@ -143,7 +143,10 @@ impl LiqctldClient {
                 },
             ));
         }
-        bail!("Failed to connect to coolercontrol-liqctld after {retry_count} tries");
+        bail!(
+            "Failed to connect to coolercontrol-liqctld after {retry_count} tries. \
+            You can avoid this warning by disabling Liquidctl integration in the Daemon settings."
+        );
     }
 
     /// Asynchronously increments the value of `retry_count` after waiting
