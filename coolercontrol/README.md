@@ -25,6 +25,7 @@ which is based on the [chromium](https://www.chromium.org/) browser engine.
 ### Runtime DEB
 
 - qt6-base-dev (not 100% accurate - many smaller non-dev deps)
+- qt6-qpa-plugins
 - libqt6webenginewidgets6
 - libqt6webenginecore6-bin
 - libxcb-cursor0 (for X11)

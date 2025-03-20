@@ -54,6 +54,8 @@ Package: coolercontrol
 Architecture: amd64
 Depends:
  coolercontrold (= ${binary:Version}),
+ qt6-qpa-plugins,
+ libqt6webenginecore6-bin,
  ${shlibs:Depends},
  ${misc:Depends},
 Description: Monitor and control your cooling devices.
