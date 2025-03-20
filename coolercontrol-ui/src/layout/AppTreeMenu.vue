@@ -566,6 +566,7 @@ const addDashbaord = (dashboardUID: UID) => {
             name: dashboardUID,
             to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
             options: [
+                { dashboardHome: true },
                 { dashboardRename: true },
                 { dashboardDuplicate: true },
                 { dashboardDelete: true },
