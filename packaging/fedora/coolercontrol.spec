@@ -5,7 +5,7 @@
 %global ap_id org.coolercontrol.CoolerControl
 
 Name:           %{project}
-Version:        2.0.0
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices
 
@@ -67,6 +67,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Thu Mar 20 2025 Guy Boldon <gb@guyboldon.com> - 2.0.1-1
+- 2.0.1 Release
+
 * Sat Mar 15 2025 Guy Boldon <gb@guyboldon.com> - 2.0.0-1
 - 2.0.0 Release
 

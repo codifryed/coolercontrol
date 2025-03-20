@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.0.1] - 2025-03-20
+
+### Added
+
+- Introduction Video in repo readme
+
+### Changed
+
+- Improved log messages and log levels
+- Improved handling of invalid settings
+- Updated URLs and screenshots in app metadata
+- Force disable Qt debug logs by default
+
+### Fixed
+
+- Add missing desktop application Qt dependencies for 22.04 Ubuntu based distros (#408) (#409)
+- Replaced unsupported JS functions for Qt 6.2.4 (#408) (#409)
+- Model type for liquidctl speed profiles (#411)
+- URL for hwmon kernel documentation (#414)
+- Home icon for new Dashboards in main Tree Menu
+- Bypass pwmN_enable setting for devices that don't support it (#407)
+
 ## [2.0.0] - 2025-03-15
 
 ### Added
