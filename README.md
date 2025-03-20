@@ -90,11 +90,11 @@ officially supported._
 
 ## 🧰 Hardware Support
 
-CoolerControl depends on [Hwmon](https://docs.kernel.org/hwmon/) kernel drivers
-and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
-Note that your hardware <ins>**is not guaranteed**</ins> to be supported, as this depends on
-open-source drivers and contributors. The following are the steps you should take to **maximize**
-hardware coverage:
+CoolerControl depends on [Hwmon](https://docs.kernel.org/hwmon/) kernel drivers and 
+[liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware. Note
+that your hardware <ins>**is not guaranteed**</ins> to be supported, as this depends on open-source
+drivers and contributors. The following are the steps you should take to **maximize** hardware
+coverage:
 
 - Install **`lm-sensors`** and run `sudo sensors-detect`. For more details see the
   [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and the
