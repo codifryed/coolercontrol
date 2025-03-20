@@ -152,7 +152,7 @@ If you have an idea or want to submit some changes, it's usually best to either
 ## ⭐ Acknowledgements
 
 - Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-- Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
+- Thanks to all the many contributors of [HWMon](https://docs.kernel.org/hwmon/)
 - A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
 
 ## 📝 License
