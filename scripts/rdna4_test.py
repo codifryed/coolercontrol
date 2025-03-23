@@ -379,7 +379,7 @@ def main():
     test.read_sensors()
 
     log_line_filler()
-    log.info(f"Disabling zero_rpm")
+    log.info("Disabling zero_rpm")
     log_line_filler()
     # zero rpm enable is enabled by default, even with custom curve.
     test.set_zero_rpm(False)
