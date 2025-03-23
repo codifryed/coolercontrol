@@ -401,9 +401,9 @@ def main():
     test.read_sensors()
 
     log_line_filler()
-    log.info("Applying flat simple 0% fan curve")
+    log.info("Applying flat simple 10% fan curve")
     log_line_filler()
-    test.apply_flat_simple_fan_curve(0)
+    test.apply_flat_simple_fan_curve(10)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
