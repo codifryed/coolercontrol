@@ -339,13 +339,13 @@ class RDNA4Test:
             return
         try:
             self.fan_curve_path.write_text(f"{hwmon_enable}\n")
+            log.info(f"Set Zero RPM Enable:{enable}")
         except Exception as e:
             log.error(
                 f"Error setting zero RPM Enable: {hwmon_enable}; "
                 f"Error: {e};\n"
                 f"Zero RPM Enable Contents: {self.zero_rpm_enable_path.read_text()}"
             )
-        log.info(f"Zero RPM Enable:{enable}")
 
     def commit_zero_rpm_changes(self):
         if self.args.test:
@@ -355,6 +355,48 @@ class RDNA4Test:
             self.zero_rpm_enable_path.write_text("c\n")
         except Exception as e:
             log.error(f"Error committing new Zero RPM Enable: {e}")
+
+    def reset_zero_rpm_stop_temp(self):
+        if self.args.test:
+            log.info("TEST Resetting Zero RPM Stop Temp")
+            return
+        try:
+            log.info("Resetting Zero RPM Stop Temp")
+            self.zer_rpm_stop_temp_path.write_text("r\n")
+        except Exception as e:
+            log.error(f"Error resetting Zero RPM Stop Temp: {e}")
+
+    def set_zero_rpm_stop_temp(self):
+        lowest_temp = 25
+        for line in self.zer_rpm_stop_temp_path.read_text().splitlines():
+            temp_match = re.match(
+                r"ZERO_RPM_STOP_TEMPERATURE:\s+(?P<temp_min>\d+)\s+(?P<temp_max>\d+)",
+                line,
+            )
+            if temp_match is not None:
+                lowest_temp = int(temp_match.group("temp_min"))
+                break
+        if self.args.test:
+            log.debug(f"TEST Setting zero RPM Stop Temp: {lowest_temp}")
+            return
+        try:
+            self.zer_rpm_stop_temp_path.write_text(f"{lowest_temp}\n")
+            log.info(f"Set Zero RPM Stop Temp:{lowest_temp}")
+        except Exception as e:
+            log.error(
+                f"Error setting zero RPM Stop Temp: {lowest_temp}; "
+                f"Error: {e};\n"
+                f"Zero RPM Stop Temp Contents: {self.zer_rpm_stop_temp_path.read_text()}"
+            )
+
+    def commit_zero_rpm_stop_temp_changes(self):
+        if self.args.test:
+            log.info("TEST Committing Zero RPM Stop Temp Changes")
+            return
+        try:
+            self.zero_rpm_enable_path.write_text("c\n")
+        except Exception as e:
+            log.error(f"Error committing new Zero RPM Stop Temp Changes: {e}")
 
 
 def log_line_filler():
@@ -375,11 +417,12 @@ def main():
     log_line_filler()
     test.reset_fan_curve()
     test.reset_zero_rpm()
+    test.reset_zero_rpm_stop_temp()
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
     log_line_filler()
-    log.info("Disabling zero_rpm")
+    log.info("Disabling zero_rpm without setting stop temp")
     log_line_filler()
     # zero rpm enable is enabled by default, even with custom curve.
     test.set_zero_rpm(False)
@@ -387,6 +430,7 @@ def main():
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
+    # Single commits
     log_line_filler()
     log.info("Applying flat simple 50% fan curve - single commit")
     log_line_filler()
@@ -423,6 +467,7 @@ def main():
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
+    # Double commits
     log_line_filler()
     log.info("Applying flat simple 30% fan curve - double commit")
     log_line_filler()
@@ -447,11 +492,55 @@ def main():
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
+    # Double commits w/ stop temp
+    log_line_filler()
+    log.info("Disabling zero_rpm WITH setting stop temp")
+    log_line_filler()
+    # zero rpm enable is enabled by default, even with custom curve.
+    test.set_zero_rpm(False)
+    test.set_zero_rpm_stop_temp()
+    test.commit_zero_rpm_changes()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 30% fan curve - triple commit")
+    log_line_filler()
+    test.set_zero_rpm_stop_temp()
+    test.apply_flat_simple_fan_curve(30)
+    test.commit_zero_rpm_changes()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 80% fan curve - triple commit")
+    log_line_filler()
+    test.set_zero_rpm_stop_temp()
+    test.apply_flat_simple_fan_curve(80)
+    test.commit_zero_rpm_changes()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 10% fan curve - triple commit")
+    log_line_filler()
+    test.set_zero_rpm_stop_temp()
+    test.apply_flat_simple_fan_curve(10)
+    test.commit_zero_rpm_changes()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    # Done & reset
     log_line_filler()
     log.info("Resting fan curve settings to default settings (safety after tests)")
     log_line_filler()
     test.reset_fan_curve()
     test.reset_zero_rpm()
+    test.reset_zero_rpm_stop_temp()
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
