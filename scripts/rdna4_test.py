@@ -37,7 +37,7 @@ logging.basicConfig(
     format=log_format,
     handlers=[logging.FileHandler("rdna4_test.log"), logging.StreamHandler()],
 )
-log = logging.getLogger("CoolerControl-RDNA4")
+log = logging.getLogger("CoolerControl-RDNA3/4")
 
 __VERSION__ = "0.0.1"
 
@@ -47,7 +47,7 @@ class RDNA4Test:
 
     def __init__(self):
         parser = argparse.ArgumentParser(
-            description="A CoolerControl test script for RDNA4 sysfs fan control",
+            description="A CoolerControl test script for RDNA3/4 sysfs fan control",
             exit_on_error=False,
             # formatter_class=argparse.RawTextHelpFormatter,
         )
@@ -339,7 +339,6 @@ class RDNA4Test:
                 f"Error: {e};\n"
                 f"Zero RPM Enable Contents: {self.zero_rpm_enable_path.read_text()}"
             )
-        self.commit_zero_rpm_changes()
         log.info(f"Zero RPM Enable:{enable}")
 
     def commit_zero_rpm_changes(self):
@@ -358,7 +357,7 @@ def log_line_filler():
 
 def main():
     log_line_filler()
-    log.info(f"Starting RDNA4 test v{__VERSION__}")
+    log.info(f"Starting RDNA3/4 test v{__VERSION__}")
     log_line_filler()
     test = RDNA4Test()
     test.read_sensors()
@@ -376,34 +375,67 @@ def main():
     log_line_filler()
     # zero rpm enable is enabled by default, even with custom curve.
     test.set_zero_rpm(False)
+    test.commit_zero_rpm_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
     log_line_filler()
-    log.info("Applying flat simple 50% fan curve")
+    log.info("Applying flat simple 50% fan curve - single commit")
     log_line_filler()
     test.apply_flat_simple_fan_curve(50)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
     log_line_filler()
-    log.info("Applying flat simple 30% fan curve")
+    log.info("Applying flat simple 30% fan curve - single commit")
     log_line_filler()
     test.apply_flat_simple_fan_curve(30)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
     log_line_filler()
-    log.info("Applying flat simple 80% fan curve")
+    log.info("Applying flat simple 80% fan curve - single commit")
     log_line_filler()
     test.apply_flat_simple_fan_curve(80)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
     log_line_filler()
-    log.info("Applying flat simple 10% fan curve")
+    log.info("Applying flat simple 10% fan curve - single commit")
     log_line_filler()
     test.apply_flat_simple_fan_curve(10)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 50% fan curve - double commit")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(50)
+    test.commit_zero_rpm_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 30% fan curve - double commit")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(30)
+    test.commit_zero_rpm_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 80% fan curve - double commit")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(80)
+    test.commit_zero_rpm_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 10% fan curve - double commit")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(10)
+    test.commit_zero_rpm_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
