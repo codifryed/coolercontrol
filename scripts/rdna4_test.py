@@ -130,10 +130,13 @@ class RDNA4Test:
         else:
             return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
 
+    def log_thin_line_filler(self):
+        log.info("--------------------------------------------------------------------------------")
+
     def read_sensors(self) -> None:
-        log.info("--------------------------------------------------")
+        self.log_thin_line_filler()
         log.info("READING SYSFS DATA:")
-        log.info("--------------------------------------------------")
+        self.log_thin_line_filler()
         self.print_pwm_fan_speed()
         self.print_fan_rpm()
         self.print_temps()
@@ -150,7 +153,8 @@ class RDNA4Test:
             f"Temp({self.temp_min}-{self.temp_max}) "
             f"Duty({self.duty_min}-{self.duty_max})"
         )
-        log.info("--------------------------------------------------\n")
+        self.log_thin_line_filler()
+        log.info(".")
 
     def print_pwm_fan_speed(self) -> None:
         pwm_file = self.hwmon_path / "pwm1"
@@ -223,10 +227,10 @@ class RDNA4Test:
             sys.exit(1)
 
     def print_zero_rpm_enable(self):
-        log.info(f"Zero RPM Enable content: {self.zero_rpm_enable_path.read_text()}")
+        log.info(f"Zero RPM Enable content:\n{self.zero_rpm_enable_path.read_text()}")
 
     def print_zero_rpm_stop_temp(self):
-        log.info(f"Zero RPM Stop Temp content: {self.zer_rpm_stop_temp_path.read_text()}")
+        log.info(f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}")
 
     def reset_fan_curve(self):
         if self.args.test:
@@ -355,53 +359,72 @@ class RDNA4Test:
             log.error(f"Error committing new Zero RPM Enable: {e}")
 
 
+def log_line_filler():
+    log.info("####################################################################################")
+
+
 def main():
-    log.info("##################################################")
+    log_line_filler()
     log.info(f"Starting RDNA4 test v{__VERSION__}")
-    log.info("##################################################")
+    log_line_filler()
     test = RDNA4Test()
     test.read_sensors()
 
-    log.info(f"Disabling zero_rpm")
-    log.info("##################################################")
-    # zero rpm enable is enabled by default, even with custom curve.
-    test.set_zero_rpm(False)
-    test.wait_for_fan_stabilization()
-    test.read_sensors()
-
-    log.info("Applying flat simple 50% fan curve")
-    log.info("##################################################")
-    test.apply_flat_simple_fan_curve(50)
-    test.wait_for_fan_stabilization()
-    test.read_sensors()
-
-    log.info("Applying flat simple 30% fan curve")
-    log.info("##################################################")
-    test.apply_flat_simple_fan_curve(30)
-    test.wait_for_fan_stabilization()
-    test.read_sensors()
-
-    log.info("Applying flat simple 80% fan curve")
-    log.info("##################################################")
-    test.apply_flat_simple_fan_curve(80)
-    test.wait_for_fan_stabilization()
-    test.read_sensors()
-
-    log.info("Applying flat simple 0% fan curve")
-    log.info("##################################################")
-    test.apply_flat_simple_fan_curve(0)
-    test.wait_for_fan_stabilization()
-    test.read_sensors()
-
-    log.info("Resting fan curve settings to default settings (safety after tests)")
-    log.info("##################################################")
+    log_line_filler()
+    log.info("Resting fan curve settings to default settings (safety before tests)")
+    log_line_filler()
     test.reset_fan_curve()
     test.reset_zero_rpm()
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
+    log_line_filler()
+    log.info(f"Disabling zero_rpm")
+    log_line_filler()
+    # zero rpm enable is enabled by default, even with custom curve.
+    test.set_zero_rpm(False)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 50% fan curve")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(50)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 30% fan curve")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(30)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 80% fan curve")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(80)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Applying flat simple 0% fan curve")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(0)
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
+    log.info("Resting fan curve settings to default settings (safety after tests)")
+    log_line_filler()
+    test.reset_fan_curve()
+    test.reset_zero_rpm()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+    log_line_filler()
     log.info("Testing Complete")
-    log.info("##################################################")
+    log_line_filler()
     log.info("Output saved to rdna4_test.log")
     log.info("Thank you for testing for CoolerControl RDNA4 support")
 
