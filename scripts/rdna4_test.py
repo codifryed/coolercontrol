@@ -93,8 +93,9 @@ class RDNA4Test:
             )
             sys.exit(1)
 
-    @staticmethod
-    def find_amdgpu_hwmon_path() -> Path:
+    def find_amdgpu_hwmon_path(self) -> Path:
+        if self.args.test:
+            return Path("rdna4_data") / "rx9070xt" / "hwmon" / "hwmon5"
         hwmon_path: Path | None = None
         for hwmon_name in glob.glob("/sys/class/hwmon/hwmon*/name"):
             if "amdgpu" in Path(hwmon_name).read_text():
@@ -107,28 +108,20 @@ class RDNA4Test:
         return hwmon_path
 
     def get_device_path(self) -> Path:
+        if self.args.test:
+            return Path("rdna4_data") / "rx9070xt"
         device_path = (self.hwmon_path / "device").resolve()
         log.info(f"Device path: {device_path}")
         return device_path
 
     def get_fan_curve_path(self) -> Path:
-        if self.args.test:
-            return Path("rdna4_data") / "rx9070xt" / "gpu_od" / "fan_ctrl" / "fan_curve"
-        else:
-            return self.device_path / "gpu_od" / "fan_ctrl" / "fan_curve"
+        return self.device_path / "gpu_od" / "fan_ctrl" / "fan_curve"
 
     def get_zero_rpm_enable_path(self) -> Path:
-        if self.args.test:
-            return Path("rdna4_data") / "rx9070xt" / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_enable"
-        else:
-            return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_enable"
+        return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_enable"
 
     def get_zero_rpm_stop_temp_path(self) -> Path:
-        if self.args.test:
-            return Path(
-                "rdna4_data") / "rx9070xt" / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
-        else:
-            return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
+        return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
 
     def log_thin_line_filler(self):
         log.info("--------------------------------------------------------------------------------")
