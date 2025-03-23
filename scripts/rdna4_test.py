@@ -121,10 +121,14 @@ class RDNA4Test:
         return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_enable"
 
     def get_zero_rpm_stop_temp_path(self) -> Path:
-        return self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
+        return (
+            self.device_path / "gpu_od" / "fan_ctrl" / "fan_zero_rpm_stop_temperature"
+        )
 
     def log_thin_line_filler(self):
-        log.info("--------------------------------------------------------------------------------")
+        log.info(
+            "--------------------------------------------------------------------------------"
+        )
 
     def read_sensors(self) -> None:
         self.log_thin_line_filler()
@@ -223,7 +227,9 @@ class RDNA4Test:
         log.info(f"Zero RPM Enable content:\n{self.zero_rpm_enable_path.read_text()}")
 
     def print_zero_rpm_stop_temp(self):
-        log.info(f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}")
+        log.info(
+            f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}"
+        )
 
     def reset_fan_curve(self):
         if self.args.test:
@@ -352,7 +358,9 @@ class RDNA4Test:
 
 
 def log_line_filler():
-    log.info("####################################################################################")
+    log.info(
+        "####################################################################################"
+    )
 
 
 def main():
