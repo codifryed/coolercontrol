@@ -224,7 +224,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_id/asetek690",
+            "/devices/:device_uid/asetek690",
             patch_with(devices::asetek_type_update, |o| {
                 o.summary("Device AseTek690")
                     .description(
