@@ -338,7 +338,7 @@ class RDNA4Test:
             log.debug(f"TEST Setting zero RPM Enable: {enable}")
             return
         try:
-            self.fan_curve_path.write_text(f"{hwmon_enable}\n")
+            self.zero_rpm_enable_path.write_text(f"{hwmon_enable}\n")
             log.info(f"Set Zero RPM Enable:{enable}")
         except Exception as e:
             log.error(
