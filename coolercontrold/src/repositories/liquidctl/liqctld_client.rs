@@ -217,7 +217,11 @@ impl LiqctldClient {
             // If we run out of connections or timeout, this will return Err:
             let c_id = self.get_socket_connection().await?;
             let pool_read_lock = self.connection_pool.read().await;
-            let c_lock = pool_read_lock.get(&c_id).expect("Connection should exist");
+            let Some(c_lock) = pool_read_lock.get(&c_id) else {
+                // In some situations because we check for a free connection UID over an await point,
+                // the connection UID may have been REMOVED in the meantime. We try again.
+                continue;
+            };
             let Ok(response) = c_lock
                 .lock()
                 .await
