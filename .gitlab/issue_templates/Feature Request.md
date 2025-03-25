@@ -1,7 +1,7 @@
 # Feature Request
 
 If requesting support for a new device, see this
-[Wiki Page](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) first.
+[Doc Page](https://docs.coolercontrol.org/wiki/adding-device-support.html) first.
 
 ## Description
 

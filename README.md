@@ -97,11 +97,10 @@ drivers and contributors. The following are the steps you should take to **maxim
 coverage:
 
 - Install **`lm-sensors`** and run `sudo sensors-detect`. For more details see the
-  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and the
-  [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support).
-  Additionally, you can check out the official
-  [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually
-  loading unofficial kernel modules for hardware that isn't supported out-of-the-box yet.
+  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation). Additionally, you can
+  check out the official [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues)
+  for tips on manually loading unofficial kernel modules for hardware that isn't supported
+  out-of-the-box yet.
 - For newer motherboards and cards it's best to install the **latest available kernel** for your
   distribution which includes the latest Hwmon drivers and kernel modules.
 - Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state

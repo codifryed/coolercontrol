@@ -34,14 +34,13 @@ journalctl -e -u coolercontrold -u coolercontrol-liqctld
 - [ ] I have filled out all sections of this template
 - [ ] I have attached log output and/or screenshots
 - [ ] I have read the
-      [Hardware Support](https://gitlab.com/coolercontrol/coolercontrol#why-is-my-hardware-not-showingworking)
-      section of the readme and applied all available steps.
+      [Hardware Support](https://gitlab.com/coolercontrol/coolercontrol#-hardware-support) section
+      of the readme and applied all available steps.
 - [x] I have not read any of the above
 
 **Note:** CoolerControl depends on open source drivers to communicate with your hardware. If there
 is an issue controlling your fans, then likely there is an issue with your currently installed
-kernel drivers. See
-[HWMon Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support) and
-[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support).
+kernel drivers. See [Hardware Support](https://docs.coolercontrol.org/hardware-support.html) and
+[Adding Device Support](https://docs.coolercontrol.org/wiki/adding-device-support.html).
 
 /label ~"type::Bug"
