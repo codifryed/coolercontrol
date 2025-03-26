@@ -507,12 +507,26 @@ impl Repository for HwmonRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        for (_, hwmon_driver) in self.devices.values() {
+        for (device_uid, (device_lock, hwmon_driver)) in &self.devices {
+            let type_index = device_lock.borrow().type_index;
             for channel_info in &hwmon_driver.channels {
                 if channel_info.hwmon_type != HwmonChannelType::Fan {
                     continue;
                 }
-                fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await?;
+                debug!(
+                    "Applying HWMON device: {device_uid} channel: {}; \
+                    Resetting to Original fan control mode",
+                    channel_info.name
+                );
+                let device_permit = self
+                    .get_permit_with_write_timeout(
+                        type_index,
+                        &hwmon_driver.name,
+                        &channel_info.name,
+                    )
+                    .await?;
+                let _ = fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await;
+                drop(device_permit);
             }
         }
         info!("HWMON Repository shutdown");
