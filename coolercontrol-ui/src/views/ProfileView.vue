@@ -1141,8 +1141,8 @@ const saveProfileState = async () => {
             toast.add({
                 severity: 'error',
                 summary: 'Error',
-                detail: 'A Temp Source is required for Graph Profiles',
-                life: 3000,
+                detail: 'A Temp Source is required for a Graph Profile.',
+                life: 4000,
             })
             return
         } else {
@@ -1162,6 +1162,15 @@ const saveProfileState = async () => {
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
     } else if (currentProfile.value.p_type === ProfileType.Mix) {
+        if (chosenMemberProfiles.value.length < 2) {
+            toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'At least 2 Member Profiles are required for a Mix Profile.',
+                life: 4000,
+            })
+            return
+        }
         currentProfile.value.speed_fixed = undefined
         currentProfile.value.speed_profile.length = 0
         currentProfile.value.temp_source = undefined
