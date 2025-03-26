@@ -502,11 +502,12 @@ pub async fn set_pwm_enable(
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
     cc_fs::write_string(&path_pwm_enable, pwm_enable_value.to_string())
         .await
-        .with_context(|| {
-            let msg = "Not able to set pwm_enable value. Most likely because of a \
-                limitation set by the driver or a BIOS setting.";
-            error!("{msg}");
-            msg
+        .map_err(|err| {
+            anyhow!(
+                "Unable to set pwm_enable for {path_pwm_enable:?} to {pwm_enable_value}. \
+                    Most likely because of a limitation set by the driver or a BIOS setting; \
+                    Error: {err}"
+            )
         })?;
     Ok(())
 }
@@ -531,13 +532,12 @@ pub async fn set_pwm_enable_if_not_already(
     } else {
         cc_fs::write_string(&path_pwm_enable, pwm_enable_value.to_string())
             .await
-            .with_context(|| {
-                let msg = format!(
-                    "Unable to set fan control for {path_pwm_enable:?} to {pwm_enable_value}. \
-                        Most likely because of a limitation set by the driver or a BIOS setting."
-                );
-                error!("{msg}");
-                msg
+            .map_err(|err| {
+                anyhow!(
+                    "Unable to set pwm_enable for {path_pwm_enable:?} to {pwm_enable_value}. \
+                    Most likely because of a limitation set by the driver or a BIOS setting; \
+                    Error: {err}"
+                )
             })
     }
 }
@@ -554,14 +554,14 @@ pub async fn set_thinkpad_to_full_speed(
         .await
         .and_then(check_parsing_8)?;
     if current_pwm_enable != PWM_ENABLE_THINKPAD_FULL_SPEED {
-        cc_fs::write_string(
-            &path_pwm_enable,
-            PWM_ENABLE_THINKPAD_FULL_SPEED.to_string(),
-        ).await.with_context(|| {
-            let msg = "Not able to set pwm_enable to 0. Most likely because of a permissions issue or driver limitation.";
-            error!("{}", msg);
-            msg
-        })?;
+        cc_fs::write_string(&path_pwm_enable, PWM_ENABLE_THINKPAD_FULL_SPEED.to_string())
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Not able to set pwm_enable to 0. Most likely because of a permissions \
+                    issue or driver limitation; Error: {err}"
+                )
+            })?;
     }
     Ok(())
 }
