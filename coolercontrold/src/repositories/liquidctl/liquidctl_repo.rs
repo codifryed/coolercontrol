@@ -67,7 +67,7 @@ impl LiquidctlRepo {
                 // attempt to quickly shut down the liqctld service if it happens to be running.
                 let liqctld_client = LiqctldClient::new(1).await?;
                 liqctld_client.post_quit().await?;
-                liqctld_client.shutdown().await;
+                liqctld_client.shutdown();
                 Ok(())
             }
             .await;
@@ -156,7 +156,7 @@ impl LiquidctlRepo {
         if self.devices.is_empty() {
             info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
             self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown().await;
+            self.liqctld_client.shutdown();
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
@@ -777,13 +777,13 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        if self.liqctld_client.is_connected().await {
+        if self.liqctld_client.is_connected() {
             // Due to issue quickly mentioned here:
             // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
             self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown().await;
+            self.liqctld_client.shutdown();
         }
         info!("LIQUIDCTL Repository Shutdown");
         Ok(())
