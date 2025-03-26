@@ -68,15 +68,28 @@ class RDNA4Test:
         self.verify_full_access()
         self.hwmon_path: Path = self.find_amdgpu_hwmon_path()
         self.device_path: Path = self.get_device_path()
+
         self.fan_curve_path: Path = self.get_fan_curve_path()
-        if not self.fan_curve_path.exists():
+        if self.fan_curve_path.exists():
+            log.info("fan_curve file exists")
+        else:
             log.error(f"fan_curve file not found in {self.fan_curve_path}")
             sys.exit(1)
+
         self.zero_rpm_enable_path: Path = self.get_zero_rpm_enable_path()
-        if not self.zero_rpm_enable_path.exists():
+        if self.zero_rpm_enable_path.exists():
+            log.info("zero_rpm_enable file exists")
+        else:
             log.error(f"zero_rpm_enable file not found in {self.zero_rpm_enable_path}")
-            sys.exit(1)
+
         self.zer_rpm_stop_temp_path: Path = self.get_zero_rpm_stop_temp_path()
+        if self.zer_rpm_stop_temp_path.exists():
+            log.info("zero_rpm_stop_temperature file exists")
+        else:
+            log.error(
+                f"zero_rpm_stop_temperature file not found in {self.zero_rpm_enable_path}"
+            )
+
         self.temp_min: int = -1
         self.temp_max: int = -100
         self.duty_min: int = -1
@@ -224,12 +237,20 @@ class RDNA4Test:
             sys.exit(1)
 
     def _print_zero_rpm_enable(self):
-        log.info(f"Zero RPM Enable content:\n{self.zero_rpm_enable_path.read_text()}")
+        try:
+            log.info(
+                f"Zero RPM Enable content:\n{self.zero_rpm_enable_path.read_text()}"
+            )
+        except Exception as e:
+            log.warning(f"Zero RPM Enable content ERROR: {e}")
 
     def _print_zero_rpm_stop_temp(self):
-        log.info(
-            f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}"
-        )
+        try:
+            log.info(
+                f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}"
+            )
+        except Exception as e:
+            log.warning(f"Zero RPM Stop Temp content ERROR: {e}")
 
     def reset_fan_curve(self):
         if self.args.test:
@@ -251,18 +272,19 @@ class RDNA4Test:
             return
         start_time = time()
         for index, (temp, duty) in enumerate(new_fan_curve):
-            if temp < self.temp_min or temp > self.temp_max:
-                log.error(
-                    f"Invalid temp: {temp}. "
-                    f"Must be between allowed limits of {self.temp_min} and {self.temp_max}"
-                )
-                continue
-            if duty < self.duty_min or duty > self.duty_max:
-                log.error(
-                    f"Invalid duty: {duty}. "
-                    f"Must be between allowed limits of {self.duty_min} and {self.duty_max}"
-                )
-                continue
+            # disable range validation for now:
+            # if temp < self.temp_min or temp > self.temp_max:
+            #     log.error(
+            #         f"Invalid temp: {temp}. "
+            #         f"Must be between allowed limits of {self.temp_min} and {self.temp_max}"
+            #     )
+            #     continue
+            # if duty < self.duty_min or duty > self.duty_max:
+            #     log.error(
+            #         f"Invalid duty: {duty}. "
+            #         f"Must be between allowed limits of {self.duty_min} and {self.duty_max}"
+            #     )
+            #     continue
             new_curve_point = f"{index} {temp} {duty}\n"
             if self.args.test:
                 log.debug(f"TEST Setting fan curve point: {new_curve_point}")
@@ -442,7 +464,7 @@ def static_curve_single_commit(test: RDNA4Test, duty: int):
     log.info(f"Applying flat simple {duty}% fan curve - single commit")
     log_line_filler()
     test.set_zero_rpm(False)
-    test.apply_flat_simple_fan_curve(50)
+    test.apply_flat_simple_fan_curve(duty)
     test.commit_fan_curve_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
@@ -488,6 +510,37 @@ def force_zero_rpm(test: RDNA4Test):
     test.read_sensors()
 
 
+def force_zero_rpm_with_curve(test: RDNA4Test):
+    reset_all(test)
+    log_line_filler()
+    log.info("Forcing Zero RPM with 50% Static Curve present")
+    log_line_filler()
+    # using "safe" batch-style commits
+    test.apply_flat_simple_fan_curve(50)
+    test.set_zero_rpm(True)
+    test.set_zero_rpm_stop_temp_highest()
+    test.commit_fan_curve_changes()
+    test.commit_zero_rpm_changes()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+
+def force_zero_rpm_with_curve_separate_commits(test: RDNA4Test):
+    reset_all(test)
+    log_line_filler()
+    log.info("Forcing Zero RPM with 50% Static Curve present and separate commits")
+    log_line_filler()
+    test.apply_flat_simple_fan_curve(50)
+    test.commit_fan_curve_changes()
+    test.set_zero_rpm(True)
+    test.commit_zero_rpm_changes()
+    test.set_zero_rpm_stop_temp_highest()
+    test.commit_zero_rpm_stop_temp_changes()
+    test.wait_for_fan_stabilization()
+    test.read_sensors()
+
+
 def main():
     log_line_filler()
     log.info(f"Starting RDNA3/4 test v{__VERSION__}")
@@ -509,6 +562,8 @@ def main():
     static_curve_separate_commits(test, 15)
 
     force_zero_rpm(test)
+    force_zero_rpm_with_curve(test)
+    force_zero_rpm_with_curve_separate_commits(test)
 
     # Done
     reset_all(test)
@@ -516,7 +571,7 @@ def main():
     log.info("Testing Complete")
     log_line_filler()
     log.info("Output saved to rdna4_test.log")
-    log.info("Thank you for testing for CoolerControl RDNA3/4 support")
+    log.info("Thank you for testing for CoolerControl RDNA3/4 support!")
 
 
 if __name__ == "__main__":
