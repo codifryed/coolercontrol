@@ -41,8 +41,7 @@ use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-const LIQCTLD_MAX_POOL_SIZE: usize = 10;
-const LIQCTLD_MAX_POOL_RETRIES: usize = 7;
+const LIQCTLD_MAX_POOL_SIZE: usize = 15;
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrol-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
@@ -123,6 +122,7 @@ impl LiqctldClient {
                     error!("Unexpected Error: Connection to socket failed: {err:?}");
                 }
             });
+            trace!("Created a new socket connection.");
             return Ok(SocketConnection {
                 sender,
                 connection_handle,
@@ -153,23 +153,11 @@ impl LiqctldClient {
     /// creating a new connection if necessary,
     /// and returning the `ConnectionUID` of the free connection.
     async fn get_socket_connection(&self) -> Result<SocketConnection> {
-        for _ in 0..LIQCTLD_MAX_POOL_RETRIES {
-            if let Some(socket_connection) = self.connection_pool.borrow_mut().pop_front() {
-                trace!("Found a free socket connection");
-                return Ok(socket_connection);
-            }
-            if self.connection_pool.borrow().len() >= LIQCTLD_MAX_POOL_SIZE {
-                warn!(
-                        "Socket connection pool size limit reached, waiting for a connection to become available."
-                    );
-                sleep(Duration::from_millis(100)).await;
-                continue;
-            }
-            let socket_result = Self::create_connection(LIQCTLD_CONNECTION_TRIES).await;
-            trace!("Created a new socket connection and added it to the pool.");
-            return socket_result;
+        if let Some(socket_connection) = self.connection_pool.borrow_mut().pop_front() {
+            trace!("Found a free socket connection");
+            return Ok(socket_connection);
         }
-        bail!("Failed to get a free liqctld connection after {LIQCTLD_MAX_POOL_RETRIES} tries");
+        Self::create_connection(LIQCTLD_CONNECTION_TRIES).await
     }
 
     /// Sends a request to a socket connection, handles errors, and returns the deserialized response.
@@ -198,9 +186,13 @@ impl LiqctldClient {
                 continue; // retry with a different connection
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
-            self.connection_pool
-                .borrow_mut()
-                .push_back(socket_connection);
+            if self.connection_pool.borrow().len() < LIQCTLD_MAX_POOL_SIZE {
+                self.connection_pool
+                    .borrow_mut()
+                    .push_back(socket_connection);
+            } else {
+                warn!("Socket connection pool size limit reached, discarding connection.");
+            }
             return Ok(serde_json::from_str(&lc_response.body)?);
         }
         Err(anyhow!(
