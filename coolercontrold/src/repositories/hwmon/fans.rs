@@ -466,15 +466,9 @@ pub async fn set_pwm_enable_to_default(
         // not all devices have pwm_enable available
         return Ok(());
     };
-    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-    cc_fs::write_string(
-                &path_pwm_enable,
-                default_value.to_string(),
-            ).await.with_context(|| {
-                let msg = "Not able to reset fan_enable. Most likely because of a permissions issue or driver limitation.";
-                error!("{}", msg);
-                msg
-            })?;
+    if let Err(err) = set_pwm_enable_if_not_already(default_value, base_path, channel_info).await {
+        warn!("Failed to reset pwm_enable to default: {err}");
+    };
     debug!(
         "Reset Hwmon value at {base_path:?}/pwm{}_enable to starting default value of {default_value}",
         channel_info.number
