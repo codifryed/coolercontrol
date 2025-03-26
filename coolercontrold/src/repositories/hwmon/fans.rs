@@ -476,7 +476,7 @@ pub async fn set_pwm_enable_to_default(
                 msg
             })?;
     debug!(
-        "Hwmon value at {base_path:?}/pwm{}_enable reset to starting default value of {default_value}",
+        "Reset Hwmon value at {base_path:?}/pwm{}_enable to starting default value of {default_value}",
         channel_info.number
     );
     Ok(())
