@@ -237,6 +237,9 @@ class RDNA4Test:
             sys.exit(1)
 
     def _print_zero_rpm_enable(self):
+        if not self.zero_rpm_enable_path.exists():
+            log.info("Zero RPM Enable does not exist")
+            return
         try:
             log.info(
                 f"Zero RPM Enable content:\n{self.zero_rpm_enable_path.read_text()}"
@@ -245,6 +248,9 @@ class RDNA4Test:
             log.warning(f"Zero RPM Enable content ERROR: {e}")
 
     def _print_zero_rpm_stop_temp(self):
+        if not self.zer_rpm_stop_temp_path.exists():
+            log.info("Zero RPM Stop Temp does not exist")
+            return
         try:
             log.info(
                 f"Zero RPM Stop Temp content:\n{self.zer_rpm_stop_temp_path.read_text()}"
@@ -295,7 +301,6 @@ class RDNA4Test:
                 log.error(
                     f"Error setting fan curve point: {new_curve_point}; "
                     f"Error: {e};\n"
-                    f"FAN_CURVE Contents: {self.fan_curve_path.read_text()}"
                 )
         log.info(f"Fan Curve {new_fan_curve} Set in {time() - start_time:.3f} seconds")
 
@@ -342,6 +347,9 @@ class RDNA4Test:
             sleep(wait_time)
 
     def reset_zero_rpm(self):
+        if not self.zero_rpm_enable_path.exists():
+            log.info("Zero RPM Enable does not exist")
+            return
         if self.args.test:
             log.info("TEST Resetting Zero RPM Enable")
             return
@@ -352,6 +360,9 @@ class RDNA4Test:
             log.error(f"Error resetting Zero RPM Enable: {e}")
 
     def set_zero_rpm(self, enable: bool):
+        if not self.zero_rpm_enable_path.exists():
+            log.info("Zero RPM Enable does not exist")
+            return
         hwmon_enable = int(enable)  # 0 or 1
         if self.args.test:
             log.debug(f"TEST Setting zero RPM Enable: {enable}")
@@ -360,13 +371,12 @@ class RDNA4Test:
             self.zero_rpm_enable_path.write_text(f"{hwmon_enable}\n")
             log.info(f"Set Zero RPM Enable:{enable}")
         except Exception as e:
-            log.error(
-                f"Error setting zero RPM Enable: {hwmon_enable}; "
-                f"Error: {e};\n"
-                f"Zero RPM Enable Contents: {self.zero_rpm_enable_path.read_text()}"
-            )
+            log.error(f"Error setting zero RPM Enable: {hwmon_enable}; Error: {e}")
 
     def commit_zero_rpm_changes(self):
+        if not self.zero_rpm_enable_path.exists():
+            log.info("Zero RPM Enable does not exist")
+            return
         if self.args.test:
             log.info("TEST Committing Zero RPM Enable")
             return
@@ -376,6 +386,9 @@ class RDNA4Test:
             log.error(f"Error committing new Zero RPM Enable: {e}")
 
     def reset_zero_rpm_stop_temp(self):
+        if not self.zer_rpm_stop_temp_path.exists():
+            log.info("Zero RPM Stop Temp does not exist")
+            return
         if self.args.test:
             log.info("TEST Resetting Zero RPM Stop Temp")
             return
@@ -386,6 +399,9 @@ class RDNA4Test:
             log.error(f"Error resetting Zero RPM Stop Temp: {e}")
 
     def set_zero_rpm_stop_temp_lowest(self):
+        if not self.zer_rpm_stop_temp_path.exists():
+            log.info("Zero RPM Stop Temp does not exist")
+            return
         lowest_temp = self.temp_min
         for line in self.zer_rpm_stop_temp_path.read_text().splitlines():
             temp_match = re.match(
@@ -402,13 +418,12 @@ class RDNA4Test:
             self.zer_rpm_stop_temp_path.write_text(f"{lowest_temp}\n")
             log.info(f"Set Zero RPM Stop Temp:{lowest_temp}")
         except Exception as e:
-            log.error(
-                f"Error setting zero RPM Stop Temp: {lowest_temp}; "
-                f"Error: {e};\n"
-                f"Zero RPM Stop Temp Contents: {self.zer_rpm_stop_temp_path.read_text()}"
-            )
+            log.error(f"Error setting zero RPM Stop Temp: {lowest_temp}; Error: {e}")
 
     def set_zero_rpm_stop_temp_highest(self):
+        if not self.zer_rpm_stop_temp_path.exists():
+            log.info("Zero RPM Stop Temp does not exist")
+            return
         highest_temp = self.temp_max
         for line in self.zer_rpm_stop_temp_path.read_text().splitlines():
             temp_match = re.match(
@@ -425,13 +440,12 @@ class RDNA4Test:
             self.zer_rpm_stop_temp_path.write_text(f"{highest_temp}\n")
             log.info(f"Set Zero RPM Stop Temp:{highest_temp}")
         except Exception as e:
-            log.error(
-                f"Error setting zero RPM Stop Temp: {highest_temp}; "
-                f"Error: {e};\n"
-                f"Zero RPM Stop Temp Contents: {self.zer_rpm_stop_temp_path.read_text()}"
-            )
+            log.error(f"Error setting zero RPM Stop Temp: {highest_temp}; Error: {e}")
 
     def commit_zero_rpm_stop_temp_changes(self):
+        if not self.zer_rpm_stop_temp_path.exists():
+            log.info("Zero RPM Stop Temp does not exist")
+            return
         if self.args.test:
             log.info("TEST Committing Zero RPM Stop Temp Changes")
             return
