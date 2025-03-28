@@ -39,15 +39,21 @@ use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::LibDrmAmdgpu;
 use libdrm_amdgpu_sys::AMDGPU::GPU_INFO;
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 
 const AMD_HWMON_NAME: &str = "amdgpu";
+const PP_OVERDRIVE_MASK: u64 = 0x4000;
+const PP_FEATURE_MASK_PATH: &str = "/sys/module/amdgpu/parameters/ppfeaturemask";
+// using this requires that the initramfs is regenerated, which we don't currently do:
+// const MODULE_CONF_PATH: &str = "/etc/modprobe.d/99-amdgpu-overdrive.conf";
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
 const PATTERN_FAN_CURVE_LIMITS_TEMP: &str =
     r"FAN_CURVE\(hotspot temp\):\s+(?P<temp_min>\d+)C\s+(?P<temp_max>\d+)C";
 const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
     r"FAN_CURVE\(fan speed\):\s+(?P<duty_min>\d+)%\s+(?P<duty_max>\d+)%";
+const PATTERN_ZERO_RPM_STOP_LIMITS_TEMP: &str =
+    r"ZERO_RPM_STOP_TEMPERATURE:\s+(?P<temp_min>\d+)\s+(?P<temp_max>\d+)";
 type CurveTemp = u8;
 
 pub struct GpuAMD {
@@ -133,7 +139,12 @@ impl GpuAMD {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Power: {err}"),
             };
-            let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
+            let fan_curve_info = Self::get_fan_curve_info(&device_path)
+                .await
+                .inspect_err(|err| {
+                    warn!("Failed to get RDNA3/4 fan curve info: {err}");
+                })
+                .ok();
             let drm_device_name = Self::get_drm_device_name(&path).await;
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path)
@@ -194,67 +205,150 @@ impl GpuAMD {
     /// all the curve points may be set to 0.
     ///
     /// Only available on Navi3x (RDNA 3) or newer devices.
-    async fn get_fan_curve_info(device_path: &Path) -> Option<FanCurveInfo> {
+    async fn get_fan_curve_info(device_path: &Path) -> Result<FanCurveInfo> {
+        let (path, fan_curve, temperature_range, speed_range) =
+            Self::get_fan_curve_with_ranges(device_path).await?;
+        let changeable = Self::is_overdrive_enabled().await;
+        if changeable.not() {
+            let fan_control_boot_option = Self::get_fan_control_boot_option().await;
+            warn!(
+                "AMD Fan Curve found but not controllable. \
+                You need to enable this feature with the kernel boot option: {fan_control_boot_option}"
+            );
+        }
+
+        let zero_rpm_enable_path = device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_enable");
+        let zero_rpm = cc_fs::read_txt(&zero_rpm_enable_path)
+            .await
+            .ok()
+            .map(|_| zero_rpm_enable_path);
+        if zero_rpm.is_none() {
+            info!(
+                "AMD GPU RDNA 3/4 Fan Control limitations: Fan will use Zero RPM Mode until 50/60C"
+            );
+        }
+
+        let (zero_rpm_stop_temp, zero_rpm_stop_temp_range) =
+            Self::get_zero_rpm_stop_temp_with_range(device_path).await?;
+        Ok(FanCurveInfo {
+            fan_curve,
+            changeable,
+            temperature_range,
+            speed_range,
+            path,
+            zero_rpm,
+            zero_rpm_stop_temp,
+            zero_rpm_stop_temp_range,
+        })
+    }
+
+    async fn get_fan_curve_with_ranges(
+        device_path: &Path,
+    ) -> Result<(
+        PathBuf,
+        FanCurve,
+        RangeInclusive<CurveTemp>,
+        RangeInclusive<Duty>,
+    )> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
-        let fan_curve_file = cc_fs::read_txt(&path).await.ok()?;
+        let fan_curve_file = cc_fs::read_txt(&path).await?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
         let mut duty_min: Duty = 0;
         let mut duty_max: Duty = 0;
-        let regex_fan_point = Regex::new(PATTERN_FAN_CURVE_POINT).unwrap();
-        let regex_fan_limits_temp = Regex::new(PATTERN_FAN_CURVE_LIMITS_TEMP).unwrap();
-        let regex_fan_limits_duty = Regex::new(PATTERN_FAN_CURVE_LIMITS_DUTY).unwrap();
+        let regex_fan_point = Regex::new(PATTERN_FAN_CURVE_POINT)?;
+        let regex_fan_limits_temp = Regex::new(PATTERN_FAN_CURVE_LIMITS_TEMP)?;
+        let regex_fan_limits_duty = Regex::new(PATTERN_FAN_CURVE_LIMITS_DUTY)?;
         for line in fan_curve_file.lines() {
             if let Some(fan_point_cap) = regex_fan_point.captures(line) {
                 // let index: u8 = fan_point_cap.name("index").unwrap().as_str().parse().ok()?;
-                let temp: CurveTemp = fan_point_cap.name("temp").unwrap().as_str().parse().ok()?;
-                let duty: Duty = fan_point_cap.name("duty").unwrap().as_str().parse().ok()?;
+                let temp: CurveTemp = fan_point_cap.name("temp").unwrap().as_str().parse()?;
+                let duty: Duty = fan_point_cap.name("duty").unwrap().as_str().parse()?;
                 points.push((temp, duty));
             } else if let Some(fan_limits_temp_cap) = regex_fan_limits_temp.captures(line) {
                 temp_min = fan_limits_temp_cap
                     .name("temp_min")
                     .unwrap()
                     .as_str()
-                    .parse()
-                    .ok()?;
+                    .parse()?;
                 temp_max = fan_limits_temp_cap
                     .name("temp_max")
                     .unwrap()
                     .as_str()
-                    .parse()
-                    .ok()?;
+                    .parse()?;
             } else if let Some(fan_limits_duty_cap) = regex_fan_limits_duty.captures(line) {
                 duty_min = fan_limits_duty_cap
                     .name("duty_min")
                     .unwrap()
                     .as_str()
-                    .parse()
-                    .ok()?;
+                    .parse()?;
                 duty_max = fan_limits_duty_cap
                     .name("duty_max")
                     .unwrap()
                     .as_str()
-                    .parse()
-                    .ok()?;
+                    .parse()?;
             }
         }
-        let changeable = temp_max > 0 && duty_max > 0;
-        if changeable.not() {
-            warn!(
-                "AMD Fan Curve found but not controllable. \
-                        You may need to enable this feature with the kernel boot option: \
-                        amdgpu.ppfeaturemask=0xffffffff"
-            );
+        let fan_curve = FanCurve { points };
+        let temperature_range = temp_min..=temp_max;
+        let speed_range = duty_min..=duty_max;
+        Ok((path, fan_curve, temperature_range, speed_range))
+    }
+
+    async fn is_overdrive_enabled() -> bool {
+        (Self::get_pp_feature_mask().await.unwrap_or_default() & PP_OVERDRIVE_MASK) > 0
+    }
+
+    async fn get_fan_control_boot_option() -> String {
+        if let Ok(current_mask) = Self::get_pp_feature_mask().await {
+            let new_mask = current_mask | PP_OVERDRIVE_MASK;
+            format!("amdgpu.ppfeaturemask=0x{new_mask:X}")
+        } else {
+            "amdgpu.ppfeaturemask=0xffffffff".to_owned()
         }
-        info!("AMD GPU RDNA 3 Fan Control limitations - Fan in 0rpm mode until 50/60C and Min Fan Duty: {duty_min}%");
-        Some(FanCurveInfo {
-            fan_curve: FanCurve { points },
-            changeable,
-            temperature_range: temp_min..=temp_max,
-            speed_range: duty_min..=duty_max,
-            path,
-        })
+    }
+
+    async fn get_pp_feature_mask() -> Result<u64> {
+        let ppfeaturemask = cc_fs::read_txt(PP_FEATURE_MASK_PATH).await?;
+        let ppfeaturemask = ppfeaturemask
+            .trim()
+            .strip_prefix("0x")
+            .context("Invalid ppfeaturemask")?;
+        u64::from_str_radix(ppfeaturemask, 16).context("Invalid ppfeaturemask")
+    }
+
+    async fn get_zero_rpm_stop_temp_with_range(
+        device_path: &Path,
+    ) -> Result<(Option<PathBuf>, RangeInclusive<CurveTemp>)> {
+        let mut zero_rpm_stop_temp_min: CurveTemp = 0;
+        let mut zero_rpm_stop_temp_max: CurveTemp = 0;
+        let zero_rpm_stop_temp_path =
+            device_path.join("gpu_od/fan_ctrl/fan_zero_rpm_stop_temperature");
+        let zero_rpm_stop_temp = if let Ok(zero_rpm_stop_temp_content) =
+            cc_fs::read_txt(&zero_rpm_stop_temp_path).await
+        {
+            let regex_zero_rpm_stop_limits_temp = Regex::new(PATTERN_ZERO_RPM_STOP_LIMITS_TEMP)?;
+            for line in zero_rpm_stop_temp_content.lines() {
+                if let Some(stop_limits_temp_cap) = regex_zero_rpm_stop_limits_temp.captures(line) {
+                    zero_rpm_stop_temp_min = stop_limits_temp_cap
+                        .name("temp_min")
+                        .unwrap()
+                        .as_str()
+                        .parse()?;
+                    zero_rpm_stop_temp_max = stop_limits_temp_cap
+                        .name("temp_max")
+                        .unwrap()
+                        .as_str()
+                        .parse()?;
+                }
+            }
+            Some(zero_rpm_stop_temp_path)
+        } else {
+            None
+        };
+        let zero_rpm_stop_temp_range = zero_rpm_stop_temp_min..=zero_rpm_stop_temp_max;
+        Ok((zero_rpm_stop_temp, zero_rpm_stop_temp_range))
     }
 
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
@@ -265,6 +359,8 @@ impl GpuAMD {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
             let (min_duty, max_duty) = Self::get_min_max_duty(amd_driver.fan_curve_info.as_ref());
+            let fan_is_controllable =
+                Self::get_fan_is_controllable(amd_driver.fan_curve_info.as_ref());
             for channel in &amd_driver.hwmon.channels {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
@@ -272,8 +368,8 @@ impl GpuAMD {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
                                 profiles_enabled: false,
-                                fixed_enabled: true,
-                                manual_profiles_enabled: true,
+                                fixed_enabled: fan_is_controllable,
+                                manual_profiles_enabled: fan_is_controllable,
                                 min_duty,
                                 max_duty,
                             }),
@@ -379,13 +475,15 @@ impl GpuAMD {
 
     fn get_min_max_duty(fan_curve_info: Option<&FanCurveInfo>) -> (Duty, Duty) {
         if let Some(fan_curve_info) = fan_curve_info {
-            (
-                fan_curve_info.speed_range.start().to_owned(),
-                fan_curve_info.speed_range.end().to_owned(),
-            )
-        } else {
-            (0, 100) // Standard Defaults
+            if fan_curve_info.zero_rpm.is_none() {
+                // otherwise we have full range
+                return (
+                    fan_curve_info.speed_range.start().to_owned(),
+                    fan_curve_info.speed_range.end().to_owned(),
+                );
+            }
         }
+        (0, 100) // Standard Defaults
     }
 
     fn get_min_max_temps(fan_curve_info: Option<&FanCurveInfo>) -> (CurveTemp, CurveTemp) {
@@ -397,6 +495,12 @@ impl GpuAMD {
         } else {
             (0, 100) // Standard Defaults
         }
+    }
+
+    /// If `FanCurve` is present, we check if fan control is enabled, otherwise it must use
+    /// the standard pwm sysfs interface (pre-RDNA3).
+    fn get_fan_is_controllable(fan_curve_info: Option<&FanCurveInfo>) -> bool {
+        fan_curve_info.map_or(true, |fan_curve_info| fan_curve_info.changeable)
     }
 
     async fn get_driver_locations(base_path: &Path) -> Vec<String> {
@@ -496,7 +600,7 @@ impl GpuAMD {
             .with_context(|| "Hwmon Info should exist")?;
         if let Some(fan_curve_info) = &amd_hwmon_info.fan_curve_info {
             if fan_curve_info.changeable {
-                Self::reset_fan_curve(fan_curve_info).await
+                Self::reset_fan_curve_and_zero_rpm(fan_curve_info).await
             } else {
                 Err(anyhow!(
                     "PMFW Fan Curve control is present for this device, but not enabled"
@@ -515,7 +619,17 @@ impl GpuAMD {
         }
     }
 
-    async fn reset_fan_curve(fan_curve_info: &FanCurveInfo) -> Result<()> {
+    async fn reset_fan_curve_and_zero_rpm(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        if let Some(zero_rpm_path) = &fan_curve_info.zero_rpm {
+            let _ = cc_fs::write(zero_rpm_path, b"r\n".to_vec())
+                .await
+                .with_context(|| "Resetting Zero RPM Enable");
+        }
+        if let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp {
+            let _ = cc_fs::write(zero_rpm_stop_temp_path, b"r\n".to_vec())
+                .await
+                .with_context(|| "Resetting Zero RPM Stop Temperature");
+        }
         cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
@@ -531,8 +645,29 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
+        // RDNA3/4 Fan Curve logic:
         if let Some(fan_curve_info) = &amd_driver_info.fan_curve_info {
-            if fan_curve_info.changeable {
+            if fan_curve_info.changeable.not() {
+                return Err(anyhow!(
+                    "PMFW Fan Curve control is present for this device, but not enabled. Please see documentation."
+                ));
+            }
+            if fixed_speed == 0 && fan_curve_info.zero_rpm.is_some() {
+                if fan_curve_info.zero_rpm_stop_temp.is_some() {
+                    Self::set_zero_rpm(fan_curve_info, true).await?;
+                    Self::set_zero_rpm_stop_temp_highest(fan_curve_info).await
+                } else {
+                    Self::set_zero_rpm(fan_curve_info, true).await?;
+                    let lowest_fan_curve_speed = fan_curve_info.speed_range.start();
+                    Self::set_fan_curve_duty(fan_curve_info, *lowest_fan_curve_speed).await
+                }
+            } else {
+                if let Err(err) = Self::set_zero_rpm(fan_curve_info, false).await {
+                    error!(
+                        "Failed to disable Zero RPM Mode for {}: {err}",
+                        amd_driver_info.hwmon.name
+                    );
+                }
                 Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
                     .await
                     .map_err(|err| {
@@ -541,12 +676,9 @@ impl GpuAMD {
                             amd_driver_info.hwmon.name
                         )
                     })
-            } else {
-                Err(anyhow!(
-                    "PMFW Fan Curve control is present for this device, but not enabled"
-                ))
             }
         } else {
+            // Standard HWMon Fan controls:
             let channel_info = amd_driver_info
                 .hwmon
                 .channels
@@ -564,6 +696,7 @@ impl GpuAMD {
             fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
                 .await
                 .map_err(|err| {
+                    warn!("If you have an AMD RDNA3/4 (7000/9000 series) or newer card, kernel version >=6.12 is required to enable fan control.");
                     anyhow!(
                         "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
                         amd_driver_info.hwmon.name
@@ -572,14 +705,44 @@ impl GpuAMD {
         }
     }
 
+    async fn set_zero_rpm(fan_curve_info: &FanCurveInfo, enable: bool) -> Result<()> {
+        let Some(zero_rpm_path) = &fan_curve_info.zero_rpm else {
+            return Ok(());
+        };
+        let binary_bool = u8::from(enable);
+        cc_fs::write_string(zero_rpm_path, format!("{binary_bool}\n"))
+            .await
+            .map_err(|err| anyhow!("Error applying {binary_bool} to Zero RPM Enable: {err}"))?;
+        cc_fs::write(&zero_rpm_path, b"c\n".to_vec())
+            .await
+            .map_err(|err| anyhow!("Error Committing Zero RPM Enable: {err}"))
+    }
+
+    async fn set_zero_rpm_stop_temp_highest(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
+            return Ok(());
+        };
+        let highest_temp = fan_curve_info.zero_rpm_stop_temp_range.end();
+        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{highest_temp}\n"))
+            .await
+            .map_err(|err| {
+                anyhow!("Error applying {highest_temp} to Zero RPM Stop Temperature: {err}")
+            })?;
+        cc_fs::write(&zero_rpm_stop_temp_path, b"c\n".to_vec())
+            .await
+            .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
+    }
+
     async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
         for (i, (temp, duty)) in flat_curve.points.into_iter().enumerate() {
-            cc_fs::write_string(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
+            cc_fs::write_string(&fan_curve_info.path, format!("{i} {temp} {duty}\n"))
+                .await
+                .map_err(|err| anyhow!("Error applying '{i} {temp} {duty}' to Fan Curve: {err}"))?;
         }
         cc_fs::write(&fan_curve_info.path, b"c\n".to_vec())
             .await
-            .with_context(|| "Committing Fan Curve changes")
+            .map_err(|err| anyhow!("Error committing Fan Curve changes: {err}"))
     }
 
     /// Creates a "flat" fan curve by setting the duty with the `temp_min` and all the rest of
@@ -589,25 +752,25 @@ impl GpuAMD {
         let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
             duty
         } else {
-            warn!(
+            debug!(
                 "AMD GPU RDNA 3 - Only fan duties within range of {}% to {}% are allowed. \
                 Clamping passed duty of {duty}% to nearest limit",
                 fan_curve_info.speed_range.start(),
                 fan_curve_info.speed_range.end(),
             );
-            fan_curve_info
+            *fan_curve_info
                 .speed_range
                 .end()
                 .min(fan_curve_info.speed_range.start().max(&duty))
-                .to_owned()
         };
         let mut new_fan_curve = FanCurve::default();
-        let mut temp_steps = vec![fan_curve_info.temperature_range.start().to_owned()];
+        new_fan_curve
+            .points
+            .push((*fan_curve_info.temperature_range.start(), clamped_duty));
         for _ in 1..fan_curve_info.fan_curve.points.len() {
-            temp_steps.push(fan_curve_info.temperature_range.end().to_owned());
-        }
-        for temp_step in temp_steps {
-            new_fan_curve.points.push((temp_step, clamped_duty));
+            new_fan_curve
+                .points
+                .push((*fan_curve_info.temperature_range.end(), clamped_duty));
         }
         new_fan_curve
     }
@@ -621,19 +784,33 @@ pub struct AMDDriverInfo {
 }
 
 /// The PMFW (power management firmware) fan curve information.
-/// Only available on Navi3x (RDNA 3) or newer devices.
+/// Only available on Navi3x (RDNA 3/7000 series) or newer devices.
 #[derive(Debug, Clone)]
 struct FanCurveInfo {
     /// Fan curve points
     fan_curve: FanCurve,
+
     /// Whether the fan curve is changeable or not. Determined by the present of the ranges below.
     changeable: bool,
+
     /// Temperature range allowed in curve points
     temperature_range: RangeInclusive<CurveTemp>,
+
     /// Fan speed range allowed in curve points
     speed_range: RangeInclusive<Duty>,
+
     /// The path to the gpu fan curve file
     path: PathBuf,
+
+    /// The optionally supported (Kernel 6.13+) ability to disable the Zero RPM feature.
+    /// The Path to the sysfs file if exists.
+    zero_rpm: Option<PathBuf>,
+
+    /// The optionally supported (Kernel 6.13+) ability to disable the Zero RPM Stop Temperature
+    /// feature. Note: Not likely supported for RDNA4 devices (9000 series)
+    /// The Path to the sysfs file if exists.
+    zero_rpm_stop_temp: Option<PathBuf>,
+    zero_rpm_stop_temp_range: RangeInclusive<CurveTemp>,
 }
 
 impl Default for FanCurveInfo {
@@ -644,6 +821,9 @@ impl Default for FanCurveInfo {
             temperature_range: RangeInclusive::new(0, 0),
             speed_range: RangeInclusive::new(0, 0),
             path: PathBuf::default(),
+            zero_rpm: None,
+            zero_rpm_stop_temp: None,
+            zero_rpm_stop_temp_range: RangeInclusive::new(0, 0),
         }
     }
 }
