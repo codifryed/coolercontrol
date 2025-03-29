@@ -108,14 +108,16 @@ coverage:
 - NVidia GPUs - Fan control has been tested working on most cards with the NVidia proprietary
   drivers. CoolerControl **automatically** uses `NVML` and the CLI tools `nvidia-settings` and
   `nvidia-smi` as a fallback.
-- AMD GPUs - Older cards work out of the box. The 7000 series and above have different firmware
-  controls and CoolerControl will work if you:
-  - enable the fan control feature by setting the kernel boot option:
-    `amdgpu.ppfeaturemask=0xffffffff`.
-  - ⚠️ Be aware that regardless of the fan speed set, the fan will only turn on once a builtin
-    (non-configurable) temperature threshold has been reached. In other words, the card needs to be
-    under load for the fan settings to take effect. It has been reported that that the fans will
-    generally start spining once the Junction Temperature reaches 60C and stop spinning at 50C.
+- AMD GPUs
+  - Older cards: <=6000 series work out of the box.
+  - Newer cards: 7000, 9000 series and above have different firmwares that require an extra step to
+    enable fan control:
+    - Linux kernel >=6.12 is required for fan control on these newer cards.
+    - You can enable all features including fan control by setting the following kernel boot option:
+      `amdgpu.ppfeaturemask=0xffffffff`.
+    - ⚠️ Depending on your installed kernel version and specific model of your card, be aware that
+      sometimes there is a minimum temperature limit at which the fans will spin up.
+    - See the [CoolerControl AMDGPU Docs page](https://docs.coolercontrol.org/hardware-support.html#amd-gpu) for more detailed info.
 - Laptops - ThinkPads, some ASUS, and some HP Laptops are known to have supported linux drivers,
   **but not all**. If your laptop has a hwmon kernel driver, then CoolerControl will use it
   automatically. Otherwise, fan control for your laptop is most likely not supported.
