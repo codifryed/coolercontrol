@@ -117,7 +117,9 @@ coverage:
       `amdgpu.ppfeaturemask=0xffffffff`.
     - ⚠️ Depending on your installed kernel version and specific model of your card, be aware that
       sometimes there is a minimum temperature limit at which the fans will spin up.
-    - See the [CoolerControl AMDGPU Docs page](https://docs.coolercontrol.org/hardware-support.html#amd-gpu) for more detailed info.
+    - See the
+      [CoolerControl AMDGPU Docs page](https://docs.coolercontrol.org/hardware-support.html#amd-gpu)
+      for more detailed info.
 - Laptops - ThinkPads, some ASUS, and some HP Laptops are known to have supported linux drivers,
   **but not all**. If your laptop has a hwmon kernel driver, then CoolerControl will use it
   automatically. Otherwise, fan control for your laptop is most likely not supported.
