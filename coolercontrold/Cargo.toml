@@ -118,7 +118,7 @@ psutil = { version = "5.2.0", default-features = false, features = [
   "sensors",
 ] } # for cpu stats
 nu-glob = "0.103.0"
-# use official version once fan control is merged, otherwise use our fork:
+# our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol" }
 sha2 = "0.10.8"
 toml_edit = "0.22.24"
