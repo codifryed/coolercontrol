@@ -70,9 +70,9 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
 /// Note: checking for both path types works because we are specifically looking for pwm and
 /// temp files. Just checking base paths would not work due to the same "device" directory.
 fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
-    let pwm_glob_results = glob(&glob_paths.pwm)
+    let pwm_glob_results = glob(&glob_paths.pwm, None)
         .unwrap()
-        .chain(glob(&glob_paths.pwm_centos).unwrap())
+        .chain(glob(&glob_paths.pwm_centos, None).unwrap())
         .collect::<Vec<GlobResult>>();
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let mut base_paths = pwm_glob_results
@@ -83,9 +83,9 @@ fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
-    let temp_glob_results = glob(&glob_paths.temp)
+    let temp_glob_results = glob(&glob_paths.temp, None)
         .unwrap()
-        .chain(glob(&glob_paths.temp_centos).unwrap())
+        .chain(glob(&glob_paths.temp_centos, None).unwrap())
         .collect::<Vec<GlobResult>>();
     base_paths.append(
         &mut temp_glob_results
@@ -315,7 +315,7 @@ pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
 #[cached(
     key = "String",
     convert = r#"{ format!("{:?}", base_path) }"#,
-    sync_writes = true
+    sync_writes = "default"
 )]
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();

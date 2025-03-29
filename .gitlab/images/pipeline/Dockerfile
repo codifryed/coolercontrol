@@ -19,7 +19,7 @@ ENV PYTHONFAULTHANDLER=1 \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.81.0
+    RUST_VERSION=1.82.0
 ENV PATH=/root/.cargo/bin:$PATH
 
 # 22.04 comes with v12, 23.04/Lunar comes with v18.
