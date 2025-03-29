@@ -954,13 +954,13 @@ impl GpuNVidia {
                 );
                 return Some(environment_xauthority);
             }
-            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM)
+            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, None)
                 .unwrap()
-                .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_USER, None).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, None).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, None).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, None).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, None).unwrap())
                 .filter_map(Result::ok)
                 .find(|path| path.is_absolute());
             if let Some(xauthority_path) = xauthority_path_opt {

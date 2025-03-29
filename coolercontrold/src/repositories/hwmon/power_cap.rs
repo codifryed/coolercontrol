@@ -48,7 +48,7 @@ const PATTERN_RAPL_PACKAGE_NUMBER: &str = r"^package-(?P<number>\d+)$";
 /// [RAPL Support Info](https://web.eece.maine.edu/~vweaver/projects/rapl/)
 pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
     let mut power_cap_devices = Vec::new();
-    let base_paths = glob(GLOB_RAPL_ENERGY_PATH)?
+    let base_paths = glob(GLOB_RAPL_ENERGY_PATH, None)?
         .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())
