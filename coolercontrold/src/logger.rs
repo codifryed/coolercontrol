@@ -117,9 +117,15 @@ async fn get_xdg_desktop_info() -> Result<String> {
             sessions_types.insert(session_type);
         };
     }
-    Ok(format!(
-        "XDG Desktops:\t{desktops:?}\nXDG Session Types:\t{sessions_types:?}"
-    ))
+    if desktops.is_empty() {
+        Ok(String::default())
+    } else {
+        let desktop_list = Vec::from_iter(desktops).join(", ");
+        let session_list = Vec::from_iter(sessions_types).join(", ");
+        Ok(format!(
+            "XDG Desktops:\t{desktop_list}\nXDG Session Types:\t{session_list}"
+        ))
+    }
 }
 
 /// This is our own Logger, which handles appropriate logging dependent on the environment.
