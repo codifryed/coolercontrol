@@ -24,7 +24,7 @@ import { reactive, Reactive, ref } from 'vue'
 import { ElTree } from 'element-plus'
 import { DeviceType } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { mdiRestart } from '@mdi/js'
+import { mdiHelpCircleOutline, mdiRestart } from '@mdi/js'
 import TreeIcon from '@/components/TreeIcon.vue'
 import Button from 'primevue/button'
 import { useConfirm } from 'primevue/useconfirm'
@@ -271,14 +271,32 @@ const saveCCDeviceSettings = async (): Promise<void> => {
 </script>
 
 <template>
-    <div class="flex flex-row">
+    <div class="flex flex-col lg:flex-row">
         <table class="bg-bg-two rounded-lg w-[36rem]">
             <tbody>
+                <tr class="border-border-one border-b-2">
+                    <td class="p-4 text-wrap italic">
+                        <svg-icon
+                            type="mdi"
+                            class="mr-2 inline"
+                            :path="mdiHelpCircleOutline"
+                            :size="deviceStore.getREMSize(1.3)"
+                        />
+                        Detection Issues? See the
+                        <a
+                            target="_blank"
+                            href="https://docs.coolercontrol.org/hardware-support.html"
+                            class="text-accent"
+                        >
+                            Hardware Support Documentation.
+                        </a>
+                    </td>
+                </tr>
                 <tr
                     v-tooltip.right="
                         'Select devices and sensors to disable or enable.\n' +
                         'Disabling unused devices and sensors is highly\n' +
-                        'recommended for the best performance.'
+                        'recommended.'
                     "
                 >
                     <td class="flex justify-between py-4">

@@ -51,3 +51,13 @@ npm run dev
 # or
 make dev
 ```
+
+## Held-back Dependencies
+
+- `"pinia": "2.2.4"` greater than this breaks some functionality in the UI with reactive
+  text/numbers.
+- `"primevue": "4.1.1"` breaks the original primevue tailwind implementation that we have.
+- `"tailwindcss-primeui": "^0.4.0"` breaks our original primevue tailwind implementation
+- `"vue-tsc": "2.2.4"` breaks some tests.
+- `"@types/node": "^20.17.30"` for max compat with older distros
+- `"tailwindcss": "^3.4.17",` the upgrade to 4.x looks to be significant work

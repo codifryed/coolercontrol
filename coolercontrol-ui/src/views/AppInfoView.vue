@@ -23,7 +23,7 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { computed, onMounted } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
-import { mdiBookOpenVariantOutline, mdiCircle, mdiGit } from '@mdi/js'
+import { mdiCircle, mdiGit, mdiHelpCircleOutline, mdiToolboxOutline } from '@mdi/js'
 import Button from 'primevue/button'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
@@ -174,19 +174,40 @@ onMounted(() => {
                 <div
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
                 >
-                    <span class="mb-4 font-semibold text-xl text-text-color"> Links </span>
+                    <span class="mb-4 font-semibold text-xl text-text-color">Helpful Links</span>
                     <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a target="_blank" :href="healthCheck.links.docs" class="text-accent">
+                        <a
+                            target="_blank"
+                            href="https://docs.coolercontrol.org/getting-started.html#%F0%9F%A7%99-configure"
+                            class="text-accent"
+                        >
                             <div class="flex flex-row items-center">
                                 <svg-icon
                                     type="mdi"
                                     class="mr-2"
-                                    :path="mdiBookOpenVariantOutline"
+                                    :path="mdiHelpCircleOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                Documentation
+                                Getting Started
                             </div> </a
-                        >&nbsp;- Get more information
+                        >&nbsp;- Help setting up fan control
+                    </p>
+                    <p class="mt-4 text-wrap flex flex-row items-center">
+                        <a
+                            target="_blank"
+                            href="https://docs.coolercontrol.org/hardware-support.html"
+                            class="text-accent"
+                        >
+                            <div class="flex flex-row items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    class="mr-2"
+                                    :path="mdiToolboxOutline"
+                                    :size="deviceStore.getREMSize(2.0)"
+                                />
+                                Hardware Support
+                            </div> </a
+                        >&nbsp;- Maximize hardware coverage
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.repository" class="text-accent">

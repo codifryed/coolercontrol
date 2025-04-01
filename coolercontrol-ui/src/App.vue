@@ -225,8 +225,8 @@ const steps = [
             title: 'Application and Daemon Information',
             description:
                 'Clicking the logo opens the Application Information page, where you can ' +
-                "to get information about the application, the system daemon, and logs. It's a " +
-                "good place to go when troubleshooting issues and there's a small daemon-status " +
+                "to get information about the application, the system daemon, and logs. It's where" +
+                "you want to go when troubleshooting issues and there's a small daemon-status " +
                 'badge here to notify you of any potential issues.',
         },
         options: {
@@ -327,6 +327,18 @@ const steps = [
             title: 'Restart Menu',
             description:
                 'Here you can choose whether to reload the UI or restart the system daemon.',
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
+    {
+        attachTo: { element: '#logo' },
+        content: {
+            title: "That's it!",
+            description: 'filled by template - special message',
         },
         options: {
             popper: {
@@ -561,32 +573,34 @@ onMounted(async () => {
                                         </p>
                                         <p class="mt-4">
                                             Before we get started, one of them most important things
-                                            to know about is settings up your hardware drivers.
+                                            to know about is
+                                            <br />
+                                            <a
+                                                href="https://docs.coolercontrol.org/hardware-support.html"
+                                                target="_blank"
+                                                class="text-accent outline-0 underline"
+                                            >
+                                                setting up your hardware drivers
+                                            </a>
+                                            .
                                         </p>
                                         <br />
                                         <p>
-                                            If your fans are not showing up or cannot be controlled,
-                                            then likely there is an issue with your currently
-                                            installed kernel drivers.<br /><br />
+                                            If your fans are
+                                            <span class="font-bold">not</span> showing up or cannot
+                                            be controlled, then likely there is an issue with your
+                                            currently installed kernel drivers.<br /><br />
 
                                             Before opening an issue, please confirm that all drivers
-                                            have been properly loaded by checking the
+                                            have been properly loaded by
                                             <a
-                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                                                href="https://docs.coolercontrol.org/hardware-support.html"
                                                 target="_blank"
                                                 class="text-accent outline-0"
                                             >
-                                                HWMon Support
+                                                checking the Hardware Support documentation
                                             </a>
-                                            and
-                                            <a
-                                                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
-                                                target="_blank"
-                                                class="text-accent outline-0"
-                                            >
-                                                Adding Device Support
-                                            </a>
-                                            pages. <br /><br />
+                                            <br /><br />
                                             <span class="italic"
                                                 >Note: you can start this tour again at any time
                                                 from the settings page.</span
@@ -596,9 +610,21 @@ onMounted(async () => {
                                         </p>
                                     </div>
                                     <div v-else-if="isLast">
-                                        {{ step.content.description }}
-                                        <br /><br />
-                                        Ok, that's it. You're ready to get started!
+                                        <p>
+                                            And remember, if your fans are
+                                            <span class="font-bold">not</span> showing up or cannot
+                                            be controlled,
+                                            <br />
+                                            <a
+                                                href="https://docs.coolercontrol.org/hardware-support.html"
+                                                target="_blank"
+                                                class="text-accent outline-0"
+                                            >
+                                                check the Hardware Support documentation
+                                            </a>
+                                        </p>
+                                        <br />
+                                        Ok, you're ready to get started!
                                     </div>
                                     <p v-else>{{ step.content.description }}</p>
                                 </div>
