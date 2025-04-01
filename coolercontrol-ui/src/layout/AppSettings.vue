@@ -292,6 +292,22 @@ onMounted(() => {
                         <!--UI Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
+                                <tr v-tooltip.right="'Start the application introduction tour.'">
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div class="float-right">Introduction</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <Button
+                                            label="Start Tour"
+                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                            @click="emitter.emit('start-tour')"
+                                        />
+                                    </td>
+                                </tr>
                                 <tr v-tooltip.right="'Time format: 12-hour (AM/PM) or 24-hour'">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
@@ -505,22 +521,6 @@ onMounted(() => {
                                                     ],
                                                 }),
                                             }"
-                                        />
-                                    </td>
-                                </tr>
-                                <tr v-tooltip.right="'Start the application introduction tour.'">
-                                    <td
-                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
-                                    >
-                                        <div class="float-right">Introduction</div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <Button
-                                            label="Start Tour"
-                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
-                                            @click="emitter.emit('start-tour')"
                                         />
                                     </td>
                                 </tr>
