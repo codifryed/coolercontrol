@@ -98,7 +98,7 @@ fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     cc_fs::runtime(async {
         let run_token = setup_termination_signals();
-        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone())?;
+        let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         #[cfg(feature = "io_uring")]
         cc_fs::register_uring_buffers()?;

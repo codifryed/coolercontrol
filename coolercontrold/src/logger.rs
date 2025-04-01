@@ -16,12 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{exit_successfully, Args, LOG_ENV, VERSION};
-use anyhow::Result;
+use crate::{cc_fs, exit_successfully, Args, LOG_ENV, VERSION};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::Logger;
 use log::{info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
-use std::collections::VecDeque;
+use nix::NixPath;
+use nu_glob::glob;
+use regex::Regex;
+use std::collections::{HashSet, VecDeque};
+use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::runtime::Handle;
@@ -31,7 +35,7 @@ use tokio_util::sync::CancellationToken;
 const LOG_BUFFER_LINE_SIZE: usize = 500;
 const NEW_LOG_CHANNEL_CAP: usize = 2;
 
-pub fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
+pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
     let version = VERSION.unwrap_or("unknown");
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
@@ -43,28 +47,81 @@ pub fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<Lo
     let (logger, log_buf_handle) = CCLogger::new(log_level, version, run_token)?;
     logger.init()?;
     info!("Logging Level: {}", log::max_level());
-    if log::max_level() == LevelFilter::Debug || cmd_args.version {
-        info!(
-            "\n\
-            CoolerControlD v{version}\n\n\
-            System:\n\
-            \t{}\n\
-            \t{}\n\
-            ",
-            sysinfo::System::long_os_version().unwrap_or_default(),
-            sysinfo::System::kernel_version().unwrap_or_default(),
-        );
-    } else {
-        info!(
-            "Initializing CoolerControl {version} running on Kernel {}",
-            sysinfo::System::kernel_version().unwrap_or_default()
-        );
-    }
+    info!(
+        "System Info:\n\
+        CoolerControlD {version}\n\
+        Name:\t{}\n\
+        OS:\t\t{}\n\
+        Host:\t{}\n\
+        Kernel:\t{}\n\
+        Board Manufacturer:\t{}\n\
+        Board Name:\t\t{}\n\
+        Board Version:\t{}\n\
+        BIOS Manufacturer:\t{}\n\
+        BIOS Version:\t{}\n\
+        {}",
+        sysinfo::System::name().unwrap_or_default(),
+        sysinfo::System::long_os_version().unwrap_or_default(),
+        sysinfo::System::host_name().unwrap_or_default(),
+        sysinfo::System::kernel_version().unwrap_or_default(),
+        get_dmi_system_info("board_vendor").await,
+        get_dmi_system_info("board_name").await,
+        get_dmi_system_info("board_version").await,
+        get_dmi_system_info("bios_vendor").await,
+        get_dmi_system_info("bios_release").await,
+        get_xdg_desktop_info().await.unwrap_or_default(),
+    );
     if cmd_args.version {
         exit_successfully();
     }
     Ok(log_buf_handle)
 }
+
+async fn get_dmi_system_info(name: &str) -> String {
+    cc_fs::read_txt(format!("/sys/devices/virtual/dmi/id/{name}"))
+        .await
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
+}
+
+async fn get_xdg_desktop_info() -> Result<String> {
+    let mut desktops = HashSet::new();
+    let mut sessions_types = HashSet::new();
+    let environ_paths = glob("/proc/*/environ", None)?
+        .filter_map(Result::ok)
+        .collect::<Vec<PathBuf>>();
+    let regex_desktop = Regex::new(r"XDG_SESSION_DESKTOP=(?P<desktop>\w+)")?;
+    let regex_session_type = Regex::new(r"XDG_SESSION_TYPE=(?P<session_type>\w+)")?;
+    for path in environ_paths {
+        if path.is_empty() {
+            continue;
+        }
+        let Ok(content) = cc_fs::read_txt(&path).await else {
+            continue;
+        };
+        if let Some(desktop_captures) = regex_desktop.captures(&content) {
+            let desktop = desktop_captures
+                .name("desktop")
+                .context("Desktop Group should exist")?
+                .as_str()
+                .to_owned();
+            desktops.insert(desktop);
+        };
+        if let Some(type_captures) = regex_session_type.captures(&content) {
+            let session_type = type_captures
+                .name("session_type")
+                .context("Session Type should exist")?
+                .as_str()
+                .to_owned();
+            sessions_types.insert(session_type);
+        };
+    }
+    Ok(format!(
+        "XDG Desktops:\t{desktops:?}\nXDG Session Types:\t{sessions_types:?}"
+    ))
+}
+
 /// This is our own Logger, which handles appropriate logging dependent on the environment.
 struct CCLogger {
     max_level: LevelFilter,
