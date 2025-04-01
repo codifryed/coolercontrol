@@ -49,6 +49,7 @@ It offers an easy-to-use user interface with various control features and also p
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
+cp -p packaging/metadata/%{ap_id}-symbolic.svg %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps/
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 cp -p packaging/metadata/%{ap_id}.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 mkdir -p %{buildroot}%{_metainfodir}

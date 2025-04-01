@@ -272,7 +272,10 @@ const addItems = computed(() => [
             v-tooltip.right="'Application Info'"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
-                <OverlayBadge :severity="daemonBadgeSeverity">
+                <OverlayBadge
+                    :severity="daemonBadgeSeverity"
+                    class="[&>[data-pc-name=pcbadge]]:!right-[50.3%] [&>[data-pc-name=pcbadge]]:!top-[74.5%] [&>[data-pc-name=pcbadge]]:!outline-bg-one [&>[data-pc-name=pcbadge]]:!outline-[1px] [&>[data-pc-name=pcbadge]]:w-[0.6rem] [&>[data-pc-name=pcbadge]]:h-[0.6rem]"
+                >
                     <img :src="logoUrl" alt="logo" class="w-10 h-10" />
                 </OverlayBadge>
             </router-link>

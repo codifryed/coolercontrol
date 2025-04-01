@@ -580,7 +580,7 @@ class DeviceService:
 
     @staticmethod
     def _stringify_status(
-        statuses: Union[List[Tuple[str, Union[str, int, float], str]], None]
+        statuses: Union[List[Tuple[str, Union[str, int, float], str]], None],
     ) -> Statuses:
         return (
             [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]

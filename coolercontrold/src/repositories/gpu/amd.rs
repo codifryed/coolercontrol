@@ -142,7 +142,7 @@ impl GpuAMD {
             let fan_curve_info = Self::get_fan_curve_info(&device_path)
                 .await
                 .inspect_err(|err| {
-                    warn!("Failed to get RDNA3/4 fan curve info: {err}");
+                    debug!("Could not get RDNA3/4 fan curve info: {err}");
                 })
                 .ok();
             let drm_device_name = Self::get_drm_device_name(&path).await;

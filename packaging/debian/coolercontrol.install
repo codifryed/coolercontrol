@@ -1,5 +1,6 @@
 usr/bin/coolercontrol
 usr/share/applications/org.coolercontrol.CoolerControl.*
 usr/share/icons/hicolor/scalable/apps/org.coolercontrol.CoolerControl.*
+usr/share/icons/hicolor/symbolic/apps/org.coolercontrol.CoolerControl-symbolic.*
 usr/share/icons/hicolor/256x256/apps/org.coolercontrol.CoolerControl.*
 usr/share/metainfo/org.coolercontrol.CoolerControl.*.*
