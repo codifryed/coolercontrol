@@ -134,4 +134,338 @@ async fn get_power_channel_label(base_path: &PathBuf) -> Option<String> {
 /// Create the power channel name
 fn power_channel_name(suffix: &str) -> String {
     format!("power1_{suffix}")
+/// Tests
+#[cfg(test)]
+mod tests {
+    use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+    use serial_test::serial;
+    use std::path::Path;
+    use uuid::Uuid;
+
+    use super::*;
+
+    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct HwmonFileContext {
+        test_base_path: PathBuf,
+    }
+
+    fn setup() -> HwmonFileContext {
+        let test_base_path =
+            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
+                .to_path_buf();
+        cc_fs::create_dir_all(&test_base_path).unwrap();
+        HwmonFileContext { test_base_path }
+    }
+
+    fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn init_no_power() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
+
+            // when:
+            let power_result = init_power(&test_base_path).await;
+
+            // then:
+            assert!(power_result.is_err()); // does not currently error no matter what
+            assert!(power_result
+                .map_err(|err| err.to_string().contains("No such file or directory"))
+                .unwrap_err());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn init_power_average() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(
+                test_base_path.join("power1_label"),
+                b"IHaveTheAveragePower".to_vec(),
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let power_result = init_power(test_base_path).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(power_result.is_ok());
+            let powers = power_result.unwrap();
+            assert_eq!(1, powers.len());
+            assert_eq!(HwmonChannelType::Power, powers[0].hwmon_type);
+            assert_eq!("power1_average", &powers[0].name);
+            assert_eq!(1, powers[0].number);
+            assert_eq!("IHaveTheAveragePower", powers[0].label.as_ref().unwrap());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn init_power_input() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(
+                test_base_path.join("power1_label"),
+                b"IHaveTheInputPower".to_vec(),
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let power_result = init_power(test_base_path).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(power_result.is_ok());
+            let powers = power_result.unwrap();
+            assert_eq!(1, powers.len());
+            assert_eq!(HwmonChannelType::Power, powers[0].hwmon_type);
+            assert_eq!("power1_input", &powers[0].name);
+            assert_eq!(1, powers[0].number);
+            assert_eq!("IHaveTheInputPower", powers[0].label.as_ref().unwrap());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn init_power_not_usable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_average"), b"ABC".to_vec()) // wrong format
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power1_label"), b"Power1".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let power_result = init_power(test_base_path).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(power_result.is_ok());
+            println!("{power_result:?}");
+            assert!(power_result.unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn init_only_power_average() {
+        // test that given both powerN_average and powerN_input, that we prefer & use only _average
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(
+                test_base_path.join("power1_label"),
+                b"IHaveTheAveragePower".to_vec(),
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let power_result = init_power(test_base_path).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(power_result.is_ok());
+            let powers = power_result.unwrap();
+            assert_eq!(1, powers.len());
+            assert_eq!(HwmonChannelType::Power, powers[0].hwmon_type);
+            assert_eq!("power1_average", &powers[0].name);
+            assert_eq!(1, powers[0].number);
+            assert_eq!("IHaveTheAveragePower", powers[0].label.as_ref().unwrap());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn init_multiple_powers() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power1_label"), b"Power1".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power2_input"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            // no label for power2
+            cc_fs::write(test_base_path.join("power3_average"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power3_input"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power3_label"), b"Power3".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let power_result = init_power(test_base_path).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(power_result.is_ok());
+            let powers = power_result.unwrap();
+            assert_eq!(3, powers.len());
+            assert_eq!(HwmonChannelType::Power, powers[0].hwmon_type);
+            assert_eq!(HwmonChannelType::Power, powers[1].hwmon_type);
+            assert_eq!(HwmonChannelType::Power, powers[2].hwmon_type);
+            assert_eq!("power1_average", &powers[0].name);
+            assert_eq!("power2_input", &powers[1].name);
+            assert_eq!("power3_average", &powers[2].name);
+            assert_eq!(1, powers[0].number);
+            assert_eq!(2, powers[1].number);
+            assert_eq!(3, powers[2].number);
+            assert_eq!("Power1", powers[0].label.as_ref().unwrap());
+            assert_eq!(None, powers[1].label);
+            assert_eq!("Power3", powers[2].label.as_ref().unwrap());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_power_average_status() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("power1_average"),
+                b"36000000".to_vec(), // 36 watts (microwatts)
+            )
+            .await
+            .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    name: "power1_average".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // when:
+            let power_result = extract_power_status(&driver_info).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(1, power_result.len());
+            assert_eq!(Some(36.), power_result[0].watts);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_power_input_status() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("power1_input"),
+                b"6123456".to_vec(), // 6.123456 watts (microwatts)
+            )
+            .await
+            .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    name: "power1_input".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // when:
+            let power_result = extract_power_status(&driver_info).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(1, power_result.len());
+            assert_eq!(Some(6.123_456), power_result[0].watts);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_no_power_channels() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                ..Default::default()
+            };
+
+            // when:
+            let power_result = extract_power_status(&driver_info).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(0, power_result.len());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_status_reading_problem_returns_zero() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Power,
+                    name: "power1_input".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // when:
+            let power_result = extract_power_status(&driver_info).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(1, power_result.len());
+            assert_eq!(Some(0.), power_result[0].watts);
+        });
+    }
 }

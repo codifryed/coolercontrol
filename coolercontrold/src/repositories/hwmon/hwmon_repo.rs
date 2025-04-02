@@ -83,7 +83,7 @@ impl Default for HwmonChannelInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct HwmonDriverInfo {
     pub name: String,
     pub path: PathBuf,
