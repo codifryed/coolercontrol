@@ -19,58 +19,92 @@
 use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
-use anyhow::{anyhow, Context, Result};
-use log::{info, trace};
+use anyhow::{Context, Result};
+use log::{info, trace, warn};
+use regex::Regex;
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
+use std::ops::Not;
 use std::path::PathBuf;
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
-const POWER_INPUT_SUFFIX: &str = "input";
-const POWER_LABEL: &str = "power1_label";
+const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
+macro_rules! format_power_label { ($($arg:tt)*) => {{ format!("power{}_label", $($arg)*) }}; }
 
-/// This initializes the `powerN` hwmon sysfs files. These are mainly used to
-/// measure power usage in microWatts for `amdgpu` drivers.
+/// This initializes the `powerN` hwmon sysfs files. These are used to
+/// measure power usage in microWatts.
 /// See [kernel docs](https://docs.kernel.org/gpu/amdgpu/thermal.html)
 pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
-    let mut power_channels = vec![];
-    // Prefer Average to Input
-    for suffix in [POWER_AVERAGE_SUFFIX, POWER_INPUT_SUFFIX] {
-        if let Ok(channel) = find_power(base_path, suffix).await {
-            power_channels.push(channel);
-            break; // Only one power channel for now (input doesn't help much if average is present)
-        }
-    }
-    trace!("Hwmon Power detected: {power_channels:?} for {base_path:?}");
-    Ok(power_channels)
-}
-
-/// Find the power channel by name.
-async fn find_power(base_path: &PathBuf, suffix: &str) -> Result<HwmonChannelInfo> {
-    let power_channel_name = power_channel_name(suffix);
+    let mut powers = vec![];
+    let mut preferred_powers = HashMap::new();
+    let mut power_inputs = vec![];
     for entry in cc_fs::read_dir(base_path)? {
         let os_file_name = entry?.file_name();
-        let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        if file_name != power_channel_name {
+        let file_name = os_file_name
+            .to_str()
+            .context("File Name should be a UTF-8 String")?;
+        init_power_variations(
+            base_path,
+            file_name,
+            &mut preferred_powers,
+            &mut power_inputs,
+        )
+        .await?;
+    }
+    for (channel_number, power_input) in power_inputs {
+        if preferred_powers.contains_key(&channel_number) {
+            // contains a preferred power average metric for this channel_number
             continue;
         }
-        if sensor_is_not_usable(base_path, suffix).await {
-            return Err(anyhow!("Power channel {power_channel_name} NOT usable."));
-        }
-        let label = get_power_channel_label(base_path).await;
-        return Ok(HwmonChannelInfo {
+        preferred_powers.insert(channel_number, power_input);
+    }
+    for (channel_number, power_channel_name) in preferred_powers {
+        let label = get_power_channel_label(base_path, channel_number).await;
+        powers.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Power,
-            number: 1,
+            number: channel_number,
             name: power_channel_name,
             label,
             ..Default::default()
         });
     }
-    Err(anyhow!("Power channel not found"))
+    powers.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+    trace!("Hwmon Power detected: {powers:?} for {base_path:?}");
+    Ok(powers)
+}
+async fn init_power_variations(
+    base_path: &PathBuf,
+    file_name: &str,
+    preferred_powers: &mut HashMap<u8, String>,
+    power_inputs: &mut Vec<(u8, String)>,
+) -> Result<()> {
+    let regex_power_file = Regex::new(PATTERN_POWER_FILE_NUMBER)?;
+    if regex_power_file.is_match(file_name).not() {
+        return Ok(()); // skip if not a power file
+    }
+    let channel_number: u8 = regex_power_file
+        .captures(file_name)
+        .context("Power Number should exist")?
+        .name("number")
+        .context("Number Group should exist")?
+        .as_str()
+        .parse()?;
+    if sensor_is_not_usable(base_path, file_name).await {
+        return Ok(()); // skip if pwm file isn't readable
+    }
+    if file_name.ends_with(POWER_AVERAGE_SUFFIX) {
+        // average metric is preferred to input and no need to display both
+        preferred_powers.insert(channel_number, file_name.to_string());
+    } else {
+        power_inputs.push((channel_number, file_name.to_string()));
+    }
+
+    Ok(())
 }
 
 /// Extract the power status
 pub async fn extract_power_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let mut power = vec![];
+    let mut powers = vec![];
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Power {
             continue;
@@ -79,31 +113,31 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         let watts = cc_fs::read_sysfs(driver.path.join(&channel.name))
             .await
             .and_then(check_parsing_64)
-            .map(convert_micro_to_watts)
+            .map(convert_micro_watts_to_watts)
             .unwrap_or_default();
-        power.push(ChannelStatus {
+        powers.push(ChannelStatus {
             name: channel.name.clone(),
             watts: Some(watts),
             ..Default::default()
         });
     }
-    power
+    powers
 }
 
 /// Check if the power channel is usable
-async fn sensor_is_not_usable(base_path: &PathBuf, suffix: &str) -> bool {
-    cc_fs::read_sysfs(base_path.join(format!("power1_{suffix}")))
+async fn sensor_is_not_usable(base_path: &PathBuf, file_name: &str) -> bool {
+    cc_fs::read_sysfs(base_path.join(file_name))
         .await
         .and_then(check_parsing_64)
-        .map(convert_micro_to_watts)
+        .map(convert_micro_watts_to_watts)
         .inspect_err(|err| {
-            info!("Error reading power value from: {base_path:?}/power1_{suffix} - {err}");
+            warn!("Error reading power value from: {base_path:?}/{file_name} - {err}");
         })
         .is_err()
 }
 
 /// Converts microWatts to Watts
-fn convert_micro_to_watts(micro_watts: f64) -> Watts {
+fn convert_micro_watts_to_watts(micro_watts: f64) -> Watts {
     (micro_watts / 1_000_000.) as Watts
 }
 
@@ -116,14 +150,14 @@ fn check_parsing_64(content: String) -> Result<f64> {
 }
 
 /// Read the power label
-async fn get_power_channel_label(base_path: &PathBuf) -> Option<String> {
-    cc_fs::read_txt(base_path.join(POWER_LABEL))
+async fn get_power_channel_label(base_path: &PathBuf, channel_number: u8) -> Option<String> {
+    cc_fs::read_txt(base_path.join(format_power_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {
             let power_label = label.trim();
             if power_label.is_empty() {
-                info!("Power label is empty: {base_path:?}/{POWER_LABEL}");
+                info!("Power label is empty: {base_path:?}/power{channel_number}_label");
                 None
             } else {
                 Some(power_label.to_string())
@@ -131,9 +165,6 @@ async fn get_power_channel_label(base_path: &PathBuf) -> Option<String> {
         })
 }
 
-/// Create the power channel name
-fn power_channel_name(suffix: &str) -> String {
-    format!("power1_{suffix}")
 /// Tests
 #[cfg(test)]
 mod tests {
