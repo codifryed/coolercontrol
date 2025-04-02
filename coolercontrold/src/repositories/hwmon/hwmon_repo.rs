@@ -22,7 +22,7 @@ use crate::device::{
     SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
-use crate::repositories::hwmon::{devices, fans, temps};
+use crate::repositories::hwmon::{devices, fans, power, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
@@ -83,7 +83,7 @@ impl Default for HwmonChannelInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct HwmonDriverInfo {
     pub name: String,
     pub path: PathBuf,
@@ -149,7 +149,7 @@ impl HwmonRepo {
     /// Maps driver infos to our Devices
     /// `ThinkPads` need special handling, see:
     /// [Kernel Docs](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     async fn map_into_our_device_model(
         &mut self,
         hwmon_drivers: Vec<HwmonDriverInfo>,
@@ -180,26 +180,38 @@ impl HwmonRepo {
             )
                 .then_some(false);
             for channel in &driver.channels {
-                if channel.hwmon_type != HwmonChannelType::Fan {
-                    continue; // only Fan channels currently have controls
+                match channel.hwmon_type {
+                    HwmonChannelType::Fan => {
+                        if thinkpad_fan_control.is_some() && channel.number == 1 {
+                            thinkpad_fan_control = Some(
+                                // verify if fan control for this ThinkPad is enabled or not:
+                                fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
+                            );
+                        }
+                        let channel_info = ChannelInfo {
+                            label: channel.label.clone(),
+                            speed_options: Some(SpeedOptions {
+                                profiles_enabled: false,
+                                fixed_enabled: channel.pwm_writable,
+                                manual_profiles_enabled: channel.pwm_writable,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
+                    HwmonChannelType::Power => {
+                        let channel_info = ChannelInfo {
+                            label: channel.label.clone(),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
+                    HwmonChannelType::Temp
+                    | HwmonChannelType::Load
+                    | HwmonChannelType::Freq
+                    | HwmonChannelType::PowerCap => continue,
                 }
-                if thinkpad_fan_control.is_some() && channel.number == 1 {
-                    thinkpad_fan_control = Some(
-                        // verify if fan control for this ThinkPad is enabled or not:
-                        fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
-                    );
-                }
-                let channel_info = ChannelInfo {
-                    label: channel.label.clone(),
-                    speed_options: Some(SpeedOptions {
-                        profiles_enabled: false,
-                        fixed_enabled: channel.pwm_writable,
-                        manual_profiles_enabled: channel.pwm_writable,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                };
-                channels.insert(channel.name.clone(), channel_info);
             }
             let device_info = DeviceInfo {
                 temps,
@@ -218,7 +230,8 @@ impl HwmonRepo {
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
-            let channel_statuses = fans::extract_fan_statuses(&driver).await;
+            let mut channel_statuses = fans::extract_fan_statuses(&driver).await;
+            channel_statuses.extend(power::extract_power_status(&driver).await);
             let temp_statuses = temps::extract_temp_statuses(&driver).await;
             self.preloaded_statuses.borrow_mut().insert(
                 type_index,
@@ -374,7 +387,7 @@ impl Repository for HwmonRepo {
                         .filter(|fan| disabled_channels.contains(&fan.name).not())
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
-                Err(err) => error!("Error initializing Hwmon Fans: {}", err),
+                Err(err) => error!("Error initializing Hwmon Fans: {err}"),
             };
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
@@ -383,10 +396,19 @@ impl Repository for HwmonRepo {
                         .filter(|temp| disabled_channels.contains(&temp.name).not())
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
-                Err(err) => error!("Error initializing Hwmon Temps: {}", err),
+                Err(err) => error!("Error initializing Hwmon Temps: {err}"),
+            };
+            match power::init_power(&path).await {
+                Ok(power) => channels.extend(
+                    power
+                        .into_iter()
+                        .filter(|power| disabled_channels.contains(&power.name).not())
+                        .collect::<Vec<HwmonChannelInfo>>(),
+                ),
+                Err(err) => error!("Error initializing Hwmon Power: {err}"),
             };
             if channels.is_empty() {
-                debug!("No proper fans or temps detected under {path:?}, skipping.");
+                debug!("No fans, temps, or power detected under {path:?}, skipping.");
                 continue;
             }
             let pci_device_names = devices::get_device_pci_names(&path).await;
@@ -414,7 +436,7 @@ impl Repository for HwmonRepo {
             init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Hwmon Devices: {:?}", init_devices);
+            info!("Initialized Hwmon Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices
                 .iter()
@@ -465,11 +487,12 @@ impl Repository for HwmonRepo {
                     tokio::select! {
                         () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
-                            let fan_statuses = fans::extract_fan_statuses(driver).await;
+                            let mut channel_statuses = fans::extract_fan_statuses(driver).await;
+                            channel_statuses.extend(power::extract_power_status(driver).await);
                             let temp_statuses = temps::extract_temp_statuses(driver).await;
                             self.preloaded_statuses
                                 .borrow_mut()
-                                .insert(type_index, (fan_statuses, temp_statuses));
+                                .insert(type_index, (channel_statuses, temp_statuses));
                             drop(device_permit);
                         },
                     }

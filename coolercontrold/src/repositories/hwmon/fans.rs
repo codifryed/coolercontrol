@@ -49,7 +49,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
         init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    trace!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
+    trace!("Hwmon pwm fans detected: {fans:?} for {base_path:?}");
     Ok(fans)
 }
 
@@ -369,10 +369,7 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
         .and_then(|label| {
             let fan_label = label.trim();
             if fan_label.is_empty() {
-                info!(
-                    "Fan label is empty for {:?}/fan{}_label",
-                    base_path, channel_number
-                );
+                warn!("Fan label is empty for {base_path:?}/fan{channel_number}_label");
                 None
             } else {
                 Some(fan_label.to_string())
