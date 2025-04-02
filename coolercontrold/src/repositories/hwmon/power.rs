@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{info, trace, warn};
+use log::{trace, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
@@ -43,7 +43,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
         let file_name = os_file_name
             .to_str()
             .context("File Name should be a UTF-8 String")?;
-        init_power_variations(
+        insert_power_metrics(
             base_path,
             file_name,
             &mut preferred_powers,
@@ -53,7 +53,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
     }
     for (channel_number, power_input) in power_inputs {
         if preferred_powers.contains_key(&channel_number) {
-            // contains a preferred power average metric for this channel_number
+            // already contains a preferred power average metric for this channel_number
             continue;
         }
         preferred_powers.insert(channel_number, power_input);
@@ -72,7 +72,7 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
     trace!("Hwmon Power detected: {powers:?} for {base_path:?}");
     Ok(powers)
 }
-async fn init_power_variations(
+async fn insert_power_metrics(
     base_path: &PathBuf,
     file_name: &str,
     preferred_powers: &mut HashMap<u8, String>,
@@ -98,7 +98,6 @@ async fn init_power_variations(
     } else {
         power_inputs.push((channel_number, file_name.to_string()));
     }
-
     Ok(())
 }
 
@@ -157,7 +156,7 @@ async fn get_power_channel_label(base_path: &PathBuf, channel_number: u8) -> Opt
         .and_then(|label| {
             let power_label = label.trim();
             if power_label.is_empty() {
-                info!("Power label is empty: {base_path:?}/power{channel_number}_label");
+                warn!("Power label is empty: {base_path:?}/power{channel_number}_label");
                 None
             } else {
                 Some(power_label.to_string())
