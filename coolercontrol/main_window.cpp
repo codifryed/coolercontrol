@@ -189,7 +189,8 @@ void MainWindow::initSystemTray() {
   m_trayIconMenu->addAction(m_quitAction);
 
   m_sysTrayIcon->setContextMenu(m_trayIconMenu);
-  m_sysTrayIcon->setIcon(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
+  m_sysTrayIcon->setIcon(QIcon::fromTheme(
+      APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
   m_sysTrayIcon->setToolTip("CoolerControl");
   m_sysTrayIcon->show();
 
