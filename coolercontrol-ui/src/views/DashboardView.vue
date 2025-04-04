@@ -370,7 +370,7 @@ onUnmounted(() => {
         </div>
     </div>
     <Fullscreen v-model="fullPage" :teleport="true" :page-only="true">
-        <div :class="{'full-page-wrapper': fullPage }">
+        <div :class="{ 'full-page-wrapper': fullPage }">
             <div
                 v-if="fullPage"
                 class="flex flex-row pt-0.5 fixed left-0 top-0 z-50 w-full justify-between"
