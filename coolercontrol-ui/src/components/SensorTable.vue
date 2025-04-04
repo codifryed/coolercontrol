@@ -28,6 +28,7 @@ import { onMounted, Ref, ref, watch } from 'vue'
 import { Status } from '@/models/Status'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -370,77 +371,89 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="h-full pb-14">
-        <DataTable
-            :value="deviceTableData"
-            row-group-mode="rowspan"
-            :group-rows-by="['deviceName', 'rowID']"
-            scrollable
-            scroll-height="flex"
-            :pt="{
-                tableContainer: () => ({
-                    class: ['rounded-none border-0 border-border-one'],
-                }),
-            }"
+    <ScrollAreaRoot style="--scrollbar-size: 10px">
+        <ScrollAreaViewport class="pb-24 h-screen w-full">
+            <div class="h-full">
+                <DataTable
+                    :value="deviceTableData"
+                    row-group-mode="rowspan"
+                    :group-rows-by="['deviceName', 'rowID']"
+                    scrollable
+                    scroll-height="flex"
+                    :pt="{
+                        tableContainer: () => ({
+                            class: ['rounded-none border-0 border-border-one'],
+                        }),
+                    }"
+                >
+                    <Column field="deviceName" header="Device">
+                        <template #body="slotProps">
+                            <div class="flex leading-none items-center">
+                                <div class="mr-2">
+                                    <svg-icon
+                                        type="mdi"
+                                        :path="mdiMemory"
+                                        :size="deviceStore.getREMSize(1.3)"
+                                    />
+                                </div>
+                                <div>{{ slotProps.data.deviceName }}</div>
+                            </div>
+                        </template>
+                    </Column>
+                    <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
+                    <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
+                    <Column field="rowID" header="Channel">
+                        <template #body="slotProps">
+                            <span
+                                class="pi pi-minus mr-2"
+                                :style="{ color: slotProps.data.channelColor }"
+                            />{{ slotProps.data.channelLabel }}
+                        </template>
+                    </Column>
+                    <Column field="value" header="Current">
+                        <template #body="slotProps">
+                            {{ format(slotProps.data.value, slotProps.data.dataType) }}
+                            <span :style="suffixStyle(slotProps.data.dataType)">{{
+                                suffix(slotProps.data.dataType)
+                            }}</span>
+                        </template>
+                    </Column>
+                    <Column field="min" header="Min">
+                        <template #body="slotProps">
+                            {{ format(slotProps.data.min, slotProps.data.dataType) }}
+                            <span :style="suffixStyle(slotProps.data.dataType)">{{
+                                suffix(slotProps.data.dataType)
+                            }}</span>
+                        </template>
+                    </Column>
+                    <Column field="max" header="Max">
+                        <template #body="slotProps">
+                            {{ format(slotProps.data.max, slotProps.data.dataType) }}
+                            <span :style="suffixStyle(slotProps.data.dataType)">{{
+                                suffix(slotProps.data.dataType)
+                            }}</span>
+                        </template>
+                    </Column>
+                    <Column field="avg" header="Average">
+                        <template #body="slotProps">
+                            {{ format(slotProps.data.avg, slotProps.data.dataType) }}
+                            <span :style="suffixStyle(slotProps.data.dataType)">{{
+                                suffix(slotProps.data.dataType)
+                            }}</span>
+                        </template>
+                    </Column>
+                </DataTable>
+            </div>
+        </ScrollAreaViewport>
+        <ScrollAreaScrollbar
+            class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+            orientation="vertical"
         >
-            <Column field="deviceName" header="Device">
-                <template #body="slotProps">
-                    <div class="flex leading-none items-center">
-                        <div class="mr-2">
-                            <svg-icon
-                                type="mdi"
-                                :path="mdiMemory"
-                                :size="deviceStore.getREMSize(1.3)"
-                            />
-                        </div>
-                        <div>{{ slotProps.data.deviceName }}</div>
-                    </div>
-                </template>
-            </Column>
-            <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
-            <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
-            <Column field="rowID" header="Channel">
-                <template #body="slotProps">
-                    <span
-                        class="pi pi-minus mr-2"
-                        :style="{ color: slotProps.data.channelColor }"
-                    />{{ slotProps.data.channelLabel }}
-                </template>
-            </Column>
-            <Column field="value" header="Current">
-                <template #body="slotProps">
-                    {{ format(slotProps.data.value, slotProps.data.dataType) }}
-                    <span :style="suffixStyle(slotProps.data.dataType)">{{
-                        suffix(slotProps.data.dataType)
-                    }}</span>
-                </template>
-            </Column>
-            <Column field="min" header="Min">
-                <template #body="slotProps">
-                    {{ format(slotProps.data.min, slotProps.data.dataType) }}
-                    <span :style="suffixStyle(slotProps.data.dataType)">{{
-                        suffix(slotProps.data.dataType)
-                    }}</span>
-                </template>
-            </Column>
-            <Column field="max" header="Max">
-                <template #body="slotProps">
-                    {{ format(slotProps.data.max, slotProps.data.dataType) }}
-                    <span :style="suffixStyle(slotProps.data.dataType)">{{
-                        suffix(slotProps.data.dataType)
-                    }}</span>
-                </template>
-            </Column>
-            <Column field="avg" header="Average">
-                <template #body="slotProps">
-                    {{ format(slotProps.data.avg, slotProps.data.dataType) }}
-                    <span :style="suffixStyle(slotProps.data.dataType)">{{
-                        suffix(slotProps.data.dataType)
-                    }}</span>
-                </template>
-            </Column>
-        </DataTable>
-    </div>
+            <ScrollAreaThumb
+                class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+            />
+        </ScrollAreaScrollbar>
+    </ScrollAreaRoot>
 </template>
 
 <style lang="scss" scoped></style>

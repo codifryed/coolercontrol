@@ -39,7 +39,8 @@
         "vue-echarts": "^7.0.3",
         "vue-router": "^4.5.0",
         "@microsoft/fetch-event-source": "^2.0.1",
-        "v-onboarding": "^2.9.0"
+        "v-onboarding": "^2.9.0",
+        "vue-fullscreen": "^3.1.3"
     },
     "devDependencies": {
         "vue-tsc": "2.2.4",
