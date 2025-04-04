@@ -89,6 +89,9 @@ MainWindow::MainWindow(QWidget* parent)
           });
   connect(m_page, &QWebEnginePage::fullScreenRequested,
           [this](QWebEngineFullScreenRequest request) {
+            // Qt/WebEngine has a strange bug here where toggleOn() is aligned with the JS engine
+            //  and not with the Window's real full-screen state. Can cause an edge case issue when
+            //  shortcut and toggle are used and the user refreshes the UI.
             qDebug() << "FullScreen request: " << request.toggleOn();
             request.accept();
             setWindowState(windowState() ^ Qt::WindowFullScreen);
@@ -115,8 +118,11 @@ MainWindow::MainWindow(QWidget* parent)
 
   QShortcut* fullscreenKeyToggle = new QShortcut(this);
   fullscreenKeyToggle->setKey(Qt::Key_F11);
-  connect(fullscreenKeyToggle, &QShortcut::activated,
-          [this]() { setWindowState(windowState() ^ Qt::WindowFullScreen); });
+  connect(fullscreenKeyToggle, &QShortcut::activated, [this]() {
+    qDebug() << "FullScreen Key Triggered";
+    setWindowState(windowState() ^ Qt::WindowFullScreen);
+    emit m_ipc->fullScreenToggled(isFullScreen());
+  });
 }
 
 void MainWindow::initWizard() {

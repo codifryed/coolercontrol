@@ -40,6 +40,8 @@ class IPC final : public QObject {
 
   Q_INVOKABLE [[nodiscard]] bool getCloseToTray() const;
 
+  Q_INVOKABLE [[nodiscard]] bool getIsFullScreen() const;
+
   Q_INVOKABLE [[nodiscard]] double getZoomFactor() const;
 
   Q_INVOKABLE [[nodiscard]] QByteArray getWindowGeometry() const;
@@ -79,6 +81,8 @@ class IPC final : public QObject {
   void sendText(const QString& text);
 
   void webLoadFinished() const;
+
+  void fullScreenToggled(bool fullScreen) const;
 
  private:
   QSettings* m_settings;

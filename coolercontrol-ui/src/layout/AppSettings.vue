@@ -65,10 +65,24 @@ const applyThinkPadFanControl = (value: boolean | string | number) => {
 }
 
 const isFullScreen = ref(fullscreenApi.isFullscreen)
+if (deviceStore.isQtApp()) {
+    // @ts-ignore
+    const ipc = window.ipc
+    isFullScreen.value = await ipc.getIsFullScreen()
+    ipc.fullScreenToggled.connect((fullscreen: boolean) => {
+        isFullScreen.value = fullscreen
+    })
+}
 const toggleFullScreen = async (_enable: string | number | boolean): Promise<void> => {
     await fullscreenApi.toggle(null, {
-        callback: (fullscreen: boolean) => {
+        callback: async (fullscreen: boolean) => {
             isFullScreen.value = fullscreen
+            if (deviceStore.isQtApp()) {
+                await deviceStore.sleep(50)
+                // @ts-ignore
+                const ipc = window.ipc
+                isFullScreen.value = await ipc.getIsFullScreen()
+            }
         },
     })
 }

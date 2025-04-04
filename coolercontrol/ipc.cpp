@@ -47,6 +47,8 @@ bool IPC::getCloseToTray() const {
   return m_settings->value(SETTING_CLOSE_TO_TRAY.data(), false).toBool();
 }
 
+bool IPC::getIsFullScreen() const { return m_mainWindow->isFullScreen(); }
+
 double IPC::getZoomFactor() const {
   return m_settings->value(SETTING_ZOOM_FACTOR.data(), 1.0).toDouble();
 }
