@@ -65,9 +65,12 @@ const applyThinkPadFanControl = (value: boolean | string | number) => {
 }
 
 const isFullScreen = ref(fullscreenApi.isFullscreen)
-const toggleFullScreen = (enable: string | number | boolean): void => {
-    fullscreenApi.toggle()
-    isFullScreen.value = Boolean(enable)
+const toggleFullScreen = async (_enable: string | number | boolean): Promise<void> => {
+    await fullscreenApi.toggle(null, {
+        callback: (fullscreen: boolean) => {
+            isFullScreen.value = fullscreen
+        },
+    })
 }
 
 const themeModeOptions = [
