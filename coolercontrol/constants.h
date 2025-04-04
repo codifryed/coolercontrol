@@ -21,6 +21,7 @@
 
 const std::string COOLER_CONTROL_VERSION = "2.0.1";
 const std::string APP_ID = "org.coolercontrol.CoolerControl";
+const std::string APP_ID_SYMBOLIC = "org.coolercontrol.CoolerControl-symbolic";
 const std::string DBUS_NAME = "org.coolercontrol.SingleInstance";
 const std::string DBUS_PATH = "/org/coolercontrol/SingleInstance";
 const std::string DBUS_INTERFACE = "org.coolercontrol.SingleInstance";
