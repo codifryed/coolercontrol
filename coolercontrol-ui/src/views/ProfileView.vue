@@ -1337,9 +1337,12 @@ onMounted(async () => {
         setTimeout(updateResponsiveGraphHeight)
     })
 
-    watch([chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction], () => {
-        contextIsDirty = true
-    })
+    watch(
+        [chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction, selectedType],
+        () => {
+            contextIsDirty = true
+        },
+    )
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
 })
