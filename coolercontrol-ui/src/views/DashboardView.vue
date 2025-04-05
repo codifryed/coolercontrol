@@ -31,12 +31,13 @@ import { TempInfo } from '@/models/TempInfo.ts'
 import { ChannelInfo } from '@/models/ChannelInfo.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
+import { mdiInformationSlabCircleOutline, mdiMemory, mdiOverscan } from '@mdi/js'
 import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import ControlsOverview from '@/components/ControlsOverview.vue'
+import { component as Fullscreen } from 'vue-fullscreen'
 
 interface Props {
     dashboardUID?: UID
@@ -68,6 +69,7 @@ const chartMinutesScrolled = (event: WheelEvent): void => {
     }
 }
 const dataTypes = [...$enum(DataType).values()]
+const fullPage = ref(false)
 
 interface AvailableSensor {
     name: string
@@ -199,6 +201,10 @@ const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('u-plot-chart')
     const controlPanel = document.getElementById('control-panel')
     if (graphEl != null && controlPanel != null) {
+        if (fullPage.value) {
+            graphEl.style.height = 'calc(100vh - 1rem)'
+            return
+        }
         const panelHeight = controlPanel.getBoundingClientRect().height
         if (panelHeight > 77) {
             // 5.5rem
@@ -207,6 +213,11 @@ const updateResponsiveGraphHeight = (): void => {
             graphEl.style.height = 'calc(100vh - 5.75rem)'
         }
     }
+}
+
+const toggleFullPage = (): void => {
+    fullPage.value = !fullPage.value
+    updateResponsiveGraphHeight()
 }
 
 const chartKey: Ref<string> = ref(uuidV4())
@@ -251,6 +262,13 @@ onUnmounted(() => {
                     :path="mdiInformationSlabCircleOutline"
                     :size="deviceStore.getREMSize(1.25)"
                 />
+            </div>
+            <div
+                class="p-2 flex leading-none items-center"
+                v-tooltip.bottom="'Full Page'"
+                @click="toggleFullPage"
+            >
+                <svg-icon type="mdi" :path="mdiOverscan" :size="deviceStore.getREMSize(1.25)" />
             </div>
             <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
@@ -351,21 +369,46 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
-    <TimeChart
-        v-if="dashboard.chartType == ChartType.TIME_CHART"
-        :dashboard="dashboard"
-        :key="chartKey"
-    />
-    <SensorTable
-        v-else-if="dashboard.chartType == ChartType.TABLE"
-        :dashboard="dashboard"
-        :key="'table' + chartKey"
-    />
-    <ControlsOverview
-        v-else-if="dashboard.chartType == ChartType.CONTROLS"
-        :dashboard="dashboard"
-        :key="'controls' + chartKey"
-    />
+    <Fullscreen v-model="fullPage" :teleport="true" :page-only="true">
+        <div :class="{ 'full-page-wrapper': fullPage }">
+            <div
+                v-if="fullPage"
+                class="flex flex-row pt-0.5 fixed left-0 top-0 z-50 w-full justify-between"
+            >
+                <div />
+                <div v-tooltip.left="'Exit Full Page'" @click="toggleFullPage">
+                    <svg-icon
+                        type="mdi"
+                        class="text-text-color-secondary"
+                        :path="mdiOverscan"
+                        :size="deviceStore.getREMSize(1.325)"
+                    />
+                </div>
+                <div />
+            </div>
+            <TimeChart
+                v-if="dashboard.chartType == ChartType.TIME_CHART"
+                :dashboard="dashboard"
+                :key="chartKey"
+            />
+            <SensorTable
+                v-else-if="dashboard.chartType == ChartType.TABLE"
+                :dashboard="dashboard"
+                :key="'table' + chartKey"
+            />
+            <ControlsOverview
+                v-else-if="dashboard.chartType == ChartType.CONTROLS"
+                :dashboard="dashboard"
+                :key="'controls' + chartKey"
+            />
+        </div>
+    </Fullscreen>
 </template>
 
-<style scoped></style>
+<style lang="scss" scoped>
+.full-page-wrapper {
+    width: 100%;
+    height: 100%;
+    background-color: rgb(var(--colors-bg-one));
+}
+</style>

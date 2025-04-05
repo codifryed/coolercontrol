@@ -31,6 +31,7 @@ import ToastService from 'primevue/toastservice'
 import DialogService from 'primevue/dialogservice'
 import ConfirmationService from 'primevue/confirmationservice'
 import CC from './presets/cc'
+import VueFullscreen from 'vue-fullscreen'
 
 import Tooltip from 'primevue/tooltip'
 import mitt from 'mitt'
@@ -57,6 +58,7 @@ app.use(PrimeVue, {
 app.use(ToastService)
 app.use(DialogService)
 app.use(ConfirmationService)
+app.use(VueFullscreen)
 
 app.directive('tooltip', Tooltip)
 

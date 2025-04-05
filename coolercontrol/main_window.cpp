@@ -29,12 +29,14 @@
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
 #include <QSettings>
+#include <QShortcut>
 #include <QStringBuilder>  // for % operator
 #include <QSystemTrayIcon>
 #include <QThread>
 #include <QTimer>
 #include <QWebEngineCookieStore>
 #include <QWebEngineDownloadRequest>
+#include <QWebEngineFullScreenRequest>
 #include <QWebEngineNewWindowRequest>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -54,6 +56,7 @@ MainWindow::MainWindow(QWidget* parent)
       m_retryTimer(new QTimer(parent)) {
   setCentralWidget(m_view);
   m_profile->settings()->setAttribute(QWebEngineSettings::Accelerated2dCanvasEnabled, true);
+  m_profile->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
   m_profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
   m_profile->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
@@ -84,6 +87,15 @@ MainWindow::MainWindow(QWidget* parent)
           [](QWebEngineNewWindowRequest const& request) {
             QDesktopServices::openUrl(request.requestedUrl());
           });
+  connect(m_page, &QWebEnginePage::fullScreenRequested,
+          [this](QWebEngineFullScreenRequest request) {
+            // Qt/WebEngine has a strange bug here where toggleOn() is aligned with the JS engine
+            //  and not with the Window's real full-screen state. Can cause an edge case issue when
+            //  shortcut and toggle are used and the user refreshes the UI.
+            qDebug() << "FullScreen request: " << request.toggleOn();
+            request.accept();
+            setWindowState(windowState() ^ Qt::WindowFullScreen);
+          });
   m_view->setPage(m_page);
   const auto cookieStore = m_profile->cookieStore();
   connect(cookieStore, &QWebEngineCookieStore::cookieAdded,
@@ -103,6 +115,14 @@ MainWindow::MainWindow(QWidget* parent)
   initDelay();
   initSystemTray();
   initWebUI();
+
+  QShortcut* fullscreenKeyToggle = new QShortcut(this);
+  fullscreenKeyToggle->setKey(Qt::Key_F11);
+  connect(fullscreenKeyToggle, &QShortcut::activated, [this]() {
+    qDebug() << "FullScreen Key Triggered";
+    setWindowState(windowState() ^ Qt::WindowFullScreen);
+    emit m_ipc->fullScreenToggled(isFullScreen());
+  });
 }
 
 void MainWindow::initWizard() {

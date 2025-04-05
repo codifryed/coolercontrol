@@ -58,10 +58,35 @@ const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
+import { api as fullscreenApi } from 'vue-fullscreen'
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
 }
+
+const isFullScreen = ref(fullscreenApi.isFullscreen)
+if (deviceStore.isQtApp()) {
+    // @ts-ignore
+    const ipc = window.ipc
+    isFullScreen.value = await ipc.getIsFullScreen()
+    ipc.fullScreenToggled.connect((fullscreen: boolean) => {
+        isFullScreen.value = fullscreen
+    })
+}
+const toggleFullScreen = async (_enable: string | number | boolean): Promise<void> => {
+    await fullscreenApi.toggle(null, {
+        callback: async (fullscreen: boolean) => {
+            isFullScreen.value = fullscreen
+            if (deviceStore.isQtApp()) {
+                await deviceStore.sleep(50)
+                // @ts-ignore
+                const ipc = window.ipc
+                isFullScreen.value = await ipc.getIsFullScreen()
+            }
+        },
+    })
+}
+
 const themeModeOptions = [
     { value: ThemeMode.SYSTEM, label: deviceStore.toTitleCase(ThemeMode.SYSTEM) },
     { value: ThemeMode.DARK, label: deviceStore.toTitleCase(ThemeMode.DARK) },
@@ -401,6 +426,23 @@ onMounted(() => {
                                             v-model="settingsStore.menuEntitiesAtBottom"
                                             size="large"
                                             @change="applyQuickUIRefresh"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.right="'Toggles full-screen mode'">
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        Full Screen
+                                    </td>
+                                    <td
+                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="isFullScreen"
+                                            :disabled="!fullscreenApi.isEnabled"
+                                            size="large"
+                                            @change="toggleFullScreen"
                                         />
                                     </td>
                                 </tr>
