@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.1.0] - 2025-04-05
+
+### Added
+
+- New Icons including symbolic icon (!279)
+- Zero RPM feature support for RDNA3/4 AMD GPU fan control - kernel version dependant (#386)
+- Improved RDNA3/4 AMD GPU support, logs and docs (!280)
+- Nvidia fan RPM support - upstream work (!270)
+- Support for general HWMon device Power metrics (watts) (#422)
+- Full-screen support for Web UI & Desktop app (!284)
+- Full-Page feature for Dashboards (!284)
+- Enhanced system information logs by default (!281)
+- Link to Hardware Support docs in Device Settings (!281)
+
+### Changed
+
+- Continued log improvements for various situations (!278)
+- Fallback icon logic and badge icon placement improvements (!279)
+- Improved liqctld unix socket connection pool handling (!277)
+- Improvments to Startup Tour (!281)
+- Dependencies updated
+- Build pipeline updates
+
+### Fixed
+
+- Issue when setting AseTek AIOs as either modern or legacy versions (#421)
+- Handling for devices that do not have a writable pwmN_enable for fan control (!278)
+- Issue on some systems with socket connection issues (#424)
+- Issue where changing the Profile Type didn't count towards unsaved changes (!285)
+- Minimum Profiles reqiured for Mix Profiles are now properly evaluated (!278)
+
 ## [2.0.1] - 2025-03-20
 
 ### Added

@@ -5,7 +5,7 @@
 %global ap_id org.coolercontrol.CoolerControl
 
 Name:           %{project}
-Version:        2.0.1
+Version:        2.1.0
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices
 
@@ -49,6 +49,7 @@ It offers an easy-to-use user interface with various control features and also p
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
+mkdir -p %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
 cp -p packaging/metadata/%{ap_id}-symbolic.svg %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps/
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 cp -p packaging/metadata/%{ap_id}.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
@@ -68,6 +69,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Sat Apr 05 2025 Guy Boldon <gb@guyboldon.com> - 2.1.0-1
+- 2.1.0 Release
+
 * Thu Mar 20 2025 Guy Boldon <gb@guyboldon.com> - 2.0.1-1
 - 2.0.1 Release
 
