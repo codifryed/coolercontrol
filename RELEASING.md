@@ -43,25 +43,15 @@ one.
       7. close the current Milestone
       8. create the next release milestone (can easily change the milestone name/version later)
 
-5. AUR Release
+5. Update OpenAPI specification
 
-   1. Currently, this is done mostly by hand (need to create friendly script at some point)
-   2. Make sure SSH keys are setup correctly.
-   3. cd to AUR Repo
-   4. Adjust pkgver version number in `PKGBUILD`
-   5. run `make clean` to clear the build dir
-   6. run `make` - will fail with a validity check and if there are any missing dependencies you
-      will have to install them manually
-   7. run `make checksum` to get sha hash -> copy this into the `PKGBUILD`
-   8. run `make clean` to clear the downloaded tar
-   9. run `make` again. This time it should build & install the latest release package
-   10. start daemon and quick test
-   11. run `make clean` to clean out the build files
-   12. push changes to AUR Repo with commit message as release version
-   13. test that new version is available after a few minutes from Arch machine
-       `yay -S coolercontrol`
+   1. Update locally running daemon with new version: `make dev-build && make dev-install`
+   2. Run `cd openapi;./update.sh`
+   3. Commit new file to repo.
+   4. Update Website with new `openapi.spec` file.
 
 6. NixOS Release
+
    1. You need Nix package manager setup on your system.
    2. Update the fork of the repo: https://github.com/NixOS/nixpkgs
    3. `cd nixpkgs`
