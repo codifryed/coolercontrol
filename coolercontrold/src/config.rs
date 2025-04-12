@@ -832,7 +832,7 @@ impl Config {
                     .unwrap_or(&Item::Value(Value::Integer(Formatted::new(2))))
                     .as_integer()
                     .with_context(|| "startup_delay should be an integer value")?
-                    .clamp(0, 10) as u64,
+                    .clamp(0, 900) as u64,
             );
             let thinkpad_full_speed = settings
                 .get("thinkpad_full_speed")
