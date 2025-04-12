@@ -391,7 +391,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Fans: {err}"),
-            };
+            }
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
                     temps
@@ -400,7 +400,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Temps: {err}"),
-            };
+            }
             match power::init_power(&path).await {
                 Ok(power) => channels.extend(
                     power
@@ -409,7 +409,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Power: {err}"),
-            };
+            }
             if channels.is_empty() {
                 debug!("No fans, temps, or power detected under {path:?}, skipping.");
                 continue;
