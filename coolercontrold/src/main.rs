@@ -262,7 +262,14 @@ fn exit_successfully() {
 
 /// Some hardware needs additional time to come up and be ready to communicate.
 async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
-    sleep(config.get_settings()?.startup_delay).await;
+    let startup_delay = config.get_settings()?.startup_delay;
+    if startup_delay > Duration::from_secs(2) {
+        info!(
+            "Waiting {}s before communicating with devices.",
+            startup_delay.as_secs()
+        );
+    }
+    sleep(startup_delay).await;
     Ok(())
 }
 
