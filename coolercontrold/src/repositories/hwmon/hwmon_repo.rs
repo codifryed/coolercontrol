@@ -28,7 +28,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, log, trace};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -47,6 +47,11 @@ use tokio::time::{sleep, Instant};
 static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
     LazyLock::new(|| Duration::from_millis(350));
 static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
+
+/// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
+/// implementation blocks temperature reads when the drive is spinning up which causes significant
+/// read delays. Since this is pretty normal behavior for this driver, we handle it differently.
+static DRIVETEMP: &str = "drivetemp";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -307,8 +312,15 @@ impl HwmonRepo {
             return;
         }
         if slow_device_trigger_count == 1 {
-            warn!(
-                "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
+            let log_level = if driver_name == DRIVETEMP {
+                log::Level::Debug
+            } else {
+                log::Level::Warn
+            };
+            log!(
+                log_level,
+                "Slow HWMon Device detected for: {driver_name}. \
+                This device may be slow to update and respond."
             );
         }
         self.delay_logged
