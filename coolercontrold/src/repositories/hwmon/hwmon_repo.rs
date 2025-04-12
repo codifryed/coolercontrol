@@ -28,7 +28,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, log, trace};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -47,6 +47,11 @@ use tokio::time::{sleep, Instant};
 static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
     LazyLock::new(|| Duration::from_millis(350));
 static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
+
+/// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
+/// implementation blocks temperature reads when the drive is spinning up which causes significant
+/// read delays. Since this is pretty normal behavior for this driver, we handle it differently.
+static DRIVETEMP: &str = "drivetemp";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -296,16 +301,26 @@ impl HwmonRepo {
         locations
     }
 
-    /// Allows the slow log to be triggered twice, but only logged on the 2nd occurance.
-    /// This allows some leeway during initialization, but logs if it happens during normal operation.
+    /// Logging slow devices is triggered once the polling loop overlaps and the
+    /// `DEVICE_READ_PERMIT_TIMEOUT` is reached.
+    /// This only outputs a log on the 2nd occurrence, which then avoids outputting a log during
+    /// initialization where some devices are under extra load, but makes sure to log it if it
+    /// happens during normal polling loop operations.
     fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
         let slow_device_trigger_count = self.delay_logged.get(&type_index).unwrap().get();
         if slow_device_trigger_count > 1 {
             return;
         }
         if slow_device_trigger_count == 1 {
-            warn!(
-                "Slow HWMon Device detected for: {driver_name}. This device may be slow to update and respond."
+            let log_level = if driver_name == DRIVETEMP {
+                log::Level::Debug
+            } else {
+                log::Level::Warn
+            };
+            log!(
+                log_level,
+                "Slow HWMon Device detected for: {driver_name}. \
+                This device may be slow to update and respond."
             );
         }
         self.delay_logged
@@ -388,7 +403,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Fans: {err}"),
-            };
+            }
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
                     temps
@@ -397,7 +412,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Temps: {err}"),
-            };
+            }
             match power::init_power(&path).await {
                 Ok(power) => channels.extend(
                     power
@@ -406,7 +421,7 @@ impl Repository for HwmonRepo {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing Hwmon Power: {err}"),
-            };
+            }
             if channels.is_empty() {
                 debug!("No fans, temps, or power detected under {path:?}, skipping.");
                 continue;
