@@ -296,8 +296,11 @@ impl HwmonRepo {
         locations
     }
 
-    /// Allows the slow log to be triggered twice, but only logged on the 2nd occurance.
-    /// This allows some leeway during initialization, but logs if it happens during normal operation.
+    /// Logging slow devices is triggered once the polling loop overlaps and the
+    /// `DEVICE_READ_PERMIT_TIMEOUT` is reached.
+    /// This only outputs a log on the 2nd occurrence, which then avoids outputting a log during
+    /// initialization where some devices are under extra load, but makes sure to log it if it
+    /// happens during normal polling loop operations.
     fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
         let slow_device_trigger_count = self.delay_logged.get(&type_index).unwrap().get();
         if slow_device_trigger_count > 1 {
