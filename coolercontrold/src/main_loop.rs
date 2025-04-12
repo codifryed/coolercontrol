@@ -24,7 +24,7 @@ use crate::processing::settings::SettingsController;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use std::cell::LazyCell;
 use std::ops::Not;
@@ -88,6 +88,8 @@ pub async fn run(
                     &sleep_listener,
                 )
                 .await?;
+            } else {
+                debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
             }
         }
         Ok(())
@@ -210,13 +212,15 @@ async fn wake_from_sleep(
     mode_controller: &Rc<ModeController>,
     sleep_listener: &SleepListener,
 ) -> Result<()> {
-    sleep(
-        config
-            .get_settings()?
-            .startup_delay
-            .max(Duration::from_secs(WAKE_PAUSE_MINIMUM_S)),
-    )
-    .await;
+    let startup_delay = config
+        .get_settings()?
+        .startup_delay
+        .max(Duration::from_secs(WAKE_PAUSE_MINIMUM_S));
+    info!(
+        "Waiting {}s before resuming after waking from sleep.",
+        startup_delay.as_secs()
+    );
+    sleep(startup_delay).await;
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
         settings_controller.reinitialize_devices().await;
