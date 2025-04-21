@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct HydroProSupport;
+// asetek_pro.py
 
 impl HydroProSupport {
     pub fn new() -> Self {

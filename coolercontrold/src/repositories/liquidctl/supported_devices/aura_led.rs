@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct AuraLedSupport;
+// aura_led.py
 
 impl AuraLedSupport {
     pub fn new() -> Self {

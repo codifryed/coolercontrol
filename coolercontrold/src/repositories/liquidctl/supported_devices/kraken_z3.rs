@@ -28,6 +28,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct KrakenZ3Support;
+// kraken3.py
 
 impl KrakenZ3Support {
     pub fn new() -> Self {

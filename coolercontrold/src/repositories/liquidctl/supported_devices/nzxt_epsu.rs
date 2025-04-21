@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 
 #[derive(Debug)]
 pub struct NzxtEPsuSupport;
+// nzxt_epsu.py
 
 impl NzxtEPsuSupport {
     pub fn new() -> Self {

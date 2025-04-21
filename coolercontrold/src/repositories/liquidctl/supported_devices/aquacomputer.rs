@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 
 #[derive(Debug)]
 pub struct AquaComputerSupport;
+// aquacomputer.py
 
 impl AquaComputerSupport {
     pub fn new() -> Self {

@@ -32,6 +32,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{
 pub struct SmartDeviceSupport {
     init_speed_channel_map: RefCell<HashMap<u8, Vec<String>>>,
 }
+// smart_device.py
 
 impl SmartDeviceSupport {
     pub fn new() -> Self {

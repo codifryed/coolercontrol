@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct CommanderProSupport;
+// commander_pro.py
 
 impl CommanderProSupport {
     pub fn new() -> Self {

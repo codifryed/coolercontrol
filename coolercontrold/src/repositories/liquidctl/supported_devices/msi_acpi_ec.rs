@@ -32,6 +32,7 @@ pub type StatusMap = HashMap<String, String>;
 
 #[derive(Debug)]
 pub struct MsiAcpiEcSupport;
+// custom out-of-tree driver
 
 impl MsiAcpiEcSupport {
     pub fn new() -> Self {

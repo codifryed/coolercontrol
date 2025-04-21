@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 
 #[derive(Debug)]
 pub struct CommanderCoreSupport;
+// commander_core.py
 
 impl CommanderCoreSupport {
     pub fn new() -> Self {
