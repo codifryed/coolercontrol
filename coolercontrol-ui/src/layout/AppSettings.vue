@@ -775,7 +775,7 @@ onMounted(() => {
                                             v-model="settingsStore.ccSettings.startup_delay"
                                             show-buttons
                                             :min="1"
-                                            :max="900"
+                                            :max="30"
                                             suffix=" s"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"

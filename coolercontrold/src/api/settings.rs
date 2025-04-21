@@ -133,7 +133,7 @@ impl CoolerControlSettingsDto {
             current_settings.no_init
         };
         let startup_delay = if let Some(delay) = self.startup_delay {
-            Duration::from_secs(u64::from(delay.clamp(0, 900)))
+            Duration::from_secs(u64::from(delay.clamp(0, 30)))
         } else {
             current_settings.startup_delay
         };
