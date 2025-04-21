@@ -177,11 +177,15 @@ impl CpuRepo {
                 }
             }
         }
-        Err(anyhow!(
-            "Could not find and match package ID to physical ID: {}, {:?}",
-            device_name,
-            channels
-        ))
+        // Older Intel CPUs don't always have a Package sensor present, so if
+        // we have only one CPU, we simply return the only physicalID present.
+        if self.cpu_infos.len() == 1 {
+            Ok(*self.cpu_infos.keys().next().unwrap())
+        } else {
+            Err(anyhow!(
+                "Could not find and match package ID to physical ID: {device_name}, {channels:?}"
+            ))
+        }
     }
 
     /// For AMD, this is done by comparing hwmon devices to the cpuinfo processor list.
