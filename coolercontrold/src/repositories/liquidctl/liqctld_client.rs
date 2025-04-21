@@ -288,7 +288,7 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a `Result` with a `StatusResponse` as the success type.
+    /// A `Result` with a `StatusResponse` as the success type.
     pub async fn initialize_device(
         &self,
         device_index: &u8,
