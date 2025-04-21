@@ -171,11 +171,9 @@ impl CpuRepo {
                     .context("Number Group should exist")?
                     .as_str()
                     .parse()?;
-                for physical_id in self.cpu_infos.keys() {
-                    if physical_id == &package_id {
-                        // verify there is a match
-                        return Ok(package_id);
-                    }
+                if self.cpu_infos.contains_key(&package_id) {
+                    // verify there is a match
+                    return Ok(package_id);
                 }
             }
         }
