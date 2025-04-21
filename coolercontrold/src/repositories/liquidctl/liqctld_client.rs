@@ -56,6 +56,7 @@ const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
 const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
+const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
 
 /// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
@@ -300,7 +301,19 @@ impl LiqctldClient {
             .uri(LIQCTLD_INITIALIZE.replace("{}", &device_index.to_string()))
             .method("POST")
             .body(request_body)?;
-        self.make_request(request).await
+        let mut response = self.make_request(&request).await;
+        if response.is_err() {
+            for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
+                sleep(Duration::from_millis(200)).await;
+                debug!("Retrying liquidctl initialization request.");
+                response = self.make_request(&request).await;
+                if response.is_ok() {
+                    return response;
+                }
+            }
+            warn!("Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} tries.");
+        }
+        response
     }
 
     /// Sets a particular device to legacy 690 mode. (Old Krakens/EVGA CLC)
