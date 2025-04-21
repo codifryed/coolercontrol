@@ -675,7 +675,7 @@ impl Repository for CpuRepo {
             init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized CPU Devices: {:?}", init_devices);
+            info!("Initialized CPU Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices
                 .iter()
@@ -751,10 +751,7 @@ impl Repository for CpuRepo {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if preloaded_statuses.is_none() {
-                error!(
-                    "There is no status preloaded for this device: {}",
-                    device_id
-                );
+                error!("There is no status preloaded for this device: {device_id}");
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
