@@ -151,7 +151,7 @@ impl CpuRepo {
         }
     }
 
-    /// For Intel this is given by the package ID in the hwmon temp labels.
+    /// For Intel, this is given by the package ID in the hwmon temp labels.
     fn parse_intel_physical_id(
         &self,
         device_name: &str,
@@ -186,7 +186,7 @@ impl CpuRepo {
         ))
     }
 
-    /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
+    /// For AMD, this is done by comparing hwmon devices to the cpuinfo processor list.
     #[allow(clippy::cast_possible_truncation)]
     fn parse_amd_physical_id(&self, index: usize) -> Result<PhysicalID> {
         // NOTE: not currently used due to an apparent bug in the amd hwmon kernel driver:
@@ -199,7 +199,7 @@ impl CpuRepo {
 
         // If we have only one CPU, we simply return the only physicalID present.
         // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
-        // Otherwise we do a simple assumption, that the physical cpu ID == hwmon device index:
+        // Otherwise, we do a simple assumption that the physical cpu ID == hwmon device index:
         if self.cpu_infos.len() == 1 {
             return Ok(*self.cpu_infos.keys().next().unwrap());
         }
@@ -419,7 +419,7 @@ impl CpuRepo {
     }
 
     /// CPU power should rarely be 0, but it looks like the energy counter is either not
-    /// consistently updated, or is regularly reset and so sometimes it is 0. For that case we
+    /// consistently updated or is regularly reset, and so sometimes it is 0. For that case, we
     /// will reuse the preload-cached value.
     ///
     /// The device initialization request will return 0, but we can't use a cached value in that case.
