@@ -171,7 +171,7 @@ impl LiqctldClient {
     /// Returns:
     ///
     /// a Result<T>, where T is the deserialized response from the request.
-    async fn make_request<T>(&self, request: Request<String>) -> Result<T>
+    async fn make_request<T>(&self, request: &Request<String>) -> Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
@@ -239,7 +239,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_HANDSHAKE)
             .method("GET")
             .body(String::new())?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
@@ -254,7 +254,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_DEVICES)
             .method("GET")
             .body(String::new())?;
-        self.make_request(request).await
+        self.make_request(&request).await
     }
 
     /// Gets the status of a specific device.
@@ -273,7 +273,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_STATUS.replace("{}", &device_index.to_string()))
             .method("GET")
             .body(String::new())?;
-        self.make_request(request).await
+        self.make_request(&request).await
     }
 
     /// Initializes a specific device.
@@ -319,7 +319,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_LEGACY690.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(String::new())?;
-        self.make_request(request).await
+        self.make_request(&request).await
     }
 
     /// Sets a particular device channel to a fixed speed.
@@ -351,7 +351,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_FIXED_SPEED.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
@@ -391,7 +391,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_SPEED_PROFILE.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
@@ -446,7 +446,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_COLOR.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
@@ -485,7 +485,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_SCREEN.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
@@ -501,7 +501,7 @@ impl LiqctldClient {
             .uri(LIQCTLD_QUIT)
             .method("POST")
             .body(String::new())?;
-        self.make_request::<IgnoredAny>(request).await?;
+        self.make_request::<IgnoredAny>(&request).await?;
         Ok(())
     }
 
