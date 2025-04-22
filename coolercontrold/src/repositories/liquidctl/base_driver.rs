@@ -42,6 +42,7 @@ pub enum BaseDriver {
     MockKrakenZ3,    // kraken3.py
     EvgaPascal,      // nvidia.py
     RogTuring,       // nvidia.py
+    MpgCooler,       // msi.py
     NzxtEPsu,        // nzxt_epsu.py
     RgbFusion2,      // rgb_fusion2.py
     SmartDevice,     // smart_device.py
