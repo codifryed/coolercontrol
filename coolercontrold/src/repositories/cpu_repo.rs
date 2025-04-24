@@ -151,7 +151,7 @@ impl CpuRepo {
         }
     }
 
-    /// For Intel this is given by the package ID in the hwmon temp labels.
+    /// For Intel, this is given by the package ID in the hwmon temp labels.
     fn parse_intel_physical_id(
         &self,
         device_name: &str,
@@ -171,22 +171,24 @@ impl CpuRepo {
                     .context("Number Group should exist")?
                     .as_str()
                     .parse()?;
-                for physical_id in self.cpu_infos.keys() {
-                    if physical_id == &package_id {
-                        // verify there is a match
-                        return Ok(package_id);
-                    }
+                if self.cpu_infos.contains_key(&package_id) {
+                    // verify there is a match
+                    return Ok(package_id);
                 }
             }
         }
-        Err(anyhow!(
-            "Could not find and match package ID to physical ID: {}, {:?}",
-            device_name,
-            channels
-        ))
+        // Older Intel CPUs don't always have a Package sensor present, so if
+        // we have only one CPU, we simply return the only physicalID present.
+        if self.cpu_infos.len() == 1 {
+            Ok(*self.cpu_infos.keys().next().unwrap())
+        } else {
+            Err(anyhow!(
+                "Could not find and match package ID to physical ID: {device_name}, {channels:?}"
+            ))
+        }
     }
 
-    /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
+    /// For AMD, this is done by comparing hwmon devices to the cpuinfo processor list.
     #[allow(clippy::cast_possible_truncation)]
     fn parse_amd_physical_id(&self, index: usize) -> Result<PhysicalID> {
         // NOTE: not currently used due to an apparent bug in the amd hwmon kernel driver:
@@ -199,7 +201,7 @@ impl CpuRepo {
 
         // If we have only one CPU, we simply return the only physicalID present.
         // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
-        // Otherwise we do a simple assumption, that the physical cpu ID == hwmon device index:
+        // Otherwise, we do a simple assumption that the physical cpu ID == hwmon device index:
         if self.cpu_infos.len() == 1 {
             return Ok(*self.cpu_infos.keys().next().unwrap());
         }
@@ -419,7 +421,7 @@ impl CpuRepo {
     }
 
     /// CPU power should rarely be 0, but it looks like the energy counter is either not
-    /// consistently updated, or is regularly reset and so sometimes it is 0. For that case we
+    /// consistently updated or is regularly reset, and so sometimes it is 0. For that case, we
     /// will reuse the preload-cached value.
     ///
     /// The device initialization request will return 0, but we can't use a cached value in that case.
@@ -675,7 +677,7 @@ impl Repository for CpuRepo {
             init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized CPU Devices: {:?}", init_devices);
+            info!("Initialized CPU Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices
                 .iter()
@@ -751,10 +753,7 @@ impl Repository for CpuRepo {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if preloaded_statuses.is_none() {
-                error!(
-                    "There is no status preloaded for this device: {}",
-                    device_id
-                );
+                error!("There is no status preloaded for this device: {device_id}");
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
