@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use heck::ToTitleCase;
-use lazy_static::lazy_static;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::device::{
     ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus,
@@ -152,10 +152,9 @@ pub trait DeviceSupport: Debug {
     }
 
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        lazy_static! {
-            static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        }
+        static TEMP_PROB_PATTERN: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"temperature \d+").unwrap());
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         for (probe_name, value) in status_map {
             if TEMP_PROB_PATTERN.is_match(probe_name) {
                 if let Some(temp) = parse_float_inner(value) {
@@ -192,10 +191,9 @@ pub trait DeviceSupport: Debug {
     }
 
     fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        lazy_static! {
-            static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        }
+        static TEMP_SENSOR_PATTERN: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"sensor \d+").unwrap());
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         for (sensor_name, value) in status_map {
             if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
                 if let Some(temp) = parse_float_inner(value) {
@@ -298,12 +296,13 @@ pub trait DeviceSupport: Debug {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        lazy_static! {
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-            static ref MULTIPLE_FAN_SPEED: Regex = Regex::new(r"fan \d+ speed").unwrap();
-            static ref MULTIPLE_FAN_SPEED_CORSAIR: Regex = Regex::new(r"fan speed \d+").unwrap();
-            static ref MULTIPLE_FAN_DUTY: Regex = Regex::new(r"fan \d+ duty").unwrap();
-        }
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
+        static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan \d+ speed").unwrap());
+        static MULTIPLE_FAN_SPEED_CORSAIR: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan speed \d+").unwrap());
+        static MULTIPLE_FAN_DUTY: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan \d+ duty").unwrap());
         let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
         for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
