@@ -279,7 +279,7 @@ pub trait DeviceSupport: Debug {
         let water_block_duty = status_map.get("water block duty").and_then(parse_float);
         if water_block_rpm.is_some() || water_block_duty.is_some() {
             channel_statuses.push(ChannelStatus {
-                name: "water block".to_string(),
+                name: "waterblock-fan".to_string(),
                 rpm: water_block_rpm,
                 duty: water_block_duty,
                 ..Default::default()
@@ -703,7 +703,7 @@ mod tests {
                 ("water block duty".to_string(), duty.to_string()),
             ]),
             vec![ChannelStatus {
-                name: "water block".to_string(),
+                name: "waterblock-fan".to_string(),
                 rpm: Some(rpm),
                 duty: Some(duty),
                 ..Default::default()
@@ -720,7 +720,7 @@ mod tests {
         let given_expected = vec![(
             HashMap::from([("water block speed".to_string(), rpm.to_string())]),
             vec![ChannelStatus {
-                name: "water block".to_string(),
+                name: "waterblock-fan".to_string(),
                 rpm: Some(rpm),
                 ..Default::default()
             }],
@@ -736,7 +736,7 @@ mod tests {
         let given_expected = vec![(
             HashMap::from([("water block duty".to_string(), duty.to_string())]),
             vec![ChannelStatus {
-                name: "water block".to_string(),
+                name: "waterblock-fan".to_string(),
                 duty: Some(duty),
                 ..Default::default()
             }],
