@@ -21,6 +21,7 @@ pub mod asus_ryujin;
 pub mod aura_led;
 pub mod commander_core;
 pub mod commander_pro;
+pub mod coolit;
 pub mod corsair_hid_psu;
 pub mod device_support;
 pub mod h1v2;

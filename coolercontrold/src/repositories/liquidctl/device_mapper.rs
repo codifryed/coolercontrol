@@ -26,6 +26,7 @@ use crate::repositories::liquidctl::supported_devices::asus_ryujin::AsusRyujinSu
 use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
 use crate::repositories::liquidctl::supported_devices::commander_pro::CommanderProSupport;
+use crate::repositories::liquidctl::supported_devices::coolit::CoolitSupport;
 use crate::repositories::liquidctl::supported_devices::corsair_hid_psu::CorsairHidPsuSupport;
 use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 use crate::repositories::liquidctl::supported_devices::h1v2::H1V2Support;
@@ -58,6 +59,7 @@ impl DeviceMapper {
             Box::new(AuraLedSupport::new()),
             Box::new(CommanderCoreSupport::new()),
             Box::new(CommanderProSupport::new()),
+            Box::new(CoolitSupport::new()),
             Box::new(CorsairHidPsuSupport::new()),
             Box::new(H1V2Support::new()),
             Box::new(Hydro690LcSupport::new()),
