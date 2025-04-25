@@ -33,16 +33,16 @@ pub enum BaseDriver {
     CommanderCore,   // commander_core.py
     CommanderPro,    // commander_pro.py
     CorsairHidPsu,   // corsair_hid_psu.py
-    Ddr4Temperature, // ddr4.py
-    VengeanceRgb,    // ddr4.py
+    Ddr4Temperature, // ddr4.py - NOT currently Supported - requires unsafe ops
+    VengeanceRgb,    // ddr4.py - NOT currently Supported - requires unsafe ops
     HydroPlatinum,   // hydro_platinum.py
     Kraken2,         // kraken2.py
     KrakenX3,        // kraken3.py
     KrakenZ3,        // kraken3.py
     MockKrakenZ3,    // kraken3.py
-    EvgaPascal,      // nvidia.py
-    RogTuring,       // nvidia.py
     MpgCooler,       // msi.py
+    EvgaPascal,      // nvidia.py - NOT currently Supported - requires unsafe ops
+    RogTuring,       // nvidia.py - NOT currently Supported - requires unsafe ops
     NzxtEPsu,        // nzxt_epsu.py
     RgbFusion2,      // rgb_fusion2.py
     SmartDevice,     // smart_device.py
