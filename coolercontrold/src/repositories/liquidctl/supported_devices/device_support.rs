@@ -358,7 +358,7 @@ mod tests {
     use super::*;
 
     fn assert_temp_status_vector_contents_eq(
-        device_support: KrakenX3Support,
+        device_support: &KrakenX3Support,
         given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>,
     ) {
         for (given, expected) in given_expected {
@@ -430,7 +430,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -444,7 +444,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -458,7 +458,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -500,7 +500,7 @@ mod tests {
                 temp: vrm_temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -514,7 +514,7 @@ mod tests {
                 temp: case_temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -542,7 +542,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -569,7 +569,7 @@ mod tests {
     }
 
     fn assert_channel_statuses_eq(
-        device_support: KrakenX3Support,
+        device_support: &KrakenX3Support,
         device_id: u8,
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
@@ -602,7 +602,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -618,7 +618,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -634,7 +634,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -655,7 +655,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -687,7 +687,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -708,7 +708,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -740,7 +740,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -797,6 +797,6 @@ mod tests {
                 },
             ],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 }
