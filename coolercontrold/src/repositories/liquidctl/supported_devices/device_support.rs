@@ -575,12 +575,18 @@ mod tests {
     ) {
         for (given, expected) in given_expected {
             let result = device_support.get_channel_statuses(&given, device_id);
-            assert!(expected
-                .iter()
-                .all(|temp_status| result.contains(temp_status)));
-            assert!(result
-                .iter()
-                .all(|temp_status| expected.contains(temp_status)));
+            assert!(
+                expected
+                    .iter()
+                    .all(|channel_status| result.contains(channel_status)),
+                "Resulting channel status doesn't contain all Expected statuses\nResults:{result:?}\nExpected:{expected:?}",
+            );
+            assert!(
+                result
+                    .iter()
+                    .all(|channel_status| expected.contains(channel_status)),
+                "Expected channel statuses don't contain all Resulting statuses\nExpected:{expected:?}\nResults:{result:?}"
+            );
         }
     }
 
