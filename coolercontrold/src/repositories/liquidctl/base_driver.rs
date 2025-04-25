@@ -29,6 +29,7 @@ pub enum BaseDriver {
     Modern690Lc,     // asetek.py
     Hydro690Lc,      // asetek.py
     HydroPro,        // asetek_pro.py
+    AsusRyujin,      // asus_ryujin.py
     AuraLed,         // aura_led.py
     CommanderCore,   // commander_core.py
     CommanderPro,    // commander_pro.py

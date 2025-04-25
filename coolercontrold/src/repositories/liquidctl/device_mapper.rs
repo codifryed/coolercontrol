@@ -22,6 +22,7 @@ use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
+use crate::repositories::liquidctl::supported_devices::asus_ryujin::AsusRyujinSupport;
 use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
 use crate::repositories::liquidctl::supported_devices::commander_pro::CommanderProSupport;
@@ -53,6 +54,7 @@ impl DeviceMapper {
     pub fn new() -> Self {
         let supported_devices_list: Vec<Box<dyn DeviceSupport>> = vec![
             Box::new(AquaComputerSupport::new()),
+            Box::new(AsusRyujinSupport::new()),
             Box::new(AuraLedSupport::new()),
             Box::new(CommanderCoreSupport::new()),
             Box::new(CommanderProSupport::new()),
