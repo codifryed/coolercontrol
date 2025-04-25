@@ -30,10 +30,10 @@ use hyper::client::conn::http1::SendRequest;
 use hyper::Request;
 use hyper::Response;
 use hyper_util::rt::TokioIo;
-use log::debug;
 use log::error;
 use log::trace;
 use log::warn;
+use log::{debug, info};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 use serde::Serialize;
@@ -56,7 +56,8 @@ const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
 const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
-const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
+const LIQCTLD_MAX_INIT_RETRIES: usize = 10;
+const LIQCTLD_INIT_PAUSE_MS: u64 = 1500;
 
 /// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
@@ -304,8 +305,8 @@ impl LiqctldClient {
         let mut response = self.make_request(&request).await;
         if response.is_err() {
             for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
-                sleep(Duration::from_millis(200)).await;
-                debug!("Retrying liquidctl initialization request.");
+                sleep(Duration::from_millis(LIQCTLD_INIT_PAUSE_MS)).await;
+                info!("Retrying liquidctl initialization request.");
                 response = self.make_request(&request).await;
                 if response.is_ok() {
                     return response;
