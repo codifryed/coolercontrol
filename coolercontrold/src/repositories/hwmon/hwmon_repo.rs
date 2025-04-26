@@ -212,10 +212,7 @@ impl HwmonRepo {
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    HwmonChannelType::Temp
-                    | HwmonChannelType::Load
-                    | HwmonChannelType::Freq
-                    | HwmonChannelType::PowerCap => continue,
+                    _ => (), // other channel types are handled differently or don't have info
                 }
             }
             let device_info = DeviceInfo {
