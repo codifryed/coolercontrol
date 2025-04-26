@@ -33,6 +33,7 @@ pub enum BaseDriver {
     AuraLed,         // aura_led.py
     CommanderCore,   // commander_core.py
     CommanderPro,    // commander_pro.py
+    Coolit,          // coolit.py
     CorsairHidPsu,   // corsair_hid_psu.py
     Ddr4Temperature, // ddr4.py - NOT currently Supported - requires unsafe ops
     VengeanceRgb,    // ddr4.py - NOT currently Supported - requires unsafe ops
