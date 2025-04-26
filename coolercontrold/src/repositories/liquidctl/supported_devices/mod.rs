@@ -17,6 +17,7 @@
  */
 
 pub mod aquacomputer;
+pub mod asus_ryujin;
 pub mod aura_led;
 pub mod commander_core;
 pub mod commander_pro;

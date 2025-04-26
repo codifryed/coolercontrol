@@ -16,12 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use heck::ToTitleCase;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fmt::Debug;
-
-use heck::ToTitleCase;
-use lazy_static::lazy_static;
-use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::device::{
     ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus,
@@ -152,10 +151,9 @@ pub trait DeviceSupport: Debug {
     }
 
     fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        lazy_static! {
-            static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        }
+        static TEMP_PROB_PATTERN: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"temperature \d+").unwrap());
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         for (probe_name, value) in status_map {
             if TEMP_PROB_PATTERN.is_match(probe_name) {
                 if let Some(temp) = parse_float_inner(value) {
@@ -192,10 +190,9 @@ pub trait DeviceSupport: Debug {
     }
 
     fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
-        lazy_static! {
-            static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        }
+        static TEMP_SENSOR_PATTERN: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"sensor \d+").unwrap());
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
         for (sensor_name, value) in status_map {
             if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
                 if let Some(temp) = parse_float_inner(value) {
@@ -229,8 +226,11 @@ pub trait DeviceSupport: Debug {
     ) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_single_fan_status(status_map, &mut channel_statuses);
+        self.add_single_external_fans_status(status_map, &mut channel_statuses);
         self.add_single_pump_status(status_map, &mut channel_statuses);
+        self.add_single_pump_fan_status(status_map, &mut channel_statuses);
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        self.add_multiple_external_fans_status(status_map, &mut channel_statuses);
         self.add_single_water_block_status(status_map, &mut channel_statuses);
         channel_statuses.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         channel_statuses
@@ -253,6 +253,22 @@ pub trait DeviceSupport: Debug {
         }
     }
 
+    fn add_single_external_fans_status(
+        &self,
+        status_map: &StatusMap,
+        channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        // asus_ryujin: where the status comes in singular, but the control channel is plural
+        let fan_duty = status_map.get("external fan duty").and_then(parse_float);
+        if fan_duty.is_some() {
+            channel_statuses.push(ChannelStatus {
+                name: "external-fans".to_string(),
+                duty: fan_duty,
+                ..Default::default()
+            });
+        }
+    }
+
     fn add_single_pump_status(
         &self,
         status_map: &StatusMap,
@@ -263,6 +279,23 @@ pub trait DeviceSupport: Debug {
         if pump_rpm.is_some() || pump_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "pump".to_string(),
+                rpm: pump_rpm,
+                duty: pump_duty,
+                ..Default::default()
+            });
+        }
+    }
+
+    fn add_single_pump_fan_status(
+        &self,
+        status_map: &StatusMap,
+        channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        let pump_rpm = status_map.get("pump fan speed").and_then(parse_u32);
+        let pump_duty = status_map.get("pump fan duty").and_then(parse_float);
+        if pump_rpm.is_some() || pump_duty.is_some() {
+            channel_statuses.push(ChannelStatus {
+                name: "pump-fan".to_string(),
                 rpm: pump_rpm,
                 duty: pump_duty,
                 ..Default::default()
@@ -298,12 +331,13 @@ pub trait DeviceSupport: Debug {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        lazy_static! {
-            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-            static ref MULTIPLE_FAN_SPEED: Regex = Regex::new(r"fan \d+ speed").unwrap();
-            static ref MULTIPLE_FAN_SPEED_CORSAIR: Regex = Regex::new(r"fan speed \d+").unwrap();
-            static ref MULTIPLE_FAN_DUTY: Regex = Regex::new(r"fan \d+ duty").unwrap();
-        }
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
+        static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan \d+ speed").unwrap());
+        static MULTIPLE_FAN_SPEED_CORSAIR: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan speed \d+").unwrap());
+        static MULTIPLE_FAN_DUTY: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"^fan \d+ duty").unwrap());
         let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
         for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
@@ -317,6 +351,37 @@ pub trait DeviceSupport: Debug {
                 } else if MULTIPLE_FAN_DUTY.is_match(name) {
                     let (_, duty) = fans_map.entry(fan_name).or_insert((None, None));
                     *duty = parse_float_inner(value);
+                }
+            }
+        }
+        for (name, (rpm, duty)) in fans_map {
+            channel_statuses.push(ChannelStatus {
+                name,
+                rpm,
+                duty,
+                ..Default::default()
+            });
+        }
+    }
+
+    fn add_multiple_external_fans_status(
+        &self,
+        status_map: &StatusMap,
+        channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        static NUMBER_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
+        static MULTIPLE_FAN_SPEED: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"external fan \d+ speed").unwrap());
+        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
+        for (name, value) in status_map {
+            if MULTIPLE_FAN_SPEED.is_match(name) {
+                if let Some(fan_number) = NUMBER_PATTERN
+                    .find_at(name, 12)
+                    .and_then(|number| parse_u32_inner(number.as_str()))
+                {
+                    let fan_name = format!("external-fan{fan_number}");
+                    let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
+                    *rpm = parse_u32_inner(value);
                 }
             }
         }
@@ -359,7 +424,7 @@ mod tests {
     use super::*;
 
     fn assert_temp_status_vector_contents_eq(
-        device_support: KrakenX3Support,
+        device_support: &KrakenX3Support,
         given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>,
     ) {
         for (given, expected) in given_expected {
@@ -431,7 +496,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -445,7 +510,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -459,7 +524,7 @@ mod tests {
                 temp: temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -487,7 +552,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -501,7 +566,7 @@ mod tests {
                 temp: vrm_temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -515,7 +580,7 @@ mod tests {
                 temp: case_temp.parse().unwrap(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -543,7 +608,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(&device_support, given_expected);
     }
 
     #[test]
@@ -570,18 +635,24 @@ mod tests {
     }
 
     fn assert_channel_statuses_eq(
-        device_support: KrakenX3Support,
+        device_support: &KrakenX3Support,
         device_id: u8,
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
         for (given, expected) in given_expected {
             let result = device_support.get_channel_statuses(&given, device_id);
-            assert!(expected
-                .iter()
-                .all(|temp_status| result.contains(temp_status)));
-            assert!(result
-                .iter()
-                .all(|temp_status| expected.contains(temp_status)));
+            assert!(
+                expected
+                    .iter()
+                    .all(|channel_status| result.contains(channel_status)),
+                "Resulting channel status doesn't contain all Expected statuses\nResults:{result:?}\nExpected:{expected:?}",
+            );
+            assert!(
+                result
+                    .iter()
+                    .all(|channel_status| expected.contains(channel_status)),
+                "Expected channel statuses don't contain all Resulting statuses\nExpected:{expected:?}\nResults:{result:?}"
+            );
         }
     }
 
@@ -603,7 +674,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -619,7 +690,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -635,7 +706,24 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_external_fan_status() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let duty: f64 = 33.3;
+        let given_expected = vec![(
+            HashMap::from([("external fan duty".to_string(), duty.to_string())]),
+            vec![ChannelStatus {
+                name: "external-fans".to_string(),
+                rpm: None,
+                duty: Some(duty),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -656,7 +744,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -672,7 +760,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -688,7 +776,60 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_fan_status() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let duty: f64 = 33.3;
+        let given_expected = vec![(
+            HashMap::from([
+                ("pump fan speed".to_string(), rpm.to_string()),
+                ("pump fan duty".to_string(), duty.to_string()),
+            ]),
+            vec![ChannelStatus {
+                name: "pump-fan".to_string(),
+                rpm: Some(rpm),
+                duty: Some(duty),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_fan_status_rpm() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let given_expected = vec![(
+            HashMap::from([("pump fan speed".to_string(), rpm.to_string())]),
+            vec![ChannelStatus {
+                name: "pump-fan".to_string(),
+                rpm: Some(rpm),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_fan_status_duty() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let duty: f64 = 33.3;
+        let given_expected = vec![(
+            HashMap::from([("pump fan duty".to_string(), duty.to_string())]),
+            vec![ChannelStatus {
+                name: "pump-fan".to_string(),
+                duty: Some(duty),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -709,7 +850,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -725,7 +866,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -741,7 +882,7 @@ mod tests {
                 ..Default::default()
             }],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 
     #[test]
@@ -798,6 +939,38 @@ mod tests {
                 },
             ],
         )];
-        assert_channel_statuses_eq(device_support, device_id, given_expected);
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_multiple_external_fans() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let given_expected = vec![(
+            HashMap::from([
+                ("external fan 1 speed".to_string(), rpm.to_string()),
+                ("external fan 2 speed".to_string(), rpm.to_string()),
+                ("external fan 3 speed".to_string(), rpm.to_string()),
+            ]),
+            vec![
+                ChannelStatus {
+                    name: "external-fan1".to_string(),
+                    rpm: Some(rpm),
+                    ..Default::default()
+                },
+                ChannelStatus {
+                    name: "external-fan2".to_string(),
+                    rpm: Some(rpm),
+                    ..Default::default()
+                },
+                ChannelStatus {
+                    name: "external-fan3".to_string(),
+                    rpm: Some(rpm),
+                    ..Default::default()
+                },
+            ],
+        )];
+        assert_channel_statuses_eq(&device_support, device_id, given_expected);
     }
 }
