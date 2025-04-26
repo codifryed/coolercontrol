@@ -512,7 +512,11 @@ impl Repository for HwmonRepo {
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
                             let mut channel_statuses = fans::extract_fan_statuses(driver).await;
                             channel_statuses.extend(power::extract_power_status(driver).await);
-                            let temp_statuses = temps::extract_temp_statuses(driver).await;
+                            let temp_statuses = if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
+                                drivetemp::default_suspended_temps(driver)
+                            } else {
+                                temps::extract_temp_statuses(driver).await
+                            };
                             self.preloaded_statuses
                                 .borrow_mut()
                                 .insert(type_index, (channel_statuses, temp_statuses));
