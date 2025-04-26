@@ -29,6 +29,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSu
 pub struct H1V2Support {
     init_speed_channel_map: RefCell<HashMap<u8, Vec<String>>>,
 }
+// smart_device.py
 
 /// The H1V2 driver is an extension of the `SmartDevice2` driver
 impl H1V2Support {

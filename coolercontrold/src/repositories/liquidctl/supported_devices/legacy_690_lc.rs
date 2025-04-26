@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct Legacy690LcSupport;
+// asetek.py
 
 impl Legacy690LcSupport {
     pub fn new() -> Self {

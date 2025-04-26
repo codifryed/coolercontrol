@@ -26,6 +26,7 @@ use crate::repositories::liquidctl::supported_devices::kraken_z3::KrakenZ3Suppor
 pub struct KrakenZ3MockSupport {
     kraken_z3_support: KrakenZ3Support,
 }
+// kraken3.py
 
 /// This is for testing purposes only (mocking)
 impl KrakenZ3MockSupport {

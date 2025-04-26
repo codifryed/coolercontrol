@@ -28,6 +28,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 pub struct HydroPlatinumSupport {
     led_count: Cell<u8>,
 }
+// hydro_platinum.py
 
 impl HydroPlatinumSupport {
     pub fn new() -> Self {

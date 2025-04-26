@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 
 #[derive(Debug)]
 pub struct CorsairHidPsuSupport;
+// corsair_hid_psu.py
 
 impl CorsairHidPsuSupport {
     pub fn new() -> Self {

@@ -231,6 +231,7 @@ pub trait DeviceSupport: Debug {
         self.add_single_fan_status(status_map, &mut channel_statuses);
         self.add_single_pump_status(status_map, &mut channel_statuses);
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        self.add_single_water_block_status(status_map, &mut channel_statuses);
         channel_statuses.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         channel_statuses
     }
@@ -264,6 +265,23 @@ pub trait DeviceSupport: Debug {
                 name: "pump".to_string(),
                 rpm: pump_rpm,
                 duty: pump_duty,
+                ..Default::default()
+            });
+        }
+    }
+
+    fn add_single_water_block_status(
+        &self,
+        status_map: &StatusMap,
+        channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        let water_block_rpm = status_map.get("water block speed").and_then(parse_u32);
+        let water_block_duty = status_map.get("water block duty").and_then(parse_float);
+        if water_block_rpm.is_some() || water_block_duty.is_some() {
+            channel_statuses.push(ChannelStatus {
+                name: "waterblock-fan".to_string(),
+                rpm: water_block_rpm,
+                duty: water_block_duty,
                 ..Default::default()
             });
         }
@@ -666,6 +684,59 @@ mod tests {
             HashMap::from([("pump duty".to_string(), duty.to_string())]),
             vec![ChannelStatus {
                 name: "pump".to_string(),
+                duty: Some(duty),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_water_block_status() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let duty: f64 = 33.3;
+        let given_expected = vec![(
+            HashMap::from([
+                ("water block speed".to_string(), rpm.to_string()),
+                ("water block duty".to_string(), duty.to_string()),
+            ]),
+            vec![ChannelStatus {
+                name: "waterblock-fan".to_string(),
+                rpm: Some(rpm),
+                duty: Some(duty),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_water_block_status_rpm() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let given_expected = vec![(
+            HashMap::from([("water block speed".to_string(), rpm.to_string())]),
+            vec![ChannelStatus {
+                name: "waterblock-fan".to_string(),
+                rpm: Some(rpm),
+                ..Default::default()
+            }],
+        )];
+        assert_channel_statuses_eq(device_support, device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_water_block_status_duty() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let duty: f64 = 33.3;
+        let given_expected = vec![(
+            HashMap::from([("water block duty".to_string(), duty.to_string())]),
+            vec![ChannelStatus {
+                name: "waterblock-fan".to_string(),
                 duty: Some(duty),
                 ..Default::default()
             }],

@@ -35,6 +35,7 @@ const MAX_DUTY: u8 = 100;
 pub struct SmartDevice2Support {
     init_speed_channel_map: RefCell<HashMap<u8, Vec<String>>>,
 }
+// smart_device.py
 
 impl SmartDevice2Support {
     pub fn new() -> Self {

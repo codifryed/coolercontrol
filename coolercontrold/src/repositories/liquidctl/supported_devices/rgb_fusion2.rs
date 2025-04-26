@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct RgbFusion2Support;
+// rgb_fusion2.py
 
 impl RgbFusion2Support {
     pub fn new() -> Self {

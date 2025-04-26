@@ -25,6 +25,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 
 #[derive(Debug)]
 pub struct KrakenX3Support;
+// kraken3.py
 
 impl KrakenX3Support {
     pub fn new() -> Self {
