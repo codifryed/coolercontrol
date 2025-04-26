@@ -893,6 +893,11 @@ impl Config {
                 * 2.)
                 .round()
                 / 2.;
+            let drivetemp_suspend = settings
+                .get("drivetemp_suspend")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "drivetemp_suspend should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -905,6 +910,7 @@ impl Config {
                 ipv6_address,
                 compress,
                 poll_rate,
+                drivetemp_suspend,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -935,6 +941,9 @@ impl Config {
             Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));
         base_settings["poll_rate"] =
             Item::Value(Value::Float(Formatted::new(cc_settings.poll_rate)));
+        base_settings["drivetemp_suspend"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.drivetemp_suspend,
+        )));
     }
 
     /// This gets the `CoolerControl` settings for specific devices

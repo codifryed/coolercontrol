@@ -118,6 +118,7 @@ pub struct CoolerControlSettingsDto {
     hide_duplicate_devices: Option<bool>,
     compress: Option<bool>,
     poll_rate: Option<f64>,
+    drivetemp_suspend: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -163,6 +164,11 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.poll_rate
         };
+        let drivetemp_suspend = if let Some(d_suspend) = self.drivetemp_suspend {
+            d_suspend
+        } else {
+            current_settings.drivetemp_suspend
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -175,6 +181,7 @@ impl CoolerControlSettingsDto {
             ipv6_address: current_settings.ipv6_address,
             compress,
             poll_rate,
+            drivetemp_suspend,
         }
     }
 }
@@ -191,6 +198,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             liquidctl_integration: Some(settings.liquidctl_integration),
             compress: Some(settings.compress),
             poll_rate: Some(settings.poll_rate),
+            drivetemp_suspend: Some(settings.drivetemp_suspend),
         }
     }
 }
