@@ -45,7 +45,7 @@ const ATA_CHECKPOWERMODE_RETIRED: libc::c_uchar = 0x98;
 
 /// The power state of an ata device
 #[derive(Debug, PartialEq, Eq)]
-pub enum PowerState {
+enum PowerState {
     /// The hdd is in the standby state (PM2, usually spun down)
     Standby,
     /// The hdd is in the idle state (PM1)
@@ -69,26 +69,6 @@ pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
         }
         Ok(path)
     })
-}
-
-fn get_block_device_path(path: &Path) -> Result<PathBuf> {
-    let block_hwmon_path = devices::device_path(path).join("block");
-    let mut block_device_name = None;
-    for entry_result in cc_fs::read_dir(&block_hwmon_path)? {
-        let entry = entry_result?;
-        // There is usually only a single bock directory with the name of the device
-        if entry.file_type()?.is_dir() {
-            block_device_name = entry.file_name().to_str().map(ToOwned::to_owned);
-            break;
-        }
-    }
-    let Some(device_name) = block_device_name else {
-        return Err(anyhow!(
-            "No block device name found in {block_hwmon_path:?}"
-        ));
-    };
-    let block_device_path = PathBuf::from("/dev").join(device_name);
-    Ok(block_device_path)
 }
 
 /// Returns the default value for drivers that are suspended for all available temperature channels
@@ -118,6 +98,26 @@ pub async fn is_suspended(block_device_path_opt: Option<&PathBuf>) -> bool {
             false
         }
     }
+}
+
+fn get_block_device_path(path: &Path) -> Result<PathBuf> {
+    let block_hwmon_path = devices::device_path(path).join("block");
+    let mut block_device_name = None;
+    for entry_result in cc_fs::read_dir(&block_hwmon_path)? {
+        let entry = entry_result?;
+        // There is usually only a single bock directory with the name of the device
+        if entry.file_type()?.is_dir() {
+            block_device_name = entry.file_name().to_str().map(ToOwned::to_owned);
+            break;
+        }
+    }
+    let Some(device_name) = block_device_name else {
+        return Err(anyhow!(
+            "No block device name found in {block_hwmon_path:?}"
+        ));
+    };
+    let block_device_path = PathBuf::from("/dev").join(device_name);
+    Ok(block_device_path)
 }
 
 #[cfg(not(feature = "io_uring"))]
