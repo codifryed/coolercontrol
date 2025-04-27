@@ -27,7 +27,7 @@ use crate::device::TempStatus;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelType, HwmonDriverInfo};
 use anyhow::{anyhow, Result};
-use log::warn;
+use log::{trace, warn};
 use nix::libc;
 use std::cmp::PartialEq;
 use std::os::fd::AsRawFd;
@@ -91,13 +91,19 @@ pub async fn is_suspended(block_device_path_opt: Option<&PathBuf>) -> bool {
     let Some(block_device_path) = block_device_path_opt else {
         return false;
     };
-    match drive_power_state(block_device_path).await {
+    let start_time = std::time::Instant::now();
+    let is_suspended = match drive_power_state(block_device_path).await {
         Ok(state) => state == PowerState::Standby,
         Err(err) => {
             warn!("Error getting drive power state: {err}");
             false
         }
-    }
+    };
+    trace!(
+        "Time taken to determine drive power state: {:?}",
+        start_time.elapsed()
+    );
+    is_suspended
 }
 
 fn get_block_device_path(path: &Path) -> Result<PathBuf> {
