@@ -62,7 +62,16 @@ pub enum PowerState {
     Unknown,
 }
 
-pub fn get_block_device_path(path: &Path) -> Result<PathBuf> {
+pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
+    get_block_device_path(path).and_then(|path| {
+        if !path.exists() {
+            return Err(anyhow!("Block device path does not exist: {path:?}"));
+        }
+        Ok(path)
+    })
+}
+
+fn get_block_device_path(path: &Path) -> Result<PathBuf> {
     let block_hwmon_path = devices::device_path(path).join("block");
     let mut block_device_name = None;
     for entry_result in cc_fs::read_dir(&block_hwmon_path)? {
@@ -79,11 +88,6 @@ pub fn get_block_device_path(path: &Path) -> Result<PathBuf> {
         ));
     };
     let block_device_path = PathBuf::from("/dev").join(device_name);
-    if !block_device_path.exists() {
-        return Err(anyhow!(
-            "Block device path does not exist: {block_device_path:?}"
-        ));
-    }
     Ok(block_device_path)
 }
 

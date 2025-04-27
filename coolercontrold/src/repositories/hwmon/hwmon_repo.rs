@@ -427,7 +427,7 @@ impl Repository for HwmonRepo {
                 continue;
             }
             let block_dev_path = if device_name == DRIVETEMP && settings.drivetemp_suspend {
-                drivetemp::get_block_device_path(&path)
+                drivetemp::get_verified_block_device_path(&path)
                     .inspect_err(|err| warn!("Error getting block device path: {err}"))
                     .ok()
             } else {
