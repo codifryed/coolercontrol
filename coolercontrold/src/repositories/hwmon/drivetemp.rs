@@ -36,11 +36,19 @@ use std::rc::Rc;
 
 static DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED: f64 = 0.;
 
-// Ioctl for special hdd commands
+/// Ioctl for special hdd commands
+/// `/usr/include/linux/hdreg.h`
+/// `#define HDIO_DRIVE_CMD 0x031f /* execute a special drive command */`
 const IOCTL_DRIVE_CMD: libc::c_ulong = 0x031F;
 
-// Ata commands to check the power state
+/// Standard ATA command to check the power state
+/// `/usr/include/linux/hdreg.h`
+/// `#define WIN_CHECKPOWERMODE1 0xE5`
 const ATA_CHECKPOWERMODE: libc::c_uchar = 0xE5;
+
+/// Legacy ATA command to check the power state
+/// `/usr/include/linux/hdreg.h`
+/// `#define WIN_CHECKPOWERMODE2 0x98`
 const ATA_CHECKPOWERMODE_RETIRED: libc::c_uchar = 0x98;
 
 /// The power state of an ata device
@@ -53,11 +61,10 @@ enum PowerState {
     /// The hdd is in the active or idle state (PM0 or PM1)
     ActiveIdle,
     /// Many drives use non-volatile cache to increase spin-down time.
-    /// Information about what exactly this state means is lacking.
-    NVCacheSpinDown,
-    /// Many drives use non-volatile cache to increase spin-down time.
-    /// Information about what exactly this state means is lacking.
-    NVCacheSpinUp,
+    /// Deprecated and not used since the ata-3 standard
+    // NVCacheSpinDown,
+    /// Deprecated and not used since the ata-3 standard
+    // NVCacheSpinUp,
     /// The state of the hdd is unknown (invalid ATA response)
     Unknown,
 }
@@ -150,11 +157,10 @@ async fn drive_power_state(dev_path: &Path) -> Result<PowerState> {
             }
         }
     }
+    // These are based on ATA-3 standards (newer than what hdparm uses)
     Ok(match query[2] {
         0x00..=0x01 => PowerState::Standby,
         0x80..=0x83 => PowerState::Idle,
-        0x40 => PowerState::NVCacheSpinDown,
-        0x41 => PowerState::NVCacheSpinUp,
         0xFF => PowerState::ActiveIdle,
         _ => PowerState::Unknown,
     })
