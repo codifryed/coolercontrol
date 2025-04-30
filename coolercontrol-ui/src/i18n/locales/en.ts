@@ -441,8 +441,10 @@ export default {
       profileDuplicated: 'Profile Duplicated',
       deleteProfileConfirm: 'Are you sure you want to delete: "{name}"?',
       deleteProfileWithChannelsConfirm: '"{name}" is currently being used by: {channels}.\nDeleting this Profile will reset those channels\' settings.\nAre you sure you want to delete "{name}"?',
-      profileUpdated: 'Profile Updated',
-      profileUpdateError: 'There was an error attempting to update this Profile'
+      profileUpdated: 'Profile successfully updated',
+      profileUpdateError: 'There was an error attempting to update this Profile',
+      tempSourceRequired: 'A Temp Source is required for a Graph Profile.',
+      memberProfilesRequired: 'At least 2 Member Profiles are required for a Mix Profile.'
     },
     controls: {
       viewType: 'View Type',

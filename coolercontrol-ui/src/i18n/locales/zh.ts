@@ -373,8 +373,10 @@
       profileDuplicated: '配置文件已复制',
       deleteProfileConfirm: '确定要删除："{name}"吗？',
       deleteProfileWithChannelsConfirm: '"{name}"当前正被以下通道使用: {channels}。\n删除此配置文件将重置这些通道的设置。\n确定要删除"{name}"吗？',
-      profileUpdated: '配置文件已更新',
-      profileUpdateError: '尝试更新此配置文件时出现错误'
+      profileUpdated: '配置文件已成功更新',
+      profileUpdateError: '尝试更新此配置文件时发生错误',
+      tempSourceRequired: '图表配置文件需要配置温度源。',
+      memberProfilesRequired: '混合配置文件至少需要2个成员配置文件。'
     },
     customSensors: {
       newSensor: '新传感器',

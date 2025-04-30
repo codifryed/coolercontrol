@@ -1154,8 +1154,8 @@ const saveProfileState = async () => {
             tempSourceInvalid.value = true
             toast.add({
                 severity: 'error',
-                summary: 'Error',
-                detail: 'A Temp Source is required for a Graph Profile.',
+                summary: t('common.error'),
+                detail: t('views.profiles.tempSourceRequired'),
                 life: 4000,
             })
             return
@@ -1179,8 +1179,8 @@ const saveProfileState = async () => {
         if (chosenMemberProfiles.value.length < 2) {
             toast.add({
                 severity: 'error',
-                summary: 'Error',
-                detail: 'At least 2 Member Profiles are required for a Mix Profile.',
+                summary: t('common.error'),
+                detail: t('views.profiles.memberProfilesRequired'),
                 life: 4000,
             })
             return
@@ -1197,15 +1197,15 @@ const saveProfileState = async () => {
         contextIsDirty = false
         toast.add({
             severity: 'success',
-            summary: 'Success',
-            detail: 'Profile successfully updated and applied to affected devices',
+            summary: t('common.success'),
+            detail: t('views.profiles.profileUpdated'),
             life: 3000,
         })
     } else {
         toast.add({
             severity: 'error',
-            summary: 'Error',
-            detail: 'There was an error attempting to update this Profile',
+            summary: t('common.error'),
+            detail: t('views.profiles.profileUpdateError'),
             life: 3000,
         })
     }
