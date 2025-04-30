@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 'से'
+    secondAbbr: 'सेकंड',
+    toast: {
+      modeCreated: 'मोड बनाया गया',
+      modeDuplicated: 'मोड डुप्लिकेट किया गया',
+      modeNameUpdated: 'मोड नाम अपडेट किया गया',
+      modeUpdated: 'मोड वर्तमान सेटिंग्स के साथ अपडेट किया गया',
+      modeDeleted: 'मोड हटाया गया',
+      modeActivated: 'मोड सक्रिय किया गया',
+      customSensorSaved: 'कस्टम सेंसर सहेजा गया और यूआई रिफ्रेश हो रहा है...',
+      customSensorUpdated: 'कस्टम सेंसर सफलतापूर्वक अपडेट किया गया और यूआई रिफ्रेश हो रहा है...',
+      customSensorDeleted: 'कस्टम सेंसर सफलतापूर्वक हटाया गया और यूआई रिफ्रेश हो रहा है...',
+      alertSaved: 'अलर्ट सहेजा गया',
+      alertUpdated: 'अलर्ट अपडेट किया गया',
+      alertDeleted: 'अलर्ट हटाया गया',
+      alertNotFound: 'अपडेट करने के लिए अलर्ट नहीं मिला',
+      settingsUpdated: 'सेटिंग्स सफलतापूर्वक अपडेट की गईं और डिवाइस पर लागू की गईं',
+      settingsError: 'इन सेटिंग्स को लागू करने का प्रयास करते समय एक त्रुटि हुई',
+      thinkPadFanControlApplied: 'ThinkPad पंखा नियंत्रण सफलतापूर्वक लागू किया गया'
+    }
   },
   layout: {
     topbar: {

@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 's'
+    secondAbbr: 's',
+    toast: {
+      modeCreated: 'Mode Created',
+      modeDuplicated: 'Mode Duplicated',
+      modeNameUpdated: 'Mode Name Updated',
+      modeUpdated: 'Mode updated with current settings',
+      modeDeleted: 'Mode Deleted',
+      modeActivated: 'Mode Activated',
+      customSensorSaved: 'Custom Sensor Saved and Refreshing UI...',
+      customSensorUpdated: 'Custom Sensor successfully updated and Refreshing UI...',
+      customSensorDeleted: 'Custom Sensor successfully deleted and Refreshing UI...',
+      alertSaved: 'Alert Saved',
+      alertUpdated: 'Alert Updated',
+      alertDeleted: 'Alert Deleted',
+      alertNotFound: 'Alert not found to Update',
+      settingsUpdated: 'Settings successfully updated and applied to the device',
+      settingsError: 'There was an error when attempting to apply these settings',
+      thinkPadFanControlApplied: 'ThinkPad Fan Control successfully applied'
+    }
   },
   layout: {
     topbar: {

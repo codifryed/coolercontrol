@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 's'
+    secondAbbr: 's',
+    toast: {
+      modeCreated: 'Modus erstellt',
+      modeDuplicated: 'Modus dupliziert',
+      modeNameUpdated: 'Modusname aktualisiert',
+      modeUpdated: 'Modus mit aktuellen Einstellungen aktualisiert',
+      modeDeleted: 'Modus gelöscht',
+      modeActivated: 'Modus aktiviert',
+      customSensorSaved: 'Benutzerdefinierter Sensor gespeichert und UI wird aktualisiert...',
+      customSensorUpdated: 'Benutzerdefinierter Sensor erfolgreich aktualisiert und UI wird aktualisiert...',
+      customSensorDeleted: 'Benutzerdefinierter Sensor erfolgreich gelöscht und UI wird aktualisiert...',
+      alertSaved: 'Alarm gespeichert',
+      alertUpdated: 'Alarm aktualisiert',
+      alertDeleted: 'Alarm gelöscht',
+      alertNotFound: 'Zu aktualisierender Alarm nicht gefunden',
+      settingsUpdated: 'Einstellungen erfolgreich aktualisiert und auf das Gerät angewendet',
+      settingsError: 'Beim Versuch, diese Einstellungen anzuwenden, ist ein Fehler aufgetreten',
+      thinkPadFanControlApplied: 'ThinkPad-Lüftersteuerung erfolgreich angewendet'
+    }
   },
   layout: {
     topbar: {

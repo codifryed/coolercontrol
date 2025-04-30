@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 's'
+    secondAbbr: 's',
+    toast: {
+      modeCreated: 'Mode Créé',
+      modeDuplicated: 'Mode Dupliqué',
+      modeNameUpdated: 'Nom du Mode Mis à Jour',
+      modeUpdated: 'Mode mis à jour avec les paramètres actuels',
+      modeDeleted: 'Mode Supprimé',
+      modeActivated: 'Mode Activé',
+      customSensorSaved: 'Capteur Personnalisé Enregistré et Actualisation de l\'UI...',
+      customSensorUpdated: 'Capteur Personnalisé mis à jour avec succès et Actualisation de l\'UI...',
+      customSensorDeleted: 'Capteur Personnalisé supprimé avec succès et Actualisation de l\'UI...',
+      alertSaved: 'Alerte Enregistrée',
+      alertUpdated: 'Alerte Mise à Jour',
+      alertDeleted: 'Alerte Supprimée',
+      alertNotFound: 'Alerte introuvable pour la mise à jour',
+      settingsUpdated: 'Paramètres mis à jour avec succès et appliqués à l\'appareil',
+      settingsError: 'Une erreur s\'est produite lors de la tentative d\'application de ces paramètres',
+      thinkPadFanControlApplied: 'Contrôle du ventilateur ThinkPad appliqué avec succès'
+    }
   },
   layout: {
     topbar: {

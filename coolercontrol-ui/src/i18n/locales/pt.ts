@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 's'
+    secondAbbr: 's',
+    toast: {
+      modeCreated: 'Modo Criado',
+      modeDuplicated: 'Modo Duplicado',
+      modeNameUpdated: 'Nome do Modo Atualizado',
+      modeUpdated: 'Modo atualizado com as configurações atuais',
+      modeDeleted: 'Modo Excluído',
+      modeActivated: 'Modo Ativado',
+      customSensorSaved: 'Sensor Personalizado Salvo e Atualizando a Interface...',
+      customSensorUpdated: 'Sensor Personalizado atualizado com sucesso e Atualizando a Interface...',
+      customSensorDeleted: 'Sensor Personalizado excluído com sucesso e Atualizando a Interface...',
+      alertSaved: 'Alerta Salvo',
+      alertUpdated: 'Alerta Atualizado',
+      alertDeleted: 'Alerta Excluído',
+      alertNotFound: 'Alerta não encontrado para Atualizar',
+      settingsUpdated: 'Configurações atualizadas com sucesso e aplicadas ao dispositivo',
+      settingsError: 'Ocorreu um erro ao tentar aplicar estas configurações',
+      thinkPadFanControlApplied: 'Controle de Ventilador do ThinkPad aplicado com sucesso'
+    }
   },
   layout: {
     topbar: {

@@ -54,7 +54,25 @@
     ghzAbbr: '吉赫',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: '秒'
+    secondAbbr: '秒',
+    toast: {
+      modeCreated: '模式已创建',
+      modeDuplicated: '模式已复制',
+      modeNameUpdated: '模式名称已更新',
+      modeUpdated: '模式已使用当前设置更新',
+      modeDeleted: '模式已删除',
+      modeActivated: '模式已激活',
+      customSensorSaved: '自定义传感器已保存，正在刷新界面...',
+      customSensorUpdated: '自定义传感器已成功更新，正在刷新界面...',
+      customSensorDeleted: '自定义传感器已成功删除，正在刷新界面...',
+      alertSaved: '警报已保存',
+      alertUpdated: '警报已更新',
+      alertDeleted: '警报已删除',
+      alertNotFound: '找不到要更新的警报',
+      settingsUpdated: '设置已成功更新并应用到设备',
+      settingsError: '尝试应用这些设置时出错',
+      thinkPadFanControlApplied: 'ThinkPad风扇控制已成功应用'
+    }
   },
   layout: {
     topbar: {

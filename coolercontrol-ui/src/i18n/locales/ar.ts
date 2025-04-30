@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'جيجاهرتز',
     tempUnit: '°م',
     percentUnit: '%',
-    secondAbbr: 'ث'
+    secondAbbr: 'ث',
+    toast: {
+      modeCreated: 'تم إنشاء الوضع',
+      modeDuplicated: 'تم نسخ الوضع',
+      modeNameUpdated: 'تم تحديث اسم الوضع',
+      modeUpdated: 'تم تحديث الوضع بالإعدادات الحالية',
+      modeDeleted: 'تم حذف الوضع',
+      modeActivated: 'تم تفعيل الوضع',
+      customSensorSaved: 'تم حفظ المستشعر المخصص وجاري تحديث واجهة المستخدم...',
+      customSensorUpdated: 'تم تحديث المستشعر المخصص بنجاح وجاري تحديث واجهة المستخدم...',
+      customSensorDeleted: 'تم حذف المستشعر المخصص بنجاح وجاري تحديث واجهة المستخدم...',
+      alertSaved: 'تم حفظ التنبيه',
+      alertUpdated: 'تم تحديث التنبيه',
+      alertDeleted: 'تم حذف التنبيه',
+      alertNotFound: 'لم يتم العثور على التنبيه للتحديث',
+      settingsUpdated: 'تم تحديث الإعدادات بنجاح وتطبيقها على الجهاز',
+      settingsError: 'حدث خطأ أثناء محاولة تطبيق هذه الإعدادات',
+      thinkPadFanControlApplied: 'تم تطبيق التحكم بمروحة ThinkPad بنجاح'
+    }
   },
   layout: {
     topbar: {

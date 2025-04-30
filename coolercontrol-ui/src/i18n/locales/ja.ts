@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'GHz',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: '秒'
+    secondAbbr: '秒',
+    toast: {
+      modeCreated: 'モードが作成されました',
+      modeDuplicated: 'モードが複製されました',
+      modeNameUpdated: 'モード名が更新されました',
+      modeUpdated: '現在の設定でモードが更新されました',
+      modeDeleted: 'モードが削除されました',
+      modeActivated: 'モードが有効化されました',
+      customSensorSaved: 'カスタムセンサーが保存され、UIを更新しています...',
+      customSensorUpdated: 'カスタムセンサーが正常に更新され、UIを更新しています...',
+      customSensorDeleted: 'カスタムセンサーが正常に削除され、UIを更新しています...',
+      alertSaved: 'アラートが保存されました',
+      alertUpdated: 'アラートが更新されました',
+      alertDeleted: 'アラートが削除されました',
+      alertNotFound: '更新するアラートが見つかりません',
+      settingsUpdated: '設定が正常に更新され、デバイスに適用されました',
+      settingsError: '設定の適用中にエラーが発生しました',
+      thinkPadFanControlApplied: 'ThinkPadファン制御が正常に適用されました'
+    }
   },
   layout: {
     topbar: {

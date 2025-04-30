@@ -54,7 +54,25 @@ export default {
     ghzAbbr: 'ГГц',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: 'с'
+    secondAbbr: 'с',
+    toast: {
+      modeCreated: 'Режим создан',
+      modeDuplicated: 'Режим дублирован',
+      modeNameUpdated: 'Имя режима обновлено',
+      modeUpdated: 'Режим обновлен с текущими настройками',
+      modeDeleted: 'Режим удален',
+      modeActivated: 'Режим активирован',
+      customSensorSaved: 'Пользовательский датчик сохранен и обновляется интерфейс...',
+      customSensorUpdated: 'Пользовательский датчик успешно обновлен и обновляется интерфейс...',
+      customSensorDeleted: 'Пользовательский датчик успешно удален и обновляется интерфейс...',
+      alertSaved: 'Оповещение сохранено',
+      alertUpdated: 'Оповещение обновлено',
+      alertDeleted: 'Оповещение удалено',
+      alertNotFound: 'Оповещение для обновления не найдено',
+      settingsUpdated: 'Настройки успешно обновлены и применены к устройству',
+      settingsError: 'Произошла ошибка при попытке применить эти настройки',
+      thinkPadFanControlApplied: 'Управление вентилятором ThinkPad успешно применено'
+    }
   },
   layout: {
     topbar: {

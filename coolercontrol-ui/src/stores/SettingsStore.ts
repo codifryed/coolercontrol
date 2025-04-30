@@ -53,9 +53,11 @@ import { Dashboard } from '@/models/Dashboard.ts'
 import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
 import { Alert, AlertLog, AlertState } from '@/models/Alert.ts'
+import { useI18n } from 'vue-i18n'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
+    const { t } = useI18n()
 
     const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -479,13 +481,13 @@ export const useSettingsStore = defineStore('settings', () => {
             await syncSysTrayModes()
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode Created',
+                summary: t('common.success'),
+                detail: t('common.toast.modeCreated'),
                 life: 3000,
             })
             return modeUID
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return undefined
         }
     }
@@ -498,13 +500,13 @@ export const useSettingsStore = defineStore('settings', () => {
             await syncSysTrayModes()
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode Duplicated',
+                summary: t('common.success'),
+                detail: t('common.toast.modeDuplicated'),
                 life: 3000,
             })
             return response
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return undefined
         }
     }
@@ -514,7 +516,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const updateModeDTO = new UpdateModeDTO(modeUID, newName)
         const response = await deviceStore.daemonClient.updateMode(updateModeDTO)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         } else {
             const mode = modes.value.find((mode) => mode.uid === modeUID)
@@ -524,8 +526,8 @@ export const useSettingsStore = defineStore('settings', () => {
             await syncSysTrayModes()
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode Name Updated',
+                summary: t('common.success'),
+                detail: t('common.toast.modeNameUpdated'),
                 life: 3000,
             })
             return true
@@ -542,13 +544,13 @@ export const useSettingsStore = defineStore('settings', () => {
             }
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode updated with current settings',
+                summary: t('common.success'),
+                detail: t('common.toast.modeUpdated'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -557,7 +559,7 @@ export const useSettingsStore = defineStore('settings', () => {
         console.debug('Deleting Mode')
         const response = await deviceStore.daemonClient.deleteMode(modeUID)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
         } else {
             const index = modes.value.findIndex((mode) => mode.uid === modeUID)
             if (index > -1) {
@@ -566,8 +568,8 @@ export const useSettingsStore = defineStore('settings', () => {
             await syncSysTrayModes()
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode Deleted',
+                summary: t('common.success'),
+                detail: t('common.toast.modeDeleted'),
                 life: 3000,
             })
         }
@@ -585,13 +587,13 @@ export const useSettingsStore = defineStore('settings', () => {
         console.debug('Activating Mode')
         const response = await deviceStore.daemonClient.activateMode(modeUID)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         } else {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Mode Activated',
+                summary: t('common.success'),
+                detail: t('common.toast.modeActivated'),
                 life: 3000,
             })
             return true
@@ -627,7 +629,7 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response instanceof CustomSensor) {
             return response
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
         }
     }
 
@@ -643,13 +645,13 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response == null) {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Custom Sensor Saved and Refreshing UI...',
+                summary: t('common.success'),
+                detail: t('common.toast.customSensorSaved'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -667,13 +669,13 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response == null) {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Custom Sensor successfully updated and Refreshing UI...',
+                summary: t('common.success'),
+                detail: t('common.toast.customSensorUpdated'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -692,8 +694,8 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response == null) {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Custom Sensor successfully deleted and Refreshing UI...',
+                summary: t('common.success'),
+                detail: t('common.toast.customSensorDeleted'),
                 life: 3000,
             })
             allUIDeviceSettings.value
@@ -704,7 +706,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 .sensorsAndChannels.get(customSensorID)!.userColor = undefined
             await deviceStore.waitAndReload()
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
         }
     }
 
@@ -729,13 +731,13 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response == null) {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Alert Saved',
+                summary: t('common.success'),
+                detail: t('common.toast.alertSaved'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -747,8 +749,8 @@ export const useSettingsStore = defineStore('settings', () => {
             console.error('Alert to update not found: ' + alertUID)
             toast.add({
                 severity: 'error',
-                summary: 'Error',
-                detail: 'Alert not found to Update',
+                summary: t('common.error'),
+                detail: t('common.toast.alertNotFound'),
                 life: 4000,
             })
             return false
@@ -757,13 +759,13 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response == null) {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Alert Updated',
+                summary: t('common.success'),
+                detail: t('common.toast.alertUpdated'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -782,13 +784,13 @@ export const useSettingsStore = defineStore('settings', () => {
             }
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Alert Deleted',
+                summary: t('common.success'),
+                detail: t('common.toast.alertDeleted'),
                 life: 3000,
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
             return false
         }
     }
@@ -922,16 +924,16 @@ export const useSettingsStore = defineStore('settings', () => {
             await loadDaemonDeviceSettings(deviceUID)
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Settings successfully updated and applied to the device',
+                summary: t('common.success'),
+                detail: t('common.toast.settingsUpdated'),
                 life: 3000,
             })
         } else {
             const message =
                 errorMsg != null
                     ? errorMsg
-                    : 'There was an error when attempting to apply these settings'
-            toast.add({ severity: 'error', summary: 'Error', detail: message, life: 4000 })
+                    : t('common.toast.settingsError')
+            toast.add({ severity: 'error', summary: t('common.error'), detail: message, life: 4000 })
         }
         console.debug('Daemon Settings Saved')
     }
@@ -1032,12 +1034,12 @@ export const useSettingsStore = defineStore('settings', () => {
         const response: undefined | ErrorResponse =
             await deviceStore.daemonClient.thinkPadFanControl(enable)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
         } else {
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'ThinkPad Fan Control successfully applied',
+                summary: t('common.success'),
+                detail: t('common.toast.thinkPadFanControlApplied'),
                 life: 3000,
             })
         }

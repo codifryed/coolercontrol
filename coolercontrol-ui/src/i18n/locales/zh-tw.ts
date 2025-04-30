@@ -54,7 +54,25 @@ export default {
     ghzAbbr: '吉赫',
     tempUnit: '°C',
     percentUnit: '%',
-    secondAbbr: '秒'
+    secondAbbr: '秒',
+    toast: {
+      modeCreated: '模式已建立',
+      modeDuplicated: '模式已複製',
+      modeNameUpdated: '模式名稱已更新',
+      modeUpdated: '模式已使用目前設定更新',
+      modeDeleted: '模式已刪除',
+      modeActivated: '模式已啟用',
+      customSensorSaved: '自訂感測器已儲存，正在重新整理界面...',
+      customSensorUpdated: '自訂感測器已成功更新，正在重新整理界面...',
+      customSensorDeleted: '自訂感測器已成功刪除，正在重新整理界面...',
+      alertSaved: '警報已儲存',
+      alertUpdated: '警報已更新',
+      alertDeleted: '警報已刪除',
+      alertNotFound: '找不到要更新的警報',
+      settingsUpdated: '設定已成功更新並套用至裝置',
+      settingsError: '嘗試套用這些設定時發生錯誤',
+      thinkPadFanControlApplied: 'ThinkPad風扇控制已成功套用'
+    }
   },
   layout: {
     topbar: {
