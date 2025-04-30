@@ -87,6 +87,7 @@ import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
+import { useI18n } from 'vue-i18n'
 
 // interface Tree {
 //     label: string
@@ -102,6 +103,7 @@ const settingsStore = useSettingsStore()
 const router = useRouter()
 const route = useRoute()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const { t } = useI18n()
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
@@ -192,7 +194,7 @@ const createTreeMenu = (): void => {
 const dashboardsTree = (): any => {
     return {
         id: 'dashboards',
-        label: 'Dashboards',
+        label: t('layout.menu.dashboards'),
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
         options: [{ dashboardInfo: true }, { dashboardAdd: true }],
@@ -219,7 +221,7 @@ const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesTree = (): any => {
     return {
         id: 'modes',
-        label: 'Modes',
+        label: t('layout.menu.modes'),
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
         options: [{ modeInfo: true }, { modeAdd: true }],
@@ -253,7 +255,7 @@ const modesTree = (): any => {
 const profilesTree = (): any => {
     return {
         id: 'profiles',
-        label: 'Profiles',
+        label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
         options: [{ profileInfo: true }, { profileAdd: true }],
@@ -280,7 +282,7 @@ const profilesTree = (): any => {
 const functionsTree = (): any => {
     return {
         id: 'functions',
-        label: 'Functions',
+        label: t('layout.menu.functions'),
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
         options: [{ functionInfo: true }, { functionAdd: true }],
@@ -307,7 +309,7 @@ const functionsTree = (): any => {
 const alertsTree = (): any => {
     return {
         id: 'alerts',
-        label: 'Alerts',
+        label: t('layout.menu.alerts'),
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
         options: [{ alertInfo: true }, { alertAdd: true }],
@@ -351,7 +353,7 @@ const customSensorsTree = (): any => {
         }
         return {
             id: 'custom-sensors',
-            label: 'Custom Sensors',
+            label: t('layout.menu.customSensors'),
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,

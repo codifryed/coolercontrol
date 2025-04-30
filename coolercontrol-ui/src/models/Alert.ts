@@ -20,6 +20,7 @@ import { UID } from '@/models/Device.ts'
 import { Type } from 'class-transformer'
 import { ChannelSource } from '@/models/ChannelSource.ts'
 import { v4 as uuidV4 } from 'uuid'
+import i18n from '@/i18n'
 
 export class Alert {
     uid: UID = uuidV4()
@@ -40,6 +41,23 @@ export class Alert {
 export enum AlertState {
     Active = 'Active',
     Inactive = 'Inactive',
+}
+
+/**
+ * 获取AlertState的本地化显示名称
+ * @param state AlertState枚举值
+ * @returns 本地化的显示名称
+ */
+export function getAlertStateDisplayName(state: AlertState): string {
+    const { t } = i18n.global
+    switch (state) {
+        case AlertState.Active:
+            return t('models.alertState.active')
+        case AlertState.Inactive:
+            return t('models.alertState.inactive')
+        default:
+            return String(state)
+    }
 }
 
 export class AlertsDTO {

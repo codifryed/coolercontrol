@@ -29,6 +29,7 @@ import { UID } from '@/models/Device.ts'
 import { Function } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -37,6 +38,7 @@ const emit = defineEmits<{
     (e: 'added', functionUID: UID): void
 }>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -44,13 +46,13 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const router = useRouter()
 
 const addFunction = async (): Promise<void> => {
-    const newFunction = new Function('New Function')
+    const newFunction = new Function(t('views.functions.newFunction'))
     settingsStore.functions.push(newFunction)
     await settingsStore.saveFunction(newFunction.uid)
     toast.add({
         severity: 'success',
-        summary: 'Success',
-        detail: 'Function Created',
+        summary: t('common.success'),
+        detail: t('views.functions.createFunction'),
         life: 3000,
     })
     emit('added', newFunction.uid)
@@ -61,7 +63,7 @@ emitter.on('function-add', addFunction)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Add Function' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addFunction') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="addFunction"

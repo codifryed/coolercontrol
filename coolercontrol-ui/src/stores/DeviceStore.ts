@@ -37,6 +37,7 @@ import { AlertLog, AlertState } from '@/models/Alert.ts'
 import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
+import { useI18n } from 'vue-i18n'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -68,6 +69,7 @@ export const useDeviceStore = defineStore('device', () => {
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
     const reloadAllStatusesThreshold: number = 5_000 // 5 seconds to handle when closing to tray & network latency
+    const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
@@ -250,8 +252,8 @@ export const useDeviceStore = defineStore('device', () => {
         if (error.response.status === 401 || error.response.status === 403) {
             toast.add({
                 severity: 'error',
-                summary: 'Unauthorized',
-                detail: 'You need to be logged in to complete this action',
+                summary: t('device_store.unauthorized.summary'),
+                detail: t('device_store.unauthorized.detail'),
                 life: 3000,
             })
         }
@@ -266,7 +268,7 @@ export const useDeviceStore = defineStore('device', () => {
             }
             dialog.open(passwordDialog, {
                 props: {
-                    header: 'Enter Your Password',
+                    header: t('auth.enterPassword'),
                     position: 'center',
                     modal: true,
                     dismissableMask: false,
@@ -280,8 +282,8 @@ export const useDeviceStore = defineStore('device', () => {
                         if (passwdSuccess) {
                             toast.add({
                                 severity: 'success',
-                                summary: 'Success',
-                                detail: 'Login successful.',
+                                summary: t('device_store.login.success.summary'),
+                                detail: t('device_store.login.success.detail'),
                                 life: 3000,
                             })
                             loggedIn.value = true
@@ -290,8 +292,8 @@ export const useDeviceStore = defineStore('device', () => {
                         }
                         toast.add({
                             severity: 'error',
-                            summary: 'Login Failed',
-                            detail: 'Invalid Password',
+                            summary: t('device_store.login.failed.summary'),
+                            detail: t('device_store.login.failed.detail'),
                             life: 3000,
                         })
                         if (retryCount > 2) {
@@ -365,8 +367,8 @@ export const useDeviceStore = defineStore('device', () => {
             console.info('Login Session still valid')
             toast.add({
                 severity: 'info',
-                summary: 'Login',
-                detail: 'Login successful.',
+                summary: t('layout.topbar.login'),
+                detail: t('layout.topbar.loginSuccessful'),
                 life: 1500,
             })
             return
@@ -377,8 +379,8 @@ export const useDeviceStore = defineStore('device', () => {
             console.info('Login successful')
             toast.add({
                 severity: 'info',
-                summary: 'Login',
-                detail: 'Login successful.',
+                summary: t('layout.topbar.login'),
+                detail: t('layout.topbar.loginSuccessful'),
                 life: 1500,
             })
         } else {
@@ -389,7 +391,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function setPasswd(): Promise<void> {
         dialog.open(passwordDialog, {
             props: {
-                header: 'Enter A New Password',
+                header: t('auth.setNewPassword'),
                 position: 'center',
                 modal: true,
                 dismissableMask: false,
@@ -403,15 +405,15 @@ export const useDeviceStore = defineStore('device', () => {
                     if (response instanceof ErrorResponse) {
                         toast.add({
                             severity: 'error',
-                            summary: 'Set Password Failed',
+                            summary: t('device_store.password.set_failed.summary'),
                             detail: response.error,
                             life: 3000,
                         })
                     } else {
                         toast.add({
                             severity: 'success',
-                            summary: 'Password',
-                            detail: 'New password set successfully',
+                            summary: t('device_store.password.set_success.summary'),
+                            detail: t('device_store.password.set_success.detail'),
                             life: 3000,
                         })
                     }
@@ -426,8 +428,8 @@ export const useDeviceStore = defineStore('device', () => {
         console.info('Admin Logged Out')
         toast.add({
             severity: 'info',
-            summary: 'Logout',
-            detail: 'You have successfully logged out.',
+            summary: t('device_store.logout.summary'),
+            detail: t('device_store.logout.detail'),
             life: 3000,
         })
     }
@@ -469,10 +471,10 @@ export const useDeviceStore = defineStore('device', () => {
                     confirm.require({
                         group: 'AseTek690',
                         message: `${device.type_index}`,
-                        header: 'Unknown Device Detected',
+                        header: t('device_store.asetek.header'),
                         icon: 'pi pi-exclamation-triangle',
-                        acceptLabel: "Yes, It's a legacy Kraken Device",
-                        rejectLabel: "No, It's a EVGA CLC Device",
+                        acceptLabel: t('components.aseTek690.acceptLabel'),
+                        rejectLabel: t('components.aseTek690.rejectLabel'),
                         accept: async () => {
                             console.debug(`Setting device ${device.uid} as a Legacy 690`)
                             await handleAseTekResponse(device.uid, true)
@@ -498,16 +500,21 @@ export const useDeviceStore = defineStore('device', () => {
         if (response instanceof ErrorResponse) {
             toast.add({
                 severity: 'error',
-                summary: 'Error',
-                detail: response.error + ' - Process interrupted.',
+                summary: t('device_store.asetek.error.summary'),
+                detail: response.error + ' - ' + t('device_store.asetek.error.detail'),
                 life: 4000,
             })
             return
         }
         const msg = isLegacy690
-            ? 'Device Model type successfully set. Restart in progress.'
-            : 'Device Model type successfully set.'
-        toast.add({ severity: 'success', summary: 'Success', detail: msg, life: 3000 })
+            ? t('device_store.asetek.success.detail_legacy')
+            : t('device_store.asetek.success.detail_evga')
+        toast.add({ 
+            severity: 'success', 
+            summary: t('device_store.asetek.success.summary'), 
+            detail: msg, 
+            life: 3000 
+        })
         if (isLegacy690) {
             await daemonClient.shutdownDaemon()
             await waitAndReload()
@@ -696,7 +703,7 @@ export const useDeviceStore = defineStore('device', () => {
                         }
                         toast.add({
                             severity: 'error',
-                            summary: 'Alert Triggered',
+                            summary: t('views.alerts.alertTriggered'),
                             detail: `${alertMessage.name} - ${alertMessage.message}`,
                             life: 5000,
                         })
@@ -709,7 +716,7 @@ export const useDeviceStore = defineStore('device', () => {
                         }
                         toast.add({
                             severity: 'info',
-                            summary: 'Alert Recovered',
+                            summary: t('views.alerts.alertRecovered'),
                             detail: `${alertMessage.name} - ${alertMessage.message}`,
                             life: 3000,
                         })

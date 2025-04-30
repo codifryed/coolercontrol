@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+
 /**
  * This is a representation of the liquidctl driver instance
  */
@@ -44,4 +45,17 @@ export enum LcDriverType {
     RogTuring = 'RogTuring',
     Ddr4Temperature = 'Ddr4Temperature',
     VengeanceRgb = 'VengeanceRgb',
+}
+
+/**
+ * Get the localized display name for LcDriverType
+ * Note: Since model names typically don't need translation, we only add the function interface here but keep the original names
+ * If specific model names need to be localized in the future, corresponding translations can be added here
+ * @param type LcDriverType enum value
+ * @returns Localized display name
+ */
+export function getLcDriverTypeDisplayName(type: LcDriverType): string {
+    // These device models typically aren't translated, so return the original value
+    // If localized display names are needed in the future, appropriate translation keys can be added
+    return String(type)
 }

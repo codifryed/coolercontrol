@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { computed, Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboardUID: UID
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 
 const chosenDashboardIndex: Ref<number> = computed(() =>
     settingsStore.dashboards.findIndex((dashboard) => dashboard.uid === props.dashboardUID),
@@ -54,7 +56,7 @@ const setDashboardAsHome = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Set as Home', disabled: chosenDashboardIndex === 0 }">
+    <div v-tooltip.top="{ value: t('views.dashboard.setAsHome'), disabled: chosenDashboardIndex === 0 }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="setDashboardAsHome"

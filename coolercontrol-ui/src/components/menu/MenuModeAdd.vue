@@ -27,6 +27,7 @@ import { inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -39,6 +40,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const router = useRouter()
+const { t } = useI18n()
 
 const addMode = async (): Promise<void> => {
     const newModeUID = await settingsStore.createMode('New Mode')
@@ -51,7 +53,7 @@ emitter.on('mode-add', addMode)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Create Mode from Current Settings' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.createModeFromCurrentSettings') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="addMode"

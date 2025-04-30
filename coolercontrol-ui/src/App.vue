@@ -37,7 +37,9 @@ import { VOnboardingWrapper, VOnboardingStep, useVOnboarding } from 'v-onboardin
 import { Emitter, EventType } from 'mitt'
 import { svgLoader, svgLoaderBackground, svgLoaderViewBox } from '@/models/Loader.ts'
 import FloatLabel from 'primevue/floatlabel'
+import { useI18n } from 'vue-i18n'
 
+const { t, locale } = useI18n()
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
@@ -64,7 +66,7 @@ const resetDaemonSettings = () => {
 }
 const loading = ElLoading.service({
     lock: true,
-    text: 'Initializing...',
+    text: t('common.loading'),
     background: svgLoaderBackground,
     svg: svgLoader,
     svgViewBox: svgLoaderViewBox,
@@ -116,7 +118,7 @@ const steps = [
     {
         attachTo: { element: '#logo' },
         content: {
-            title: 'Welcome to CoolerControl!',
+            title: t('components.onboarding.welcome'),
             description: 'Filled by template - special message',
         },
         options: {
@@ -141,9 +143,8 @@ const steps = [
     {
         attachTo: { element: '#dashboards' },
         content: {
-            title: 'Dashboards',
-            description:
-                "Dashboards are a curated collection of charts to view your system's sensor data.",
+            title: t('components.onboarding.dashboards'),
+            description: t('components.onboarding.dashboardsDesc'),
         },
         options: {
             popper: {
@@ -154,10 +155,8 @@ const steps = [
     {
         attachTo: { element: '#profiles' },
         content: {
-            title: 'Profiles',
-            description:
-                'Profiles define customizable settings for controlling fan speeds. ' +
-                'The same Profile can be used for multiple fans and devices.',
+            title: t('components.onboarding.profiles'),
+            description: t('components.onboarding.profilesDesc'),
         },
         options: {
             popper: {
@@ -168,10 +167,8 @@ const steps = [
     {
         attachTo: { element: '#functions' },
         content: {
-            title: 'Functions',
-            description:
-                'Functions are configurable algorithms that can be applied to a ' +
-                "Profile's output. This can be helpful for managing when fan speed changes occur.",
+            title: t('components.onboarding.functions'),
+            description: t('components.onboarding.functionsDesc'),
         },
         options: {
             popper: {
@@ -222,12 +219,8 @@ const steps = [
     {
         attachTo: { element: '#logo' },
         content: {
-            title: 'Application and Daemon Information',
-            description:
-                'Clicking the logo opens the Application Information page, where you can ' +
-                "to get information about the application, the system daemon, and logs. It's where" +
-                "you want to go when troubleshooting issues and there's a small daemon-status " +
-                'badge here to notify you of any potential issues.',
+            title: t('components.onboarding.appInfo'),
+            description: t('components.onboarding.appInfoDesc'),
         },
         options: {
             popper: {
@@ -238,8 +231,8 @@ const steps = [
     {
         attachTo: { element: '#add' },
         content: {
-            title: 'Quick Add',
-            description: 'This is a menu to easily add new items like Dashboards, Profiles, etc.',
+            title: t('components.onboarding.quickAdd'),
+            description: t('components.onboarding.quickAddDesc'),
         },
         options: {
             popper: {
@@ -250,9 +243,8 @@ const steps = [
     {
         attachTo: { element: '#dashboard-quick' },
         content: {
-            title: 'Dashboard Quick Menu',
-            description:
-                'This is a menu to quickly jump to your dashboards, even if the main menu is collapsed.',
+            title: t('components.onboarding.dashboardQuick'),
+            description: t('components.onboarding.dashboardQuickDesc'),
         },
         options: {
             popper: {
@@ -299,9 +291,8 @@ const steps = [
     {
         attachTo: { element: '#settings' },
         content: {
-            title: 'Settings',
-            description:
-                'This button will open up the settings page containing different UI and daemon settings.',
+            title: t('components.onboarding.settings'),
+            description: t('components.onboarding.settingsDesc'),
         },
         options: {
             popper: {
@@ -324,9 +315,8 @@ const steps = [
     {
         attachTo: { element: '#restart' },
         content: {
-            title: 'Restart Menu',
-            description:
-                'Here you can choose whether to reload the UI or restart the system daemon.',
+            title: t('components.onboarding.restartMenu'),
+            description: t('components.onboarding.restartMenuDesc'),
         },
         options: {
             popper: {
@@ -337,7 +327,7 @@ const steps = [
     {
         attachTo: { element: '#logo' },
         content: {
-            title: "That's it!",
+            title: t('components.onboarding.thatsIt'),
             description: 'filled by template - special message',
         },
         options: {
@@ -353,6 +343,54 @@ const steps = [
  */
 onMounted(async () => {
     deviceStore.connectToQtIPC()
+    
+    // Set default language
+    const savedLocale = localStorage.getItem('locale')
+
+    
+    if (savedLocale) {
+        locale.value = savedLocale
+    } else {
+        // Use browser language if supported
+        const browserLang = navigator.language.toLowerCase()
+        
+        // List of supported languages
+        const supportedLanguages: Record<string, string> = {
+            'zh': 'zh',         // Chinese (Simplified)
+            'zh-cn': 'zh',      // Chinese (Mainland China)
+            'zh-tw': 'zh-tw',   // Chinese (Traditional)
+            'zh-hk': 'zh-tw',   // Chinese (Hong Kong)
+            'ja': 'ja',         // Japanese
+            'ru': 'ru',         // Russian
+            'de': 'de',         // German
+            'fr': 'fr',         // French
+            'es': 'es',         // Spanish
+            'ar': 'ar',         // Arabic
+            'pt': 'pt',         // Portuguese
+            'pt-br': 'pt',      // Brazilian Portuguese
+            'hi': 'hi'          // Hindi
+        }
+        
+        // Check for exact match
+        if (supportedLanguages[browserLang]) {
+            locale.value = supportedLanguages[browserLang]
+        } 
+        // Check for language prefix match (e.g. en-US matches en)
+        else {
+            const langPrefix = browserLang.split('-')[0]
+            if (supportedLanguages[langPrefix]) {
+                locale.value = supportedLanguages[langPrefix]
+            } else {
+                // Default to English
+                locale.value = 'en'
+            }
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('locale', locale.value)
+    }
+    document.querySelector('html')?.setAttribute('lang', locale.value)
+    
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -419,18 +457,14 @@ onMounted(async () => {
         <template #message="slotProps">
             <div class="flex flex-col w-[34rem] gap-3 text-wrap">
                 <p>
-                    The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and
-                    CoolerControl can not determine which device is connected. This is required for
-                    proper device communication.
+                    {{ t('components.aseTek690.sameDeviceID') }}
                 </p>
                 <p>
-                    A restart of the CoolerControl systemd services may be required and will be
-                    handled automatically if needed.
+                    {{ t('components.aseTek690.restartRequired') }}
                 </p>
                 <p>
-                    Is Liquidctl Device <strong>#{{ slotProps.message.message }}</strong> one of the
-                    following models?<br />
-                    NZXT Kraken X40, X60, X31, X41, X51 or X61
+                    {{ t('components.aseTek690.deviceModel') }} <strong>#{{ slotProps.message.message }}</strong><br />
+                    {{ t('components.aseTek690.modelList') }}
                 </p>
             </div>
         </template>
@@ -438,26 +472,25 @@ onMounted(async () => {
     <Dialog
         class="leading-loose"
         :visible="!initSuccessful"
-        header="CoolerControl Connection Error"
+        :header="t('views.error.connectionError')"
         :style="{ width: '50vw' }"
     >
         <p>
-            A connection to the CoolerControl Daemon could not be established. <br />
-            Please make sure that the systemd service is running and available.
+            {{ t('views.error.connectionErrorMessage') }} <br />
+            {{ t('views.error.serviceRunningMessage') }}
         </p>
         <p>
-            Check the
+            {{ t('views.error.checkProjectPage') }}
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/"
                 target="_blank"
                 style="color: rgb(var(--colors-accent))"
             >
-                project page</a
+                {{ t('views.error.projectPage') }}</a
             >
-            for installation instructions.
         </p>
         <br />
-        <p>Some helpful commands to enable and verify the daemon:</p>
+        <p>{{ t('views.error.helpfulCommands') }}</p>
         <p>
             <code>
                 sudo systemctl enable --now coolercontrold<br />
@@ -466,12 +499,11 @@ onMounted(async () => {
         </p>
         <br />
         <p>
-            If you have configured a non-standard address to connect to the daemon, you can set it
-            here:
+            {{ t('views.error.nonStandardAddress') }}
         </p>
         <br />
-        <h6 v-if="deviceStore.isQtApp()" class="text-lg">Daemon Address - Desktop App</h6>
-        <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
+        <h6 v-if="deviceStore.isQtApp()" class="text-lg">{{ t('views.error.daemonAddressDesktop') }}</h6>
+        <h6 v-else class="text-xl mb-4">{{ t('views.error.daemonAddressWeb') }}</h6>
         <div>
             <div class="mt-8 flex flex-row">
                 <FloatLabel variant="on">
@@ -479,13 +511,10 @@ onMounted(async () => {
                         id="host-address"
                         v-model="daemonAddress"
                         class="mb-2 w-60"
-                        v-tooltip.top="
-                            'The IP address to use to communicate with the daemon. ' +
-                            'This can be an IPv4 or IPv6 address.'
-                        "
+                        v-tooltip.top="t('views.error.addressTooltip')"
                         :invalid="daemonAddress.length === 0"
                     />
-                    <label for="host-address">Address</label>
+                    <label for="host-address">{{ t('common.address') }}</label>
                 </FloatLabel>
                 <span class="mx-2">:</span>
                 <FloatLabel variant="on">
@@ -498,7 +527,7 @@ onMounted(async () => {
                         :useGrouping="false"
                         class="mb-2"
                         :input-style="{ width: '6rem' }"
-                        v-tooltip.top="'The port to use to communicate with the daemon'"
+                        v-tooltip.top="t('views.error.portTooltip')"
                         button-layout="horizontal"
                         :allow-empty="false"
                     >
@@ -509,35 +538,35 @@ onMounted(async () => {
                             <span class="pi pi-minus" />
                         </template>
                     </InputNumber>
-                    <label for="daemon-port">Port</label>
+                    <label for="daemon-port">{{ t('common.port') }}</label>
                 </FloatLabel>
             </div>
             <div class="flex flex-col mb-3 w-12 leading-none align-middle">
-                <small class="ml-3 font-light text-sm text-text-color-secondary">Protocol</small>
+                <small class="ml-3 font-light text-sm text-text-color-secondary">{{ t('common.protocol') }}</small>
                 <div
                     class="flex flex-row items-center"
-                    v-tooltip.left="'Enable or disable SSL/TLS (HTTPS)'"
+                    v-tooltip.left="t('views.error.sslTooltip')"
                 >
                     <el-switch v-model="daemonSslEnabled" size="large" />
-                    <span class="ml-2 m-1">SSL/TLS</span>
+                    <span class="ml-2 m-1">{{ t('common.sslTls') }}</span>
                 </div>
             </div>
             <div>
                 <Button
-                    label="Save and Refresh"
+                    :label="t('common.saveAndRefresh')"
                     class="mb-2 w-44"
-                    v-tooltip.left="'Saves the daemon settings and reloads the UI.'"
+                    v-tooltip.left="t('views.error.saveTooltip')"
                     @click="saveDaemonSettings"
                 />
             </div>
             <Button
-                label="Reset"
-                v-tooltip.left="'Resets the daemon settings to their defaults and reloads the UI.'"
+                :label="t('common.reset')"
+                v-tooltip.left="t('views.error.resetTooltip')"
                 @click="resetDaemonSettings"
             />
         </div>
         <template #footer>
-            <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
+            <Button :label="t('common.retry')" icon="pi pi-refresh" @click="reloadPage" />
         </template>
     </Dialog>
     <VOnboardingWrapper
@@ -568,63 +597,52 @@ onMounted(async () => {
                                 >
                                     <div v-if="isFirst">
                                         <p>
-                                            This is a short introduction to get you started with
-                                            CoolerControl.
+                                            {{ t('components.onboarding.beforeStart') }}
                                         </p>
                                         <p class="mt-4">
-                                            Before we get started, one of them most important things
-                                            to know about is
+                                            {{ t('components.onboarding.beforeStart') }}
                                             <br />
                                             <a
                                                 href="https://docs.coolercontrol.org/hardware-support.html"
                                                 target="_blank"
                                                 class="text-accent outline-0 underline"
                                             >
-                                                setting up your hardware drivers
+                                                {{ t('components.onboarding.settingUpDrivers') }}
                                             </a>
                                             .
                                         </p>
                                         <br />
                                         <p>
-                                            If your fans are
-                                            <span class="font-bold">not</span> showing up or cannot
-                                            be controlled, then likely there is an issue with your
-                                            currently installed kernel drivers.<br /><br />
+                                            {{ t('components.onboarding.fansNotShowing') }}<br /><br />
 
-                                            Before opening an issue, please confirm that all drivers
-                                            have been properly loaded by
+                                            {{ t('components.onboarding.checkDocs') }}
                                             <a
                                                 href="https://docs.coolercontrol.org/hardware-support.html"
                                                 target="_blank"
                                                 class="text-accent outline-0"
                                             >
-                                                checking the Hardware Support documentation
+                                                {{ t('components.onboarding.checkingDocs') }}
                                             </a>
                                             <br /><br />
-                                            <span class="italic"
-                                                >Note: you can start this tour again at any time
-                                                from the settings page.</span
-                                            >
+                                            <span class="italic">{{ t('components.onboarding.startTourAgain') }}</span>
                                             <br /><br />
-                                            Ok, let's get started!
+                                            {{ t('components.onboarding.letsStart') }}
                                         </p>
                                     </div>
                                     <div v-else-if="isLast">
                                         <p>
-                                            And remember, if your fans are
-                                            <span class="font-bold">not</span> showing up or cannot
-                                            be controlled,
+                                            {{ t('components.onboarding.ready') }}
                                             <br />
                                             <a
                                                 href="https://docs.coolercontrol.org/hardware-support.html"
                                                 target="_blank"
                                                 class="text-accent outline-0"
                                             >
-                                                check the Hardware Support documentation
+                                                {{ t('components.onboarding.checkingDocs') }}
                                             </a>
                                         </p>
                                         <br />
-                                        Ok, you're ready to get started!
+                                        {{ t('components.onboarding.startNow') }}
                                     </div>
                                     <p v-else>{{ step.content.description }}</p>
                                 </div>
@@ -643,7 +661,7 @@ onMounted(async () => {
                                         type="button"
                                         class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
                                     >
-                                        Previous
+                                        {{ t('common.previous') || 'Previous' }}
                                     </button>
                                 </template>
                                 <button
@@ -651,7 +669,7 @@ onMounted(async () => {
                                     type="button"
                                     class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
                                 >
-                                    {{ isLast ? 'Finish' : 'Next' }}
+                                    {{ isLast ? (t('common.finish') || 'Finish') : (t('common.next') || 'Next') }}
                                 </button>
                             </div>
                         </div>

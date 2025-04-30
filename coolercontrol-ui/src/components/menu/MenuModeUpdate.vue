@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     modeUID: UID
@@ -38,6 +39,7 @@ const emit = defineEmits<{
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
+const { t } = useI18n()
 
 const updateModeWithCurrentSettings = async (): Promise<void> => {
     const modeToUpdate = settingsStore.modes.find((mode) => mode.uid === props.modeUID)
@@ -46,8 +48,10 @@ const updateModeWithCurrentSettings = async (): Promise<void> => {
         return
     }
     confirm.require({
-        message: `Are you sure you want to overwrite "${modeToUpdate.name}" with the current configuration?`,
-        header: 'Update Mode',
+        message: t('views.modes.updateModeConfirm', {
+            name: modeToUpdate.name
+        }),
+        header: t('views.modes.editMode'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             const successful = await settingsStore.updateModeSettings(props.modeUID)
@@ -59,7 +63,7 @@ const isActivated = false
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Update with Current Settings', disabled: isActivated }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.updateWithCurrentSettings'), disabled: isActivated }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="updateModeWithCurrentSettings"

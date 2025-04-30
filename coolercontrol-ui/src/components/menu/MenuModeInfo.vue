@@ -22,6 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -31,10 +32,11 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+const { t } = useI18n()
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Overview' }">
+    <div v-tooltip.top="{ value: t('common.overview') }">
         <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
@@ -50,16 +52,12 @@ const deviceStore = useDeviceStore()
                 <div
                     class="w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
-                    <span class="font-bold text-lg">Modes Overview</span>
+                    <span class="font-bold text-lg">{{ t('layout.menu.modes') }}</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    Modes enable you to save device channel settings for quick and easy application.
-                    For example, you can create a 'Gaming' Mode and a 'Silent' Mode, allowing you to
-                    easily switch between them.
+                    {{ t('components.modeInfo.description') }}
                     <br /><br />
                     <span class="italic">
-                        Please note that creating different Fan Profiles may be necessary for each
-                        Mode, as Modes only include channel configurations and do not encompass
-                        internal Profile or Function settings.
+                        {{ t('components.modeInfo.note') }}
                     </span>
                 </div>
             </popover-content>

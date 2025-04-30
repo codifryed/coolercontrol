@@ -22,6 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -31,10 +32,11 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+const { t } = useI18n()
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Overview' }">
+    <div v-tooltip.top="{ value: t('common.overview') }">
         <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
@@ -50,14 +52,11 @@ const deviceStore = useDeviceStore()
                 <div
                     class="w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
-                    <span class="font-bold text-lg">Custom Sensors Overview</span>
+                    <span class="font-bold text-lg">{{ t('components.customSensorInfo.title') }}</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
-                    Custom Sensors enable you to combine existing sensors in various ways, enhancing
-                    your control and efficiency over system cooling. Additionally, they support
-                    file-based data, enabling you to script external sensor inputs for even greater
-                    flexibility.<br /><br />
+                    {{ t('components.customSensorInfo.description') }}<br /><br />
                     <i>
-                        Note: You can use a Mix Profile to combine multiple Custom Sensor outputs.
+                        {{ t('components.customSensorInfo.note') }}
                     </i>
                 </div>
             </popover-content>

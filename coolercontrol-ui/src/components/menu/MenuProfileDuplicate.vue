@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { Profile } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     profileUID: UID
@@ -36,6 +37,7 @@ const emit = defineEmits<{
     (e: 'added', profileUID: UID): void
 }>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -49,7 +51,7 @@ const duplicateProfile = async (): Promise<void> => {
         return
     }
     const newProfile = new Profile(
-        `${profileToDuplicate.name} (copy)`,
+        `${profileToDuplicate.name} ${t('common.copy')}`,
         profileToDuplicate.p_type,
         profileToDuplicate.speed_fixed,
         profileToDuplicate.temp_source,
@@ -61,8 +63,8 @@ const duplicateProfile = async (): Promise<void> => {
     await settingsStore.saveProfile(newProfile.uid)
     toast.add({
         severity: 'success',
-        summary: 'Success',
-        detail: 'Profile Duplicated',
+        summary: t('common.success'),
+        detail: t('views.profiles.profileDuplicated'),
         life: 3000,
     })
     emit('added', newProfile.uid)
@@ -70,7 +72,7 @@ const duplicateProfile = async (): Promise<void> => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Duplicate' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.duplicate') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="duplicateProfile"

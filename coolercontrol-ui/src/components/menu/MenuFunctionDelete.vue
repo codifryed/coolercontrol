@@ -27,6 +27,7 @@ import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { Profile } from '@/models/Profile.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     functionUID: UID
@@ -38,6 +39,7 @@ const emit = defineEmits<{
 
 const props = defineProps<Props>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
@@ -61,23 +63,22 @@ const deleteFunction = (): void => {
     )
     const deleteMessage: string =
         associatedProfiles.length === 0
-            ? `Are you sure you want to delete "${functionName}"?`
-            : `"${functionName}" is currently being used by the Profiles: ${associatedProfiles.map(
-                  (p) => p.name,
-              )}.
-                Deleting this Function will reset those Profiles' Functions.
-                Are you sure you want to delete "${functionName}"?`
+            ? t('views.functions.deleteFunctionConfirm', { name: functionName })
+            : t('views.functions.deleteFunctionWithProfilesConfirm', {
+                name: functionName,
+                profiles: associatedProfiles.map((p) => p.name).join(', '),
+              })
     confirm.require({
         message: deleteMessage,
-        header: 'Delete Function',
+        header: t('views.functions.deleteFunction'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             await settingsStore.deleteFunction(functionUIDToDelete)
             settingsStore.functions.splice(functionIndex, 1)
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Function Deleted',
+                summary: t('common.success'),
+                detail: t('views.functions.functionDeleted'),
                 life: 3000,
             })
             emit('deleted', functionUIDToDelete)
@@ -87,7 +88,7 @@ const deleteFunction = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete' }">
+    <div v-tooltip.top="{ value: t('common.delete') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteFunction"

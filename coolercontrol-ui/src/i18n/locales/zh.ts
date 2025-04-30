@@ -1,0 +1,815 @@
+﻿export default {
+  common: {
+    save: '保存',
+    cancel: '取消',
+    confirm: '确认',
+    delete: '删除',
+    edit: '编辑',
+    add: '添加',
+    remove: '移除',
+    yes: '是',
+    no: '否',
+    ok: '确定',
+    error: '错误',
+    success: '成功',
+    warning: '警告',
+    loading: '加载中...',
+    restarting: '重启中...',
+    noData: '暂无数据',
+    retry: '重试',
+    saveAndRefresh: '保存并刷新',
+    reset: '重置',
+    back: '返回',
+    sslTls: 'SSL/TLS',
+    protocol: '协议',
+    address: '地址',
+    port: '端口',
+    search: '搜索',
+    selected: '已选择',
+    clear: '清除',
+    finish: '完成',
+    next: '下一步',
+    previous: '上一步',
+    apply: '应用',
+    defaults: '默认值',
+    rename: '重命名',
+    password: '密码',
+    savePassword: '保存密码',
+    editName: '编辑名称',
+    state: '状态',
+    name: '名称',
+    message: '消息',
+    timestamp: '时间戳',
+    overview: '概览',
+    login: '登录',
+    logout: '退出登录',
+    temperature: '温度',
+    stay: '保留',
+    discard: '放弃',
+    blankNameResetDefault: '留空将重置为系统默认值。',
+    copy: '(副本)',
+    minuteAbbr: '分钟',
+    rpmAbbr: '转/分',
+    mhzAbbr: '兆赫',
+    ghzAbbr: '吉赫',
+    tempUnit: '°C',
+    percentUnit: '%',
+    secondAbbr: '秒'
+  },
+  layout: {
+    topbar: {
+      login: '登录',
+      logout: '退出登录',
+      changePassword: '修改密码',
+      restartUI: '重启界面',
+      restartDaemonAndUI: '重启后台和界面',
+      restartConfirmMessage: '确定要重启后台和界面吗？',
+      restartConfirmHeader: '后台重启',
+      shutdownSuccess: '后台关闭信号已接收',
+      shutdownError: '发送关闭信号时出现未知错误。详情请查看日志。',
+      quitDesktopApp: '退出桌面应用',
+      applicationInfo: '应用信息',
+      back: '返回',
+      expandMenu: '展开菜单',
+      collapseMenu: '折叠菜单',
+      alerts: '警报',
+      settings: '设置',
+      openInBrowser: '在浏览器中打开',
+      modes: '模式',
+      loginSuccessful: '登录成功'
+    },
+    settings: {
+      title: '设置',
+      general: '通用',
+      device: '设备和传感器',
+      devices: {
+        devicesAndSensors: '设备和传感器',
+        detectionIssues: '检测问题？请查看',
+        hardwareSupportDoc: '硬件支持文档',
+        toggleRequiresRestart: '切换设备或传感器需要重启后台服务和界面。您确定要立即执行此操作吗？',
+        enableDevices: '启用设备',
+        selectTooltip: '选择要禁用或启用的设备和传感器。\n强烈建议禁用未使用的设备和传感器。',
+        unknownError: '尝试应用对所有设备的更改时出现未知错误。详情请查看日志。'
+      },
+      profiles: '配置文件',
+      alerts: '警报',
+      dashboards: '仪表盘',
+      modes: '模式',
+      appearance: '外观',
+      language: '语言',
+      english: '英语',
+      chinese: '中文（简体）',
+      japanese: '日语',
+      chineseTrad: '繁体中文',
+      russian: '俄语',
+      german: '德语',
+      french: '法语',
+      spanish: '西班牙语',
+      arabic: '阿拉伯语',
+      portuguese: '葡萄牙语',
+      hindi: '印地语',
+      theme: '主题',
+      themeLight: '浅色',
+      themeDark: '深色',
+      themeSystem: '跟随系统',
+      themeCustom: '自定义',
+      themeHighContrastDark: '高对比度深色',
+      themeHighContrastLight: '高对比度浅色',
+      lineThickness: '线条粗细',
+      fullScreen: '全屏',
+      menuBarAlwaysVisible: '菜单栏始终可见',
+      hideMenuCollapseIcon: '隐藏菜单折叠图标',
+      showOnboarding: '启动时显示引导教程',
+      introduction: '引导教程',
+      startTour: '开始教程',
+      timeFormat: '时间格式',
+      time24h: '24小时制',
+      time12h: '12小时制',
+      frequencyPrecision: '频率精度',
+      sidebarToCollapse: '侧边栏折叠方式',
+      entitiesBelowSensors: '实体显示在传感器下方',
+      dashboardLineSize: '仪表盘线条大小',
+      themeStyle: '主题样式',
+      themeMode: {
+        system: '跟随系统',
+        dark: '深色',
+        light: '浅色',
+        highContrastDark: '高对比度深色',
+        highContrastLight: '高对比度浅色',
+        custom: '自定义'
+      },
+      desktop: '桌面应用',
+      startInTray: '启动时最小化到托盘',
+      closeToTray: '关闭时最小化到托盘',
+      zoom: '缩放',
+      desktopStartupDelay: '桌面启动延迟',
+      fanControl: '风扇控制',
+      fullSpeed: '全速模式',
+      applySettingsOnStartup: '启动时应用设置',
+      deviceDelayAtStartup: '启动时设备延迟',
+      pollingRate: '轮询速率',
+      compressApiPayload: '压缩API数据',
+      liquidctlIntegration: 'Liquidctl集成',
+      liquidctlDeviceInit: 'Liquidctl设备初始化',
+      hideDuplicateDevices: '隐藏重复设备',
+      customTheme: {
+        title: '自定义主题',
+        accent: '强调色',
+        bgOne: '主背景色',
+        bgTwo: '次背景色',
+        border: '边框颜色',
+        text: '文本颜色',
+        textSecondary: '次要文本颜色'
+      },
+      tooltips: {
+        introduction: '启动应用程序引导教程。',
+        timeFormat: '时间格式：12小时制（上午/下午）或24小时制',
+        frequencyPrecision: '调整显示的频率值精度。',
+        sidebarCollapse: '是否在侧边栏中显示菜单折叠图标，\n或使用空侧边栏区域展开或折叠主菜单。',
+        entitiesBelowSensors: '是否在主菜单中的设备传感器下方显示实体。',
+        fullScreen: '切换全屏模式',
+        lineThickness: '调整仪表盘上图表的线条粗细',
+        startInTray: '启动时，主界面窗口将隐藏，只显示系统托盘图标。',
+        closeToTray: '关闭应用程序窗口将使应用程序在系统托盘中继续运行',
+        zoom: '手动设置界面缩放级别。',
+        desktopStartupDelay: '在启动桌面应用程序前添加一些延迟（以秒为单位）。\n有助于解决由于在登录时自动启动桌面应用程序或启动过快而产生的问题',
+        thinkpadFanControl: '这是一个启用ThinkPad ACPI风扇控制的辅助工具。\n为了安全起见，默认情况下风扇控制操作是禁用的。CoolerControl可以尝试为您启用此功能，但您应该了解对硬件的风险。\n风险自负。',
+        thinkpadFullSpeed: '对于ThinkPad笔记本电脑，这将启用全速模式。\n这允许风扇在设置为100%时转至其绝对最大速度，但会导致风扇超出规格运行并增加磨损。\n谨慎使用。',
+        applySettingsOnStartup: '在后台启动和从睡眠状态唤醒时自动应用设置',
+        deviceDelayAtStartup: '启动设备通信前的延迟（以秒为单位）。\n有助于处理需要时间初始化或间歇性检测到的设备',
+        pollingRate: '轮询传感器数据的速率（以秒为单位）。\n更高的轮询速率将减少资源使用，更低的轮询速率将提高响应速度。\n低于1.0的速率应谨慎使用。',
+        compressApiPayload: '启用响应压缩以减少API负载大小，\n但请注意这将增加CPU使用率。',
+        liquidctlIntegration: '禁用此功能将完全停用Liquidctl集成，\n无论coolercontrol-liqctld包的安装状态如何。\n如果可用，将使用HWMon驱动程序代替。',
+        liquidctlDeviceInit: '注意：仅当您或其他程序正在处理liquidctl设备初始化时才禁用此功能。\n这可以帮助避免与其他程序的冲突。',
+        hideDuplicateDevices: '某些设备同时受Liquidctl和HWMon驱动程序支持。\nLiquidctl默认用于其额外功能。要改用HWMon驱动程序，\n请禁用此功能和liquidctl设备以避免驱动程序冲突。',
+        daemonAddress: '用于与后台服务建立连接的IP地址或域名。\n支持IPv4、IPv6和可解析DNS的主机名。',
+        daemonPort: '用于与后台服务建立连接的端口。',
+        sslTls: '是否使用SSL/TLS连接到后台服务。\n需要代理设置。',
+        triggersRestart: '触发自动重启',
+        triggersUIRestart: '触发自动界面重启',
+        triggersDaemonRestart: '触发自动后台服务重启',
+        resetToDefaults: '重置为默认设置',
+        saveAndReload: '保存后台设置并重新加载界面',
+        daemonSsl: '是否使用SSL/TLS连接到后台服务。需要代理设置。',
+        applyOnBoot: '在后台启动和从睡眠状态唤醒时自动应用设置',
+        startupDelay: '启动设备通信前的延迟（以秒为单位）。有助于处理需要时间初始化或间歇性检测到的设备',
+        thinkPadFanControl: '这是一个启用ThinkPad ACPI风扇控制的辅助工具。为了安全起见，默认情况下风扇控制操作是禁用的。CoolerControl可以尝试为您启用此功能，但您应该了解对硬件的风险。风险自负。',
+        thinkPadFullSpeed: '对于ThinkPad笔记本电脑，这将启用全速模式。这允许风扇在设置为100%时转至其绝对最大速度，但会导致风扇超出规格运行并增加磨损。谨慎使用。',
+        compress: '启用响应压缩以减少API负载大小，但请注意这将增加CPU使用率。',
+        liquidctlNoInit: '注意：仅当您或其他程序正在处理liquidctl设备初始化时才禁用此功能。这可以帮助避免与其他程序的冲突。',
+        liquidctl: '禁用此功能将完全停用Liquidctl集成，无论coolercontrol-liqctld包的安装状态如何。如果可用，将使用HWMon驱动程序代替。',
+        hideDuplicate: '某些设备同时受Liquidctl和HWMon驱动程序支持。Liquidctl默认用于其额外功能。要改用HWMon驱动程序，请禁用此功能和liquidctl设备以避免驱动程序冲突。',
+        pollRate: '轮询传感器数据的速率（以秒为单位）。\n更高的轮询速率将减少资源使用，更低的轮询速率将提高响应速度。\n低于1.0的速率应谨慎使用。'
+      },
+      applySettingAndRestart: '更改此设置需要重启后台服务和界面。确定要立即执行此操作吗？',
+      restartHeader: '应用设置并重启',
+      restartSuccess: '正在重启',
+      success: '成功',
+      successDetail: '操作已成功完成',
+      settingsAppliedSuccess: '设置已成功应用',
+      restartRequestSuccess: '重启请求已成功发送',
+      colorPickerDialogTitle: '选择颜色',
+      colorPickerConfirm: '确认',
+      colorPickerCancel: '取消',
+      languageChangeConfirm: '切换语言？',
+      languageChangeConfirmMessage: '切换语言需要刷新页面。是否继续？'
+    },
+    menu: {
+      system: '系统',
+      dashboards: '仪表盘',
+      profiles: '配置文件',
+      functions: '功能',
+      customSensors: '自定义传感器',
+      modes: '模式',
+      alerts: '警报',
+      tooltips: {
+        delete: '删除',
+        createMode: '从当前设置创建模式',
+        addProfile: '添加配置文件',
+        editName: '编辑名称',
+        addAlert: '添加警报',
+        deleteFunction: '删除功能',
+        addDashboard: '添加仪表盘',
+        deleteDashboard: '删除仪表盘',
+        duplicate: '复制',
+        setAsHome: '设为主页',
+        save: '保存',
+        deleteMode: '删除模式',
+        updateWithCurrentSettings: '使用当前设置更新',
+        rename: '重命名',
+        createModeFromCurrentSettings: '从当前设置创建模式',
+        addCustomSensor: '添加自定义传感器',
+        addFunction: '添加功能',
+        chooseColor: '选择颜色'
+      }
+    },
+    add: {
+      dashboard: '仪表盘',
+      mode: '模式',
+      profile: '配置文件',
+      function: '功能',
+      alert: '警报',
+      customSensor: '自定义传感器'
+    }
+  },
+  views: {
+    dashboard: {
+      timeRange: '时间范围',
+      minutes: '分钟',
+      chartType: '图表类型',
+      dataType: '数据类型',
+      filterSensors: '筛选传感器',
+      showControls: '显示控制器',
+      mouseActions: '仪表盘鼠标操作：\n- 突出显示区域进行缩放\n- 滚动鼠标进行缩放\n- 缩放后右键平移\n- 双击重置并恢复更新',
+      fullPage: '全屏模式',
+      filterBySensor: '按传感器筛选',
+      search: '搜索',
+      filterTypes: '筛选类型',
+      filterByDataType: '按数据类型筛选',
+      selectChartType: '选择图表类型',
+      exitFullPage: '退出全屏模式',
+      controls: '控制',
+      sensorValues: '传感器数值',
+      selected: '已选择',
+      clear: '清除',
+      deleteDashboard: '删除仪表盘',
+      deleteDashboardConfirm: '确定要删除仪表盘："{name}"？',
+      dashboardDeleted: '仪表盘已删除',
+      setAsHome: '设为主页',
+      duplicateDashboard: '复制仪表盘'
+    },
+    appInfo: {
+      title: '应用程序信息',
+      noWarranty: '本程序不提供任何保证。',
+      daemonStatus: '后台服务状态',
+      acknowledgeIssues: '确认问题',
+      status: '状态',
+      processStatus: '进程状态',
+      host: '主机',
+      uptime: '运行时间',
+      version: '版本',
+      processId: '进程ID',
+      memoryUsage: '内存使用',
+      liquidctl: 'Liquidctl',
+      connected: '已连接',
+      disconnected: '未连接',
+      helpfulLinks: '有用链接',
+      gettingStarted: '入门指南',
+      helpSettingUp: '风扇控制设置帮助',
+      hardwareSupport: '硬件支持',
+      hardwareSupportDesc: '支持的设备和驱动安装',
+      openIssue: '提交问题',
+      openIssueDesc: '报告错误，请求功能',
+      logsAndDiagnostics: '日志和诊断',
+      downloadCurrentLog: '下载当前日志'
+    },
+    alerts: {
+      createAlert: '创建警报',
+      editAlert: '编辑警报',
+      deleteAlert: '删除警报',
+      noAlerts: '尚未配置警报',
+      alertsOverview: '警报概览',
+      alertLogs: '警报日志',
+      alertTriggered: '警报触发',
+      alertRecovered: '警报已恢复',
+      deleteAlertConfirm: '您确定要删除："{name}"吗？',
+      saveAlert: '保存警报',
+      channelSource: '警报通道源',
+      channelSourceTooltip: '用于警报的通道源',
+      triggerConditions: '触发条件',
+      maxValueTooltip: '超过此值将触发警报。',
+      minValueTooltip: '低于此值将触发警报。',
+      greaterThan: '大于',
+      lessThan: '小于',
+      newAlert: '新警报',
+      unsavedChanges: '此警报有未保存的更改。',
+      unsavedChangesHeader: '未保存的更改'
+    },
+    profiles: {
+      createProfile: '创建配置文件',
+      editProfile: '编辑配置文件',
+      deleteProfile: '删除配置文件',
+      noProfiles: '尚未配置配置文件',
+      systemDefault: '系统默认',
+      profileType: '配置文件类型',
+      fixedDuty: '固定风扇速度',
+      selectedPointDuty: '选中点的风扇速度',
+      selectedPointTemp: '选中点的温度',
+      tempSource: '温度源',
+      memberProfiles: '成员配置文件',
+      mixFunction: '混合函数',
+      applyMixFunction: '对选定的配置文件应用混合函数',
+      profilesToMix: '要混合的配置文件',
+      saveProfile: '保存配置文件',
+      function: '功能',
+      functionToApply: '要应用的功能',
+      graphProfileMouseActions: '图表配置文件鼠标操作：\n- 滚动以缩放。\n- 左键点击线条添加点。\n- 右键点击点以移除。\n- 拖动点以移动。',
+      unsavedChanges: '此配置文件有未保存的更改。',
+      unsavedChangesHeader: '未保存的更改',
+      appliedFunction: '已应用的功能',
+      newProfile: '新配置文件',
+      tooltip: {
+        profileType: '配置文件类型:<br/>- 默认: 保留当前设备设置<br/>&nbsp;&nbsp;(BIOS/固件)<br/>- 固定: 设置恒定速度<br/>- 图表: 可自定义风扇曲线<br/>- 混合: 组合多个配置文件'
+      },
+      profileDeleted: '配置文件已删除',
+      profileDuplicated: '配置文件已复制',
+      deleteProfileConfirm: '确定要删除："{name}"吗？',
+      deleteProfileWithChannelsConfirm: '"{name}"当前正被以下通道使用: {channels}。\n删除此配置文件将重置这些通道的设置。\n确定要删除"{name}"吗？',
+      profileUpdated: '配置文件已更新',
+      profileUpdateError: '尝试更新此配置文件时出现错误'
+    },
+    customSensors: {
+      newSensor: '新传感器',
+      sensorType: '传感器类型',
+      type: '类型',
+      mixFunction: '混合函数',
+      howCalculateValue: '如何计算结果传感器值',
+      tempFileLocation: '温度文件位置',
+      tempFile: '温度文件',
+      filePathTooltip: '输入要用于此传感器的温度文件的绝对路径。\n该文件必须使用sysfs数据格式标准：\n以毫摄氏度为单位的定点数。\n例如，80℃为80000。\n该文件在提交时进行验证。',
+      browse: '浏览',
+      browseCustomSensorFile: '浏览自定义传感器文件',
+      tempSources: '温度源',
+      tempSourcesTooltip: '要在混合函数中使用的温度源<br/><i>注意：您可以使用混合配置文件来组合多个<br/>自定义传感器。</i>',
+      tempWeights: '温度权重',
+      tempWeightsTooltip: '每个选定温度源的各自权重。',
+      tempName: '温度名称',
+      weight: '权重',
+      saveSensor: '保存传感器',
+      saveCustomSensor: '保存自定义传感器',
+      unsavedChanges: '此自定义传感器有未保存的更改。',
+      unsavedChangesHeader: '未保存的更改',
+      stay: '保留',
+      discard: '放弃',
+      selectCustomSensorFile: '选择自定义传感器文件',
+      deleteCustomSensor: '删除自定义传感器',
+      deleteCustomSensorConfirm: '您确定要删除自定义传感器："{name}"吗？'
+    },
+    speed: {
+      automatic: '自动',
+      manual: '手动',
+      unsavedChanges: '未保存的更改',
+      unsavedChangesMessage: '此控制通道有未保存的更改。',
+      manualDuty: '手动风扇转速',
+      profileToApply: '要应用的配置文件',
+      automaticOrManual: '自动或手动',
+      driverNoSupportControl: '当前安装的驱动程序不支持此通道的控制。',
+      controlOrView: '控制或查看',
+      applySetting: '应用设置'
+    },
+    modes: {
+      createMode: '创建模式',
+      editMode: '编辑模式',
+      deleteMode: '删除模式',
+      noModes: '尚未配置模式',
+      deleteModeConfirm: '确定要删除模式："{name}"?',
+      updateModeConfirm: '确定要用当前配置覆盖"{name}"吗？',
+      duplicateMode: '复制模式'
+    },
+    error: {
+      connectionError: 'CoolerControl 连接错误',
+      connectionToast: '无法连接到后台服务',
+      connectionToastDetail: '无法连接到后台服务。请确保服务正在运行并尝试重新连接。',
+      connectionRetryFailure: '连接失败 - 重试失败',
+      connectionRetryDetail: '多次尝试后无法连接到后台服务。',
+      errorLoadingGraph: '加载图表出错',
+      highCpuUsageWarning: '检测到高CPU使用率',
+      highCpuUsageDetail: '当前CPU使用率较高。\n为减少系统影响，请考虑：\n1. 减少显示的图表数量\n2. 减少监控的传感器数量\n3. 增加轮询间隔',
+      pageNotFound: '页面未找到',
+      returnToDashboard: '返回仪表板',
+      connectionErrorMessage: '无法连接到 CoolerControl 后台服务。',
+      serviceRunningMessage: '请确保系统服务正在运行并可用。',
+      checkProjectPage: '查看项目页面获取安装说明。',
+      projectPage: '项目主页',
+      helpfulCommands: '一些有用的启用和验证守护进程的命令：',
+      nonStandardAddress: '如果您配置了非标准地址连接到后台服务，可以在此处设置：',
+      daemonAddressDesktop: '后台地址 - 桌面应用',
+      daemonAddressWeb: '后台地址 - Web界面',
+      address: '地址',
+      port: '端口',
+      protocol: '协议',
+      sslTls: 'SSL/TLS',
+      addressTooltip: '用于建立连接的IP地址或域名。',
+      portTooltip: '用于建立连接的端口。',
+      sslTooltip: '是否使用SSL/TLS连接到后台服务。',
+      saveTooltip: '保存后台设置并重新加载界面。',
+      resetTooltip: '将后台设置重置为默认值并重新加载界面。'
+    },
+    daemon: {
+      daemonErrors: '后台服务错误',
+      daemonErrorsDetail: '后台服务已报告错误。请查看日志了解详情。',
+      daemonDisconnected: '后台服务已断开',
+      daemonDisconnectedDetail: '无法连接到后台服务。请检查后台服务是否正在运行。',
+      connectionRestored: '连接已恢复',
+      connectionRestoredMessage: '与后台服务的连接已恢复。',
+      title: '后台服务',
+      thinkpadFanControl: 'ThinkPad风扇控制',
+      pollRate: '轮询速率',
+      applySettingAndRestart: '应用设置并重启',
+      changeSetting: '更改此设置需要重启后台服务和界面。确定要立即执行此操作吗？',
+      status: {
+        ok: '正常',
+        hasWarnings: '警告',
+        hasErrors: '错误',
+        haswarnings: '警告',
+        haserrors: '错误'
+      }
+    },
+    functions: {
+      createFunction: '创建功能',
+      editFunction: '编辑功能',
+      deleteFunction: '删除功能',
+      noFunctions: '尚未配置功能',
+      saveFunction: '保存功能',
+      functionType: '功能类型',
+      functionTypeTooltip: '功能类型：\n- 恒等函数：不改变计算的配置文件值。\n- 标准：使用具有滞后设置的算法改变配置文件值。\n- 指数移动平均：使用指数移动平均算法改变配置文件值。',
+      minimumAdjustment: '最小调整',
+      minimumAdjustmentTooltip: '最小风扇速度调整：低于此值的计算变化将被忽略。',
+      maximumAdjustment: '最大调整',
+      maximumAdjustmentTooltip: '最大风扇速度调整：超过此阈值的计算变化将被限制。',
+      windowSize: '窗口大小',
+      windowSizeTooltip: '通过设置窗口大小来调整温度变化的灵敏度。\n较小的窗口大小对变化响应迅速，\n而较大的窗口大小提供更平滑的平均值。',
+      hysteresisThreshold: '变化阈值',
+      hysteresisThresholdTooltip: '温度变化阈值（°C）：当温度变化此数值时调整风扇速度。',
+      hysteresisDelay: '变化延迟',
+      hysteresisDelayTooltip: '响应温度变化所需的时间（秒）。',
+      onlyDownward: '仅下降时',
+      onlyDownwardTooltip: '仅在温度下降时应用设置。',
+      unsavedChanges: '此功能有未保存的更改。',
+      unsavedChangesHeader: '未保存的更改',
+      functionError: '尝试更新此功能时出现错误',
+      newFunction: '新功能',
+      functionDeleted: '功能已删除',
+      functionDuplicated: '功能已复制',
+      deleteFunctionConfirm: '确定要删除"{name}"吗？',
+      deleteFunctionWithProfilesConfirm: '"{name}"当前正被以下配置文件使用: {profiles}。\n删除此功能将重置这些配置文件的功能设置。\n确定要删除"{name}"吗？',
+      functionUpdated: '功能已更新',
+      functionUpdateError: '尝试更新此功能时出现错误'
+    },
+    singleDashboard: {
+      minutes: "分钟",
+      chartMouseActions: "仪表盘鼠标操作：\n- 突出显示区域进行缩放\n- 滚动鼠标进行缩放\n- 缩放后右键平移\n- 双击重置并恢复更新",
+      timeRange: "时间范围",
+      chartType: "图表类型"
+    },
+    mode: {
+      activateMode: "激活模式",
+      currentlyActive: "当前已激活",
+      modeHint: "注意：模式不包括配置文件或功能设置，仅包含通道配置。"
+    },
+    lighting: {
+      saveLightingSettings: "保存灯光设置",
+      lightingMode: "灯光模式",
+      speed: "速度",
+      direction: "方向",
+      forward: "正向",
+      backward: "反向",
+      numberOfColors: "颜色数量",
+      numberOfColorsTooltip: "所选灯光模式使用的颜色数量。"
+    },
+    lcd: {
+      saveLcdSettings: "保存LCD设置",
+      lcdMode: "LCD模式",
+      brightness: "亮度",
+      brightnessPercent: "亮度百分比",
+      orientation: "方向",
+      orientationDegrees: "方向角度",
+      chooseImage: "选择图片",
+      dragAndDrop: "拖放文件到此处。",
+      tempSource: "温度来源",
+      tempSourceTooltip: "LCD显示使用的温度来源。",
+      imagesPath: "图片路径",
+      imagesPathTooltip: "输入包含图片的目录的绝对路径。\n目录必须包含至少一个图片文件，\n可以是静态图片或GIF。轮播将按照\n所选延迟循环显示它们。所有文件在\n提交时都会经过处理以确保最大兼容性。",
+      browse: "浏览",
+      browseTooltip: "浏览图片目录",
+      delayInterval: "延迟间隔",
+      delayIntervalTooltip: "图片更换之间的最小秒数。\n请注意，由于后台轮询速率的原因，实际延迟可能会更长。",
+      processing: "处理中...",
+      applying: "应用中...",
+      unsavedChanges: "LCD设置有未保存的更改。",
+      unsavedChangesHeader: "未保存的更改",
+      imageTooLarge: "图片太大。请选择一张更小的图片。",
+      notImageType: "文件不是有效的图片类型"
+    },
+    controls: {
+      viewType: '视图类型',
+      controlOrView: '控制或查看'
+    },
+    devices: {
+      detectionIssues: '检测问题？请查看',
+      hardwareSupportDocs: '硬件支持文档',
+      selectDevices: '选择要禁用或启用的设备和传感器。\n禁用未使用的设备和传感器是高度\n推荐的。',
+      devicesAndSensors: '设备和传感器',
+      apply: '应用',
+      applySettingsAndReload: '应用设置并重新加载',
+      triggersAutoRestart: '触发自动后台重启',
+      restartPrompt: '切换设备或传感器需要重启后台和界面。您确定要立即执行此操作吗？',
+      enableDevices: '启用设备'
+    }
+  },
+  components: {
+    confirmation: {
+      title: '确认',
+      message: '确定执行此操作？'
+    },
+    aseTek690: {
+      sameDeviceID: '传统的NZXT Kraken和EVGA CLC恰好具有相同的设备ID，CoolerControl无法确定连接的是哪种设备。这对于正确的设备通信是必需的。',
+      restartRequired: '可能需要重启CoolerControl系统服务，并在需要时自动处理。',
+      deviceModel: 'Liquidctl设备是以下型号之一吗？',
+      modelList: 'NZXT Kraken X40, X60, X31, X41, X51 或 X61',
+      acceptLabel: "是的，这是一个传统的Kraken设备",
+      rejectLabel: "不是，这是一个EVGA CLC设备"
+    },
+    password: {
+      title: '输入您的密码',
+      newPasswordTitle: '输入新密码',
+      invalidPassword: '密码无效',
+      passwordHelp: '安装后，守护程序使用默认密码保护设备控制端点。\n您可以选择创建一个强密码以提高保护。\n如果您看到此对话框但尚未设置密码，请尝试刷新UI\n或从访问保护菜单点击登录。详情请参阅项目维基。'
+    },
+    notFound: {
+      message: '就像完美的Linux系统一样，\n这个页面并不存在。'
+    },
+    helloWorld: {
+      message: "您已成功创建了一个Vite + Vue 3项目。接下来做什么呢？"
+    },
+    dashboardInfo: {
+      description: '仪表盘使您能够根据个人偏好查看系统的传感器数据。您可以在基于时间或基于表格的图表之间进行选择，并调整每个图表的过滤器和设置，以关注您想要查看的特定数据。此外，您还可以创建多个仪表盘，根据您的需求进行自定义。'
+    },
+    modeInfo: {
+      description: '模式使您可以保存设备通道设置，以便快速轻松地应用。例如，您可以创建"游戏"模式和"静音"模式，方便在它们之间切换。',
+      note: '请注意，每种模式可能需要创建不同的风扇配置文件，因为模式仅包含通道配置，不包含内部配置文件或功能设置。'
+    },
+    alertInfo: {
+      description: '警报用于在特定条件发生时通知您。它们可以监控温度和风扇速度，确保您的系统正常运行。警报针对特定的传感器值范围进行配置，当值超出或回到可接受阈值范围时，将发送通知。'
+    },
+    customSensorInfo: {
+      title: '自定义传感器概览',
+      description: '自定义传感器允许您以各种方式组合现有传感器，增强您对系统冷却的控制和效率。此外，它们支持基于文件的数据，使您能够脚本化外部传感器输入，实现更大的灵活性。',
+      note: '注意：您可以使用混合配置文件来组合多个自定义传感器输出。'
+    },
+    functionInfo: {
+      title: '功能概览',
+      description: '功能是应用于配置文件输出的可配置算法。它们使您能够管理风扇速度变化的时机，调整滞后设置，并为动态温度使用移动平均值。',
+      identityFunction: '恒等功能是最简单的选项，因为它不会修改计算的配置文件输出；它只允许您设置最小和最大速度变化范围。这对于最小化风扇速度的持续波动特别有益。'
+    },
+    profileInfo: {
+      title: '配置文件概览',
+      description: '配置文件定义了控制风扇速度的可自定义设置，同一个配置文件可用于多个风扇。类型包括：',
+      type: {
+        fixed: '固定速度',
+        fanCurve: '风扇曲线/图表',
+        mix: '混合配置文件',
+        default: '默认设备设置'
+      },
+      additionalInfo: '配置文件是控制风扇速度的基础，可以通过应用更高级的算法功能进一步增强。'
+    },
+    deviceInfo: {
+      details: '设备详情',
+      systemName: '系统名称',
+      deviceType: '设备类型',
+      deviceUID: '设备UID',
+      firmwareVersion: '固件版本',
+      model: '型号',
+      driverName: '驱动名称',
+      driverType: '驱动类型',
+      driverVersion: '驱动版本',
+      locations: '位置'
+    },
+    onboarding: {
+      welcome: '欢迎使用CoolerControl！',
+      beforeStart: '在我们开始之前，最重要的事情之一是',
+      settingUpDrivers: '设置硬件驱动程序',
+      fansNotShowing: '如果您的风扇没有显示或无法控制，那么可能是您当前安装的内核驱动程序存在问题。',
+      checkDocs: '在提交问题之前，请确认所有驱动程序都已正确加载，方法是',
+      checkingDocs: '查看硬件支持文档',
+      startTourAgain: '注意：您可以随时从设置页面重新启动此导览。',
+      letsStart: '好的，让我们开始吧！',
+      dashboards: '仪表盘',
+      dashboardsDesc: '仪表盘是一个精选的图表集合，用于查看系统的传感器数据。',
+      profiles: '配置文件',
+      profilesDesc: '配置文件定义了控制风扇速度的可自定义设置。同一个配置文件可用于多个风扇和设备。',
+      functions: '功能',
+      functionsDesc: '功能是可配置的算法，可应用于配置文件的输出。这对管理风扇速度变化的时机很有帮助。',
+      appInfo: '应用程序和后台服务信息',
+      appInfoDesc: '点击徽标打开应用程序信息页面，您可以在其中获取有关应用程序、系统后台服务和日志的信息。当排除问题时，这是您想要访问的地方，这里有一个小的后台服务状态徽章，用于通知您任何潜在问题。',
+      quickAdd: '快速添加',
+      quickAddDesc: '这是一个菜单，可以轻松添加新项目，如仪表盘、配置文件等。',
+      dashboardQuick: '仪表盘快速菜单',
+      dashboardQuickDesc: '这是一个菜单，可以快速跳转到您的仪表盘，即使主菜单已折叠。',
+      settings: '设置',
+      settingsDesc: '此按钮将打开设置页面，其中包含不同的界面和后台服务设置。',
+      restartMenu: '重启菜单',
+      restartMenuDesc: '在这里您可以选择是重新加载界面还是重启系统后台服务。',
+      thatsIt: '就是这样！',
+      ready: '请记住，如果您的风扇没有显示或无法控制，请查看硬件支持文档',
+      startNow: '好的，您已准备好开始使用了！'
+    },
+    axisOptions: {
+      title: '坐标轴选项',
+      autoScale: '自动缩放',
+      max: '最大值',
+      min: '最小值',
+      dutyTemperature: '风扇转速 / 温度',
+      rpmMhz: '转速 / 兆赫兹',
+      krpmGhz: '千转速 / 吉赫兹',
+      watts: '瓦特'
+    },
+    sensorTable: {
+      device: '设备',
+      channel: '通道',
+      current: '当前值',
+      min: '最小值',
+      max: '最大值',
+      average: '平均值'
+    },
+    modeTable: {
+      setting: '设置'
+    }
+  },
+  auth: {
+    enterPassword: '请输入您的密码',
+    setNewPassword: '请输入新密码',
+    loginFailed: '登录失败',
+    invalidPassword: '密码无效',
+    passwordSetFailed: '设置密码失败',
+    passwordSetSuccessfully: '新密码设置成功',
+    logoutSuccessful: '您已成功退出登录',
+    unauthorizedAction: '您需要登录才能完成此操作'
+  },
+  device: {
+    processInterrupted: ' - 进程已中断。',
+    modelSetSuccessfully: '设备型号类型设置成功。',
+    modelSetRestartInProgress: '设备型号类型设置成功。正在重启。'
+  },
+  daemon: {
+    status: {
+      ok: '正常',
+      hasWarnings: '警告',
+      hasErrors: '错误',
+      haswarnings: '警告',
+      haserrors: '错误'
+    }
+  },
+  device_store: {
+    unauthorized: {
+      summary: '未授权',
+      detail: '您需要登录才能完成此操作'
+    },
+    login: {
+      success: {
+        summary: '成功',
+        detail: '登录成功。'
+      },
+      failed: {
+        summary: '登录失败',
+        detail: '密码无效'
+      }
+    },
+    logout: {
+      summary: '退出登录',
+      detail: '您已成功退出登录。'
+    },
+    password: {
+      set_success: {
+        summary: '密码',
+        detail: '新密码设置成功'
+      },
+      set_failed: {
+        summary: '设置密码失败'
+      }
+    },
+    asetek: {
+      header: '检测到未知设备',
+      success: {
+        summary: '成功',
+        detail_legacy: '设备型号类型设置成功。正在重启。',
+        detail_evga: '设备型号类型设置成功。'
+      },
+      error: {
+        summary: '错误',
+        detail: '进程已中断。'
+      }
+    }
+  },
+  models: {
+    chartType: {
+      timeChart: '时间图表',
+      table: '表格',
+      controls: '控制器'
+    },
+    dataType: {
+      temp: '温度',
+      duty: '风扇转速',
+      load: '负载',
+      rpm: '转速',
+      freq: '频率',
+      watts: '功率'
+    },
+    profile: {
+      profileType: {
+        default: '默认',
+        fixed: '固定',
+        graph: '曲线图',
+        mix: '混合'
+      },
+      functionType: {
+        identity: '恒等',
+        standard: '标准',
+        exponentialMovingAvg: '指数移动平均'
+      },
+      mixFunctionType: {
+        min: '最小值',
+        max: '最大值',
+        avg: '平均值'
+      }
+    },
+    customSensor: {
+      sensorType: {
+        mix: '混合',
+        file: '文件'
+      },
+      mixFunctionType: {
+        min: '最小值',
+        max: '最大值',
+        delta: '差值',
+        avg: '平均值',
+        weightedAvg: '加权平均'
+      }
+    },
+    themeMode: {
+      system: '跟随系统',
+      dark: '深色',
+      light: '浅色',
+      highContrastDark: '高对比度深色',
+      highContrastLight: '高对比度浅色',
+      custom: '自定义主题'
+    },
+    channelViewType: {
+      control: '控制',
+      dashboard: '仪表盘'
+    },
+    alertState: {
+      active: '激活',
+      inactive: '未激活'
+    },
+    deviceType: {
+      customSensors: '自定义传感器',
+      cpu: '处理器',
+      gpu: '显卡',
+      liquidctl: '水冷控制',
+      hwmon: '硬件监控'
+    },
+    driverType: {
+      kernel: '内核',
+      liquidctl: '水冷控制',
+      nvml: 'NVML',
+      nvidiaCli: 'Nvidia命令行',
+      coolercontrol: '冷却控制'
+    },
+    lcdModeType: {
+      none: '无',
+      liquidctl: '水冷控制',
+      custom: '自定义'
+    }
+  }
+} 

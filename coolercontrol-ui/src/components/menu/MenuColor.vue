@@ -22,6 +22,7 @@ import 'element-plus/es/components/color-picker/style/css'
 import { Color, UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { onMounted, ref, Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceUID: UID
@@ -38,6 +39,7 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore()
 const currentColor: Ref<Color> = ref(props.color)
+const { t } = useI18n()
 
 const setNewColor = (newColor: Color | null): void => {
     if (newColor == null) {
@@ -63,13 +65,13 @@ onMounted(async () => {
         'div.el-color-dropdown__btns > button.el-button.el-button--small.is-text.el-color-dropdown__link-btn > span',
     )
     for (const el of picker_clear_elements) {
-        el.textContent = 'Default'
+        el.textContent = t('common.defaults')
     }
     const picker_ok_elements = document.querySelectorAll(
         'div.el-color-dropdown__btns > button.el-button.el-button--small.is-plain.el-color-dropdown__btn > span',
     )
     for (const el of picker_ok_elements) {
-        el.textContent = 'Ok'
+        el.textContent = t('common.ok')
     }
 })
 </script>
@@ -77,7 +79,7 @@ onMounted(async () => {
 <template>
     <div
         class="rounded-lg w-8 h-8 p-2 !ml-[-1px] text-center justify-center items-center flex"
-        v-tooltip.top="{ value: 'Choose Color' }"
+        v-tooltip.top="{ value: t('layout.menu.tooltips.chooseColor') }"
     >
         <div class="color-wrapper">
             <el-color-picker

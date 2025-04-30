@@ -1,0 +1,809 @@
+export default {
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    confirm: 'Confirm',
+    delete: 'Delete',
+    edit: 'Edit',
+    add: 'Add',
+    remove: 'Remove',
+    yes: 'Yes',
+    no: 'No',
+    ok: 'OK',
+    error: 'Error',
+    success: 'Success',
+    warning: 'Warning',
+    loading: 'Loading...',
+    restarting: 'Restarting...',
+    noData: 'No data available',
+    retry: 'Retry',
+    saveAndRefresh: 'Save and Refresh',
+    reset: 'Reset',
+    back: 'Back',
+    sslTls: 'SSL/TLS',
+    protocol: 'Protocol',
+    address: 'Address',
+    port: 'Port',
+    search: 'Search',
+    selected: 'Selected',
+    clear: 'Clear',
+    finish: 'Finish',
+    next: 'Next',
+    previous: 'Previous',
+    apply: 'Apply',
+    defaults: 'Defaults',
+    rename: 'Rename',
+    password: 'Password',
+    savePassword: 'Save Password',
+    editName: 'Edit Name',
+    state: 'State',
+    name: 'Name',
+    message: 'Message',
+    timestamp: 'Timestamp',
+    overview: 'Overview',
+    login: 'Login',
+    logout: 'Logout',
+    temperature: 'Temperature',
+    stay: 'Stay',
+    discard: 'Discard',
+    blankNameResetDefault: 'A blank name will reset it to the system default.',
+    copy: '(copy)',
+    minuteAbbr: 'min',
+    rpmAbbr: 'rpm',
+    mhzAbbr: 'MHz',
+    ghzAbbr: 'GHz',
+    tempUnit: '°C',
+    percentUnit: '%',
+    secondAbbr: 's'
+  },
+  layout: {
+    topbar: {
+      login: 'Login',
+      logout: 'Logout',
+      changePassword: 'Change Password',
+      restartUI: 'Restart UI',
+      restartDaemonAndUI: 'Restart Daemon and UI',
+      restartConfirmMessage: 'Are you sure you want to restart the daemon and the UI?',
+      restartConfirmHeader: 'Daemon Restart',
+      shutdownSuccess: 'Daemon shutdown signal accepted',
+      shutdownError: 'Unknown error sending shutdown signal. See logs for details.',
+      quitDesktopApp: 'Quit Desktop App',
+      applicationInfo: 'Application Info',
+      back: 'Back',
+      expandMenu: 'Expand Menu',
+      collapseMenu: 'Collapse Menu',
+      alerts: 'Alerts',
+      settings: 'Settings',
+      openInBrowser: 'Open in Browser',
+      modes: 'Modes',
+      loginSuccessful: 'Login successful'
+    },
+    settings: {
+      title: 'Settings',
+      general: 'General',
+      device: 'Devices and Sensors',
+      devices: {
+        devicesAndSensors: 'Devices and Sensors',
+        detectionIssues: 'Detection Issues? See the',
+        hardwareSupportDoc: 'Hardware Support Documentation.',
+        toggleRequiresRestart: 'Toggling devices or sensors requires a daemon and UI restart. Are you sure want to do this now?',
+        enableDevices: 'Enable Devices',
+        selectTooltip: 'Select devices and sensors to disable or enable.\nDisabling unused devices and sensors is highly\nrecommended.',
+        unknownError: 'Unknown error trying to apply changes to all devices. See logs for details.'
+      },
+      profiles: 'Profiles',
+      alerts: 'Alerts',
+      dashboards: 'Dashboards',
+      modes: 'Modes',
+      appearance: 'Appearance',
+      language: 'Language',
+      english: 'English',
+      chinese: 'Chinese (Simplified)',
+      japanese: 'Japanese',
+      chineseTrad: 'Chinese (Traditional)',
+      russian: 'Russian',
+      german: 'German',
+      french: 'French',
+      spanish: 'Spanish',
+      arabic: 'Arabic',
+      portuguese: 'Portuguese',
+      hindi: 'Hindi',
+      theme: 'Theme',
+      themeLight: 'Light',
+      themeDark: 'Dark',
+      themeSystem: 'System',
+      themeCustom: 'Custom',
+      themeHighContrastDark: 'High Contrast Dark',
+      themeHighContrastLight: 'High Contrast Light',
+      lineThickness: 'Line Thickness',
+      fullScreen: 'Full Screen',
+      menuBarAlwaysVisible: 'Menu Bar Always Visible',
+      hideMenuCollapseIcon: 'Hide Menu Collapse Icon',
+      showOnboarding: 'Show Onboarding Tour on Startup',
+      introduction: 'Introduction',
+      startTour: 'Start Tour',
+      timeFormat: 'Time Format',
+      time24h: '24hr',
+      time12h: '12hr',
+      frequencyPrecision: 'Frequency Precision',
+      sidebarToCollapse: 'Sidebar to Collapse',
+      entitiesBelowSensors: 'Entities below Sensors',
+      dashboardLineSize: 'Dashboard Line Size',
+      themeStyle: 'Theme Style',
+      themeMode: {
+        system: 'System',
+        dark: 'Dark',
+        light: 'Light',
+        highContrastDark: 'High Contrast Dark',
+        highContrastLight: 'High Contrast Light',
+        custom: 'Custom'
+      },
+      desktop: 'Desktop',
+      startInTray: 'Start in Tray',
+      closeToTray: 'Close to Tray',
+      zoom: 'Zoom',
+      desktopStartupDelay: 'Desktop Startup Delay',
+      fanControl: 'Fan Control',
+      fullSpeed: 'Full Speed',
+      applySettingsOnStartup: 'Apply Settings on Startup',
+      deviceDelayAtStartup: 'Device Delay at Startup',
+      pollingRate: 'Polling Rate',
+      compressApiPayload: 'Compress API Payload',
+      liquidctlIntegration: 'Liquidctl Integration',
+      liquidctlDeviceInit: 'Liquidctl Device Initialization',
+      hideDuplicateDevices: 'Hide Duplicate Devices',
+      customTheme: {
+        title: 'Custom Theme',
+        accent: 'Accent Color',
+        bgOne: 'Background Primary',
+        bgTwo: 'Background Secondary',
+        border: 'Border Color',
+        text: 'Text Color',
+        textSecondary: 'Secondary Text Color'
+      },
+      tooltips: {
+        introduction: 'Start the application introduction tour.',
+        timeFormat: 'Time format: 12-hour (AM/PM) or 24-hour',
+        frequencyPrecision: 'Adjust the precision of displayed frequency values.',
+        sidebarCollapse: 'Whether to display a Menu Collapse Icon in the Sidebar,\nor use the empty sidebar area to expand or collapse the main menu.',
+        entitiesBelowSensors: 'Whether to display entities below device sensors in the main menu.',
+        fullScreen: 'Toggles full-screen mode',
+        lineThickness: 'Adjust the line thickness of charts on the dashboard',
+        startInTray: 'Upon startup, the main UI window will be hidden and only\nthe system tray icon will be visible.',
+        closeToTray: 'Closing the application window will leave the app running in the system tray',
+        zoom: 'Manually set the UI Zoom level.',
+        desktopStartupDelay: 'Adds some delay before starting the desktop application (in seconds).\nHelps with issues that that arise from having the desktop application\nstarted automatically on login or starting too quickly',
+        thinkpadFanControl: 'This is a helper to enable ThinkPad ACPI Fan Control.\nFan control operations are disabled by default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks to your hardware.\nProceed at your own risk.',
+        thinkpadFullSpeed: 'For Thinkpad Laptops this enables Full-Speed mode.\nThis allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear.\nUse with caution.',
+        applySettingsOnStartup: 'Automatically apply settings on daemon startup and when waking from sleep',
+        deviceDelayAtStartup: 'Delay before starting device communication (in seconds).\nHelps with devices that take time to initialize or are intermittently detected',
+        pollingRate: 'The rate at which sensor data is polled (in seconds).\nA higher poll rate will reduce resource usage, and a lower will increase responsiveness.\nA rate of less than 1.0 should be used with caution.',
+        compressApiPayload: 'Enable response compression to reduce API payload size,\nbut note that this will increase CPU usage.',
+        liquidctlIntegration: 'Disabling this will fully deactivate Liquidctl integration, \nregardless of the installation status of the coolercontrol-liqctld \npackage. If available, HWMon drivers will be utilized instead.',
+        liquidctlDeviceInit: 'Caution: Disable this ONLY if you, or another program,\nare handling liquidctl device initialization.This can help avoid conflicts with other programs.',
+        hideDuplicateDevices: 'Some devices are supported by both Liquidctl and HWMon drivers.\nLiquidctl is used by default for its extra features. To use HWMon drivers instead,\ndisable this and the liquidctl device to avoid driver conflicts.',
+        daemonAddress: 'The IP address or domain name of the daemon to establish a connection with.\nSupports IPv4, IPv6, and DNS-resolvable hostnames.',
+        daemonPort: 'The port used to establish a connection with the daemon.',
+        sslTls: 'Whether to connect to the daemon using SSL/TLS.\nA proxy setup is required.',
+        triggersRestart: 'Triggers an automatic restart',
+        triggersUIRestart: 'Triggers an automatic UI restart',
+        triggersDaemonRestart: 'Triggers an automatic daemon restart',
+        resetToDefaults: 'Reset to default settings',
+        saveAndReload: 'Save and reload the UI',
+        daemonSsl: 'Whether to connect to the daemon using SSL/TLS. A proxy setup is required.',
+        applyOnBoot: 'Automatically apply settings on daemon startup and when waking from sleep',
+        startupDelay: 'Delay before starting device communication (in seconds). Helps with devices that take time to initialize or are intermittently detected',
+        thinkPadFanControl: 'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks to your hardware. Proceed at your own risk.',
+        thinkPadFullSpeed: 'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear. Use with caution.',
+        compress: 'Enable response compression to reduce API payload size, but note that this will increase CPU usage.',
+        liquidctlNoInit: 'Caution: Disable this ONLY if you, or another program, are handling liquidctl device initialization. This can help avoid conflicts with other programs.',
+        hideDuplicate: 'Some devices are supported by both Liquidctl and HWMon drivers. Liquidctl is used by default for its extra features. To use HWMon drivers instead, disable this and the liquidctl device to avoid driver conflicts.',
+        liquidctl: 'Disabling this will fully deactivate Liquidctl integration, regardless of the installation status of the coolercontrol-liqctld package. If available, HWMon drivers will be utilized instead.',
+        pollRate: 'The rate at which sensor data is polled (in seconds).\nA higher poll rate will reduce resource usage, and a lower will increase responsiveness.\nA rate of less than 1.0 should be used with caution.'
+      },
+      applySettingAndRestart: 'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',
+      restartHeader: 'Apply Setting and Restart',
+      restartSuccess: 'Restarting now',
+      success: 'Success',
+      successDetail: 'Operation completed successfully',
+      settingsAppliedSuccess: 'Settings applied successfully',
+      restartRequestSuccess: 'Restart request sent successfully',
+      colorPickerDialogTitle: 'Select Color',
+      colorPickerConfirm: 'Confirm',
+      colorPickerCancel: 'Cancel',
+      languageChangeConfirm: 'Change language?',
+      languageChangeConfirmMessage: 'Changing language requires a page refresh. Continue?'
+    },
+    menu: {
+      system: 'System',
+      dashboards: 'Dashboards',
+      profiles: 'Profiles',
+      functions: 'Functions',
+      customSensors: 'Custom Sensors',
+      modes: 'Modes',
+      alerts: 'Alerts',
+      tooltips: {
+        delete: 'Delete',
+        createMode: 'Create Mode from Current Settings',
+        addProfile: 'Add Profile',
+        editName: 'Edit Name',
+        addAlert: 'Add Alert',
+        deleteFunction: 'Delete Function',
+        addDashboard: 'Add Dashboard',
+        deleteDashboard: 'Delete Dashboard',
+        duplicate: 'Duplicate',
+        setAsHome: 'Set as Home',
+        save: 'Save',
+        deleteMode: 'Delete Mode',
+        updateWithCurrentSettings: 'Update with Current Settings',
+        rename: 'Rename',
+        createModeFromCurrentSettings: 'Create Mode from Current Settings',
+        addCustomSensor: 'Add Custom Sensor',
+        addFunction: 'Add Function',
+        chooseColor: 'Choose Color'
+      }
+    },
+    add: {
+      dashboard: 'Dashboard',
+      mode: 'Mode',
+      profile: 'Profile',
+      function: 'Function',
+      alert: 'Alert',
+      customSensor: 'Custom Sensor'
+    }
+  },
+  views: {
+    daemon: {
+      title: 'Daemon',
+      daemonErrors: 'Daemon Errors',
+      daemonErrorsDetail: 'The daemon has reported errors. Check the logs for details.',
+      daemonDisconnected: 'Daemon Disconnected',
+      daemonDisconnectedDetail: 'Unable to connect to the daemon. Please check if the daemon is running.',
+      connectionRestored: 'Connection Restored',
+      connectionRestoredMessage: 'Connection to the daemon has been restored.',
+      thinkpadFanControl: 'ThinkPad Fan Control',
+      pollRate: 'Polling Rate',
+      applySettingAndRestart: 'Apply Setting and Restart',
+      changeSetting: 'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',
+      status: {
+        ok: 'Ok',
+        hasWarnings: 'Has Warnings',
+        hasErrors: 'Has Errors'
+      }
+    },
+    devices: {
+      detectionIssues: 'Detection Issues? See the',
+      hardwareSupportDocs: 'Hardware Support Documentation',
+      selectDevices: 'Select devices and sensors to disable or enable.\nDisabling unused devices and sensors is highly\nrecommended.',
+      devicesAndSensors: 'Devices and Sensors',
+      apply: 'Apply',
+      applySettingsAndReload: 'Apply settings and reload',
+      triggersAutoRestart: 'Triggers auto daemon restart',
+      restartPrompt: 'Toggling devices or sensors requires a daemon and UI restart. Are you sure want to do this now?',
+      enableDevices: 'Enable Devices'
+    },
+    speed: {
+      automatic: 'Automatic',
+      manual: 'Manual',
+      unsavedChanges: 'Unsaved Changes',
+      unsavedChangesMessage: 'There are unsaved changes made to this control channel.',
+      manualDuty: 'Manual Duty',
+      profileToApply: 'Profile to apply',
+      automaticOrManual: 'Automatic or Manual',
+      driverNoSupportControl: 'The currently installed driver does not support control of this channel.',
+      controlOrView: 'Control or View',
+      applySetting: 'Apply Setting'
+    },
+    customSensors: {
+      newSensor: 'New Sensor',
+      sensorType: 'Sensor Type',
+      type: 'Type',
+      mixFunction: 'Mix Function',
+      howCalculateValue: 'How to calculate the resulting sensor value',
+      tempFileLocation: 'Temp File Location',
+      tempFile: 'Temperature File',
+      filePathTooltip: 'Enter the absolute path to the temperature file to use for this sensor.\nThe file must use the sysfs data format standard:\nA fixed point number in millidegrees Celsius.\ne.g. 80000 for 80°C.\nThe file is verified upon submission.',
+      browse: 'Browse',
+      browseCustomSensorFile: 'Browse for a custom sensor file',
+      tempSources: 'Temp Sources',
+      tempSourcesTooltip: 'Temperature sources to be used in the mix function<br/><i>Note: You can use a Mix Profile to combine multiple<br/>Customer Sensors.</i>',
+      tempWeights: 'Temp Weights',
+      tempWeightsTooltip: 'The individual weight of each selected temperature source.',
+      tempName: 'Temp Name',
+      weight: 'Weight',
+      saveSensor: 'Save Sensor',
+      saveCustomSensor: 'Save Custom Sensor',
+      unsavedChanges: 'There are unsaved changes made to this Custom Sensor.',
+      unsavedChangesHeader: 'Unsaved Changes',
+      stay: 'Stay',
+      discard: 'Discard',
+      selectCustomSensorFile: 'Select Custom Sensor File',
+      deleteCustomSensor: 'Delete Custom Sensor',
+      deleteCustomSensorConfirm: 'Are you sure you want to delete the custom sensor: "{name}"?'
+    },
+    dashboard: {
+      timeRange: 'Time Range',
+      minutes: 'Minutes',
+      chartType: 'Chart Type',
+      dataType: 'Data Type',
+      filterSensors: 'Filter Sensors',
+      showControls: 'Show Controls',
+      mouseActions: 'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.',
+      fullPage: 'Full Page',
+      filterBySensor: 'Filter by Sensor',
+      search: 'Search',
+      filterTypes: 'Filter Types',
+      filterByDataType: 'Filter by Data Type',
+      selectChartType: 'Select a Chart Type',
+      exitFullPage: 'Exit Full Page',
+      controls: 'Controls',
+      sensorValues: 'Sensor Values',
+      selected: 'Selected',
+      clear: 'Clear',
+      deleteDashboard: 'Delete Dashboard',
+      deleteDashboardConfirm: 'Are you sure you want to delete the dashboard: "{name}"?',
+      dashboardDeleted: 'Dashboard Deleted',
+      setAsHome: 'Set as Home',
+      duplicateDashboard: 'Duplicate Dashboard'
+    },
+    appInfo: {
+      title: 'Application Information',
+      noWarranty: 'This program comes with absolutely no warranty.',
+      daemonStatus: 'Daemon Status',
+      acknowledgeIssues: 'Acknowledge Issues',
+      status: 'Status',
+      processStatus: 'Process Status',
+      host: 'Host',
+      uptime: 'Uptime',
+      version: 'Version',
+      processId: 'Process ID',
+      memoryUsage: 'Memory Usage',
+      liquidctl: 'Liquidctl',
+      connected: 'Connected',
+      disconnected: 'Disconnected',
+      helpfulLinks: 'Helpful Links',
+      gettingStarted: 'Getting Started',
+      helpSettingUp: 'Help setting up fan control',
+      hardwareSupport: 'Hardware Support',
+      hardwareSupportDesc: 'Supported devices and driver installation',
+      openIssue: 'Open an Issue',
+      openIssueDesc: 'Report bugs, request features',
+      logsAndDiagnostics: 'Logs and Diagnostics',
+      downloadCurrentLog: 'Download Current Log'
+    },
+    alerts: {
+      createAlert: 'Create Alert',
+      editAlert: 'Edit Alert',
+      deleteAlert: 'Delete Alert',
+      noAlerts: 'No alerts configured',
+      alertsOverview: 'Alerts Overview',
+      alertLogs: 'Alert Logs',
+      alertTriggered: 'Alert Triggered',
+      alertRecovered: 'Alert Recovered',
+      deleteAlertConfirm: 'Are you sure you want to delete: "{name}"?',
+      saveAlert: 'Save Alert',
+      channelSource: 'Channel Source for Alert',
+      channelSourceTooltip: 'The Channel source to be used for the Alert',
+      triggerConditions: 'Trigger Conditions',
+      maxValueTooltip: 'Values above this will trigger the alert.',
+      minValueTooltip: 'Values below this will trigger the alert.',
+      greaterThan: 'greater than',
+      lessThan: 'less than',
+      newAlert: 'New Alert',
+      unsavedChanges: 'There are unsaved changes made to this Alert.',
+      unsavedChangesHeader: 'Unsaved Changes'
+    },
+    profiles: {
+      createProfile: 'Create Profile',
+      editProfile: 'Edit Profile',
+      deleteProfile: 'Delete Profile',
+      noProfiles: 'No profiles configured',
+      systemDefault: 'System Default',
+      profileType: 'Profile Type',
+      fixedDuty: 'Fixed Fan Speed',
+      selectedPointDuty: 'Selected Point Duty',
+      selectedPointTemp: 'Selected Point Temperature',
+      tempSource: 'Temperature Source',
+      memberProfiles: 'Member Profiles',
+      mixFunction: 'Mix Function',
+      applyMixFunction: 'Apply mix function to selected profiles',
+      profilesToMix: 'Profiles to mix',
+      saveProfile: 'Save Profile',
+      function: 'Function',
+      functionToApply: 'Function to apply',
+      graphProfileMouseActions: 'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add point.\n- Right-click on point to remove.\n- Drag point to move.',
+      unsavedChanges: 'There are unsaved changes made to this Profile.',
+      unsavedChangesHeader: 'Unsaved Changes',
+      appliedFunction: 'Applied Function',
+      newProfile: 'New Profile',
+      tooltip: {
+        profileType: 'Profile Type:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles'
+      },
+      profileDeleted: 'Profile Deleted',
+      profileDuplicated: 'Profile Duplicated',
+      deleteProfileConfirm: 'Are you sure you want to delete: "{name}"?',
+      deleteProfileWithChannelsConfirm: '"{name}" is currently being used by: {channels}.\nDeleting this Profile will reset those channels\' settings.\nAre you sure you want to delete "{name}"?',
+      profileUpdated: 'Profile Updated',
+      profileUpdateError: 'There was an error attempting to update this Profile'
+    },
+    controls: {
+      viewType: 'View Type',
+      controlOrView: 'Control or View'
+    },
+    modes: {
+      createMode: 'Create Mode',
+      editMode: 'Edit Mode',
+      deleteMode: 'Delete Mode',
+      noModes: 'No modes configured',
+      deleteModeConfirm: 'Are you sure you want to delete the Mode: "{name}"?',
+      updateModeConfirm: 'Are you sure you want to overwrite "{name}" with the current configuration?',
+      duplicateMode: 'Duplicate Mode'
+    },
+    functions: {
+      createFunction: 'Create Function',
+      editFunction: 'Edit Function',
+      deleteFunction: 'Delete Function',
+      noFunctions: 'No functions configured',
+      saveFunction: 'Save Function',
+      functionType: 'Function Type',
+      functionTypeTooltip: 'Function types:\n- Identity: Does not alter the computed profile value.\n- Standard: Alters profile value using an algorithm with hysteresis settings.\n- Exponential Moving Average: Alters profile value using an EMA algorithm.',
+      minimumAdjustment: 'Minimum Adjustment',
+      minimumAdjustmentTooltip: 'Minimum fan speed adjustment: Computed changes below this value will be ignored.',
+      maximumAdjustment: 'Maximum Adjustment',
+      maximumAdjustmentTooltip: 'Maximum fan speed adjustment: Computed changes above this threshold will be capped.',
+      windowSize: 'Window Size',
+      windowSizeTooltip: 'Adjust sensitivity to temperature changes by setting the window size.\nSmaller window sizes respond quickly to changes,\nwhile larger window sizes provide smoother averages.',
+      hysteresisThreshold: 'Hysteresis Threshold',
+      hysteresisThresholdTooltip: 'Temperature change threshold (°C): Adjust fan speed when temperature changes by this amount.',
+      hysteresisDelay: 'Hysteresis Delay',
+      hysteresisDelayTooltip: 'Time (seconds) required to respond to temperature changes.',
+      onlyDownward: 'Only Downward',
+      onlyDownwardTooltip: 'Only apply settings when temperature is decreasing.',
+      unsavedChanges: 'There are unsaved changes made to this Function.',
+      unsavedChangesHeader: 'Unsaved Changes',
+      functionError: 'Error trying to update this function',
+      newFunction: 'New Function',
+      functionDeleted: 'Function Deleted',
+      functionDuplicated: 'Function Duplicated',
+      deleteFunctionConfirm: 'Are you sure you want to delete "{name}"?',
+      deleteFunctionWithProfilesConfirm: '"{name}" is currently being used by the Profiles: {profiles}.\nDeleting this Function will reset those Profiles\' Functions.\nAre you sure you want to delete "{name}"?',
+      functionUpdated: 'Function Updated',
+      functionUpdateError: 'There was an error attempting to update this Function'
+    },
+    error: {
+      connectionError: 'CoolerControl Connection Error',
+      connectionToast: 'Unable to connect to daemon',
+      connectionToastDetail: 'Unable to connect to the daemon. Please ensure the service is running and try reconnecting.',
+      connectionRetryFailure: 'Connection failed - retry failed',
+      connectionRetryDetail: 'Could not connect to daemon after multiple attempts.',
+      errorLoadingGraph: 'Error loading graph',
+      highCpuUsageWarning: 'High CPU usage detected',
+      highCpuUsageDetail: 'The current CPU usage is high.\nTo reduce system impact, consider:\n1. Reducing the number of displayed charts\n2. Reducing the number of monitored sensors\n3. Increasing the polling interval',
+      pageNotFound: 'Page Not Found',
+      returnToDashboard: 'Return to Dashboard',
+      connectionErrorMessage: 'Could not connect to the CoolerControl Daemon.',
+      serviceRunningMessage: 'Please check if the daemon service is running.',
+      checkProjectPage: 'For help setting up the daemon, see the',
+      projectPage: 'project page',
+      helpfulCommands: 'Helpful commands:',
+      nonStandardAddress: 'If you have a non-standard daemon address, you can specify it below:',
+      daemonAddressDesktop: 'Daemon Address (Desktop App)',
+      daemonAddressWeb: 'Daemon Address (Web UI)',
+      addressTooltip: 'The IP address or domain name to establish a connection with.',
+      portTooltip: 'The port to establish a connection with.',
+      sslTooltip: 'Whether to connect to the daemon using SSL/TLS.',
+      saveTooltip: 'Save settings and reload the UI',
+      resetTooltip: 'Reset to default settings'
+    },
+    singleDashboard: {
+      minutes: "min",
+      chartMouseActions: "Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.",
+      timeRange: "Time Range",
+      chartType: "Chart Type"
+    },
+    mode: {
+      activateMode: "Activate Mode",
+      currentlyActive: "Currently Active",
+      modeHint: "Note: Modes do not include Profile or Function settings, only channel configurations."
+    },
+    lighting: {
+      saveLightingSettings: "Save Lighting Settings",
+      lightingMode: "Lighting Mode",
+      speed: "Speed",
+      direction: "Direction",
+      forward: "Forward",
+      backward: "Backward",
+      numberOfColors: "Number of Colors",
+      numberOfColorsTooltip: "Number of Colors to use for the chosen Lighting Mode."
+    },
+    lcd: {
+      saveLcdSettings: "Save LCD Settings",
+      lcdMode: "LCD Mode",
+      brightness: "Brightness",
+      brightnessPercent: "Brightness Percent",
+      orientation: "Orientation",
+      orientationDegrees: "Orientation in degrees",
+      chooseImage: "Choose Image",
+      dragAndDrop: "Drag and drop files to here.",
+      tempSource: "Temp Source",
+      tempSourceTooltip: "Temperature source to use in LCD display.",
+      imagesPath: "Images Path",
+      imagesPathTooltip: "Enter the absolute path to the directory containing images.\nThe directory must contain at least one image file, and they\nmay be static images or gifs. The Carousel will cycle\nthrough them with the selected delay. All files are processed\nupon submission to ensure maximum compatibility.",
+      browse: "Browse",
+      browseTooltip: "Browse for a image directory",
+      delayInterval: "Delay Interval",
+      delayIntervalTooltip: "Minimum number of seconds of delay between image changes.\nNote that the actual delay may be longer due to the daemon polling rate.",
+      processing: "Processing...",
+      applying: "Applying...",
+      unsavedChanges: "There are unsaved changes made to these LCD Settings.",
+      unsavedChangesHeader: "Unsaved Changes",
+      imageTooLarge: "Image is too large. Please choose a smaller one.",
+      notImageType: "Image does not register as an image type"
+    }
+  },
+  components: {
+    confirmation: {
+      title: 'Confirmation',
+      message: 'Are you sure?'
+    },
+    aseTek690: {
+      sameDeviceID: 'The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and CoolerControl can not determine which device is connected. This is required for proper device communication.',
+      restartRequired: 'A restart of the CoolerControl systemd services may be required and will be handled automatically if needed.',
+      deviceModel: 'Is Liquidctl Device one of the following models?',
+      modelList: 'NZXT Kraken X40, X60, X31, X41, X51 or X61',
+      acceptLabel: "Yes, It's a legacy Kraken Device",
+      rejectLabel: "No, It's a EVGA CLC Device"
+    },
+    password: {
+      title: 'Enter Your Password',
+      newPasswordTitle: 'Enter A New Password',
+      invalidPassword: 'Invalid Password',
+      passwordHelp: 'Upon installation the daemon uses a default password to protect device control endpoints. \nOptionally you can create a strong password for improved protection. \nIf you see this dialog and have not yet set a password, try refreshing the UI \n or clicking on Login from the Access Protection menu. See the the project wiki for more information.'
+    },
+    notFound: {
+      message: 'Just like the perfect Linux 🐧 distro,\nthis page does not exist.'
+    },
+    helloWorld: {
+      message: "You've successfully created a project with Vite + Vue 3. What's next?"
+    },
+    dashboardInfo: {
+      description: 'Dashboards enable you to view your system\'s sensor data according to your preferences. You can choose between time-based or table-based charts and adjust the filters and settings for each chart to focus on the specific data you want to view. Additionally, you can create multiple dashboards customized to suit your needs.'
+    },
+    modeInfo: {
+      description: 'Modes enable you to save device channel settings for quick and easy application. For example, you can create a \'Gaming\' Mode and a \'Silent\' Mode, allowing you to easily switch between them.',
+      note: 'Please note that creating different Fan Profiles may be necessary for each Mode, as Modes only include channel configurations and do not encompass internal Profile or Function settings.'
+    },
+    alertInfo: {
+      description: 'Alerts are used to notify you when specific conditions occur. They can monitor temperatures and fan speeds to ensure your system is running properly. Alerts are configured for specific sensor value ranges and send notifications when values exceed or return to acceptable threshold ranges.'
+    },
+    customSensorInfo: {
+      title: 'Custom Sensor Overview',
+      description: 'Custom sensors allow you to combine existing sensors in various ways, enhancing your control and efficiency over system cooling. Additionally, they support file-based data, enabling you to script external sensor inputs for greater flexibility.',
+      note: 'Note: You can use Mix Profiles to combine multiple Custom Sensor outputs.'
+    },
+    functionInfo: {
+      title: 'Function Overview',
+      description: 'Functions are configurable algorithms applied to profile outputs. They enable you to manage when fan speed changes occur, adjust hysteresis settings, and use moving averages for dynamic temperatures.',
+      identityFunction: 'The Identity function is the simplest option as it doesn\'t modify the computed profile output; it only allows you to set minimum and maximum speed change ranges. This is particularly beneficial for minimizing constant fan speed fluctuations.'
+    },
+    profileInfo: {
+      title: 'Profile Overview',
+      description: 'Profiles define customizable settings for controlling fan speeds, with the same profile being usable for multiple fans. Types include:',
+      type: {
+        fixed: 'Fixed Speed',
+        fanCurve: 'Fan Curve/Graph',
+        mix: 'Mix Profile',
+        default: 'Default Device Settings'
+      },
+      additionalInfo: 'Profiles are the foundation for controlling fan speeds and can be further enhanced by applying more advanced algorithm functions.'
+    },
+    deviceInfo: {
+      details: 'Device Details',
+      systemName: 'System Name',
+      deviceType: 'Device Type',
+      deviceUID: 'Device UID',
+      firmwareVersion: 'Firmware Version',
+      model: 'Model',
+      driverName: 'Driver Name',
+      driverType: 'Driver Type',
+      driverVersion: 'Driver Version',
+      locations: 'Locations'
+    },
+    onboarding: {
+      welcome: 'Welcome to CoolerControl!',
+      beforeStart: 'Before we get started, one of them most important things to know about is',
+      settingUpDrivers: 'setting up your hardware drivers',
+      fansNotShowing: 'If your fans are not showing up or cannot be controlled, then likely there is an issue with your currently installed kernel drivers.',
+      checkDocs: 'Before opening an issue, please confirm that all drivers have been properly loaded by',
+      checkingDocs: 'checking the Hardware Support documentation',
+      startTourAgain: 'Note: you can start this tour again at any time from the settings page.',
+      letsStart: 'Ok, let\'s get started!',
+      dashboards: 'Dashboards',
+      dashboardsDesc: 'Dashboards are a curated collection of charts to view your system\'s sensor data.',
+      profiles: 'Profiles',
+      profilesDesc: 'Profiles define customizable settings for controlling fan speeds. The same Profile can be used for multiple fans and devices.',
+      functions: 'Functions',
+      functionsDesc: 'Functions are configurable algorithms that can be applied to a Profile\'s output. This can be helpful for managing when fan speed changes occur.',
+      appInfo: 'Application and Daemon Information',
+      appInfoDesc: 'Clicking the logo opens the Application Information page, where you can to get information about the application, the system daemon, and logs. It\'s where you want to go when troubleshooting issues and there\'s a small daemon-status badge here to notify you of any potential issues.',
+      quickAdd: 'Quick Add',
+      quickAddDesc: 'This is a menu to easily add new items like Dashboards, Profiles, etc.',
+      dashboardQuick: 'Dashboard Quick Menu',
+      dashboardQuickDesc: 'This is a menu to quickly jump to your dashboards, even if the main menu is collapsed.',
+      settings: 'Settings',
+      settingsDesc: 'This button will open up the settings page containing different UI and daemon settings.',
+      restartMenu: 'Restart Menu',
+      restartMenuDesc: 'Here you can choose whether to reload the UI or restart the system daemon.',
+      thatsIt: 'That\'s it!',
+      ready: 'And remember, if your fans are not showing up or cannot be controlled, check the Hardware Support documentation',
+      startNow: 'Ok, you\'re ready to get started!'
+    },
+    axisOptions: {
+      title: 'Axis Options',
+      autoScale: 'AutoScale',
+      max: 'Max',
+      min: 'Min',
+      dutyTemperature: 'Duty / Temperature',
+      rpmMhz: 'rpm / Mhz',
+      krpmGhz: 'krpm / Ghz',
+      watts: 'watts'
+    },
+    sensorTable: {
+      device: 'Device',
+      channel: 'Channel',
+      current: 'Current',
+      min: 'Min',
+      max: 'Max',
+      average: 'Average'
+    },
+    modeTable: {
+      setting: 'Setting'
+    }
+  },
+  auth: {
+    enterPassword: 'Enter Your Password',
+    setNewPassword: 'Enter A New Password',
+    loginFailed: 'Login Failed',
+    invalidPassword: 'Invalid Password',
+    passwordSetFailed: 'Set Password Failed',
+    passwordSetSuccessfully: 'New password set successfully',
+    logoutSuccessful: 'You have successfully logged out.',
+    unauthorizedAction: 'You need to be logged in to complete this action'
+  },
+  device: {
+    processInterrupted: ' - Process interrupted.',
+    modelSetSuccessfully: 'Device Model type successfully set.',
+    modelSetRestartInProgress: 'Device Model type successfully set. Restart in progress.'
+  },
+  daemon: {
+    status: {
+      ok: 'Ok',
+      hasWarnings: 'Has Warnings',
+      hasErrors: 'Has Errors',
+      haswarnings: 'Has Warnings',
+      haserrors: 'Has Errors'
+    }
+  },
+  device_store: {
+    unauthorized: {
+      summary: 'Unauthorized',
+      detail: 'You need to be logged in to complete this action'
+    },
+    login: {
+      success: {
+        summary: 'Success',
+        detail: 'Login successful.'
+      },
+      failed: {
+        summary: 'Login Failed',
+        detail: 'Invalid Password'
+      }
+    },
+    logout: {
+      summary: 'Logout',
+      detail: 'You have successfully logged out.'
+    },
+    password: {
+      set_success: {
+        summary: 'Password',
+        detail: 'New password set successfully'
+      },
+      set_failed: {
+        summary: 'Set Password Failed'
+      }
+    },
+    asetek: {
+      header: 'Unknown Device Detected',
+      success: {
+        summary: 'Success',
+        detail_legacy: 'Device Model type successfully set. Restart in progress.',
+        detail_evga: 'Device Model type successfully set.'
+      },
+      error: {
+        summary: 'Error',
+        detail: 'Process interrupted.'
+      }
+    }
+  },
+  models: {
+    chartType: {
+      timeChart: 'Time Chart',
+      table: 'Table',
+      controls: 'Controls'
+    },
+    dataType: {
+      temp: 'Temp',
+      duty: 'Duty',
+      load: 'Load',
+      rpm: 'RPM',
+      freq: 'Freq',
+      watts: 'Watts'
+    },
+    profile: {
+      profileType: {
+        default: 'Default',
+        fixed: 'Fixed',
+        graph: 'Graph',
+        mix: 'Mix'
+      },
+      functionType: {
+        identity: 'Identity',
+        standard: 'Standard',
+        exponentialMovingAvg: 'Exponential Moving Average'
+      },
+      mixFunctionType: {
+        min: 'Minimum',
+        max: 'Maximum',
+        avg: 'Average'
+      }
+    },
+    customSensor: {
+      sensorType: {
+        mix: 'Mix',
+        file: 'File'
+      },
+      mixFunctionType: {
+        min: 'Minimum',
+        max: 'Maximum',
+        delta: 'Delta',
+        avg: 'Average',
+        weightedAvg: 'Weighted Average'
+      }
+    },
+    themeMode: {
+      system: 'System',
+      dark: 'Dark',
+      light: 'Light',
+      highContrastDark: 'High Contrast Dark',
+      highContrastLight: 'High Contrast Light',
+      custom: 'Custom Theme'
+    },
+    channelViewType: {
+      control: 'Control',
+      dashboard: 'Dashboard'
+    },
+    alertState: {
+      active: 'Active',
+      inactive: 'Inactive'
+    },
+    deviceType: {
+      customSensors: 'Custom Sensors',
+      cpu: 'CPU',
+      gpu: 'GPU',
+      liquidctl: 'Liquidctl',
+      hwmon: 'Hwmon'
+    },
+    driverType: {
+      kernel: 'Kernel',
+      liquidctl: 'Liquidctl',
+      nvml: 'NVML',
+      nvidiaCli: 'Nvidia CLI',
+      coolercontrol: 'CoolerControl'
+    },
+    lcdModeType: {
+      none: 'None',
+      liquidctl: 'Liquidctl',
+      custom: 'Custom'
+    }
+  }
+} 

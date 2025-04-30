@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboardUID: UID
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 
 const duplicateDashboard = (): void => {
     const dashboardToDuplicate = settingsStore.dashboards.find(
@@ -63,7 +65,7 @@ const duplicateDashboard = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Duplicate' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.duplicate') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="duplicateDashboard"

@@ -28,6 +28,8 @@ import {
     ProfileMixFunctionType,
     ProfileTempSource,
     ProfileType,
+    getProfileTypeDisplayName,
+    getProfileMixFunctionTypeDisplayName,
 } from '@/models/Profile.ts'
 import Button from 'primevue/button'
 import MultiSelect from 'primevue/multiselect'
@@ -68,6 +70,7 @@ import Select from 'primevue/select'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import _ from 'lodash'
+import { useI18n } from 'vue-i18n'
 
 echarts.use([
     GridComponent,
@@ -95,6 +98,7 @@ const colors = useThemeColorsStore()
 const toast = useToast()
 const confirm = useConfirm()
 const router = useRouter()
+const { t } = useI18n()
 
 let contextIsDirty: boolean = false
 
@@ -102,8 +106,18 @@ const currentProfile = computed(
     () => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!,
 )
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
-const profileTypes = [...$enum(ProfileType).keys()]
-const mixFunctionTypes = [...$enum(ProfileMixFunctionType).keys()]
+const profileTypeOptions = computed(() => {
+    return [...$enum(ProfileType).values()].map(type => ({
+        value: type,
+        label: getProfileTypeDisplayName(type)
+    }))
+})
+const mixFunctionTypeOptions = computed(() => {
+    return [...$enum(ProfileMixFunctionType).values()].map(type => ({
+        value: type,
+        label: getProfileMixFunctionTypeDisplayName(type)
+    }))
+})
 const tempSourceInvalid: Ref<boolean> = ref(false)
 
 interface AvailableTemp {
@@ -355,7 +369,7 @@ const setTempSourceTemp = (): void => {
 setTempSourceTemp()
 
 const functionTitle = (): string => {
-    let title = `Applied Ƒunction: ${chosenFunction.value.name}`
+    let title = `${t('views.profiles.appliedFunction')}: ${chosenFunction.value.name}`
     if (deviceStore.isSafariWebKit()) {
         // add some extra length for WebKit to keep default function text all linkable
         title = title + '                          '
@@ -1257,12 +1271,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to this Profile.',
-        header: 'Unsaved Changes',
+        message: t('views.profiles.unsavedChanges'),
+        header: t('views.profiles.unsavedChangesHeader'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -1364,32 +1378,32 @@ onUnmounted(() => {
             <div v-if="selectedType === ProfileType.Mix" class="p-2 pr-0 flex flex-row">
                 <Select
                     v-model="chosenProfileMixFunction"
-                    :options="mixFunctionTypes"
-                    placeholder="Mix Function"
+                    :options="mixFunctionTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('views.profiles.mixFunction')"
                     class="w-20 mr-3"
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
-                    v-tooltip.bottom="'Apply a Mix Function to the selected Profiles.'"
+                    v-tooltip.bottom="t('views.profiles.applyMixFunction')"
                 />
                 <MultiSelect
                     v-model="chosenMemberProfiles"
                     :options="memberProfileOptions"
                     option-label="name"
-                    placeholder="Member Profiles"
+                    :placeholder="t('views.profiles.memberProfiles')"
                     class="w-48"
                     scroll-height="40rem"
                     dropdown-icon="pi pi-chart-line"
-                    v-tooltip.bottom="'Profiles to mix.'"
+                    v-tooltip.bottom="t('views.profiles.profilesToMix')"
                     :invalid="chosenMemberProfiles.length < 2"
                 />
             </div>
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-wrap justify-end">
                 <div
                     class="p-2 flex leading-none items-center"
-                    v-tooltip.bottom="
-                        'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add a point.\n- Right-click on point to remove point.\n- Drag point to move.'
-                    "
+                    v-tooltip.bottom="t('views.profiles.graphProfileMouseActions')"
                 >
                     <svg-icon
                         type="mdi"
@@ -1399,12 +1413,12 @@ onUnmounted(() => {
                 </div>
                 <div class="p-2 pr-1 flex flex-row">
                     <InputNumber
-                        placeholder="Duty"
+                        :placeholder="t('common.duty')"
                         v-model="selectedDuty"
                         inputId="selected-duty"
                         mode="decimal"
                         class="duty-input w-full"
-                        suffix="%"
+                        :suffix="` ${t('common.percentUnit')}`"
                         showButtons
                         :min="dutyMin"
                         :max="dutyMax"
@@ -1413,7 +1427,7 @@ onUnmounted(() => {
                         :step="1"
                         button-layout="horizontal"
                         :input-style="{ width: '5rem' }"
-                        v-tooltip.bottom="'Selected Point Duty'"
+                        v-tooltip.bottom="t('views.profiles.selectedPointDuty')"
                     >
                         <template #incrementicon>
                             <span class="pi pi-plus" />
@@ -1423,12 +1437,12 @@ onUnmounted(() => {
                         </template>
                     </InputNumber>
                     <InputNumber
-                        placeholder="Temp"
+                        :placeholder="t('common.temperature')"
                         v-model="selectedTemp"
                         inputId="selected-temp"
                         mode="decimal"
                         class="temp-input w-full ml-3"
-                        suffix="°"
+                        :suffix="` ${t('common.tempUnit')}`"
                         showButtons
                         :min="inputNumberTempMin()"
                         :max="inputNumberTempMax()"
@@ -1439,7 +1453,7 @@ onUnmounted(() => {
                         :max-fraction-digits="1"
                         button-layout="horizontal"
                         :input-style="{ width: '5rem' }"
-                        v-tooltip.bottom="'Selected Point Temp'"
+                        v-tooltip.bottom="t('views.profiles.selectedPointTemp')"
                     >
                         <template #incrementicon>
                             <span class="pi pi-plus" />
@@ -1454,12 +1468,12 @@ onUnmounted(() => {
                         v-model="chosenFunction"
                         :options="settingsStore.functions"
                         option-label="name"
-                        placeholder="Function"
+                        :placeholder="t('views.profiles.function')"
                         class="w-44 h-[2.375rem]"
                         checkmark
                         dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
-                        v-tooltip.bottom="'Function to apply'"
+                        v-tooltip.bottom="t('views.profiles.functionToApply')"
                     />
                 </div>
                 <div class="p-2 pr-0">
@@ -1470,14 +1484,14 @@ onUnmounted(() => {
                         option-label="tempFrontendName"
                         option-group-label="deviceName"
                         option-group-children="temps"
-                        placeholder="Temp Source"
-                        filter-placeholder="Search"
+                        :placeholder="t('views.profiles.tempSource')"
+                        :filter-placeholder="t('common.search')"
                         filter
                         checkmark
                         scroll-height="40rem"
                         :invalid="chosenTemp == null || tempSourceInvalid"
                         dropdown-icon="pi pi-inbox"
-                        v-tooltip.bottom="{ escape: false, value: 'Temperature Source' }"
+                        v-tooltip.bottom="{ escape: false, value: t('views.profiles.tempSource') }"
                     >
                         <template #optiongroup="slotProps">
                             <div class="flex items-center">
@@ -1508,12 +1522,12 @@ onUnmounted(() => {
             </div>
             <div v-else-if="selectedType === ProfileType.Fixed" class="p-2 pr-0">
                 <InputNumber
-                    placeholder="Duty"
+                    :placeholder="t('common.duty')"
                     v-model="selectedDuty"
                     inputId="selected-duty"
                     mode="decimal"
                     class="duty-input w-full h-[2.375rem]"
-                    suffix="%"
+                    :suffix="` ${t('common.percentUnit')}`"
                     showButtons
                     :min="dutyMin"
                     :max="dutyMax"
@@ -1522,7 +1536,7 @@ onUnmounted(() => {
                     :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="'Fixed Duty'"
+                    v-tooltip.bottom="t('views.profiles.fixedDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1535,26 +1549,23 @@ onUnmounted(() => {
             <div class="p-2">
                 <Select
                     v-model="selectedType"
-                    :options="profileTypes"
-                    placeholder="Profile Type"
+                    :options="profileTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('views.profiles.profileType')"
                     class="w-24 h-[2.375rem] mr-3"
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
                     v-tooltip.bottom="{
                         escape: false,
-                        value:
-                            'Profile Type:<br/>' +
-                            '- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>' +
-                            '- Fixed: Sets a constant speed<br/>' +
-                            '- Graph: Customizable fan curve<br/>' +
-                            '- Mix: Combines multiple profiles',
+                        value: t('views.profiles.tooltip.profileType')
                     }"
                 />
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
-                    label="Save"
-                    v-tooltip.bottom="'Save Profile'"
+                    :label="t('common.save')"
+                    v-tooltip.bottom="t('views.profiles.saveProfile')"
                     @click="saveProfileState"
                 >
                     <svg-icon
@@ -1570,7 +1581,7 @@ onUnmounted(() => {
     <!-- The UI Display: -->
     <div id="profile-display" class="flex flex-col h-full">
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
-            System Default
+            {{ t('views.profiles.systemDefault') }}
         </div>
         <Knob
             v-else-if="showDutyKnob"

@@ -34,6 +34,7 @@ import { Alert } from '@/models/Alert.ts'
 import { ChannelMetric, ChannelSource } from '@/models/ChannelSource.ts'
 import Slider from 'primevue/slider'
 import { Emitter, EventType } from 'mitt'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     alertUID?: string
@@ -61,6 +62,7 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
+const { t } = useI18n()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
@@ -69,7 +71,7 @@ const shouldCreateAlert: boolean = !props.alertUID
 
 const collectAlert = async (): Promise<Alert> => {
     if (shouldCreateAlert) {
-        const newAlertName = `New Alert ${settingsStore.alerts.length + 1}`
+        const newAlertName = `${t('views.alerts.newAlert')} ${settingsStore.alerts.length + 1}`
         const channelSource = new ChannelSource('', '', ChannelMetric.Temp)
         return new Alert(newAlertName, channelSource, defaultMin, 100)
     } else {
@@ -258,9 +260,9 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
         case ChannelMetric.Load:
             return ' %'
         case ChannelMetric.RPM:
-            return ' rpm'
+            return ` ${t('common.rpmAbbr')}`
         case ChannelMetric.Freq:
-            return ' Mhz'
+            return ` ${t('common.mhzAbbr')}`
         case ChannelMetric.Temp:
         default:
             return ' °'
@@ -273,12 +275,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to this Alert.',
-        header: 'Unsaved Changes',
+        message: t('views.alerts.unsavedChanges'),
+        header: t('views.alerts.unsavedChangesHeader'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -343,7 +345,7 @@ onMounted(async () => {
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"
-                    v-tooltip.bottom="'Save Alert'"
+                    v-tooltip.bottom="t('views.alerts.saveAlert')"
                     :disabled="chosenChannelSource == null || chosenName.length === 0"
                     @click="saveAlert"
                 >
@@ -362,7 +364,7 @@ onMounted(async () => {
             <div class="flex flex-col-reverse lg:flex-row mt-0 w-full">
                 <div class="w-96 mr-4">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Channel Source for Alert
+                        {{ t('views.alerts.channelSource') }}
                     </small>
                     <Listbox
                         :model-value="chosenChannelSource"
@@ -373,10 +375,10 @@ onMounted(async () => {
                         option-label="channelFrontendName"
                         option-group-label="deviceName"
                         option-group-children="channels"
-                        filter-placeholder="Search"
+                        :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenChannelSource == null"
-                        v-tooltip.right="'The Channel source to be used for the Alert'"
+                        v-tooltip.right="t('views.alerts.channelSourceTooltip')"
                         @change="changeChannelSource"
                     >
                         <template #optiongroup="slotProps">
@@ -425,15 +427,15 @@ onMounted(async () => {
                     <!--                        />-->
                     <!--                    </div>-->
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Trigger Conditions
+                        {{ t('views.alerts.triggerConditions') }}
                     </small>
                     <table class="bg-bg-two rounded-lg mb-4">
                         <tbody>
-                            <tr v-tooltip.right="'Values above this will trigger the alert.'">
+                            <tr v-tooltip.right="t('views.alerts.maxValueTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2"
                                 >
-                                    <div class="text-right float-right">greater than</div>
+                                    <div class="text-right float-right">{{ t('views.alerts.greaterThan') }}</div>
                                 </td>
                                 <td class="py-4 px-4 w-60 leading-none items-center text-center">
                                     <InputNumber
@@ -480,11 +482,11 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
-                            <tr v-tooltip.right="'Values below this will trigger the alert.'">
+                            <tr v-tooltip.right="t('views.alerts.minValueTooltip')">
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
-                                    <div class="text-right float-right">less than</div>
+                                    <div class="text-right float-right">{{ t('views.alerts.lessThan') }}</div>
                                 </td>
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"

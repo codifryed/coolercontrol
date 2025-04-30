@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { Function } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     functionUID: UID
@@ -36,6 +37,7 @@ const emit = defineEmits<{
     (e: 'added', functionUID: UID): void
 }>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -47,7 +49,7 @@ const duplicateFunction = async (): Promise<void> => {
         return
     }
     const newFunction = new Function(
-        `${functionToDuplicate.name} (copy)`,
+        `${functionToDuplicate.name} ${t('common.copy')}`,
         functionToDuplicate.f_type,
         functionToDuplicate.duty_minimum,
         functionToDuplicate.duty_maximum,
@@ -60,8 +62,8 @@ const duplicateFunction = async (): Promise<void> => {
     await settingsStore.saveFunction(newFunction.uid)
     toast.add({
         severity: 'success',
-        summary: 'Success',
-        detail: 'Function Duplicated',
+        summary: t('common.success'),
+        detail: t('views.functions.functionDuplicated'),
         life: 3000,
     })
     emit('added', newFunction.uid)
@@ -69,7 +71,7 @@ const duplicateFunction = async (): Promise<void> => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Duplicate' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.duplicate') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="duplicateFunction"

@@ -25,7 +25,7 @@ import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import type { UID } from '@/models/Device.ts'
-import { ChartType, Dashboard, DashboardDeviceChannel } from '@/models/Dashboard.ts'
+import { ChartType, Dashboard, DashboardDeviceChannel, getLocalizedChartType } from '@/models/Dashboard.ts'
 import { $enum } from 'ts-enum-util'
 import AxisOptions from '@/components/AxisOptions.vue'
 import SensorTable from '@/components/SensorTable.vue'
@@ -33,6 +33,7 @@ import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceUID: UID
@@ -40,6 +41,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -66,7 +68,10 @@ const singleDashboard = ref(
         .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
 
-const chartTypes = [...$enum(ChartType).values()]
+const chartTypes = [...$enum(ChartType).values()].map(type => ({
+  value: type,
+  text: getLocalizedChartType(type)
+}))
 const chartMinutesMin: number = 1
 const chartMinutesMax: number = 60
 const chartMinutes: Ref<number> = ref(singleDashboard.value.timeRangeSeconds / 60)
@@ -127,9 +132,7 @@ onUnmounted(() => {
             <div
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="
-                    'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.'
-                "
+                v-tooltip.bottom="t('views.singleDashboard.chartMouseActions')"
             >
                 <svg-icon
                     type="mdi"
@@ -146,7 +149,7 @@ onUnmounted(() => {
                     input-id="chart-minutes"
                     v-model="chartMinutes"
                     class="h-[2.375rem] chart-minutes"
-                    suffix=" min"
+                    :suffix=" ' ' + t('views.singleDashboard.minutes')"
                     show-buttons
                     :use-grouping="false"
                     :step="1"
@@ -155,7 +158,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="'Time Range'"
+                    v-tooltip.bottom="t('views.singleDashboard.timeRange')"
                 >
                     <template #incrementbuttonicon>
                         <span class="pi pi-plus" />
@@ -170,12 +173,14 @@ onUnmounted(() => {
                 <Select
                     v-model="singleDashboard.chartType"
                     :options="chartTypes"
-                    placeholder="Select a Chart Type"
+                    :placeholder="t('views.dashboard.selectChartType')"
                     class="h-[2.375rem] w-32"
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="'Chart Type'"
+                    option-label="text"
+                    option-value="value"
+                    v-tooltip.bottom="t('views.singleDashboard.chartType')"
                 />
             </div>
         </div>

@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { FunctionType } from '@/models/Profile.ts'
+import { FunctionType, getFunctionTypeDisplayName } from '@/models/Profile'
 import Button from 'primevue/button'
 import { type UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -35,6 +35,7 @@ import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     functionUID: UID
@@ -45,6 +46,7 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const toast = useToast()
 const confirm = useConfirm()
+const { t } = useI18n()
 
 let contextIsDirty: boolean = false
 
@@ -78,7 +80,12 @@ const chosenWindowSize: Ref<number> = ref(startingWindowSize)
 const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
-const functionTypes = [...$enum(FunctionType).keys()]
+const functionTypeOptions = computed(() => {
+    return [...$enum(FunctionType).values()].map(type => ({
+        value: type,
+        label: getFunctionTypeDisplayName(type)
+    }))
+})
 
 const saveFunctionState = async () => {
     if (currentFunction.value.uid === '0') {
@@ -103,15 +110,15 @@ const saveFunctionState = async () => {
         contextIsDirty = false
         toast.add({
             severity: 'success',
-            summary: 'Success',
-            detail: 'Function successfully updated and applied to affected devices',
+            summary: t('common.success'),
+            detail: t('views.functions.saveFunction'),
             life: 3000,
         })
     } else {
         toast.add({
             severity: 'error',
-            summary: 'Error',
-            detail: 'There was an error attempting to update this Function',
+            summary: t('common.error'),
+            detail: t('views.functions.functionError'),
             life: 3000,
         })
     }
@@ -157,7 +164,7 @@ const changeFunctionType = (event: ListboxChangeEvent): void => {
     if (event.value === null) {
         return // do not update on unselect
     }
-    selectedType.value = event.value
+    selectedType.value = event.value.value // Get the value field
 }
 
 // const inputArea = ref()
@@ -186,12 +193,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to this Function.',
-        header: 'Unsaved Changes',
+        message: t('views.functions.unsavedChanges'),
+        header: t('views.functions.unsavedChangesHeader'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -236,8 +243,8 @@ onMounted(async () => {
             <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
-                    label="Save"
-                    v-tooltip.bottom="'Save Function'"
+                    :label="t('common.save')"
+                    v-tooltip.bottom="t('views.functions.saveFunction')"
                     @click="saveFunctionState"
                 >
                     <svg-icon
@@ -268,32 +275,29 @@ onMounted(async () => {
             <!--            </div>-->
             <div class="mt-0 mr-4 w-96">
                 <small class="ml-3 font-light text-sm text-text-color-secondary">
-                    Function Type
+                    {{ t('views.functions.functionType') }}
                 </small>
                 <Listbox
                     :model-value="selectedType"
-                    :options="functionTypes"
+                    :options="functionTypeOptions"
                     class="w-full"
                     checkmark
                     placeholder="Type"
+                    option-label="label"
                     list-style="max-height: 100%"
-                    v-tooltip.right="
-                        'Function Type:\n- Identity: Doesn\'t change the calculated profile value.\n- Standard: Alters the profile value using an algorithm with hysteresis settings.\n- ExponentialMovingAvg: Alters the profile value using an exponential moving average algorithm.'
-                    "
+                    v-tooltip.right="t('views.functions.functionTypeTooltip')"
                     @change="changeFunctionType"
                 />
             </div>
             <table class="mt-4 bg-bg-two rounded-lg">
                 <tbody>
                     <tr
-                        v-tooltip.right="
-                            'Minimum fan speed adjustment: Calculated changes below this value will be ignored.'
-                        "
+                        v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
                         >
-                            Minimum Adjustment
+                            {{ t('views.functions.minimumAdjustment') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -304,7 +308,7 @@ onMounted(async () => {
                                 show-buttons
                                 :min="dutyMin"
                                 :max="chosenDutyMaximum - 1"
-                                suffix=" %"
+                                :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
                             >
@@ -318,14 +322,12 @@ onMounted(async () => {
                         </td>
                     </tr>
                     <tr
-                        v-tooltip.right="
-                            'Maximum fan speed adjustment: Calculated changes above this threshold will be capped.'
-                        "
+                        v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
-                            Maximum Adjustment
+                            {{ t('views.functions.maximumAdjustment') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -336,7 +338,7 @@ onMounted(async () => {
                                 show-buttons
                                 :min="chosenDutyMinimum + 1"
                                 :max="dutyMax"
-                                suffix=" %"
+                                :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
                             >
@@ -351,15 +353,12 @@ onMounted(async () => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                        v-tooltip.right="
-                            'Adjust the sensitivity of temperature changes by setting the window size.\n' +
-                            'A smaller window size responds quickly to changes,\nwhile a larger size provides a smoother average.'
-                        "
+                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
-                            Window Size
+                            {{ t('views.functions.windowSize') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -384,14 +383,12 @@ onMounted(async () => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="
-                            'Temperature change threshold (°C): adjust fan speed when temperature changes by this amount.'
-                        "
+                        v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
-                            Hysteresis Threshold
+                            {{ t('views.functions.hysteresisThreshold') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -400,7 +397,7 @@ onMounted(async () => {
                                 v-model="chosenDeviance"
                                 class="deviance-input"
                                 show-buttons
-                                suffix=" °C"
+                                :suffix="` ${t('common.tempUnit')}`"
                                 :step="0.1"
                                 :min="devianceMin"
                                 :max="devianceMax"
@@ -420,14 +417,12 @@ onMounted(async () => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="
-                            'Time taken to respond to temperature changes (in seconds).'
-                        "
+                        v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
-                            Hysteresis Delay
+                            {{ t('views.functions.hysteresisDelay') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -436,7 +431,7 @@ onMounted(async () => {
                                 v-model="chosenDelay"
                                 class="delay-input"
                                 show-buttons
-                                suffix=" s"
+                                :suffix="` ${t('common.secondAbbr')}`"
                                 :min="0"
                                 :max="30"
                                 button-layout="horizontal"
@@ -453,12 +448,12 @@ onMounted(async () => {
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="'Apply settings only when temperature decreases.'"
+                        v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
                     >
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >
-                            Only Downward
+                            {{ t('views.functions.onlyDownward') }}
                         </td>
                         <td
                             class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"

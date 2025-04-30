@@ -20,6 +20,7 @@ import { Transform, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
 // @ts-ignore
 import { v4 as uuidV4 } from 'uuid'
+import i18n from '@/i18n'
 
 /**
  * This is currently an internal model that will be also used externally by daemon at some point. The existing external
@@ -116,6 +117,25 @@ export enum ProfileType {
     Mix = 'Mix',
 }
 
+/**
+ * Get localized display name for ProfileType
+ */
+export function getProfileTypeDisplayName(type: ProfileType): string {
+    const t = i18n.global.t
+    switch (type) {
+        case ProfileType.Default:
+            return t('models.profile.profileType.default')
+        case ProfileType.Fixed:
+            return t('models.profile.profileType.fixed')
+        case ProfileType.Graph:
+            return t('models.profile.profileType.graph')
+        case ProfileType.Mix:
+            return t('models.profile.profileType.mix')
+        default:
+            return type
+    }
+}
+
 export class ProfileTempSource {
     constructor(
         /**
@@ -138,6 +158,23 @@ export enum FunctionType {
     Identity = 'Identity',
     Standard = 'Standard',
     ExponentialMovingAvg = 'ExponentialMovingAvg',
+}
+
+/**
+ * Get localized display name for FunctionType
+ */
+export function getFunctionTypeDisplayName(type: FunctionType): string {
+    const t = i18n.global.t
+    switch (type) {
+        case FunctionType.Identity:
+            return t('models.profile.functionType.identity')
+        case FunctionType.Standard:
+            return t('models.profile.functionType.standard')
+        case FunctionType.ExponentialMovingAvg:
+            return t('models.profile.functionType.exponentialMovingAvg')
+        default:
+            return type
+    }
 }
 
 export class Function {
@@ -220,4 +257,21 @@ export enum ProfileMixFunctionType {
     Min = 'Min',
     Max = 'Max',
     Avg = 'Avg',
+}
+
+/**
+ * Get localized display name for ProfileMixFunctionType
+ */
+export function getProfileMixFunctionTypeDisplayName(type: ProfileMixFunctionType): string {
+    const t = i18n.global.t
+    switch (type) {
+        case ProfileMixFunctionType.Min:
+            return t('models.profile.mixFunctionType.min')
+        case ProfileMixFunctionType.Max:
+            return t('models.profile.mixFunctionType.max')
+        case ProfileMixFunctionType.Avg:
+            return t('models.profile.mixFunctionType.avg')
+        default:
+            return type
+    }
 }

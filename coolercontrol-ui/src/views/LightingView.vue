@@ -23,7 +23,7 @@ import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/DaemonSettings'
-import { LightingMode, LightingModeType } from '@/models/LightingMode'
+import { LightingMode, LightingModeType, getLightingModeTypeDisplayName } from '@/models/LightingMode'
 import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import { ElColorPicker, ElSwitch } from 'element-plus'
@@ -36,6 +36,7 @@ import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Slider from 'primevue/slider'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceId: UID
@@ -43,6 +44,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const absoluteMaxColors = 48 // Current device max is 40
 const deviceStore = useDeviceStore()
@@ -251,7 +253,7 @@ onMounted(() => {
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"
-                    v-tooltip.bottom="'Save LCD Settings'"
+                    v-tooltip.bottom="t('views.lighting.saveLightingSettings')"
                     @click="saveLighting"
                 >
                     <svg-icon
@@ -270,7 +272,7 @@ onMounted(() => {
                 <div id="left-side">
                     <div class="mt-0 mr-4 w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Lighting Mode<br />
+                            {{ t('views.lighting.lightingMode') }}<br />
                         </small>
                         <Select
                             v-model="selectedMode"
@@ -280,15 +282,24 @@ onMounted(() => {
                             class="w-full mt-1"
                             dropdown-icon="pi pi-sun"
                             scroll-height="40rem"
-                            v-tooltip.bottom="'Lighting Mode'"
+                            v-tooltip.bottom="t('views.lighting.lightingMode')"
                             filter
                             size="large"
                             variant="filled"
-                        />
+                        >
+                            <template #option="slotProps">
+                                <div class="flex align-items-center">
+                                    <div>{{ slotProps.option.frontend_name }}</div>
+                                    <div v-if="slotProps.option.type !== LightingModeType.NONE" class="ml-2 text-xs text-text-color-secondary">
+                                        ({{ getLightingModeTypeDisplayName(slotProps.option.type) }})
+                                    </div>
+                                </div>
+                            </template>
+                        </Select>
                     </div>
                     <div v-if="selectedMode.speed_enabled" class="mt-4 mr-4 w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Speed
+                            {{ t('views.lighting.speed') }}
                         </small>
                         <Listbox
                             :model-value="selectedSpeed"
@@ -298,13 +309,13 @@ onMounted(() => {
                             checkmark
                             placeholder="Speed"
                             list-style="max-height: 100%"
-                            v-tooltip.right="'The speed of the Lighting Mode'"
+                            v-tooltip.right="t('views.lighting.speed')"
                             @change="changeLightingSpeed"
                         />
                     </div>
                     <div v-if="selectedMode.backward_enabled" class="mt-4 mr-4 w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Direction<br />
+                            {{ t('views.lighting.direction') }}<br />
                         </small>
                         <div
                             class="bg-bg-two border border-border-one p-1 rounded-lg text-center items-center"
@@ -312,8 +323,8 @@ onMounted(() => {
                             <el-switch
                                 v-model="selectedBackwardEnabled"
                                 size="large"
-                                active-text="Backward"
-                                inactive-text="Forward"
+                                active-text="t('views.lighting.backward')"
+                                inactive-text="t('views.lighting.forward')"
                                 style="--el-switch-off-color: rgb(var(--colors-accent))"
                             />
                         </div>
@@ -323,7 +334,7 @@ onMounted(() => {
                         class="mt-4 mr-4 w-96 border-border-one"
                     >
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Number of Colors<br />
+                            {{ t('views.lighting.numberOfColors') }}<br />
                         </small>
                         <InputNumber
                             placeholder="Number of Colors"
@@ -337,9 +348,7 @@ onMounted(() => {
                             :step="1"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="
-                                'Number of Colors to use for the chosen Lighting Mode.'
-                            "
+                            v-tooltip.bottom="t('views.lighting.numberOfColorsTooltip')"
                             :disabled="selectedMode.min_colors == selectedMode.max_colors"
                         >
                             <template #incrementicon>

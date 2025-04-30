@@ -50,6 +50,8 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import { Color } from '@/models/Device.ts'
 import { Emitter, EventType } from 'mitt'
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
+import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -59,6 +61,8 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 import { api as fullscreenApi } from 'vue-fullscreen'
+
+const { t } = useI18n()
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
@@ -88,18 +92,18 @@ const toggleFullScreen = async (_enable: string | number | boolean): Promise<voi
 }
 
 const themeModeOptions = [
-    { value: ThemeMode.SYSTEM, label: deviceStore.toTitleCase(ThemeMode.SYSTEM) },
-    { value: ThemeMode.DARK, label: deviceStore.toTitleCase(ThemeMode.DARK) },
-    { value: ThemeMode.LIGHT, label: deviceStore.toTitleCase(ThemeMode.LIGHT) },
+    { value: ThemeMode.SYSTEM, label: t('layout.settings.themeMode.system') },
+    { value: ThemeMode.DARK, label: t('layout.settings.themeMode.dark') },
+    { value: ThemeMode.LIGHT, label: t('layout.settings.themeMode.light') },
     {
         value: ThemeMode.HIGH_CONTRAST_DARK,
-        label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_DARK),
+        label: t('layout.settings.themeMode.highContrastDark'),
     },
     {
         value: ThemeMode.HIGH_CONTRAST_LIGHT,
-        label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_LIGHT),
+        label: t('layout.settings.themeMode.highContrastLight'),
     },
-    { value: ThemeMode.CUSTOM, label: deviceStore.toTitleCase(ThemeMode.CUSTOM) },
+    { value: ThemeMode.CUSTOM, label: t('layout.settings.themeMode.custom') },
 ]
 const changeThemeMode = async (event: ListboxChangeEvent) => {
     if (event.value === null) {
@@ -185,10 +189,8 @@ for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
 const applyGenericDaemonChange = _.debounce(
     () =>
         confirm.require({
-            message:
-                'Changing this setting requires a daemon and UI restart. ' +
-                'Are you sure want to do this now?',
-            header: 'Apply Setting and Restart',
+            message: t('layout.settings.applySettingAndRestart'),
+            header: t('layout.settings.restartHeader'),
             icon: 'pi pi-exclamation-triangle',
             defaultFocus: 'accept',
             accept: async () => {
@@ -197,8 +199,8 @@ const applyGenericDaemonChange = _.debounce(
                 await deviceStore.sleep(50)
                 toast.add({
                     severity: 'success',
-                    summary: 'Success',
-                    detail: 'Restarting now',
+                    summary: t('layout.settings.success'),
+                    detail: t('layout.settings.successDetail'),
                     life: 6000,
                 })
                 await deviceStore.daemonClient.shutdownDaemon()
@@ -250,7 +252,7 @@ onMounted(() => {
 
 <template>
     <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl font-bold">Settings</div>
+        <div class="pl-4 py-2 text-2xl font-bold">{{ t('layout.settings.title') }}</div>
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="pb-16 h-screen w-full">
@@ -262,7 +264,7 @@ onMounted(() => {
                             :path="mdiViewQuiltOutline"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        Interface
+                        {{ t('layout.settings.general') }}
                     </Tab>
                     <Tab
                         value="4"
@@ -275,7 +277,7 @@ onMounted(() => {
                             :path="mdiFormatListBulleted"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        Devices
+                        {{ t('layout.settings.device') }}
                     </Tab>
                     <Tab value="1" as="div" class="flex w-1/5 justify-center items-center gap-2">
                         <svg-icon
@@ -283,7 +285,7 @@ onMounted(() => {
                             :path="mdiDnsOutline"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        Daemon
+                        {{ t('views.daemon.title', 'Daemon') }}
                     </Tab>
                     <Tab
                         value="2"
@@ -296,7 +298,7 @@ onMounted(() => {
                             :path="mdiMonitor"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        Desktop
+                        {{ t('layout.settings.desktop', 'Desktop') }}
                     </Tab>
                     <Tab
                         value="3"
@@ -309,7 +311,7 @@ onMounted(() => {
                             :path="mdiLaptop"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        ThinkPad
+                        {{ t('views.daemon.thinkpadFanControl') }}
                     </Tab>
                 </TabList>
                 <TabPanels class="mt-2">
@@ -317,27 +319,27 @@ onMounted(() => {
                         <!--UI Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
-                                <tr v-tooltip.right="'Start the application introduction tour.'">
+                                <tr v-tooltip.right="t('layout.settings.tooltips.introduction')">
                                     <td
                                         class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        <div class="float-right">Introduction</div>
+                                        <div class="float-right">{{ t('layout.settings.introduction') }}</div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
                                     >
                                         <Button
-                                            label="Start Tour"
+                                            :label="t('layout.settings.startTour')"
                                             class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
                                             @click="emitter.emit('start-tour')"
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="'Time format: 12-hour (AM/PM) or 24-hour'">
+                                <tr v-tooltip.right="t('layout.settings.tooltips.timeFormat')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Time Format
+                                        {{ t('layout.settings.timeFormat') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -345,21 +347,19 @@ onMounted(() => {
                                         <el-switch
                                             v-model="settingsStore.time24"
                                             size="large"
-                                            active-text="24hr"
-                                            inactive-text="12hr"
+                                            :active-text="t('layout.settings.time24h')"
+                                            :inactive-text="t('layout.settings.time12h')"
                                             style="--el-switch-off-color: rgb(var(--colors-accent))"
                                         />
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Adjust the precision of displayed frequency values.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.frequencyPrecision')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Frequency Precision
+                                        {{ t('layout.settings.frequencyPrecision') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -376,15 +376,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Whether to display a Menu Collapse Icon in the Sidebar,\n' +
-                                        'or use the empty sidebar area to expand or collapse the main menu.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.sidebarCollapse')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Sidebar to Collapse
+                                        {{ t('layout.settings.sidebarToCollapse') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -396,18 +393,14 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Whether to display entities below device sensors in the main menu.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.entitiesBelowSensors')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="
-                                                'Triggers an automatic restart of the UI'
-                                            "
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -416,7 +409,7 @@ onMounted(() => {
                                             />
                                         </div>
                                         <div class="text-right float-right">
-                                            Entities below Sensors
+                                            {{ t('layout.settings.entitiesBelowSensors') }}
                                         </div>
                                     </td>
                                     <td
@@ -429,11 +422,11 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="'Toggles full-screen mode'">
+                                <tr v-tooltip.right="t('layout.settings.tooltips.fullScreen')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Full Screen
+                                        {{ t('layout.settings.fullScreen') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -447,14 +440,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Adjust the line thickness of charts on the dashboard'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.lineThickness')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Dashboard Line Size
+                                        {{ t('layout.settings.dashboardLineSize') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 leading-none border-border-one border-l-2 border-t-2"
@@ -519,15 +510,13 @@ onMounted(() => {
                                         </Select>
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="'Change the overall UI color scheme.'">
+                                <tr v-tooltip.right="t('layout.settings.appearance')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="
-                                                'Triggers an automatic restart of the UI'
-                                            "
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -535,7 +524,7 @@ onMounted(() => {
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">Theme Style</div>
+                                        <div class="text-right float-right">{{ t('layout.settings.themeStyle') }}</div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -566,6 +555,18 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
+                                <tr v-tooltip.right="t('layout.settings.language')">
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="text-right float-right">{{ t('layout.settings.language') }}</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <LanguageSwitcher />
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                         <table
@@ -577,7 +578,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Accent Color
+                                        {{ t('layout.settings.customTheme.accent') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -589,11 +590,13 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeAccent"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorAccent"
+                                                    :popper-class="'my-custom-class'"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -603,7 +606,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2"
                                     >
-                                        Background One
+                                        {{ t('layout.settings.customTheme.bgOne') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2"
@@ -615,11 +618,12 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBgOne"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorBgOne"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -629,7 +633,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Background Two
+                                        {{ t('layout.settings.customTheme.bgTwo') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -643,11 +647,12 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBgTwo"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorBgTwo"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -657,7 +662,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Border
+                                        {{ t('layout.settings.customTheme.border') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -669,11 +674,12 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBorder"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorBorder"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -683,7 +689,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Text
+                                        {{ t('layout.settings.customTheme.text') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -695,11 +701,12 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeText"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorText"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -709,7 +716,7 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Text Secondary
+                                        {{ t('layout.settings.customTheme.textSecondary') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -721,11 +728,12 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeTextSecondary"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
+                                                    :predefine="settingsStore.predefinedColorOptions"
                                                     :validate-event="false"
                                                     @change="setNewColorTextSecondary"
+                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
+                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
+                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
                                                 />
                                             </div>
                                         </div>
@@ -739,14 +747,12 @@ onMounted(() => {
                         <table class="bg-bg-two rounded-lg mb-4">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="
-                                        'Automatically apply settings on daemon startup and when waking from sleep'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.applyOnBoot')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Apply Settings on Startup
+                                        {{ t('layout.settings.applySettingsOnStartup') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -758,15 +764,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Delay before starting device communication (in seconds).\n' +
-                                        'Helps with devices that take time to initialize or are intermittently detected'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.startupDelay')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Device Delay at Startup
+                                        {{ t('layout.settings.deviceDelayAtStartup') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -776,7 +779,7 @@ onMounted(() => {
                                             show-buttons
                                             :min="1"
                                             :max="10"
-                                            suffix=" s"
+                                            :suffix="` ${t('common.secondAbbr')}`"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
                                         >
@@ -790,18 +793,14 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'The rate at which sensor data is polled (in seconds).\n' +
-                                        'A higher poll rate will reduce resource usage, and a lower will increase responsiveness.\n' +
-                                        'A rate of less than 1.0 should be used with caution.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.pollRate')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -809,7 +808,7 @@ onMounted(() => {
                                                 :size="deviceStore.getREMSize(1.1)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">Polling Rate</div>
+                                        <div class="text-right float-right">{{ t('layout.settings.pollingRate') }}</div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -819,7 +818,7 @@ onMounted(() => {
                                             show-buttons
                                             :min="0.5"
                                             :max="5.0"
-                                            suffix=" s"
+                                            :suffix="` ${t('common.secondAbbr')}`"
                                             :step="0.5"
                                             :min-fraction-digits="1"
                                             button-layout="horizontal"
@@ -835,17 +834,14 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Enable response compression to reduce API payload size,\n' +
-                                        'but note that this will increase CPU usage.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.compress')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -854,7 +850,7 @@ onMounted(() => {
                                             />
                                         </div>
                                         <div class="text-right float-right">
-                                            Compress API Payload
+                                            {{ t('layout.settings.compressApiPayload') }}
                                         </div>
                                     </td>
                                     <td
@@ -868,18 +864,14 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Disabling this will fully deactivate Liquidctl integration, \n' +
-                                        'regardless of the installation status of the coolercontrol-liqctld \n' +
-                                        'package. If available, HWMon drivers will be utilized instead.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.liquidctl')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -888,7 +880,7 @@ onMounted(() => {
                                             />
                                         </div>
                                         <div class="text-right float-right">
-                                            Liquidctl Integration
+                                            {{ t('layout.settings.liquidctlIntegration') }}
                                         </div>
                                     </td>
                                     <td
@@ -902,16 +894,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Caution: Disable this ONLY if you, or another program,\n' +
-                                        'are handling liquidctl device initialization.' +
-                                        '\nThis can help avoid conflicts with other programs.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.liquidctlNoInit')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Liquidctl Device Initialization
+                                        {{ t('layout.settings.liquidctlDeviceInit') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -928,19 +916,14 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Some devices are supported by both Liquidctl and HWMon drivers.' +
-                                        '\nLiquidctl is used by default for its extra features. ' +
-                                        'To use HWMon drivers instead,\ndisable this and the liquidctl ' +
-                                        'device to avoid driver conflicts.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.hideDuplicate')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -949,7 +932,7 @@ onMounted(() => {
                                             />
                                         </div>
                                         <div class="text-right float-right">
-                                            Hide Duplicate Devices
+                                            {{ t('layout.settings.hideDuplicateDevices') }}
                                         </div>
                                     </td>
                                     <td
@@ -972,15 +955,12 @@ onMounted(() => {
                         <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="
-                                        'The IP address or domain name of the daemon to establish a ' +
-                                        'connection with.\nSupports IPv4, IPv6, and DNS-resolvable hostnames.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.daemonAddress')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Address
+                                        {{ t('common.address') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -993,14 +973,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'The port used to establish a connection with the daemon.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.daemonPort')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Port
+                                        {{ t('common.port') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -1025,14 +1003,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Whether to connect to the daemon using SSL/TLS.\nA proxy setup is required.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.daemonSsl')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        SSL/TLS
+                                        {{ t('common.sslTls') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -1046,7 +1022,7 @@ onMounted(() => {
                                     >
                                         <div
                                             class="float-left py-2"
-                                            v-tooltip.top="'Triggers an automatic UI restart'"
+                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -1056,10 +1032,10 @@ onMounted(() => {
                                         </div>
                                         <div class="float-right">
                                             <Button
-                                                label="Defaults"
+                                                :label="t('common.defaults')"
                                                 class="h-[2.375rem]"
                                                 @click="resetDaemonSettings"
-                                                v-tooltip.top="'Reset to default settings'"
+                                                v-tooltip.top="t('layout.settings.tooltips.resetToDefaults')"
                                             />
                                         </div>
                                     </td>
@@ -1067,10 +1043,10 @@ onMounted(() => {
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <Button
-                                            label="Apply"
+                                            :label="t('common.apply')"
                                             class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
                                             @click="saveDaemonSettings"
-                                            v-tooltip.top="'Save and reload the UI'"
+                                            v-tooltip.top="t('layout.settings.tooltips.saveAndReload')"
                                         />
                                     </td>
                                 </tr>
@@ -1082,15 +1058,12 @@ onMounted(() => {
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="
-                                        'Upon startup, the main UI window will be hidden and only\n' +
-                                        'the system tray icon will be visible.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.startInTray')"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Start in Tray
+                                        {{ t('layout.settings.startInTray') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -1102,14 +1075,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Closing the application window will leave the app running in the system tray'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.closeToTray')"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Close to Tray
+                                        {{ t('layout.settings.closeToTray') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -1120,11 +1091,11 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="'Manually set the UI Zoom level.'">
+                                <tr v-tooltip.right="t('layout.settings.tooltips.zoom')">
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Zoom
+                                        {{ t('layout.settings.zoom') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -1133,9 +1104,9 @@ onMounted(() => {
                                             v-model="settingsStore.uiScale"
                                             show-buttons
                                             :min="50"
-                                            :max="400"
+                                            :max="200"
+                                            :suffix="` ${t('common.percentUnit')}`"
                                             :step="10"
-                                            suffix="%"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
                                         >
@@ -1149,16 +1120,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'Adds some delay before starting the desktop application (in seconds).\n' +
-                                        'Helps with issues that that arise from having the desktop application\n' +
-                                        'started automatically on login or starting too quickly'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.desktopStartupDelay')"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Desktop Startup Delay
+                                        {{ t('layout.settings.desktopStartupDelay') }}
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -1167,8 +1134,9 @@ onMounted(() => {
                                             v-model="settingsStore.desktopStartupDelay"
                                             show-buttons
                                             :min="0"
-                                            :max="10"
-                                            suffix=" s"
+                                            :max="120"
+                                            :suffix="` ${t('common.secondAbbr')}`"
+                                            :step="1"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
                                         >
@@ -1189,16 +1157,12 @@ onMounted(() => {
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="
-                                        'This is a helper to enable ThinkPad ACPI Fan Control.\nFan control operations are disabled by ' +
-                                        'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
-                                        'to your hardware.\nProceed at your own risk.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.thinkPadFanControl')"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        Fan Control
+                                        {{ t('layout.settings.fanControl') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -1211,16 +1175,12 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'For Thinkpad Laptops this enables Full-Speed mode.\nThis allows the fans to ' +
-                                        'spin up to their absolute maximum when set to 100%, but will run the fans out of ' +
-                                        'specification and cause increased wear.\nUse with caution.'
-                                    "
+                                    v-tooltip.right="t('layout.settings.tooltips.thinkPadFullSpeed')"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        Full Speed
+                                        {{ t('layout.settings.fullSpeed') }}
                                     </td>
                                     <td
                                         class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
