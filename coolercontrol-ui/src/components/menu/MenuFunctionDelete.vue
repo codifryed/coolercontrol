@@ -65,8 +65,8 @@ const deleteFunction = (): void => {
         associatedProfiles.length === 0
             ? t('views.functions.deleteFunctionConfirm', { name: functionName })
             : t('views.functions.deleteFunctionWithProfilesConfirm', {
-                name: functionName,
-                profiles: associatedProfiles.map((p) => p.name).join(', '),
+                  name: functionName,
+                  profiles: associatedProfiles.map((p) => p.name).join(', '),
               })
     confirm.require({
         message: deleteMessage,

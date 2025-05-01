@@ -81,9 +81,9 @@ const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const functionTypeOptions = computed(() => {
-    return [...$enum(FunctionType).values()].map(type => ({
+    return [...$enum(FunctionType).values()].map((type) => ({
         value: type,
-        label: getFunctionTypeDisplayName(type)
+        label: getFunctionTypeDisplayName(type),
     }))
 })
 
@@ -291,9 +291,7 @@ onMounted(async () => {
             </div>
             <table class="mt-4 bg-bg-two rounded-lg">
                 <tbody>
-                    <tr
-                        v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')"
-                    >
+                    <tr v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
                         >
@@ -321,9 +319,7 @@ onMounted(async () => {
                             </InputNumber>
                         </td>
                     </tr>
-                    <tr
-                        v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')"
-                    >
+                    <tr v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')">
                         <td
                             class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                         >

@@ -15,32 +15,32 @@ import hi from './locales/hi.ts'
 const savedLocale = localStorage.getItem('locale') || 'en'
 
 const i18n = createI18n({
-  legacy: false, // Use Composition API
-  locale: savedLocale,
-  fallbackLocale: 'en',
-  messages: {
-    en,
-    zh,
-    'zh-tw': zhTw,
-    ja,
-    ru,
-    de,
-    fr,
-    es,
-    ar,
-    pt,
-    hi
-  },
-  silentTranslationWarn: true,
-  silentFallbackWarn: true,
-  // Add additional options to ensure internationalization works properly
-  sync: true,
-  globalInjection: true
+    legacy: false, // Use Composition API
+    locale: savedLocale,
+    fallbackLocale: 'en',
+    messages: {
+        en,
+        zh,
+        'zh-tw': zhTw,
+        ja,
+        ru,
+        de,
+        fr,
+        es,
+        ar,
+        pt,
+        hi,
+    },
+    silentTranslationWarn: true,
+    silentFallbackWarn: true,
+    // Add additional options to ensure internationalization works properly
+    sync: true,
+    globalInjection: true,
 })
 
-console.log('i18n instance created:', { 
-  currentLanguage: i18n.global.locale,
-  availableMessages: Object.keys(i18n.global.messages)
+console.log('i18n instance created:', {
+    currentLanguage: i18n.global.locale,
+    availableMessages: Object.keys(i18n.global.messages),
 })
 
-export default i18n 
+export default i18n

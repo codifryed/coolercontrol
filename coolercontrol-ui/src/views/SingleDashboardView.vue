@@ -25,7 +25,12 @@ import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import type { UID } from '@/models/Device.ts'
-import { ChartType, Dashboard, DashboardDeviceChannel, getLocalizedChartType } from '@/models/Dashboard.ts'
+import {
+    ChartType,
+    Dashboard,
+    DashboardDeviceChannel,
+    getLocalizedChartType,
+} from '@/models/Dashboard.ts'
 import { $enum } from 'ts-enum-util'
 import AxisOptions from '@/components/AxisOptions.vue'
 import SensorTable from '@/components/SensorTable.vue'
@@ -68,9 +73,9 @@ const singleDashboard = ref(
         .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
 
-const chartTypes = [...$enum(ChartType).values()].map(type => ({
-  value: type,
-  text: getLocalizedChartType(type)
+const chartTypes = [...$enum(ChartType).values()].map((type) => ({
+    value: type,
+    text: getLocalizedChartType(type),
 }))
 const chartMinutesMin: number = 1
 const chartMinutesMax: number = 60
@@ -149,7 +154,7 @@ onUnmounted(() => {
                     input-id="chart-minutes"
                     v-model="chartMinutes"
                     class="h-[2.375rem] chart-minutes"
-                    :suffix=" ' ' + t('views.singleDashboard.minutes')"
+                    :suffix="' ' + t('views.singleDashboard.minutes')"
                     show-buttons
                     :use-grouping="false"
                     :step="1"

@@ -52,7 +52,9 @@ const { t } = useI18n()
                 <div
                     class="w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
-                    <span class="font-bold text-lg">{{ t('components.customSensorInfo.title') }}</span>
+                    <span class="font-bold text-lg">{{
+                        t('components.customSensorInfo.title')
+                    }}</span>
                     <div class="mt-1 h-2 border-border-one border-t-2" />
                     {{ t('components.customSensorInfo.description') }}<br /><br />
                     <i>

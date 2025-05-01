@@ -73,8 +73,8 @@ const deleteProfile = (): void => {
         associatedChannelSettings.length === 0
             ? t('views.profiles.deleteProfileConfirm', { name: profileName })
             : t('views.profiles.deleteProfileWithChannelsConfirm', {
-                name: profileName,
-                channels: associatedChannelSettings.join(', '),
+                  name: profileName,
+                  channels: associatedChannelSettings.join(', '),
               })
     confirm.require({
         message: deleteMessage,

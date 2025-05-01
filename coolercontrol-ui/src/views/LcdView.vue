@@ -212,11 +212,11 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
     processing.close()
     if (response instanceof ErrorResponse) {
         console.error(response.error)
-        toast.add({ 
-            severity: 'error', 
-            summary: t('common.error'), 
-            detail: response.error, 
-            life: 10_000 
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: response.error,
+            life: 10_000,
         })
         return
     }

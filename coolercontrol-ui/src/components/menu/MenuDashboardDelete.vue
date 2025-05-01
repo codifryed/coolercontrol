@@ -53,7 +53,7 @@ const deleteDashboard = (): void => {
     }
     confirm.require({
         message: t('views.dashboard.deleteDashboardConfirm', {
-            name: settingsStore.dashboards[dashboardIndex].name
+            name: settingsStore.dashboards[dashboardIndex].name,
         }),
         header: t('views.dashboard.deleteDashboard'),
         icon: 'pi pi-exclamation-triangle',
@@ -73,7 +73,12 @@ const deleteDashboard = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete'), disabled: settingsStore.dashboards.length < 2 }">
+    <div
+        v-tooltip.top="{
+            value: t('layout.menu.tooltips.delete'),
+            disabled: settingsStore.dashboards.length < 2,
+        }"
+    >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteDashboard"

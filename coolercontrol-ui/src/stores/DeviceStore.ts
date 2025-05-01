@@ -509,11 +509,11 @@ export const useDeviceStore = defineStore('device', () => {
         const msg = isLegacy690
             ? t('device_store.asetek.success.detail_legacy')
             : t('device_store.asetek.success.detail_evga')
-        toast.add({ 
-            severity: 'success', 
-            summary: t('device_store.asetek.success.summary'), 
-            detail: msg, 
-            life: 3000 
+        toast.add({
+            severity: 'success',
+            summary: t('device_store.asetek.success.summary'),
+            detail: msg,
+            life: 3000,
         })
         if (isLegacy690) {
             await daemonClient.shutdownDaemon()

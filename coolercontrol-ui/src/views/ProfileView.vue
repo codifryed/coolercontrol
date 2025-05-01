@@ -107,15 +107,15 @@ const currentProfile = computed(
 )
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypeOptions = computed(() => {
-    return [...$enum(ProfileType).values()].map(type => ({
+    return [...$enum(ProfileType).values()].map((type) => ({
         value: type,
-        label: getProfileTypeDisplayName(type)
+        label: getProfileTypeDisplayName(type),
     }))
 })
 const mixFunctionTypeOptions = computed(() => {
-    return [...$enum(ProfileMixFunctionType).values()].map(type => ({
+    return [...$enum(ProfileMixFunctionType).values()].map((type) => ({
         value: type,
-        label: getProfileMixFunctionTypeDisplayName(type)
+        label: getProfileMixFunctionTypeDisplayName(type),
     }))
 })
 const tempSourceInvalid: Ref<boolean> = ref(false)
@@ -1559,7 +1559,7 @@ onUnmounted(() => {
                     checkmark
                     v-tooltip.bottom="{
                         escape: false,
-                        value: t('views.profiles.tooltip.profileType')
+                        value: t('views.profiles.tooltip.profileType'),
                     }"
                 />
                 <Button

@@ -81,7 +81,9 @@ export function getCustomSensorTypeDisplayName(type: CustomSensorType): string {
  * @param type CustomSensorMixFunctionType枚举值
  * @returns 本地化的显示名称
  */
-export function getCustomSensorMixFunctionTypeDisplayName(type: CustomSensorMixFunctionType): string {
+export function getCustomSensorMixFunctionTypeDisplayName(
+    type: CustomSensorMixFunctionType,
+): string {
     const { t } = i18n.global
     switch (type) {
         case CustomSensorMixFunctionType.Min:

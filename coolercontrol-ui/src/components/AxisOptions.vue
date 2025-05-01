@@ -74,7 +74,9 @@ watch(freqScaledMax, () => {
                     <table>
                         <thead>
                             <tr>
-                                <th colspan="6" class="pb-2">{{ t('components.axisOptions.title') }}</th>
+                                <th colspan="6" class="pb-2">
+                                    {{ t('components.axisOptions.title') }}
+                                </th>
                             </tr>
                             <tr>
                                 <th
@@ -93,7 +95,11 @@ watch(freqScaledMax, () => {
                                 </th>
                                 <th colspan="2" class="w-48 p-2 border-b border-border-one">
                                     <span class="flex flex-row justify-center">
-                                        {{ freqIsMhz ? t('components.axisOptions.rpmMhz') : t('components.axisOptions.krpmGhz') }}
+                                        {{
+                                            freqIsMhz
+                                                ? t('components.axisOptions.rpmMhz')
+                                                : t('components.axisOptions.krpmGhz')
+                                        }}
                                         <svg-icon
                                             class="outline-0 ml-2"
                                             type="mdi"
@@ -143,7 +149,9 @@ watch(freqScaledMax, () => {
                                 </td>
                             </tr>
                             <tr>
-                                <td class="w-24 text-end px-2 border-r border-border-one">{{ t('components.axisOptions.max') }}</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 border-r border-border-one">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.max')"
@@ -167,7 +175,9 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-r border-border-one">{{ t('components.axisOptions.max') }}</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.max')"
@@ -192,7 +202,9 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-x border-border-one">{{ t('components.axisOptions.max') }}</td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.max')"
@@ -219,7 +231,9 @@ watch(freqScaledMax, () => {
                                 </td>
                             </tr>
                             <tr>
-                                <td class="w-24 text-end px-2 border-r border-border-one">{{ t('components.axisOptions.min') }}</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 border-r border-border-one">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.min')"
@@ -243,7 +257,9 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-r border-border-one">{{ t('components.axisOptions.min') }}</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.min')"
@@ -268,7 +284,9 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-x border-border-one">{{ t('components.axisOptions.min') }}</td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
                                         :placeholder="t('components.axisOptions.min')"

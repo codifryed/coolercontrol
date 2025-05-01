@@ -106,7 +106,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">{{ t('views.appInfo.status') }}</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.status') }}
+                                    </td>
                                     <td class="table-data">
                                         <div class="flex flex-row items-center">
                                             <svg-icon
@@ -116,7 +118,11 @@ onMounted(() => {
                                                 :path="mdiCircle"
                                                 :size="deviceStore.getREMSize(1.25)"
                                             />
-                                            {{ t(`daemon.status.${daemonState.status.replace(/\s+/g, '').toLowerCase()}`) }}
+                                            {{
+                                                t(
+                                                    `daemon.status.${daemonState.status.replace(/\s+/g, '').toLowerCase()}`,
+                                                )
+                                            }}
                                         </div>
                                     </td>
                                 </tr>
@@ -127,19 +133,25 @@ onMounted(() => {
                                     <td class="table-data">{{ healthCheck.status }}</td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">{{ t('views.appInfo.host') }}</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.host') }}
+                                    </td>
                                     <td class="table-data w-44">
                                         {{ healthCheck.system.name }}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">{{ t('views.appInfo.uptime') }}</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.uptime') }}
+                                    </td>
                                     <td class="table-data w-44">
                                         {{ healthCheck.details.uptime }}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">{{ t('views.appInfo.version') }}</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.version') }}
+                                    </td>
                                     <td class="table-data">{{ healthCheck.details.version }}</td>
                                 </tr>
                                 <tr>
@@ -157,7 +169,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">{{ t('views.appInfo.liquidctl') }}</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.liquidctl') }}
+                                    </td>
                                     <td class="table-data">
                                         {{
                                             healthCheck.details.liquidctl_connected
@@ -176,7 +190,9 @@ onMounted(() => {
                 <div
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
                 >
-                    <span class="mb-4 font-semibold text-xl text-text-color">{{ t('views.appInfo.helpfulLinks') }}</span>
+                    <span class="mb-4 font-semibold text-xl text-text-color">{{
+                        t('views.appInfo.helpfulLinks')
+                    }}</span>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
                             target="_blank"
@@ -235,9 +251,9 @@ onMounted(() => {
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[60vw]"
                 >
                     <div class="flex flex-row justify-between items-baseline">
-                        <span class="mb-4 font-semibold text-xl text-text-color"
-                            >{{ t('views.appInfo.logsAndDiagnostics') }}</span
-                        >
+                        <span class="mb-4 font-semibold text-xl text-text-color">{{
+                            t('views.appInfo.logsAndDiagnostics')
+                        }}</span>
                         <a
                             :href="downloadLogHref"
                             :download="downloadLogFileName"

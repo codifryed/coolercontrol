@@ -323,7 +323,9 @@ onMounted(() => {
                                     <td
                                         class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-b-2"
                                     >
-                                        <div class="float-right">{{ t('layout.settings.introduction') }}</div>
+                                        <div class="float-right">
+                                            {{ t('layout.settings.introduction') }}
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -354,7 +356,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.frequencyPrecision')"
+                                    v-tooltip.right="
+                                        t('layout.settings.tooltips.frequencyPrecision')
+                                    "
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
@@ -375,9 +379,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.sidebarCollapse')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.sidebarCollapse')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -393,14 +395,18 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.entitiesBelowSensors')"
+                                    v-tooltip.right="
+                                        t('layout.settings.tooltips.entitiesBelowSensors')
+                                    "
                                 >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersUIRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -439,9 +445,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.lineThickness')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.lineThickness')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -516,7 +520,9 @@ onMounted(() => {
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersUIRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -524,7 +530,9 @@ onMounted(() => {
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">{{ t('layout.settings.themeStyle') }}</div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.themeStyle') }}
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -559,7 +567,9 @@ onMounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        <div class="text-right float-right">{{ t('layout.settings.language') }}</div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.language') }}
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -590,13 +600,21 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeAccent"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorAccent"
                                                     :popper-class="'my-custom-class'"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -618,12 +636,20 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBgOne"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorBgOne"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -647,12 +673,20 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBgTwo"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorBgTwo"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -674,12 +708,20 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeBorder"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorBorder"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -701,12 +743,20 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeText"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorText"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -728,12 +778,20 @@ onMounted(() => {
                                                 <el-color-picker
                                                     v-model="customThemeTextSecondary"
                                                     color-format="rgb"
-                                                    :predefine="settingsStore.predefinedColorOptions"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
                                                     :validate-event="false"
                                                     @change="setNewColorTextSecondary"
-                                                    :color-picker-dialog-title="t('layout.settings.colorPickerDialogTitle')"
-                                                    :confirm-text="t('layout.settings.colorPickerConfirm')"
-                                                    :cancel-text="t('layout.settings.colorPickerCancel')"
+                                                    :color-picker-dialog-title="
+                                                        t('layout.settings.colorPickerDialogTitle')
+                                                    "
+                                                    :confirm-text="
+                                                        t('layout.settings.colorPickerConfirm')
+                                                    "
+                                                    :cancel-text="
+                                                        t('layout.settings.colorPickerCancel')
+                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -746,9 +804,7 @@ onMounted(() => {
                         <!--Daemon Settings-->
                         <table class="bg-bg-two rounded-lg mb-4">
                             <tbody>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.applyOnBoot')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.applyOnBoot')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -763,9 +819,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.startupDelay')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.startupDelay')">
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -792,15 +846,15 @@ onMounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.pollRate')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.pollRate')">
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -808,7 +862,9 @@ onMounted(() => {
                                                 :size="deviceStore.getREMSize(1.1)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">{{ t('layout.settings.pollingRate') }}</div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.pollingRate') }}
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
@@ -833,15 +889,15 @@ onMounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.compress')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.compress')">
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -863,15 +919,15 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.liquidctl')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.liquidctl')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
                                         <div
                                             class="float-left py-1"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -893,9 +949,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.liquidctlNoInit')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.liquidctlNoInit')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -915,15 +969,15 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.hideDuplicate')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.hideDuplicate')">
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                     >
                                         <div
                                             class="float-left"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersDaemonRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -954,9 +1008,7 @@ onMounted(() => {
                         </table>
                         <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
                             <tbody>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.daemonAddress')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonAddress')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -972,9 +1024,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.daemonPort')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonPort')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1002,9 +1052,7 @@ onMounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.daemonSsl')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonSsl')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1022,7 +1070,9 @@ onMounted(() => {
                                     >
                                         <div
                                             class="float-left py-2"
-                                            v-tooltip.top="t('layout.settings.tooltips.triggersUIRestart')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersUIRestart')
+                                            "
                                         >
                                             <svg-icon
                                                 type="mdi"
@@ -1035,7 +1085,9 @@ onMounted(() => {
                                                 :label="t('common.defaults')"
                                                 class="h-[2.375rem]"
                                                 @click="resetDaemonSettings"
-                                                v-tooltip.top="t('layout.settings.tooltips.resetToDefaults')"
+                                                v-tooltip.top="
+                                                    t('layout.settings.tooltips.resetToDefaults')
+                                                "
                                             />
                                         </div>
                                     </td>
@@ -1046,7 +1098,9 @@ onMounted(() => {
                                             :label="t('common.apply')"
                                             class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
                                             @click="saveDaemonSettings"
-                                            v-tooltip.top="t('layout.settings.tooltips.saveAndReload')"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.saveAndReload')
+                                            "
                                         />
                                     </td>
                                 </tr>
@@ -1057,9 +1111,7 @@ onMounted(() => {
                         <!--Desktop Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.startInTray')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.startInTray')">
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1074,9 +1126,7 @@ onMounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.closeToTray')"
-                                >
+                                <tr v-tooltip.right="t('layout.settings.tooltips.closeToTray')">
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -1120,7 +1170,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.desktopStartupDelay')"
+                                    v-tooltip.right="
+                                        t('layout.settings.tooltips.desktopStartupDelay')
+                                    "
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-t-2"
@@ -1157,7 +1209,9 @@ onMounted(() => {
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.thinkPadFanControl')"
+                                    v-tooltip.right="
+                                        t('layout.settings.tooltips.thinkPadFanControl')
+                                    "
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
@@ -1175,7 +1229,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="t('layout.settings.tooltips.thinkPadFullSpeed')"
+                                    v-tooltip.right="
+                                        t('layout.settings.tooltips.thinkPadFullSpeed')
+                                    "
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"

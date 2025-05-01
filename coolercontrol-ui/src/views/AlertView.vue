@@ -435,7 +435,9 @@ onMounted(async () => {
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2"
                                 >
-                                    <div class="text-right float-right">{{ t('views.alerts.greaterThan') }}</div>
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.greaterThan') }}
+                                    </div>
                                 </td>
                                 <td class="py-4 px-4 w-60 leading-none items-center text-center">
                                     <InputNumber
@@ -486,7 +488,9 @@ onMounted(async () => {
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
-                                    <div class="text-right float-right">{{ t('views.alerts.lessThan') }}</div>
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.lessThan') }}
+                                    </div>
                                 </td>
                                 <td
                                     class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"

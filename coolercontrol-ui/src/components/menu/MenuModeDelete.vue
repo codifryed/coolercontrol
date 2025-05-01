@@ -48,7 +48,7 @@ const deleteMode = (): void => {
 
     confirm.require({
         message: t('views.modes.deleteModeConfirm', {
-            name: modeToDelete.name
+            name: modeToDelete.name,
         }),
         header: t('views.modes.deleteMode'),
         icon: 'pi pi-exclamation-triangle',

@@ -31,7 +31,7 @@ export enum DaemonStatus {
 export const useDaemonState = defineStore('daemonState', () => {
     const toast = useToast()
     const { t } = useI18n()
-    
+
     // Reactive properties ------------------------------------------------
     const systemName: Ref<string> = ref('Localhost')
     const warnings: Ref<number> = ref(0)

@@ -56,7 +56,12 @@ const setDashboardAsHome = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('views.dashboard.setAsHome'), disabled: chosenDashboardIndex === 0 }">
+    <div
+        v-tooltip.top="{
+            value: t('views.dashboard.setAsHome'),
+            disabled: chosenDashboardIndex === 0,
+        }"
+    >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="setDashboardAsHome"

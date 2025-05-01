@@ -487,7 +487,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return modeUID
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return undefined
         }
     }
@@ -506,7 +511,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return response
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return undefined
         }
     }
@@ -516,7 +526,12 @@ export const useSettingsStore = defineStore('settings', () => {
         const updateModeDTO = new UpdateModeDTO(modeUID, newName)
         const response = await deviceStore.daemonClient.updateMode(updateModeDTO)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         } else {
             const mode = modes.value.find((mode) => mode.uid === modeUID)
@@ -550,7 +565,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -559,7 +579,12 @@ export const useSettingsStore = defineStore('settings', () => {
         console.debug('Deleting Mode')
         const response = await deviceStore.daemonClient.deleteMode(modeUID)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
         } else {
             const index = modes.value.findIndex((mode) => mode.uid === modeUID)
             if (index > -1) {
@@ -587,7 +612,12 @@ export const useSettingsStore = defineStore('settings', () => {
         console.debug('Activating Mode')
         const response = await deviceStore.daemonClient.activateMode(modeUID)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         } else {
             toast.add({
@@ -629,7 +659,12 @@ export const useSettingsStore = defineStore('settings', () => {
         if (response instanceof CustomSensor) {
             return response
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
         }
     }
 
@@ -651,7 +686,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -675,7 +715,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -706,7 +751,12 @@ export const useSettingsStore = defineStore('settings', () => {
                 .sensorsAndChannels.get(customSensorID)!.userColor = undefined
             await deviceStore.waitAndReload()
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
         }
     }
 
@@ -737,7 +787,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -765,7 +820,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -790,7 +850,12 @@ export const useSettingsStore = defineStore('settings', () => {
             })
             return true
         } else {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
             return false
         }
     }
@@ -929,11 +994,13 @@ export const useSettingsStore = defineStore('settings', () => {
                 life: 3000,
             })
         } else {
-            const message =
-                errorMsg != null
-                    ? errorMsg
-                    : t('common.toast.settingsError')
-            toast.add({ severity: 'error', summary: t('common.error'), detail: message, life: 4000 })
+            const message = errorMsg != null ? errorMsg : t('common.toast.settingsError')
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: message,
+                life: 4000,
+            })
         }
         console.debug('Daemon Settings Saved')
     }
@@ -1034,7 +1101,12 @@ export const useSettingsStore = defineStore('settings', () => {
         const response: undefined | ErrorResponse =
             await deviceStore.daemonClient.thinkPadFanControl(enable)
         if (response instanceof ErrorResponse) {
-            toast.add({ severity: 'error', summary: t('common.error'), detail: response.error, life: 4000 })
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: response.error,
+                life: 4000,
+            })
         } else {
             toast.add({
                 severity: 'success',

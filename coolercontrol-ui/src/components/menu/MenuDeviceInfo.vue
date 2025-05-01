@@ -83,15 +83,23 @@ for (const device of deviceStore.allDevices()) {
                     <table>
                         <tbody>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.systemName') }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.systemName') }}
+                                </td>
                                 <td class="table-data">{{ systemDeviceName }}</td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.deviceType') }}</td>
-                                <td class="table-data">{{ getDeviceTypeDisplayName(deviceType) }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.deviceType') }}
+                                </td>
+                                <td class="table-data">
+                                    {{ getDeviceTypeDisplayName(deviceType) }}
+                                </td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.deviceUID') }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.deviceUID') }}
+                                </td>
                                 <td class="table-data">{{ props.deviceUID }}</td>
                             </tr>
                             <tr v-if="firmwareVersion">
@@ -101,16 +109,24 @@ for (const device of deviceStore.allDevices()) {
                                 <td class="table-data">{{ firmwareVersion }}</td>
                             </tr>
                             <tr v-if="model">
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.model') }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.model') }}
+                                </td>
                                 <td class="table-data">{{ model }}</td>
                             </tr>
                             <tr v-if="driverName">
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.driverName') }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.driverName') }}
+                                </td>
                                 <td class="table-data">{{ driverName }}</td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">{{ t('components.deviceInfo.driverType') }}</td>
-                                <td class="table-data">{{ getDriverTypeDisplayName(driverType) }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.driverType') }}
+                                </td>
+                                <td class="table-data">
+                                    {{ getDriverTypeDisplayName(driverType) }}
+                                </td>
                             </tr>
                             <tr v-if="driverVersion">
                                 <td class="table-data font-bold text-lg text-end">

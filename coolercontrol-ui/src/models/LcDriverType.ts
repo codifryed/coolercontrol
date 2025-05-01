@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 /**
  * This is a representation of the liquidctl driver instance
  */

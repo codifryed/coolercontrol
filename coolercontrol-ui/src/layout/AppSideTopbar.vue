@@ -406,7 +406,10 @@ const addItems = computed(() => [
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 @click="activatePreviousMode"
-                v-tooltip.right="{ value: t('layout.topbar.modes'), disable: modesItems.length > 0 }"
+                v-tooltip.right="{
+                    value: t('layout.topbar.modes'),
+                    disable: modesItems.length > 0,
+                }"
             >
                 <svg-icon
                     type="mdi"
@@ -445,7 +448,9 @@ const addItems = computed(() => [
             id="collapse-menu"
             class="mt-2 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             v-tooltip.right="{
-                value: settingsStore.collapsedMainMenu ? t('layout.topbar.expandMenu') : t('layout.topbar.collapseMenu'),
+                value: settingsStore.collapsedMainMenu
+                    ? t('layout.topbar.expandMenu')
+                    : t('layout.topbar.collapseMenu'),
             }"
             @click="emitter.emit('toggle-side-menu')"
         >

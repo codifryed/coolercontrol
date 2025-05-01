@@ -343,38 +343,37 @@ const steps = [
  */
 onMounted(async () => {
     deviceStore.connectToQtIPC()
-    
+
     // Set default language
     const savedLocale = localStorage.getItem('locale')
 
-    
     if (savedLocale) {
         locale.value = savedLocale
     } else {
         // Use browser language if supported
         const browserLang = navigator.language.toLowerCase()
-        
+
         // List of supported languages
         const supportedLanguages: Record<string, string> = {
-            'zh': 'zh',         // Chinese (Simplified)
-            'zh-cn': 'zh',      // Chinese (Mainland China)
-            'zh-tw': 'zh-tw',   // Chinese (Traditional)
-            'zh-hk': 'zh-tw',   // Chinese (Hong Kong)
-            'ja': 'ja',         // Japanese
-            'ru': 'ru',         // Russian
-            'de': 'de',         // German
-            'fr': 'fr',         // French
-            'es': 'es',         // Spanish
-            'ar': 'ar',         // Arabic
-            'pt': 'pt',         // Portuguese
-            'pt-br': 'pt',      // Brazilian Portuguese
-            'hi': 'hi'          // Hindi
+            zh: 'zh', // Chinese (Simplified)
+            'zh-cn': 'zh', // Chinese (Mainland China)
+            'zh-tw': 'zh-tw', // Chinese (Traditional)
+            'zh-hk': 'zh-tw', // Chinese (Hong Kong)
+            ja: 'ja', // Japanese
+            ru: 'ru', // Russian
+            de: 'de', // German
+            fr: 'fr', // French
+            es: 'es', // Spanish
+            ar: 'ar', // Arabic
+            pt: 'pt', // Portuguese
+            'pt-br': 'pt', // Brazilian Portuguese
+            hi: 'hi', // Hindi
         }
-        
+
         // Check for exact match
         if (supportedLanguages[browserLang]) {
             locale.value = supportedLanguages[browserLang]
-        } 
+        }
         // Check for language prefix match (e.g. en-US matches en)
         else {
             const langPrefix = browserLang.split('-')[0]
@@ -385,12 +384,12 @@ onMounted(async () => {
                 locale.value = 'en'
             }
         }
-        
+
         // Save to localStorage
         localStorage.setItem('locale', locale.value)
     }
     document.querySelector('html')?.setAttribute('lang', locale.value)
-    
+
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         loading.close()
@@ -463,7 +462,9 @@ onMounted(async () => {
                     {{ t('components.aseTek690.restartRequired') }}
                 </p>
                 <p>
-                    {{ t('components.aseTek690.deviceModel') }} <strong>#{{ slotProps.message.message }}</strong><br />
+                    {{ t('components.aseTek690.deviceModel') }}
+                    <strong>#{{ slotProps.message.message }}</strong
+                    ><br />
                     {{ t('components.aseTek690.modelList') }}
                 </p>
             </div>
@@ -502,7 +503,9 @@ onMounted(async () => {
             {{ t('views.error.nonStandardAddress') }}
         </p>
         <br />
-        <h6 v-if="deviceStore.isQtApp()" class="text-lg">{{ t('views.error.daemonAddressDesktop') }}</h6>
+        <h6 v-if="deviceStore.isQtApp()" class="text-lg">
+            {{ t('views.error.daemonAddressDesktop') }}
+        </h6>
         <h6 v-else class="text-xl mb-4">{{ t('views.error.daemonAddressWeb') }}</h6>
         <div>
             <div class="mt-8 flex flex-row">
@@ -542,7 +545,9 @@ onMounted(async () => {
                 </FloatLabel>
             </div>
             <div class="flex flex-col mb-3 w-12 leading-none align-middle">
-                <small class="ml-3 font-light text-sm text-text-color-secondary">{{ t('common.protocol') }}</small>
+                <small class="ml-3 font-light text-sm text-text-color-secondary">{{
+                    t('common.protocol')
+                }}</small>
                 <div
                     class="flex flex-row items-center"
                     v-tooltip.left="t('views.error.sslTooltip')"
@@ -613,7 +618,8 @@ onMounted(async () => {
                                         </p>
                                         <br />
                                         <p>
-                                            {{ t('components.onboarding.fansNotShowing') }}<br /><br />
+                                            {{ t('components.onboarding.fansNotShowing')
+                                            }}<br /><br />
 
                                             {{ t('components.onboarding.checkDocs') }}
                                             <a
@@ -624,7 +630,9 @@ onMounted(async () => {
                                                 {{ t('components.onboarding.checkingDocs') }}
                                             </a>
                                             <br /><br />
-                                            <span class="italic">{{ t('components.onboarding.startTourAgain') }}</span>
+                                            <span class="italic">{{
+                                                t('components.onboarding.startTourAgain')
+                                            }}</span>
                                             <br /><br />
                                             {{ t('components.onboarding.letsStart') }}
                                         </p>
@@ -669,7 +677,11 @@ onMounted(async () => {
                                     type="button"
                                     class="mt-12 inline-flex items-center rounded-lg border border-transparent bg-accent/80 hover:!bg-accent px-4 py-2 font-medium text-text-color shadow-sm focus:outline-none sm:text-sm"
                                 >
-                                    {{ isLast ? (t('common.finish') || 'Finish') : (t('common.next') || 'Next') }}
+                                    {{
+                                        isLast
+                                            ? t('common.finish') || 'Finish'
+                                            : t('common.next') || 'Next'
+                                    }}
                                 </button>
                             </div>
                         </div>

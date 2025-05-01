@@ -1,6 +1,7 @@
 # CoolerControl Internationalization (i18n) Guide
 
-This project uses vue-i18n for internationalization support, currently supporting the following languages:
+This project uses vue-i18n for internationalization support, currently supporting the following
+languages:
 
 - English (en) - Default language
 - Chinese (Simplified) (zh) - 中文（简体）
@@ -16,7 +17,7 @@ This project uses vue-i18n for internationalization support, currently supportin
 
 ## Directory Structure
 
-```
+```bash
 src/i18n/
 ├── index.ts          # i18n configuration file
 ├── locales/          # Language files directory
@@ -43,10 +44,10 @@ src/i18n/
 <template>
   <!-- Direct use of t function -->
   <div>{{ t('common.save') }}</div>
-  
+
   <!-- Use in attributes -->
   <input :placeholder="t('common.loading')" />
-  
+
   <!-- Use in directives -->
   <button v-tooltip="t('common.confirm')">Confirm</button>
 </template>
@@ -91,7 +92,7 @@ export default {
 }
 ```
 
-2. Import and register the new language in `src/i18n/index.ts`:
+1. Import and register the new language in `src/i18n/index.ts`:
 
 ```ts
 import { createI18n } from 'vue-i18n'
@@ -124,16 +125,16 @@ const i18n = createI18n({
     ar,
     pt,
     hi,
-    ko // Add Korean
+    ko, // Add Korean
   },
   silentTranslationWarn: true,
-  silentFallbackWarn: true
+  silentFallbackWarn: true,
 })
 
 export default i18n
 ```
 
-3. Update the language switcher component `LanguageSwitcher.vue` options:
+1. Update the language switcher component `LanguageSwitcher.vue` options:
 
 ```ts
 const localeOptions = [
@@ -148,7 +149,7 @@ const localeOptions = [
   { name: 'العربية', code: 'ar' },
   { name: 'Português', code: 'pt' },
   { name: 'हिन्दी', code: 'hi' },
-  { name: '한국어', code: 'ko' } 
+  { name: '한국어', code: 'ko' },
 ]
 ```
 
@@ -161,11 +162,12 @@ Translation text is organized as nested objects, divided into the following main
 - `views`: Text for various view pages
 - `components`: Component-related text
 
-When adding new text, please follow the existing hierarchical structure to maintain good organization.
+When adding new text, please follow the existing hierarchical structure to maintain good
+organization.
 
 ## Development Notes
 
 1. All user-visible text should use i18n, avoid hardcoded text
-2. Use meaningful key names with a hierarchical naming approach (e.g., `module.submodule.name`)
-3. Update all language files when adding new features
-4. Missing keys in non-English language files will automatically fall back to English 
+1. Use meaningful key names with a hierarchical naming approach (e.g., `module.submodule.name`)
+1. Update all language files when adding new features
+1. Missing keys in non-English language files will automatically fall back to English

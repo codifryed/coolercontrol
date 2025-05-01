@@ -49,7 +49,7 @@ const updateModeWithCurrentSettings = async (): Promise<void> => {
     }
     confirm.require({
         message: t('views.modes.updateModeConfirm', {
-            name: modeToUpdate.name
+            name: modeToUpdate.name,
         }),
         header: t('views.modes.editMode'),
         icon: 'pi pi-exclamation-triangle',
@@ -63,7 +63,12 @@ const isActivated = false
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.updateWithCurrentSettings'), disabled: isActivated }">
+    <div
+        v-tooltip.top="{
+            value: t('layout.menu.tooltips.updateWithCurrentSettings'),
+            disabled: isActivated,
+        }"
+    >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="updateModeWithCurrentSettings"
