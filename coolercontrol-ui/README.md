@@ -61,3 +61,25 @@ make dev
 - `"vue-tsc": "2.2.4"` breaks some tests.
 - `"@types/node": "^20.17.30"` for max compat with older distros
 - `"tailwindcss": "^3.4.17",` the upgrade to 4.x looks to be significant work
+
+## Formatting
+
+CoolerControl uses [Trunk.io](https://github.com/trunk-io) to format all files for the entire
+repository. The first time you run this, it may take a while as it downloads all the tools and
+formatters needed for the project.
+
+This will check if there are formatting or linting issues:
+
+```bash
+# cd to repository root directory
+cd ..
+make ci-check
+```
+
+This will auto-format all files. Afterwards, commit any changes:
+
+```bash
+# cd to repository root directory
+cd ..
+make ci-fmt
+```

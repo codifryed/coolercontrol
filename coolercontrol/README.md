@@ -85,16 +85,21 @@ cd .. && make dev-test
 ## Formatting
 
 CoolerControl uses [Trunk.io](https://github.com/trunk-io) to format all files for the entire
-repository.
+repository. The first time you run this, it may take a while as it downloads all the tools and
+formatters needed for the project.
 
-This will check if there are formatting issues:
+This will check if there are formatting or linting issues:
 
 ```bash
-cd .. && make ci-check
+# cd to repository root directory
+cd ..
+make ci-check
 ```
 
-This will auto-format all files:
+This will auto-format all files. Afterwards, commit any changes:
 
 ```bash
-cd .. && make ci-fmt
+# cd to repository root directory
+cd ..
+make ci-fmt
 ```
