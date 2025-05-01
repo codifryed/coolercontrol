@@ -26,7 +26,7 @@ our
 
 ## Vision
 
-It's important when contributing that you understand the [project's Vision](VISION). This helps not
+It's important when contributing that you understand the [project's Vision](VISION.md). This helps not
 only to keep the project maintainable, but also to provide consitent value to users.
 
 ## Getting Started

@@ -28,7 +28,7 @@ well as desktop systems. systemd support is offered by the project, and other in
 handled by community contributions. Additionally, the daemon offers an API for GUI and CLI control,
 and the GUI assets are embedded into the daemon allowing UI access from any browser. This is a key
 feature as configuration file controls are not officially supported due to the complexities involved
-with CC's feature set. See the [coolercontrold README](coolercontrold/README) for more detailed
+with CC's feature set. See the [coolercontrold README](coolercontrold/README.md) for more detailed
 information.
 
 ## coolercontrol-liqctld Daemon
@@ -37,10 +37,10 @@ This is a service daemon that interfaces directly with the
 [liquidctl](https://github.com/liquidctl/liquidctl) Python API and uses IPC to communicate with the
 main coolercontrold daemon. It's scope is limited to providing device access and detailed
 information to the coolercontrold daemon. See the
-[coolercontrol-liqctld README](coolercontrol-liqctld/README) for more information.
+[coolercontrol-liqctld README](coolercontrol-liqctld/README.md) for more information.
 
 ## GUI
 
 The GUI is designed to enhance the user experience of controlling cooling devices on Linux without
 the need to use the terminal or CLI commands. See the
-[coolercontrol-ui README](coolercontrol-ui/README) for more information.
+[coolercontrol-ui README](coolercontrol-ui/README.md) for more information.
