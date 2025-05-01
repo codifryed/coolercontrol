@@ -41,7 +41,7 @@ that cover both:
 ### Issues
 
 Issues should be used to report problems with the application, request a new feature, or to discuss
-potential changes before a PR is created. When you create a new Issue, choosing a Bug or Feature
+potential changes **before** a PR is created. When you create a new Issue, choosing a Bug or Feature
 Request template will help guide you through collecting and providing the information we need to
 investigate.
 
@@ -64,12 +64,14 @@ In general, MRs should:
 - Address a single concern in the least number of changed lines as possible.
 - Include documentation in the repo or in the
   [readme](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/README.md).
-- Be accompanied by a complete Merge Request template (loaded automatically when an MR is created).
+- Be accompanied by a completed Merge Request template (chosen when an MR is created).
 
-For changes that address core functionality, affect the main features, or would require breaking
-changes (e.g. a major release), it's best to open an Issue to discuss your proposal first. This can
-save time creating and reviewing changes. You can also reach out to us and other fellow contributors
-on [Discord](https://discord.gg/MbcgUFAfhV).
+For changes that address core functionality, affect the main features or existing architecture, or
+would require breaking changes (e.g. a major release), it's highly recommended to open an Issue to
+discuss your proposal first. This can save time creating and reviewing changes. It's also strongly
+advisable to reach out to maintainers or other developers on
+[Discord](https://discord.gg/MbcgUFAfhV) to discuss changes beforehand. A lot of thought has been
+put into the existing implementation and this helps ensure that nobody's time is wasted.
 
 In general, we follow the
 [project forking workflow](https://docs.gitlab.com/ee/user/project/repository/forking_workflow.html)
@@ -78,10 +80,12 @@ In general, we follow the
 2. Clone the project to your machine
 3. Create a branch locally with a succinct but descriptive name
 4. Commit changes to the branch
-5. Following any formatting and testing guidelines specific to this repo
+5. Following any formatting and testing guidelines specific to this repo  
+   (see the READMEs in each subproject)
 6. Push changes to your fork
 7. Open an MR in our repository and follow the MR template so that we can efficiently review the
    changes.
+8. Please follow the suggestions from the maintainers to have your MR approved and merged.
 
 #### Development Environment
 
