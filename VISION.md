@@ -33,9 +33,10 @@ information.
 
 ## coolercontrol-liqctld Daemon
 
-This is a service daemon that interfaces directly with the [liquidctl]() Python API and uses IPC to
-communicate with the main coolercontrold daemon. It's scope is limited to providing device access
-and detailed information to the coolercontrold daemon. See the
+This is a service daemon that interfaces directly with the
+[liquidctl](https://github.com/liquidctl/liquidctl) Python API and uses IPC to communicate with the
+main coolercontrold daemon. It's scope is limited to providing device access and detailed
+information to the coolercontrold daemon. See the
 [coolercontrol-liqctld README](coolercontrol-liqctld/README) for more information.
 
 ## GUI
