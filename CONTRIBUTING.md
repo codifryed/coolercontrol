@@ -24,6 +24,11 @@ standards of communication. By participating and contributing to this project, y
 our
 [Code of Conduct](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CODE_OF_CONDUCT.md).
 
+## Vision
+
+It's important when contributing that you understand the [project's Vision](VISION). This helps not
+only to keep the project maintainable, but also to provide consitent value to users.
+
 ## Getting Started
 
 Contributions are made to this repo via Issues and Merge Requests (MRs). A few general guidelines
