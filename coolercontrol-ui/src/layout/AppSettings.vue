@@ -278,21 +278,11 @@ onMounted(() => {
 
     // Listen for language change events
     window.addEventListener('language-changed', () => {
-        // Force recalculation of theme mode options
-        themeModeOptions.value = [
-            { value: ThemeMode.SYSTEM, label: t('layout.settings.themeMode.system') },
-            { value: ThemeMode.DARK, label: t('layout.settings.themeMode.dark') },
-            { value: ThemeMode.LIGHT, label: t('layout.settings.themeMode.light') },
-            {
-                value: ThemeMode.HIGH_CONTRAST_DARK,
-                label: t('layout.settings.themeMode.highContrastDark'),
-            },
-            {
-                value: ThemeMode.HIGH_CONTRAST_LIGHT,
-                label: t('layout.settings.themeMode.highContrastLight'),
-            },
-            { value: ThemeMode.CUSTOM, label: t('layout.settings.themeMode.custom') },
-        ]
+        // When language changes, the computed property will automatically update, no need to manually assign value
+        // themeModeOptions.value = [...] - this line would cause an error
+
+        // Trigger theme options recalculation
+        window.dispatchEvent(new CustomEvent('theme-options-updated'))
     })
 })
 
