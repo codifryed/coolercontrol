@@ -50,8 +50,8 @@ One can use the dev-build and dev-install steps below.
 
 ## Development
 
-Standard debugger is helpful for C++ development. Also, it's quite common to use an npm dev server
-when testing Web & Qt changes. To use that properly, one needs to comment out the
+The Standard debugger is helpful for C++ development. Also, it's quite common to use a npm dev
+server when testing Web & Qt changes. To use that properly, one needs to comment out the
 `// url.setPort(DEFAULT_DAEMON_PORT);` line on line 226 of `main_window.cpp`. (subject to change in
 the future)
 
@@ -96,7 +96,7 @@ cd ..
 make ci-check
 ```
 
-This will auto-format all files. Afterwards, commit any changes:
+This will auto-format all files. Afterward, commit any changes:
 
 ```bash
 # cd to repository root directory

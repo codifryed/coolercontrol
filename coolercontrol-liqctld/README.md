@@ -42,7 +42,7 @@ cd .. && sudo install -Dm644 packaging/systemd/coolercontrol-liqctld.service -t 
 
 ## Development
 
-In general, this package receives few updates and doesn't need to be including in the normal
+In general, this package receives few updates and doesn't need to be included in the normal
 development cycle. The easiest way to develop is to install the package for your particular
 distribution and then copy or install the local development files into the python system package
 area, overwriting the package files.
@@ -78,7 +78,7 @@ cd ..
 make ci-check
 ```
 
-This will auto-format all files. Afterwards, commit any changes:
+This will auto-format all files. Afterward, commit any changes:
 
 ```bash
 # cd to repository root directory
