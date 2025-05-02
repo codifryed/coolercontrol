@@ -122,6 +122,7 @@ export default {
             modes: 'Modos',
             appearance: 'Apariencia',
             language: 'Idioma',
+            selectLanguage: 'Seleccionar idioma',
             english: 'Inglés',
             chinese: 'Chino (Simplificado)',
             japanese: 'Japonés',

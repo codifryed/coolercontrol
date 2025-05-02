@@ -117,6 +117,7 @@ export default {
             modes: '模式',
             appearance: '外觀',
             language: '語言',
+            selectLanguage: '選擇語言',
             english: '英語',
             chinese: '簡體中文',
             japanese: '日語',

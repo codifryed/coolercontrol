@@ -19,7 +19,7 @@
                 {{
                     slotProps.value
                         ? localeOptions.find((option) => option.code === slotProps.value)?.name
-                        : '选择语言'
+                        : t('layout.settings.selectLanguage')
                 }}
             </div>
         </template>

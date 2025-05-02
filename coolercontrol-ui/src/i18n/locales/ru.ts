@@ -121,6 +121,7 @@ export default {
             modes: 'Режимы',
             appearance: 'Внешний вид',
             language: 'Язык',
+            selectLanguage: 'Выбрать язык',
             english: 'Английский',
             chinese: 'Китайский (упрощённый)',
             japanese: 'Японский',

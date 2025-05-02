@@ -123,6 +123,7 @@ export default {
             modes: 'Modi',
             appearance: 'Erscheinungsbild',
             language: 'Sprache',
+            selectLanguage: 'Sprache auswählen',
             english: 'Englisch',
             chinese: 'Chinesisch (Vereinfacht)',
             japanese: 'Japanisch',

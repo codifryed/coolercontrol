@@ -117,6 +117,7 @@
             modes: '模式',
             appearance: '外观',
             language: '语言',
+            selectLanguage: '选择语言',
             english: '英语',
             chinese: '中文（简体）',
             japanese: '日语',

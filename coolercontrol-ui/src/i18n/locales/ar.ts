@@ -119,6 +119,7 @@ export default {
             modes: 'الأوضاع',
             appearance: 'المظهر',
             language: 'اللغة',
+            selectLanguage: 'اختر اللغة',
             english: 'الإنجليزية',
             chinese: 'الصينية (المبسطة)',
             japanese: 'اليابانية',
