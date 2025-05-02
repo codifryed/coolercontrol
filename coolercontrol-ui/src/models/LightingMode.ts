@@ -16,31 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import i18n from '@/i18n'
-
 export enum LightingModeType {
     NONE = 'None',
     LC = 'Liquidctl',
     CUSTOM = 'Custom',
-}
-
-/**
- * 获取LightingModeType的本地化显示名称
- * @param type LightingModeType枚举值
- * @returns 本地化的显示名称
- */
-export function getLightingModeTypeDisplayName(type: LightingModeType): string {
-    const { t } = i18n.global
-    switch (type) {
-        case LightingModeType.NONE:
-            return t('models.lcdModeType.none')
-        case LightingModeType.LC:
-            return t('models.lcdModeType.liquidctl')
-        case LightingModeType.CUSTOM:
-            return t('models.lcdModeType.custom')
-        default:
-            return String(type)
-    }
 }
 
 export class LightingMode {

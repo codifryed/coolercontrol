@@ -23,11 +23,7 @@ import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/DaemonSettings'
-import {
-    LightingMode,
-    LightingModeType,
-    getLightingModeTypeDisplayName,
-} from '@/models/LightingMode'
+import { LightingMode, LightingModeType } from '@/models/LightingMode'
 import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import { ElColorPicker, ElSwitch } from 'element-plus'
@@ -294,14 +290,6 @@ onMounted(() => {
                             <template #option="slotProps">
                                 <div class="flex align-items-center">
                                     <div>{{ slotProps.option.frontend_name }}</div>
-                                    <div
-                                        v-if="slotProps.option.type !== LightingModeType.NONE"
-                                        class="ml-2 text-xs text-text-color-secondary"
-                                    >
-                                        ({{
-                                            getLightingModeTypeDisplayName(slotProps.option.type)
-                                        }})
-                                    </div>
                                 </div>
                             </template>
                         </Select>
@@ -332,8 +320,8 @@ onMounted(() => {
                             <el-switch
                                 v-model="selectedBackwardEnabled"
                                 size="large"
-                                active-text="t('views.lighting.backward')"
-                                inactive-text="t('views.lighting.forward')"
+                                :active-text="t('views.lighting.backward')"
+                                :inactive-text="t('views.lighting.forward')"
                                 style="--el-switch-off-color: rgb(var(--colors-accent))"
                             />
                         </div>
