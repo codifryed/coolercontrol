@@ -56,8 +56,8 @@ const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
 const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
-const LIQCTLD_MAX_INIT_RETRIES: usize = 10;
-const LIQCTLD_INIT_PAUSE_MS: u64 = 1500;
+const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
+const LIQCTLD_INIT_PAUSE_MS: u64 = 500;
 
 /// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
