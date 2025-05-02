@@ -176,6 +176,23 @@ export default {
                 text: 'テキストカラー',
                 textSecondary: 'セカンダリテキストカラー',
             },
+            applySettingAndRestart:
+                'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
+            restartHeader: '設定を適用して再起動',
+            restartSuccess: '今再起動しています',
+            success: '成功',
+            successDetail: '操作が正常に完了しました',
+            settingsAppliedSuccess: '設定が正常に適用されました',
+            restartRequestSuccess: '再起動リクエストが正常に送信されました',
+            colorPickerDialogTitle: '色を選択',
+            colorPickerConfirm: '確認',
+            colorPickerCancel: 'キャンセル',
+            languageChangeConfirm: '言語を変更しますか？',
+            languageChangeConfirmMessage:
+                '続行してもよろしいですか？インターフェース要素の一部が正しく表示されない場合は、手動でページを更新してください。',
+            languageChangeSuccess: '言語の切り替えに成功しました。',
+            languageChangeError: '言語の変更に失敗しました。もう一度お試しください。',
+            themeChangeSuccess: 'テーマの切り替えに成功しました。',
             tooltips: {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',
@@ -253,7 +270,6 @@ export default {
                     '続行してもよろしいですか？インターフェース要素の一部が正しく表示されない場合は、手動でページを更新してください。',
                 languageChangeSuccess: '言語の切り替えに成功しました。',
                 languageChangeError: '言語の変更に失敗しました。もう一度お試しください。',
-                themeChangeSuccess: 'テーマの切り替えに成功しました。',
             },
             themeMode: {
                 system: 'システム',

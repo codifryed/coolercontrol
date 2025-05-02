@@ -33,6 +33,7 @@ const i18n = createI18n({
     },
     silentTranslationWarn: true,
     silentFallbackWarn: true,
+    warnHtmlMessage: false, // Disable warnings for HTML content in messages
     // Add additional options to ensure internationalization works properly
     sync: true,
     globalInjection: true,

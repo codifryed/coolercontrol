@@ -649,10 +649,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorAccent"
-                                                    :popper-class="'my-custom-class'"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -685,9 +681,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorBgOne"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -722,9 +715,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorBgTwo"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -757,9 +747,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorBorder"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -792,9 +779,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorText"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -827,9 +811,6 @@ onUnmounted(() => {
                                                     "
                                                     :validate-event="false"
                                                     @change="setNewColorTextSecondary"
-                                                    :color-picker-dialog-title="
-                                                        t('layout.settings.colorPickerDialogTitle')
-                                                    "
                                                     :confirm-text="
                                                         t('layout.settings.colorPickerConfirm')
                                                     "
@@ -1198,7 +1179,7 @@ onUnmounted(() => {
                                             v-model="settingsStore.uiScale"
                                             show-buttons
                                             :min="50"
-                                            :max="200"
+                                            :max="400"
                                             :suffix="` ${t('common.percentUnit')}`"
                                             :step="10"
                                             button-layout="horizontal"
@@ -1230,7 +1211,7 @@ onUnmounted(() => {
                                             v-model="settingsStore.desktopStartupDelay"
                                             show-buttons
                                             :min="0"
-                                            :max="120"
+                                            :max="10"
                                             :suffix="` ${t('common.secondAbbr')}`"
                                             :step="1"
                                             button-layout="horizontal"

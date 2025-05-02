@@ -457,11 +457,13 @@ onMounted(async () => {
             <div v-if="!shouldCreateSensor" class="p-2">
                 <Select
                     v-model="chosenViewType"
-                    class="mt-1 w-full"
+                    class="w-32 h-[2.375rem]"
                     :options="viewTypeOptions"
                     :option-label="(viewType) => getChannelViewTypeDisplayName(viewType)"
                     checkmark
                     placeholder="View Type"
+                    dropdown-icon="pi pi-sliders-h"
+                    scroll-height="40rem"
                     v-tooltip.right="t('views.controls.viewType')"
                     @change="viewTypeChanged"
                 />

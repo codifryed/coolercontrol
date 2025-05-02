@@ -1207,10 +1207,6 @@ export const useSettingsStore = defineStore('settings', () => {
         createAlert,
         updateAlert,
         deleteAlert,
-        loadCCSettings,
-        setDisplayNames,
-        loadCCAllDeviceSettings,
-        startWatchingToSaveChanges,
         applyThemeMode,
     }
 })

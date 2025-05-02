@@ -1,5 +1,5 @@
 <template>
-    <Dropdown
+    <Select
         v-model="currentLocale"
         :options="localeOptions"
         optionLabel="name"
@@ -23,13 +23,13 @@
                 }}
             </div>
         </template>
-    </Dropdown>
+    </Select>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Dropdown from 'primevue/dropdown'
+import Select from 'primevue/select'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 

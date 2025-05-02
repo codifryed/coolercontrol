@@ -157,8 +157,9 @@ const nodeProps = {
 }
 const data: Reactive<Tree[]> = reactive([])
 
-// Use computed to wrap menu data to respond to language changes
-const menuData = computed(() => {
+// Remove computed wrapper for menu data
+const createTreeMenu = (): void => {
+    data.length = 0
     const result: Tree[] = []
     if (settingsStore.menuEntitiesAtBottom) {
         result.push(customSensorsTree())
@@ -177,12 +178,7 @@ const menuData = computed(() => {
         result.push(customSensorsTree())
         result.push(...devicesTreeArray())
     }
-    return result
-})
-
-const createTreeMenu = (): void => {
-    data.length = 0
-    data.push(...menuData.value)
+    data.push(...result)
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {
 //     // todo: only add pinned node if there are pins
@@ -829,7 +825,7 @@ onUnmounted(() => {
             ref="treeRef"
             id="main-menu"
             class="w-full"
-            :data="menuData"
+            :data="data"
             :props="nodeProps"
             node-key="id"
             empty-text="No Matches"
