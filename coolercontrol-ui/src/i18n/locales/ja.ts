@@ -249,7 +249,10 @@ export default {
                 colorPickerCancel: 'キャンセル',
                 languageChangeConfirm: '言語を変更しますか？',
                 languageChangeConfirmMessage:
-                    '言語の変更にはページの更新が必要です。続行しますか？',
+                    '続行してもよろしいですか？インターフェース要素の一部が正しく表示されない場合は、手動でページを更新してください。',
+                languageChangeSuccess: '言語の切り替えに成功しました。',
+                languageChangeError: '言語の変更に失敗しました。もう一度お試しください。',
+                themeChangeSuccess: 'テーマの切り替えに成功しました。',
             },
             themeMode: {
                 system: 'システム',
@@ -341,11 +344,9 @@ export default {
             changeSetting:
                 'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
             status: {
-                ok: '正常',
+                ok: 'OK',
                 hasWarnings: '警告あり',
                 hasErrors: 'エラーあり',
-                haswarnings: '警告あり',
-                haserrors: 'エラーあり',
             },
         },
         devices: {
@@ -759,24 +760,10 @@ export default {
         setNewPassword: '新しいパスワードを入力してください',
         loginFailed: 'ログイン失敗',
         invalidPassword: '無効なパスワード',
-        passwordSetFailed: 'パスワード設定失敗',
+        passwordSetFailed: 'パスワード設定に失敗しました',
         passwordSetSuccessfully: '新しいパスワードが正常に設定されました',
-        logoutSuccessful: '正常にログアウトしました。',
-        unauthorizedAction: 'このアクションを完了するにはログインする必要があります',
-    },
-    device: {
-        processInterrupted: ' - プロセスが中断されました。',
-        modelSetSuccessfully: 'デバイスモデルタイプが正常に設定されました。',
-        modelSetRestartInProgress: 'デバイスモデルタイプが正常に設定されました。再起動中です。',
-    },
-    daemon: {
-        status: {
-            ok: '正常',
-            hasWarnings: '警告あり',
-            hasErrors: 'エラーあり',
-            haswarnings: '警告あり',
-            haserrors: 'エラーあり',
-        },
+        logoutSuccessful: 'ログアウトに成功しました。',
+        unauthorizedAction: 'この操作を完了するにはログインする必要があります',
     },
     device_store: {
         unauthorized: {

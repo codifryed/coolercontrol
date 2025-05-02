@@ -269,9 +269,12 @@ export default {
             colorPickerDialogTitle: 'Sélectionner la couleur',
             colorPickerConfirm: 'Confirmer',
             colorPickerCancel: 'Annuler',
-            languageChangeConfirm: 'Changer de langue?',
+            languageChangeConfirm: 'Changer de langue ?',
             languageChangeConfirmMessage:
-                'Changer de langue nécessite un rafraîchissement de la page. Continuer?',
+                "Êtes-vous sûr de vouloir continuer ? Si certains éléments de l'interface ne s'affichent pas correctement, veuillez actualiser la page manuellement.",
+            languageChangeSuccess: 'Langue changée avec succès.',
+            languageChangeError: 'Échec du changement de langue. Veuillez réessayer.',
+            themeChangeSuccess: 'Thème changé avec succès.',
         },
         menu: {
             system: 'Système',
@@ -790,19 +793,11 @@ export default {
         logoutSuccessful: 'Vous vous êtes déconnecté avec succès.',
         unauthorizedAction: 'Vous devez être connecté pour effectuer cette action',
     },
-    device: {
-        processInterrupted: ' - Processus interrompu.',
-        modelSetSuccessfully: "Type de modèle d'appareil défini avec succès.",
-        modelSetRestartInProgress:
-            "Type de modèle d'appareil défini avec succès. Redémarrage en cours.",
-    },
     daemon: {
         status: {
             ok: 'Ok',
             hasWarnings: 'A des Avertissements',
             hasErrors: 'A des Erreurs',
-            haswarnings: 'A des Avertissements',
-            haserrors: 'A des Erreurs',
         },
     },
     device_store: {

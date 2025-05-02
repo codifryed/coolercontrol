@@ -250,7 +250,11 @@ export default {
             colorPickerConfirm: '確認',
             colorPickerCancel: '取消',
             languageChangeConfirm: '更改語言？',
-            languageChangeConfirmMessage: '更改語言需要刷新頁面。繼續？',
+            languageChangeConfirmMessage:
+                '確定要繼續嗎？如果某些界面元素顯示不完整，請手動刷新頁面。',
+            languageChangeSuccess: '語言切換成功。',
+            languageChangeError: '語言更改失敗。請重試。',
+            themeChangeSuccess: '主題風格切換成功。',
         },
         menu: {
             system: '系統',
@@ -498,8 +502,6 @@ export default {
                 ok: '正常',
                 hasWarnings: '警告',
                 hasErrors: '錯誤',
-                haswarnings: '警告',
-                haserrors: '錯誤',
             },
         },
         functions: {
@@ -736,25 +738,18 @@ export default {
     auth: {
         enterPassword: '請輸入您的密碼',
         setNewPassword: '請輸入新密碼',
-        loginFailed: '登錄失敗',
-        invalidPassword: '密碼無效',
+        loginFailed: '登入失敗',
+        invalidPassword: '無效密碼',
         passwordSetFailed: '設置密碼失敗',
         passwordSetSuccessfully: '新密碼設置成功',
-        logoutSuccessful: '您已成功退出登錄',
-        unauthorizedAction: '您需要登錄才能完成此操作',
-    },
-    device: {
-        processInterrupted: ' - 進程已中斷。',
-        modelSetSuccessfully: '設備型號類型設置成功。',
-        modelSetRestartInProgress: '設備型號類型設置成功。正在重啟。',
+        logoutSuccessful: '您已成功登出',
+        unauthorizedAction: '您需要登入才能完成此操作',
     },
     daemon: {
         status: {
             ok: '正常',
             hasWarnings: '警告',
             hasErrors: '錯誤',
-            haswarnings: '警告',
-            haserrors: '錯誤',
         },
     },
     device_store: {

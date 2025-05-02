@@ -5,9 +5,25 @@
         optionLabel="name"
         optionValue="code"
         @change="changeLocale"
-        class="w-32"
+        class="w-full h-[2.375rem]"
         :loading="isLoading"
-    />
+        :pt="{
+            input: { class: 'text-center' },
+            trigger: { class: 'flex justify-center items-center' },
+            label: { class: 'text-center w-full' },
+            panel: { class: 'border-2 border-border-one rounded-lg shadow-lg bg-bg-one' },
+        }"
+    >
+        <template #value="slotProps">
+            <div class="flex justify-center items-center w-full h-full">
+                {{
+                    slotProps.value
+                        ? localeOptions.find((option) => option.code === slotProps.value)?.name
+                        : '选择语言'
+                }}
+            </div>
+        </template>
+    </Dropdown>
 </template>
 
 <script setup lang="ts">
@@ -15,9 +31,11 @@ import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Dropdown from 'primevue/dropdown'
 import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 
 const { locale, t } = useI18n()
 const confirm = useConfirm()
+const toast = useToast()
 const currentLocale = ref(localStorage.getItem('locale') || 'en')
 const isLoading = ref(false)
 
@@ -70,18 +88,30 @@ function changeLocale(event: { value: string }) {
                 // Apply new language setting to HTML element
                 document.querySelector('html')?.setAttribute('lang', selectedLocale)
 
-                // Use a more forceful page refresh method
-                setTimeout(() => {
-                    // Ensure a full reload without using cache
-                    window.location.href =
-                        window.location.href.split('#')[0] +
-                        (window.location.search ? window.location.search : '?') +
-                        (window.location.search ? '&' : '') +
-                        '_t=' +
-                        new Date().getTime()
-                }, 300)
+                // Force refresh application state to ensure all components dependent on i18n are updated
+                window.dispatchEvent(
+                    new CustomEvent('language-changed', { detail: selectedLocale }),
+                )
+
+                // Show success toast instead of refreshing the page
+                toast.add({
+                    severity: 'success',
+                    summary: t('common.success'),
+                    detail: t('layout.settings.languageChangeSuccess'),
+                    life: 3000,
+                })
+
+                // Reset loading state
+                isLoading.value = false
             } catch (error) {
                 isLoading.value = false
+                // Show error toast if language switch fails
+                toast.add({
+                    severity: 'error',
+                    summary: t('common.error'),
+                    detail: t('layout.settings.languageChangeError'),
+                    life: 4000,
+                })
             }
         },
         reject: () => {

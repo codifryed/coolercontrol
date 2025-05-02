@@ -344,6 +344,14 @@ const steps = [
 onMounted(async () => {
     deviceStore.connectToQtIPC()
 
+    // Add theme change event listener
+    window.addEventListener('theme-changed', () => {
+        // Ensure custom theme is correctly applied
+        if (settingsStore.themeMode === ThemeMode.CUSTOM) {
+            applyCustomTheme()
+        }
+    })
+
     // Set default language
     const savedLocale = localStorage.getItem('locale')
 

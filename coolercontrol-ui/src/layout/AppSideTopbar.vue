@@ -160,58 +160,63 @@ const accessItems = computed(() => [
     },
 ])
 
-const restartItems = ref([
-    {
-        label: t('layout.topbar.restartUI'),
-        icon: 'pi pi-fw pi-refresh',
-        command: () => {
-            deviceStore.reloadUI()
+const restartItems = computed(() => {
+    const items = [
+        {
+            label: t('layout.topbar.restartUI'),
+            icon: 'pi pi-fw pi-refresh',
+            command: () => {
+                deviceStore.reloadUI()
+            },
         },
-    },
-    {
-        label: t('layout.topbar.restartDaemonAndUI'),
-        icon: 'pi pi-fw pi-sync',
-        command: async () => {
-            confirm.require({
-                message: t('layout.topbar.restartConfirmMessage'),
-                header: t('layout.topbar.restartConfirmHeader'),
-                icon: 'pi pi-exclamation-triangle',
-                defaultFocus: 'accept',
-                accept: async () => {
-                    const successful = await deviceStore.daemonClient.shutdownDaemon()
-                    if (successful) {
-                        toast.add({
-                            severity: 'success',
-                            summary: t('common.success'),
-                            detail: t('layout.topbar.shutdownSuccess'),
-                            life: 6000,
-                        })
-                        await deviceStore.waitAndReload()
-                    } else {
-                        toast.add({
-                            severity: 'error',
-                            summary: t('common.error'),
-                            detail: t('layout.topbar.shutdownError'),
-                            life: 4000,
-                        })
-                    }
-                },
-            })
+        {
+            label: t('layout.topbar.restartDaemonAndUI'),
+            icon: 'pi pi-fw pi-sync',
+            command: async () => {
+                confirm.require({
+                    message: t('layout.topbar.restartConfirmMessage'),
+                    header: t('layout.topbar.restartConfirmHeader'),
+                    icon: 'pi pi-exclamation-triangle',
+                    defaultFocus: 'accept',
+                    accept: async () => {
+                        const successful = await deviceStore.daemonClient.shutdownDaemon()
+                        if (successful) {
+                            toast.add({
+                                severity: 'success',
+                                summary: t('common.success'),
+                                detail: t('layout.topbar.shutdownSuccess'),
+                                life: 6000,
+                            })
+                            await deviceStore.waitAndReload()
+                        } else {
+                            toast.add({
+                                severity: 'error',
+                                summary: t('common.error'),
+                                detail: t('layout.topbar.shutdownError'),
+                                life: 4000,
+                            })
+                        }
+                    },
+                })
+            },
         },
-    },
-])
-if (deviceStore.isQtApp()) {
-    restartItems.value.push({
-        label: t('layout.topbar.quitDesktopApp'),
-        icon: 'pi pi-fw pi-power-off',
-        command: async () => {
-            // call quit to the backend.
-            // @ts-ignore
-            const ipc = window.ipc
-            ipc.forceQuit()
-        },
-    })
-}
+    ]
+
+    if (deviceStore.isQtApp()) {
+        items.push({
+            label: t('layout.topbar.quitDesktopApp'),
+            icon: 'pi pi-fw pi-power-off',
+            command: async () => {
+                // call quit to the backend.
+                // @ts-ignore
+                const ipc = window.ipc
+                ipc.forceQuit()
+            },
+        })
+    }
+
+    return items
+})
 
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [

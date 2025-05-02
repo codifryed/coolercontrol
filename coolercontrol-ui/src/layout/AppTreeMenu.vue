@@ -43,7 +43,7 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
@@ -156,26 +156,33 @@ const nodeProps = {
     class: speedControlMenuClass,
 }
 const data: Reactive<Tree[]> = reactive([])
+
+// Use computed to wrap menu data to respond to language changes
+const menuData = computed(() => {
+    const result: Tree[] = []
+    if (settingsStore.menuEntitiesAtBottom) {
+        result.push(customSensorsTree())
+        result.push(...devicesTreeArray())
+        result.push(dashboardsTree())
+        result.push(modesTree())
+        result.push(profilesTree())
+        result.push(functionsTree())
+        result.push(alertsTree())
+    } else {
+        result.push(dashboardsTree())
+        result.push(modesTree())
+        result.push(profilesTree())
+        result.push(functionsTree())
+        result.push(alertsTree())
+        result.push(customSensorsTree())
+        result.push(...devicesTreeArray())
+    }
+    return result
+})
+
 const createTreeMenu = (): void => {
     data.length = 0
-    if (settingsStore.menuEntitiesAtBottom) {
-        data.push(customSensorsTree())
-        data.push(...devicesTreeArray())
-        data.push(dashboardsTree())
-        data.push(modesTree())
-        data.push(profilesTree())
-        data.push(functionsTree())
-        data.push(alertsTree())
-    } else {
-        data.push(dashboardsTree())
-        data.push(modesTree())
-        data.push(profilesTree())
-        data.push(functionsTree())
-        data.push(alertsTree())
-        data.push(customSensorsTree())
-        data.push(...devicesTreeArray())
-    }
-    // data.unshift(pinnedTree(data)) // needs to be done at the end
+    data.push(...menuData.value)
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {
 //     // todo: only add pinned node if there are pins
@@ -793,6 +800,18 @@ const adjustTreeLeaves = (): void => {
 }
 onMounted(async () => {
     adjustTreeLeaves()
+
+    // Listen for language change events, refresh menu
+    window.addEventListener('language-changed', () => {
+        createTreeMenu()
+    })
+})
+
+// Remove event listeners when component is unmounted
+onUnmounted(() => {
+    window.removeEventListener('language-changed', () => {
+        createTreeMenu()
+    })
 })
 </script>
 
@@ -810,7 +829,7 @@ onMounted(async () => {
             ref="treeRef"
             id="main-menu"
             class="w-full"
-            :data="data"
+            :data="menuData"
             :props="nodeProps"
             node-key="id"
             empty-text="No Matches"

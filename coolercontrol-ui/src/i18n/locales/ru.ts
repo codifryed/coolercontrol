@@ -229,8 +229,6 @@ export default {
             ok: 'Ок',
             hasWarnings: 'Есть предупреждения',
             hasErrors: 'Есть ошибки',
-            haswarnings: 'Есть предупреждения',
-            haserrors: 'Есть ошибки',
         },
     },
     tooltips: {
@@ -307,7 +305,11 @@ export default {
     colorPickerConfirm: 'Подтвердить',
     colorPickerCancel: 'Отмена',
     languageChangeConfirm: 'Изменить язык?',
-    languageChangeConfirmMessage: 'Изменение языка требует обновления страницы. Продолжить?',
+    languageChangeConfirmMessage:
+        'Вы уверены, что хотите продолжить? Если некоторые элементы интерфейса отображаются некорректно, пожалуйста, обновите страницу вручную.',
+    languageChangeSuccess: 'Язык успешно изменен.',
+    languageChangeError: 'Не удалось изменить язык. Пожалуйста, попробуйте снова.',
+    themeChangeSuccess: 'Тема успешно изменена.',
     views: {
         daemon: {
             title: 'Демон',
@@ -772,20 +774,14 @@ export default {
         },
     },
     auth: {
-        enterPassword: 'Введите свой пароль',
-        setNewPassword: 'Введите новый пароль',
+        enterPassword: 'Введите Ваш Пароль',
+        setNewPassword: 'Введите Новый Пароль',
         loginFailed: 'Ошибка входа',
         invalidPassword: 'Неверный пароль',
         passwordSetFailed: 'Ошибка установки пароля',
         passwordSetSuccessfully: 'Новый пароль успешно установлен',
         logoutSuccessful: 'Вы успешно вышли из системы.',
         unauthorizedAction: 'Вам необходимо войти в систему для выполнения этого действия',
-    },
-    device: {
-        processInterrupted: ' - Процесс прерван.',
-        modelSetSuccessfully: 'Тип модели устройства успешно установлен.',
-        modelSetRestartInProgress:
-            'Тип модели устройства успешно установлен. Выполняется перезапуск.',
     },
     device_store: {
         unauthorized: {

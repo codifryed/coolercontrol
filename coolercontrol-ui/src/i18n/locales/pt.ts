@@ -212,8 +212,6 @@ export default {
             ok: 'Ok',
             hasWarnings: 'Tem Avisos',
             hasErrors: 'Tem Erros',
-            haswarnings: 'Tem Avisos',
-            haserrors: 'Tem Erros',
         },
         title: 'Daemon',
         daemonErrors: 'Erros do Daemon',
@@ -313,8 +311,12 @@ export default {
     colorPickerDialogTitle: 'Selecionar Cor',
     colorPickerConfirm: 'Confirmar',
     colorPickerCancel: 'Cancelar',
-    languageChangeConfirm: 'Alterar idioma?',
-    languageChangeConfirmMessage: 'Alterar o idioma requer uma atualização da página. Continuar?',
+    languageChangeConfirm: 'Mudar idioma?',
+    languageChangeConfirmMessage:
+        'Tem certeza de que deseja continuar? Se alguns elementos da interface não forem exibidos corretamente, atualize a página manualmente.',
+    languageChangeSuccess: 'Idioma alterado com sucesso.',
+    languageChangeError: 'Falha ao alterar o idioma. Por favor, tente novamente.',
+    themeChangeSuccess: 'Tema alterado com sucesso.',
     views: {
         dashboard: {
             timeRange: 'Intervalo de Tempo',
@@ -784,12 +786,6 @@ export default {
         passwordSetSuccessfully: 'Nova senha definida com sucesso',
         logoutSuccessful: 'Você saiu com sucesso.',
         unauthorizedAction: 'Você precisa fazer login para completar esta ação',
-    },
-    device: {
-        processInterrupted: ' - Processo interrompido.',
-        modelSetSuccessfully: 'Tipo de modelo de dispositivo definido com sucesso.',
-        modelSetRestartInProgress:
-            'Tipo de modelo de dispositivo definido com sucesso. Reinício em andamento.',
     },
     device_store: {
         unauthorized: {

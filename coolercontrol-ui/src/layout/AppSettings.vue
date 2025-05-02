@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { inject, onMounted, type Ref, ref, watch } from 'vue'
+import { inject, onMounted, type Ref, ref, watch, computed, onUnmounted } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
@@ -52,6 +52,7 @@ import { Color } from '@/models/Device.ts'
 import { Emitter, EventType } from 'mitt'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useI18n } from 'vue-i18n'
+import { api as fullscreenApi } from 'vue-fullscreen'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -60,7 +61,6 @@ const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
-import { api as fullscreenApi } from 'vue-fullscreen'
 
 const { t } = useI18n()
 
@@ -91,7 +91,8 @@ const toggleFullScreen = async (_enable: string | number | boolean): Promise<voi
     })
 }
 
-const themeModeOptions = [
+// Use computed to respond to language changes
+const themeModeOptions = computed(() => [
     { value: ThemeMode.SYSTEM, label: t('layout.settings.themeMode.system') },
     { value: ThemeMode.DARK, label: t('layout.settings.themeMode.dark') },
     { value: ThemeMode.LIGHT, label: t('layout.settings.themeMode.light') },
@@ -104,13 +105,38 @@ const themeModeOptions = [
         label: t('layout.settings.themeMode.highContrastLight'),
     },
     { value: ThemeMode.CUSTOM, label: t('layout.settings.themeMode.custom') },
-]
+])
 const changeThemeMode = async (event: ListboxChangeEvent) => {
     if (event.value === null) {
         return // do not update on unselect
     }
+
+    // Save the original theme mode
+    const previousThemeMode = settingsStore.themeMode
+
+    // Update the theme mode in settings store
     settingsStore.themeMode = event.value
-    await deviceStore.waitAndReload(1.05)
+
+    // Dynamically apply theme changes without page reload
+    settingsStore.applyThemeMode()
+
+    // Display success notification
+    toast.add({
+        severity: 'success',
+        summary: t('common.success'),
+        detail: t('layout.settings.themeChangeSuccess'),
+        life: 2000,
+    })
+
+    // Trigger theme change event to notify other components
+    window.dispatchEvent(
+        new CustomEvent('theme-changed', {
+            detail: {
+                previousTheme: previousThemeMode,
+                currentTheme: event.value,
+            },
+        }),
+    )
 }
 const lineThicknessOptions = ref([
     { optionSize: 1, value: 0.5 },
@@ -193,6 +219,8 @@ const applyGenericDaemonChange = _.debounce(
             header: t('layout.settings.restartHeader'),
             icon: 'pi pi-exclamation-triangle',
             defaultFocus: 'accept',
+            acceptLabel: t('common.yes'),
+            rejectLabel: t('common.no'),
             accept: async () => {
                 settingsStore.ccSettings.poll_rate = pollRate.value
                 // give the system a moment to make sure the pollRate has been saved ^
@@ -247,6 +275,32 @@ const addScrollEventListeners = (): void => {
 
 onMounted(() => {
     addScrollEventListeners()
+
+    // Listen for language change events
+    window.addEventListener('language-changed', () => {
+        // Force recalculation of theme mode options
+        themeModeOptions.value = [
+            { value: ThemeMode.SYSTEM, label: t('layout.settings.themeMode.system') },
+            { value: ThemeMode.DARK, label: t('layout.settings.themeMode.dark') },
+            { value: ThemeMode.LIGHT, label: t('layout.settings.themeMode.light') },
+            {
+                value: ThemeMode.HIGH_CONTRAST_DARK,
+                label: t('layout.settings.themeMode.highContrastDark'),
+            },
+            {
+                value: ThemeMode.HIGH_CONTRAST_LIGHT,
+                label: t('layout.settings.themeMode.highContrastLight'),
+            },
+            { value: ThemeMode.CUSTOM, label: t('layout.settings.themeMode.custom') },
+        ]
+    })
+})
+
+// Remove event listeners when component is unmounted
+onUnmounted(() => {
+    window.removeEventListener('language-changed', () => {
+        // Cleanup code
+    })
 })
 </script>
 
@@ -1019,7 +1073,7 @@ onMounted(() => {
                                     >
                                         <InputText
                                             v-model="daemonAddress"
-                                            class="min-w-48 w-full"
+                                            class="min-w-48 w-full text-center"
                                             placeholder="localhost"
                                         />
                                     </td>

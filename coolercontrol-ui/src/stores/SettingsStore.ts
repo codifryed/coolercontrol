@@ -946,11 +946,20 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     function applyThemeMode(): void {
-        // Clear all theme classes to start fresh
         document.documentElement.classList.remove('high-contrast-dark')
         document.documentElement.classList.remove('high-contrast-light')
         document.documentElement.classList.remove('light-theme')
         document.documentElement.classList.remove('dark-theme')
+        document.documentElement.classList.remove('custom-theme')
+
+        // Clear custom theme CSS variables
+        document.documentElement.style.removeProperty('--colors-accent')
+        document.documentElement.style.removeProperty('--colors-bg-one')
+        document.documentElement.style.removeProperty('--colors-bg-two')
+        document.documentElement.style.removeProperty('--colors-border-one')
+        document.documentElement.style.removeProperty('--colors-text-color')
+        document.documentElement.style.removeProperty('--colors-text-color-secondary')
+
         if (themeMode.value === ThemeMode.SYSTEM) {
             // considered Alpha and doesn't always work as expected:
             // document.documentElement.classList.add('system-theme')
@@ -975,6 +984,18 @@ export const useSettingsStore = defineStore('settings', () => {
             document.documentElement.classList.add('high-contrast-light')
         } else if (themeMode.value === ThemeMode.LIGHT) {
             document.documentElement.classList.add('light-theme')
+        } else if (themeMode.value === ThemeMode.CUSTOM) {
+            document.documentElement.classList.add('custom-theme')
+            // Apply custom theme CSS variables
+            document.documentElement.style.setProperty('--colors-accent', customTheme.accent)
+            document.documentElement.style.setProperty('--colors-bg-one', customTheme.bgOne)
+            document.documentElement.style.setProperty('--colors-bg-two', customTheme.bgTwo)
+            document.documentElement.style.setProperty('--colors-border-one', customTheme.borderOne)
+            document.documentElement.style.setProperty('--colors-text-color', customTheme.textColor)
+            document.documentElement.style.setProperty(
+                '--colors-text-color-secondary',
+                customTheme.textColorSecondary,
+            )
         } else {
             document.documentElement.classList.add('dark-theme')
         }
@@ -1186,5 +1207,10 @@ export const useSettingsStore = defineStore('settings', () => {
         createAlert,
         updateAlert,
         deleteAlert,
+        loadCCSettings,
+        setDisplayNames,
+        loadCCAllDeviceSettings,
+        startWatchingToSaveChanges,
+        applyThemeMode,
     }
 })

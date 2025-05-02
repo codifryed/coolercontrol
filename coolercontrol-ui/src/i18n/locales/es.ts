@@ -264,7 +264,10 @@ export default {
             colorPickerCancel: 'Cancelar',
             languageChangeConfirm: '¿Cambiar idioma?',
             languageChangeConfirmMessage:
-                'Cambiar el idioma requiere una actualización de la página. ¿Continuar?',
+                '¿Está seguro de que desea continuar? Si algunos elementos de la interfaz no se muestran correctamente, actualice la página manualmente.',
+            languageChangeSuccess: 'Idioma cambiado con éxito.',
+            languageChangeError: 'Error al cambiar el idioma. Por favor, inténtelo de nuevo.',
+            themeChangeSuccess: 'Tema cambiado con éxito.',
         },
         menu: {
             system: 'Sistema',
@@ -776,19 +779,11 @@ export default {
         logoutSuccessful: 'Ha cerrado sesión correctamente.',
         unauthorizedAction: 'Necesita iniciar sesión para completar esta acción',
     },
-    device: {
-        processInterrupted: ' - Proceso interrumpido.',
-        modelSetSuccessfully: 'Tipo de modelo de dispositivo establecido correctamente.',
-        modelSetRestartInProgress:
-            'Tipo de modelo de dispositivo establecido correctamente. Reinicio en progreso.',
-    },
     daemon: {
         status: {
             ok: 'Ok',
             hasWarnings: 'Tiene Advertencias',
             hasErrors: 'Tiene Errores',
-            haswarnings: 'Tiene Advertencias',
-            haserrors: 'Tiene Errores',
         },
     },
     device_store: {

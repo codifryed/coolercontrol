@@ -305,13 +305,14 @@ export default {
     colorPickerCancel: 'रद्द करें',
     languageChangeConfirm: 'भाषा बदलें?',
     languageChangeConfirmMessage: 'भाषा बदलने के लिए पृष्ठ को ताज़ा करना आवश्यक है। जारी रखें?',
+    languageChangeSuccess: 'भाषा सफलतापूर्वक बदली गई।',
+    languageChangeError: 'भाषा बदलने में विफल। कृपया फिर से प्रयास करें।',
+    themeChangeSuccess: 'थीम सफलतापूर्वक बदली गई।',
     daemon: {
         status: {
             ok: 'ठीक है',
             hasWarnings: 'चेतावनियां हैं',
             hasErrors: 'त्रुटियां हैं',
-            haswarnings: 'चेतावनियां हैं',
-            haserrors: 'त्रुटियां हैं',
         },
         title: 'डेमॉन',
         daemonErrors: 'डेमॉन त्रुटियां',
@@ -443,7 +444,7 @@ export default {
             detectionIssues: 'पहचान समस्याएं? देखें',
             hardwareSupportDocs: 'हार्डवेयर समर्थन दस्तावेज़ीकरण',
             selectDevices:
-                'अक्षम या सक्षम करने के लिए उपकरण और सेंसर चुनें।\nअप्रयुक्त उपकरणों और सेंसरों को अक्षम करना अत्यधिक अनुशंसित है।',
+                'अक्षम या सक्षम करने के लिए उपकरण और सेंसर चुनें।\nअप्रयुक्त उपकरणों और सेंसरों को अक्षम करना अत्यधिक\nअनुशंसित है।',
             devicesAndSensors: 'उपकरण और सेंसर',
             apply: 'लागू करें',
             applySettingsAndReload: 'सेटिंग्स लागू करें और रीलोड करें',

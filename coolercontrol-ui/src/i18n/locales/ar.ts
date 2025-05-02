@@ -258,7 +258,11 @@ export default {
             colorPickerConfirm: 'تأكيد',
             colorPickerCancel: 'إلغاء',
             languageChangeConfirm: 'تغيير اللغة؟',
-            languageChangeConfirmMessage: 'تغيير اللغة يتطلب تحديث الصفحة. هل تريد المتابعة؟',
+            languageChangeConfirmMessage:
+                'هل أنت متأكد أنك تريد المتابعة؟ إذا لم تظهر بعض عناصر الواجهة بشكل صحيح، يرجى تحديث الصفحة يدويًا.',
+            languageChangeSuccess: 'تم تغيير اللغة بنجاح.',
+            languageChangeError: 'فشل في تغيير اللغة. يرجى المحاولة مرة أخرى.',
+            themeChangeSuccess: 'تم تغيير السمة بنجاح.',
         },
         menu: {
             system: 'النظام',
@@ -761,11 +765,6 @@ export default {
             logoutSuccessful: 'لقد قمت بتسجيل الخروج بنجاح.',
             unauthorizedAction: 'تحتاج إلى تسجيل الدخول لإكمال هذا الإجراء',
         },
-        device: {
-            processInterrupted: ' - تمت مقاطعة العملية.',
-            modelSetSuccessfully: 'تم تعيين نوع طراز الجهاز بنجاح.',
-            modelSetRestartInProgress: 'تم تعيين نوع طراز الجهاز بنجاح. إعادة التشغيل قيد التقدم.',
-        },
         device_store: {
             unauthorized: {
                 summary: 'غير مصرح',
@@ -810,11 +809,9 @@ export default {
     },
     daemon: {
         status: {
-            ok: 'موافق',
-            hasWarnings: 'يوجد تحذيرات',
-            hasErrors: 'يوجد أخطاء',
-            haswarnings: 'يوجد تحذيرات',
-            haserrors: 'يوجد أخطاء',
+            ok: 'حسنًا',
+            hasWarnings: 'لديه تحذيرات',
+            hasErrors: 'لديه أخطاء',
         },
     },
     models: {

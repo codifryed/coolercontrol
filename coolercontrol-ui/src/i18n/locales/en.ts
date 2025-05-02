@@ -259,7 +259,11 @@ export default {
             colorPickerConfirm: 'Confirm',
             colorPickerCancel: 'Cancel',
             languageChangeConfirm: 'Change language?',
-            languageChangeConfirmMessage: 'Changing language requires a page refresh. Continue?',
+            languageChangeConfirmMessage:
+                'Are you sure you want to continue? If some interface elements are not displayed correctly, please refresh the page manually.',
+            languageChangeSuccess: 'Language switched successfully.',
+            languageChangeError: 'Failed to change language. Please try again.',
+            themeChangeSuccess: 'Theme switched successfully.',
         },
         menu: {
             system: 'System',
@@ -767,18 +771,11 @@ export default {
         logoutSuccessful: 'You have successfully logged out.',
         unauthorizedAction: 'You need to be logged in to complete this action',
     },
-    device: {
-        processInterrupted: ' - Process interrupted.',
-        modelSetSuccessfully: 'Device Model type successfully set.',
-        modelSetRestartInProgress: 'Device Model type successfully set. Restart in progress.',
-    },
     daemon: {
         status: {
             ok: 'Ok',
             hasWarnings: 'Has Warnings',
             hasErrors: 'Has Errors',
-            haswarnings: 'Has Warnings',
-            haserrors: 'Has Errors',
         },
     },
     device_store: {

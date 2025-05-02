@@ -266,7 +266,10 @@ export default {
             colorPickerCancel: 'Abbrechen',
             languageChangeConfirm: 'Sprache ändern?',
             languageChangeConfirmMessage:
-                'Das Ändern der Sprache erfordert ein Neuladen der Seite. Fortfahren?',
+                'Sind Sie sicher, dass Sie fortfahren möchten? Wenn einige Oberflächenelemente nicht korrekt angezeigt werden, aktualisieren Sie bitte die Seite manuell.',
+            languageChangeSuccess: 'Sprache erfolgreich gewechselt.',
+            languageChangeError: 'Fehler beim Ändern der Sprache. Bitte versuchen Sie es erneut.',
+            themeChangeSuccess: 'Theme erfolgreich gewechselt.',
         },
         menu: {
             system: 'System',
@@ -639,8 +642,6 @@ export default {
             ok: 'Ok',
             hasWarnings: 'Hat Warnungen',
             hasErrors: 'Hat Fehler',
-            haswarnings: 'Hat Warnungen',
-            haserrors: 'Hat Fehler',
         },
     },
     components: {
@@ -795,12 +796,6 @@ export default {
         passwordSetSuccessfully: 'Neues Passwort erfolgreich gesetzt',
         logoutSuccessful: 'Sie haben sich erfolgreich abgemeldet.',
         unauthorizedAction: 'Sie müssen angemeldet sein, um diese Aktion abzuschließen',
-    },
-    device: {
-        processInterrupted: ' - Prozess unterbrochen.',
-        modelSetSuccessfully: 'Gerätemodelltyp erfolgreich festgelegt.',
-        modelSetRestartInProgress:
-            'Gerätemodelltyp erfolgreich festgelegt. Neustart wird durchgeführt.',
     },
     device_store: {
         unauthorized: {

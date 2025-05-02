@@ -249,7 +249,11 @@
             colorPickerConfirm: '确认',
             colorPickerCancel: '取消',
             languageChangeConfirm: '切换语言？',
-            languageChangeConfirmMessage: '切换语言需要刷新页面。是否继续？',
+            languageChangeConfirmMessage:
+                '确定要继续吗？\如果某些界面元素显示不完整，请手动刷新页面。',
+            languageChangeSuccess: '语言切换成功。',
+            languageChangeError: '语言切换失败。请重试。',
+            themeChangeSuccess: '主题风格切换成功',
         },
         menu: {
             system: '系统',
@@ -497,8 +501,6 @@
                 ok: '正常',
                 hasWarnings: '警告',
                 hasErrors: '错误',
-                haswarnings: '警告',
-                haserrors: '错误',
             },
         },
         functions: {
@@ -743,18 +745,11 @@
         logoutSuccessful: '您已成功退出登录',
         unauthorizedAction: '您需要登录才能完成此操作',
     },
-    device: {
-        processInterrupted: ' - 进程已中断。',
-        modelSetSuccessfully: '设备型号类型设置成功。',
-        modelSetRestartInProgress: '设备型号类型设置成功。正在重启。',
-    },
     daemon: {
         status: {
             ok: '正常',
             hasWarnings: '警告',
             hasErrors: '错误',
-            haswarnings: '警告',
-            haserrors: '错误',
         },
     },
     device_store: {
