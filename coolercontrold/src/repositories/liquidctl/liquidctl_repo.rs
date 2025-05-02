@@ -371,9 +371,9 @@ impl LiquidctlRepo {
                 .initialize_device(&device_data.type_index, Some(pump_mode))
                 .await
                 .map(|_| ()) // ignore successful result
-                .with_context(|| {
-                    format!(
-                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}",
+                .map_err(|err| {
+                    anyhow!(
+                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {} - {err}",
                         device_data.type_index, device_data.uid
                     )
                 })
@@ -389,9 +389,9 @@ impl LiquidctlRepo {
                 .initialize_device(&device_data.type_index, Some(pump_mode))
                 .await
                 .map(|_| ()) // ignore successful result
-                .with_context(|| {
-                    format!(
-                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}",
+                .map_err(|err| {
+                    anyhow!(
+                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {} - {err}",
                         device_data.type_index, device_data.uid
                     )
                 })
@@ -399,10 +399,11 @@ impl LiquidctlRepo {
             self.liqctld_client
                 .put_fixed_speed(&device_data.type_index, channel_name, fixed_speed)
                 .await
-                .with_context(|| {
-                    format!(
-                        "Setting fixed speed for LIQUIDCTL Device #{}: {}",
-                        device_data.type_index, device_data.uid
+                .map_err(|err| {
+                    anyhow!(
+                        "Setting fixed speed for LIQUIDCTL Device #{}: {} - {err}",
+                        device_data.type_index,
+                        device_data.uid
                     )
                 })
         }
@@ -436,10 +437,11 @@ impl LiquidctlRepo {
                 temperature_sensor,
             )
             .await
-            .with_context(|| {
-                format!(
-                    "Setting speed profile for LIQUIDCTL Device #{}: {}",
-                    device_data.type_index, device_data.uid
+            .map_err(|err| {
+                anyhow!(
+                    "Setting speed profile for LIQUIDCTL Device #{}: {} - {err}",
+                    device_data.type_index,
+                    device_data.uid
                 )
             })
     }
@@ -483,10 +485,11 @@ impl LiquidctlRepo {
                 direction,
             )
             .await
-            .with_context(|| {
-                format!(
-                    "Setting Lighting for LIQUIDCTL Device #{}: {}",
-                    device_data.type_index, device_data.uid
+            .map_err(|err| {
+                anyhow!(
+                    "Setting Lighting for LIQUIDCTL Device #{}: {} - {err}",
+                    device_data.type_index,
+                    device_data.uid
                 )
             })
     }
@@ -550,8 +553,8 @@ impl LiquidctlRepo {
                     Some(image_file.clone()),
                 )
                 .await
-                .with_context(|| {
-                    "Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details."
+                .map_err(|err| {
+                    anyhow!("Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details. - {err}")
                 })?;
             }
         } else if lcd_settings.mode == "liquid" {
@@ -563,8 +566,8 @@ impl LiquidctlRepo {
                 None,
             )
             .await
-            .with_context(|| {
-                "Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details."
+            .map_err(|err| {
+                anyhow!("Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details. - {err}")
             })?;
         }
         Ok(())
@@ -581,7 +584,9 @@ impl LiquidctlRepo {
         self.liqctld_client
             .put_screen(type_index, channel_name, mode, value)
             .await
-            .with_context(|| format!("Setting screen for LIQUIDCTL Device #{type_index}: {uid}"))
+            .map_err(|err| {
+                anyhow!("Setting screen for LIQUIDCTL Device #{type_index}: {uid} - {err}")
+            })
     }
 
     fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
