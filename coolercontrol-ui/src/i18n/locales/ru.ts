@@ -269,6 +269,9 @@ export default {
             languageChangeSuccess: 'Язык успешно изменен.',
             languageChangeError: 'Не удалось изменить язык. Пожалуйста, попробуйте снова.',
             themeChangeSuccess: 'Тема успешно изменена.',
+            entitiesBelowSensorsEnabledMessage: 'Элементы будут отображаться под датчиками.',
+            entitiesBelowSensorsDisabledMessage:
+                'Элементы больше не будут отображаться под датчиками.',
         },
         menu: {
             system: 'Система',

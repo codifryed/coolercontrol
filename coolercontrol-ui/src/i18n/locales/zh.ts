@@ -256,6 +256,8 @@
             languageChangeSuccess: '语言切换成功。',
             languageChangeError: '语言切换失败。请重试。',
             themeChangeSuccess: '主题风格切换成功',
+            entitiesBelowSensorsEnabledMessage: '实体将显示在传感器下方。',
+            entitiesBelowSensorsDisabledMessage: '实体将不再显示在传感器下方。',
         },
         menu: {
             system: '系统',

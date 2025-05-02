@@ -310,6 +310,8 @@ export default {
     languageChangeSuccess: 'भाषा सफलतापूर्वक बदली गई।',
     languageChangeError: 'भाषा बदलने में विफल। कृपया फिर से प्रयास करें।',
     themeChangeSuccess: 'थीम सफलतापूर्वक बदली गई।',
+    entitiesBelowSensorsEnabledMessage: 'अब संत्ताएँ सेंसर के नीचे प्रदर्शित होंगी।',
+    entitiesBelowSensorsDisabledMessage: 'अब संत्ताएँ सेंसर के नीचे प्रदर्शित नहीं होंगी।',
     daemon: {
         status: {
             ok: 'ठीक है',

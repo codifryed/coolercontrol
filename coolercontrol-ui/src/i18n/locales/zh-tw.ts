@@ -257,6 +257,8 @@ export default {
             languageChangeSuccess: '語言切換成功。',
             languageChangeError: '語言更改失敗。請重試。',
             themeChangeSuccess: '主題風格切換成功。',
+            entitiesBelowSensorsEnabledMessage: '實體將顯示在傳感器下方。',
+            entitiesBelowSensorsDisabledMessage: '實體將不再顯示在傳感器下方。',
         },
         menu: {
             system: '系統',

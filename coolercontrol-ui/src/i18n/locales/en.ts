@@ -265,6 +265,9 @@ export default {
             languageChangeSuccess: 'Language switched successfully.',
             languageChangeError: 'Failed to change language. Please try again.',
             themeChangeSuccess: 'Theme switched successfully.',
+            entitiesBelowSensorsEnabledMessage: 'Entities will now be displayed below sensors.',
+            entitiesBelowSensorsDisabledMessage:
+                'Entities will no longer be displayed below sensors.',
         },
         menu: {
             system: 'System',

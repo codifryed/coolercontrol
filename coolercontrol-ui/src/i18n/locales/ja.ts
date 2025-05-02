@@ -194,6 +194,9 @@ export default {
             languageChangeSuccess: '言語の切り替えに成功しました。',
             languageChangeError: '言語の変更に失敗しました。もう一度お試しください。',
             themeChangeSuccess: 'テーマの切り替えに成功しました。',
+            entitiesBelowSensorsEnabledMessage: 'エンティティはセンサーの下に表示されます。',
+            entitiesBelowSensorsDisabledMessage:
+                'エンティティはセンサーの下に表示されなくなります。',
             tooltips: {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',

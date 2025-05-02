@@ -272,6 +272,9 @@ export default {
             languageChangeSuccess: 'Sprache erfolgreich gewechselt.',
             languageChangeError: 'Fehler beim Ändern der Sprache. Bitte versuchen Sie es erneut.',
             themeChangeSuccess: 'Theme erfolgreich gewechselt.',
+            entitiesBelowSensorsEnabledMessage: 'Entitäten werden nun unter Sensoren angezeigt.',
+            entitiesBelowSensorsDisabledMessage:
+                'Entitäten werden nicht mehr unter Sensoren angezeigt.',
         },
         menu: {
             system: 'System',

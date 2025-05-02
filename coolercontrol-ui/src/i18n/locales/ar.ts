@@ -265,6 +265,8 @@ export default {
             languageChangeSuccess: 'تم تغيير اللغة بنجاح.',
             languageChangeError: 'فشل في تغيير اللغة. يرجى المحاولة مرة أخرى.',
             themeChangeSuccess: 'تم تغيير السمة بنجاح.',
+            entitiesBelowSensorsEnabledMessage: 'سيتم عرض الكيانات أسفل المستشعرات الآن.',
+            entitiesBelowSensorsDisabledMessage: 'لن يتم عرض الكيانات أسفل المستشعرات بعد الآن.',
         },
         menu: {
             system: 'النظام',

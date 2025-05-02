@@ -170,6 +170,10 @@ export default {
             liquidctlIntegration: 'Integração com Liquidctl',
             liquidctlDeviceInit: 'Inicialização de dispositivo Liquidctl',
             hideDuplicateDevices: 'Ocultar dispositivos duplicados',
+            entitiesBelowSensorsEnabledMessage:
+                'As entidades agora serão exibidas abaixo dos sensores.',
+            entitiesBelowSensorsDisabledMessage:
+                'As entidades não serão mais exibidas abaixo dos sensores.',
         },
         menu: {
             system: 'Sistema',
@@ -319,6 +323,9 @@ export default {
     languageChangeSuccess: 'Idioma alterado com sucesso.',
     languageChangeError: 'Falha ao alterar o idioma. Por favor, tente novamente.',
     themeChangeSuccess: 'Tema alterado com sucesso.',
+    entitiesBelowSensorsEnabledMessage: 'As entidades agora serão exibidas abaixo dos sensores.',
+    entitiesBelowSensorsDisabledMessage:
+        'As entidades não serão mais exibidas abaixo dos sensores.',
     views: {
         dashboard: {
             timeRange: 'Intervalo de Tempo',
