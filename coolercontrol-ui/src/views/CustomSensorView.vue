@@ -298,13 +298,13 @@ const changeSensorType = (event: ListboxChangeEvent): void => {
     if (event.value === null) {
         return // do not update on unselect
     }
-    selectedSensorType.value = event.value.value
+    selectedSensorType.value = event.value
 }
 const changeMixFunction = (event: ListboxChangeEvent): void => {
     if (event.value === null) {
         return // do not update on unselect
     }
-    selectedMixFunction.value = event.value.value
+    selectedMixFunction.value = event.value
 }
 
 const createNewDashboard = (): Dashboard => {

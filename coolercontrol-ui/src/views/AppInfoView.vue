@@ -228,11 +228,7 @@ onMounted(() => {
                         >&nbsp;- {{ t('views.appInfo.hardwareSupportDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
-                        <a
-                            target="_blank"
-                            href="https://gitlab.com/coolercontrol/coolercontrol/-/issues/new"
-                            class="text-accent"
-                        >
+                        <a target="_blank" :href="healthCheck.links.repository" class="text-accent">
                             <div class="flex flex-row items-center">
                                 <svg-icon
                                     type="mdi"
@@ -240,9 +236,17 @@ onMounted(() => {
                                     :path="mdiGit"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                {{ t('views.appInfo.openIssue') }}
+                                {{ t('views.appInfo.gitRepository') }}
                             </div> </a
-                        >&nbsp;- {{ t('views.appInfo.openIssueDesc') }}
+                        >&nbsp;- {{ t('views.appInfo.gitRepositoryDesc') }}
+                    </p>
+                    <p class="mt-4 text-wrap flex flex-row items-center">
+                        <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
+                            <div class="flex flex-row items-center">
+                                <span class="mr-2 pi pi-discord text-[2.0rem]" />
+                                Discord
+                            </div> </a
+                        >&nbsp;- {{ t('views.appInfo.discordDesc') }}
                     </p>
                 </div>
             </div>
