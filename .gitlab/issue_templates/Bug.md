@@ -9,13 +9,15 @@
 
 ## Description
 
-Describe the issue you are experiencing and steps needed to reproduce it.
+Describe the issue you are experiencing and the steps needed to reproduce it.
 
 ## Logs and/or Screenshots
 
-It's best to give us as much information as possible and we will often need enough log output to
-understand the context of the issue, rather than just a few error lines. Run the following and
-attach the output file to this Issue:
+Please use English as the UI language for screenshots and it's best to give us as much information
+as possible. We will often need enough log output to understand the context of the issue, rather
+than just a few error lines.
+
+Run the following and attach the output file to this Issue:
 
 ```bash
 journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n 10000 > ~/Documents/coolercontrol-daemons.log
