@@ -17,6 +17,7 @@
  */
 
 pub mod devices;
+mod drivetemp;
 pub mod fans;
 pub mod freqs;
 pub mod hwmon_repo;

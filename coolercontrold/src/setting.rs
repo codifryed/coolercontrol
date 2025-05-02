@@ -164,6 +164,7 @@ pub struct CoolerControlSettings {
     pub ipv6_address: Option<String>,
     pub compress: bool,
     pub poll_rate: f64,
+    pub drivetemp_suspend: bool,
 }
 
 /// General Device Settings for `CoolerControl`
