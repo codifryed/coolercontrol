@@ -280,7 +280,7 @@ impl LiquidctlRepo {
         for result in results {
             match result {
                 Ok(()) => {}
-                Err(err) => error!("Error getting initializing device: {}", err),
+                Err(err) => error!("Error getting initializing device: {err}"),
             }
         }
     }
@@ -310,7 +310,7 @@ impl LiquidctlRepo {
         for result in results {
             match result {
                 Ok(()) => {}
-                Err(err) => error!("Error reinitializing device: {}", err),
+                Err(err) => error!("Error reinitializing device: {err}"),
             }
         }
     }
@@ -648,7 +648,7 @@ impl LiquidctlRepo {
                         .set_screen(&cached_device_data, "lcd", &lcd_settings)
                         .await
                     {
-                        error!("Error setting LCD screen to default upon shutdown: {}", err);
+                        error!("Error setting LCD screen to default upon shutdown: {err}");
                     };
                 }
             }
@@ -684,7 +684,7 @@ impl Repository for LiquidctlRepo {
             init_devices.insert(uid.clone(), device.borrow().clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Liquidctl Devices: {:?}", init_devices);
+            info!("Initialized Liquidctl Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices
                 .iter()
@@ -737,7 +737,7 @@ impl Repository for LiquidctlRepo {
                         }
                         // this leaves the previous status in the map as backup for temporary issues
                         Err(err) => {
-                            error!("Error getting status from device #{}: {}", device_id, err);
+                            error!("Error getting status from device #{device_id}: {err}");
                         }
                     }
                 });
@@ -891,7 +891,7 @@ impl Repository for LiquidctlRepo {
         let no_init = match self.config.get_settings() {
             Ok(settings) => settings.no_init,
             Err(err) => {
-                error!("Error reading settings: {}", err);
+                error!("Error reading settings: {err}");
                 false
             }
         };

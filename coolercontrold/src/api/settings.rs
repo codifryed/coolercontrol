@@ -112,7 +112,7 @@ pub async fn update_ui(
 pub struct CoolerControlSettingsDto {
     apply_on_boot: Option<bool>,
     no_init: Option<bool>,
-    startup_delay: Option<u8>,
+    startup_delay: Option<u16>,
     thinkpad_full_speed: Option<bool>,
     liquidctl_integration: Option<bool>,
     hide_duplicate_devices: Option<bool>,
@@ -134,7 +134,7 @@ impl CoolerControlSettingsDto {
             current_settings.no_init
         };
         let startup_delay = if let Some(delay) = self.startup_delay {
-            Duration::from_secs(u64::from(delay.clamp(0, 10)))
+            Duration::from_secs(u64::from(delay.clamp(0, 30)))
         } else {
             current_settings.startup_delay
         };
@@ -192,7 +192,7 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
         Self {
             apply_on_boot: Some(settings.apply_on_boot),
             no_init: Some(settings.no_init),
-            startup_delay: Some(settings.startup_delay.as_secs() as u8),
+            startup_delay: Some(settings.startup_delay.as_secs() as u16),
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
             liquidctl_integration: Some(settings.liquidctl_integration),
