@@ -9,8 +9,8 @@ To make quality cooling control on Linux accessible to everyone.
 ## Maintainability
 
 CC is maintained by a small core group of developers who volunteer their free time. This means that
-for the project to remain sustainable, it cannot support a very large feature set nor features that
-require significant maintenance. This is taken into account for many things. For example, "Nice to
+for the project to remain sustainable, it cannot support a bloated feature set nor features that
+require excessive maintenance. This is taken into account for many things. For example, "Nice to
 have" feature priority will be lower than more essential/impactful features.
 
 ## Device Support
