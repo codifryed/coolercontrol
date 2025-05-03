@@ -327,10 +327,18 @@ impl SettingsController {
             return Err(anyhow!("All Member Profile Functions should be present"));
         }
         if speed_options.fixed_enabled {
-            self.graph_commander
-                .clear_channel_setting(device_uid, channel_name);
+            // This could potentially take significant time for slow devices:
             repo.apply_setting_manual_control(device_uid, channel_name)
-                .await?;
+                .await
+                .inspect_err(|err| {
+                    error!(
+                        "Failed to enable manual control for Mix Profile: {}. \
+                        Profile scheduling has been disabled for {channel_name} | {err}",
+                        profile.name
+                    );
+                    self.graph_commander
+                        .clear_channel_setting(device_uid, channel_name);
+                })?;
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
         } else {

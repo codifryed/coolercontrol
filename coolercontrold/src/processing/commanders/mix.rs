@@ -23,6 +23,7 @@ use std::ops::{Div, Not};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
+use log::error;
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 
@@ -188,11 +189,19 @@ impl MixProfileCommander {
         // All the member profiles have been processed already by the graph_commander:
         let requested_duties = self.graph_commander.process_output_cache.borrow();
         let last_applied_duties = self.all_last_applied_duties.borrow();
-        for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
+        'mix: for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
             let mut member_values = Vec::with_capacity(last_applied_duties.len());
             let mut members_have_no_output = true;
             for member_profile_uid in &mix_profile.member_profile_uids {
-                let output = &requested_duties[member_profile_uid];
+                let Some(output) = requested_duties.get(member_profile_uid) else {
+                    error!(
+                        "Mix Profile calculation for {} skipped because of missing output duty ",
+                        mix_profile.profile_uid
+                    );
+                    // In very rare cases in the past, this was possible due to a race condition.
+                    // This should no longer happen, but we avoid the panic anyway.
+                    continue 'mix;
+                };
                 let duty_value_for_calculation = if let Some(duty) = output {
                     members_have_no_output = false;
                     duty
