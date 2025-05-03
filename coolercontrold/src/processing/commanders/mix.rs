@@ -52,7 +52,7 @@ impl MixProfileCommander {
         }
     }
 
-    pub async fn schedule_setting(
+    pub fn schedule_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -79,8 +79,7 @@ impl MixProfileCommander {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
         };
-        self.prepare_member_profiles(&device_channel, member_profiles)
-            .await?;
+        self.prepare_member_profiles(&device_channel, member_profiles)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
@@ -95,7 +94,7 @@ impl MixProfileCommander {
         Ok(())
     }
 
-    async fn prepare_member_profiles(
+    fn prepare_member_profiles(
         &self,
         device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
@@ -103,8 +102,7 @@ impl MixProfileCommander {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
             self.graph_commander
-                .schedule_setting(device_channel.clone(), &member_profile)
-                .await?;
+                .schedule_setting(device_channel.clone(), &member_profile)?;
             if self
                 .all_last_applied_duties
                 .borrow()

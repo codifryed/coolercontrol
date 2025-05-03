@@ -267,15 +267,13 @@ impl SettingsController {
         {
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await?;
-            self.graph_commander
-                .schedule_setting(
-                    DeviceChannelProfileSetting::Graph {
-                        device_uid: device_uid.clone(),
-                        channel_name: channel_name.to_string(),
-                    },
-                    profile,
-                )
-                .await
+            self.graph_commander.schedule_setting(
+                DeviceChannelProfileSetting::Graph {
+                    device_uid: device_uid.clone(),
+                    channel_name: channel_name.to_string(),
+                },
+                profile,
+            )
         } else {
             Err(anyhow!(
                 "Speed Profiles not enabled for this device: {device_uid}"
@@ -335,7 +333,6 @@ impl SettingsController {
                 .await?;
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
-                .await
         } else {
             Err(anyhow!(
                 "Device Control not enabled for this device: {device_uid}"

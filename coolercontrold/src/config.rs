@@ -36,9 +36,9 @@ use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdCarouselSettings,
-    LcdSettings, LightingSettings, Profile, ProfileMixFunctionType, ProfileType, Setting,
-    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
+    LcdCarouselSettings, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
+    ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -1282,6 +1282,26 @@ impl Config {
                 .for_each(|f| f.name = "Default Function".to_string());
         }
         Ok(functions)
+    }
+
+    /// Retrieves the function if present in the config.
+    /// This differs from `get_function` in that it should only be used when a specific function
+    /// is needed and additionally requires a non-async function.
+    pub fn get_function(&self, function_uid: &FunctionUID) -> Result<Function> {
+        self.get_current_functions()?
+            .into_iter()
+            .find_map(|mut f| {
+                if &f.uid == function_uid {
+                    if f.uid == *DEFAULT_FUNCTION_UID && &f.name == "Identity" {
+                        // update original default function name
+                        f.name = "Default Function".to_string();
+                    }
+                    Some(f)
+                } else {
+                    None
+                }
+            })
+            .ok_or(anyhow!("Function with UID: {function_uid} not found"))
     }
 
     #[allow(clippy::too_many_lines)]
