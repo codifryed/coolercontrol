@@ -338,8 +338,7 @@ impl SettingsController {
                 .await
         } else {
             Err(anyhow!(
-                "Device Control not enabled for this device: {}",
-                device_uid
+                "Device Control not enabled for this device: {device_uid}"
             ))
         }
     }
@@ -622,7 +621,7 @@ impl SettingsController {
             .inspect_err(|err| error!("Error attempting to enable ThinkPad Fan Control: {err}"))
     }
 
-    /// This function finds out if the give Profile UID is in use, and if so updates
+    /// This function finds out if the give Profile UID is in use, and if so, updates
     /// the settings for those devices.
     pub async fn profile_updated(&self, profile_uid: &ProfileUID) {
         let affected_mix_profiles = self
@@ -644,6 +643,7 @@ impl SettingsController {
                     }
                     let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
                     if setting_profile_uid == profile_uid {
+                        // If this device channel setting contains the updated Profile:
                         self.set_profile(device_uid, &setting.channel_name, profile_uid)
                             .await
                             .ok();
@@ -651,6 +651,7 @@ impl SettingsController {
                         .iter()
                         .any(|p| &p.uid == setting_profile_uid)
                     {
+                        // otherwise, IF the device channel setting contains an affected Mix Profile
                         self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
                             .await
                             .ok();

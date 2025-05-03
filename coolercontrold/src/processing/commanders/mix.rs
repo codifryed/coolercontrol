@@ -84,7 +84,7 @@ impl MixProfileCommander {
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
-            // internal settings are up-to-date
+            // internal settings are up to date
             existing_device_channels.insert(device_channel);
             settings_lock.insert(Rc::new(normalized_mix_setting), existing_device_channels);
         } else {
@@ -160,7 +160,7 @@ impl MixProfileCommander {
     }
 
     /// Updates the last applied duties for all profiles. This is done somewhat proactively so
-    /// that when a member profile is first used it has a proper last applied duty to compare to.
+    /// that when a member profile is first used, it has a proper last applied duty to compare to.
     fn update_last_applied_duties(&self) {
         let mut last_applied_duties = self.all_last_applied_duties.borrow_mut();
         let requested_duties = self.graph_commander.process_output_cache.borrow();
@@ -171,7 +171,7 @@ impl MixProfileCommander {
             if last_applied_duties.contains_key(profile_uid) {
                 if let Some(d) = last_applied_duties.get_mut(profile_uid) {
                     *d = *duty;
-                };
+                }
             } else {
                 last_applied_duties.insert(profile_uid.clone(), *duty);
             }
