@@ -158,6 +158,7 @@ impl GpuAMD {
                     model,
                     u_id,
                     channels,
+                    block_dev_path: None,
                 },
                 device_path,
                 fan_curve_info,

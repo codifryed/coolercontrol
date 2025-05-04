@@ -23,6 +23,7 @@ use std::ops::{Div, Not};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
+use log::error;
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +53,7 @@ impl MixProfileCommander {
         }
     }
 
-    pub async fn schedule_setting(
+    pub fn schedule_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -79,12 +80,11 @@ impl MixProfileCommander {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
         };
-        self.prepare_member_profiles(&device_channel, member_profiles)
-            .await?;
+        self.prepare_member_profiles(&device_channel, member_profiles)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
-            // internal settings are up-to-date
+            // internal settings are up to date
             existing_device_channels.insert(device_channel);
             settings_lock.insert(Rc::new(normalized_mix_setting), existing_device_channels);
         } else {
@@ -95,7 +95,7 @@ impl MixProfileCommander {
         Ok(())
     }
 
-    async fn prepare_member_profiles(
+    fn prepare_member_profiles(
         &self,
         device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
@@ -103,8 +103,7 @@ impl MixProfileCommander {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
             self.graph_commander
-                .schedule_setting(device_channel.clone(), &member_profile)
-                .await?;
+                .schedule_setting(device_channel.clone(), &member_profile)?;
             if self
                 .all_last_applied_duties
                 .borrow()
@@ -160,7 +159,7 @@ impl MixProfileCommander {
     }
 
     /// Updates the last applied duties for all profiles. This is done somewhat proactively so
-    /// that when a member profile is first used it has a proper last applied duty to compare to.
+    /// that when a member profile is first used, it has a proper last applied duty to compare to.
     fn update_last_applied_duties(&self) {
         let mut last_applied_duties = self.all_last_applied_duties.borrow_mut();
         let requested_duties = self.graph_commander.process_output_cache.borrow();
@@ -171,7 +170,7 @@ impl MixProfileCommander {
             if last_applied_duties.contains_key(profile_uid) {
                 if let Some(d) = last_applied_duties.get_mut(profile_uid) {
                     *d = *duty;
-                };
+                }
             } else {
                 last_applied_duties.insert(profile_uid.clone(), *duty);
             }
@@ -190,11 +189,19 @@ impl MixProfileCommander {
         // All the member profiles have been processed already by the graph_commander:
         let requested_duties = self.graph_commander.process_output_cache.borrow();
         let last_applied_duties = self.all_last_applied_duties.borrow();
-        for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
+        'mix: for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
             let mut member_values = Vec::with_capacity(last_applied_duties.len());
             let mut members_have_no_output = true;
             for member_profile_uid in &mix_profile.member_profile_uids {
-                let output = &requested_duties[member_profile_uid];
+                let Some(output) = requested_duties.get(member_profile_uid) else {
+                    error!(
+                        "Mix Profile calculation for {} skipped because of missing output duty ",
+                        mix_profile.profile_uid
+                    );
+                    // In very rare cases in the past, this was possible due to a race condition.
+                    // This should no longer happen, but we avoid the panic anyway.
+                    continue 'mix;
+                };
                 let duty_value_for_calculation = if let Some(duty) = output {
                     members_have_no_output = false;
                     duty

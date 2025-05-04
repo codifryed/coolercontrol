@@ -31,6 +31,7 @@ export class CoolerControlSettingsDTO {
     liquidctl_integration: boolean = true
     compress: boolean = false
     poll_rate: number = 1.0
+    drivetemp_suspend: boolean = false
 }
 
 /**

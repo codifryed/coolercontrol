@@ -7,8 +7,8 @@ one.
 1. Update Changelog
 
    1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
-   2. Add new version
-   3. Add needed subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
+   2. Add a new version
+   3. Add necessary subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
       Updates
    4. Format changelog appropriately
 
@@ -25,7 +25,7 @@ one.
       1. Version near the top
       2. Changelog at the bottom
    2. Update `packaging/debian/changelog`
-      1. Add whole new section at the beginning with top version and changelog entry
+      1. Add a whole new section at the beginning with top version and changelog entry
 
 4. Create Release Tag and Commit and Build Release Artifacts
 
@@ -45,9 +45,9 @@ one.
 
 5. Update OpenAPI specification
 
-   1. Update locally running daemon with new version: `make dev-build && make dev-install`
+   1. Update locally running daemon with a new version: `make dev-build && make dev-install`
    2. Run `cd openapi;./update.sh`
-   3. Commit new file to repo.
+   3. Commit a new file to repo.
    4. Update Website with new `openapi.spec` file.
 
 6. NixOS Release

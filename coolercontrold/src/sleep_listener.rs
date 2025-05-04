@@ -71,10 +71,10 @@ impl<'s> SleepListener {
                         let body = msg.body();
                         let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
                         if to_sleep {
-                            info!("System is going to sleep");
+                            info!("Received message that system is going to sleep.");
                             preparing_to_sleep.set(true);
                         } else {
-                            info!("System is waking from sleep");
+                            info!("Received message that system is waking from sleep");
                             resuming.set(true);
                         }
                     },

@@ -542,6 +542,7 @@ impl CpuRepo {
                     model,
                     u_id,
                     channels,
+                    block_dev_path: None,
                 };
                 hwmon_devices.insert(physical_id, hwmon_driver_info);
                 if num_cpu_devices_left_to_find > 1 {

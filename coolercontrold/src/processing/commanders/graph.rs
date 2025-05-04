@@ -82,7 +82,7 @@ impl GraphProfileCommander {
     }
 
     /// This is called on both the initial setting of Settings and when a Profile is updated
-    pub async fn schedule_setting(
+    pub fn schedule_setting(
         &self,
         device_channel: DeviceChannelProfileSetting,
         profile: &Profile,
@@ -92,13 +92,11 @@ impl GraphProfileCommander {
                 "Only Graph Profiles are supported for scheduling in the GraphProfileCommander"
             ));
         }
-        let normalized_profile_setting = self
-            .normalize_profile_setting(
-                device_channel.device_uid(),
-                device_channel.channel_name(),
-                profile,
-            )
-            .await?;
+        let normalized_profile_setting = self.normalize_profile_setting(
+            device_channel.device_uid(),
+            device_channel.channel_name(),
+            profile,
+        )?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) =
             settings_lock.remove(&normalized_profile_setting)
@@ -254,7 +252,7 @@ impl GraphProfileCommander {
         }
     }
 
-    async fn normalize_profile_setting(
+    fn normalize_profile_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -277,7 +275,7 @@ impl GraphProfileCommander {
             })?;
         let max_temp = f64::from(temp_source_device.borrow().info.temp_max);
         let max_duty = self.get_max_device_duty(device_uid, channel_name)?;
-        let function = self.get_profiles_function(&profile.function_uid).await?;
+        let function = self.get_profiles_function(&profile.function_uid)?;
         let normalized_speed_profile =
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
         let poll_rate = self.config.get_settings()?.poll_rate;
@@ -311,16 +309,7 @@ impl GraphProfileCommander {
         Ok(max_duty)
     }
 
-    async fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {
-        let function = self
-            .config
-            .get_functions()
-            .await?
-            .into_iter()
-            .find(|fun| &fun.uid == function_uid)
-            .with_context(|| {
-                "Function must be present in list of functions to schedule speed settings"
-            })?;
-        Ok(function)
+    fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {
+        self.config.get_function(function_uid)
     }
 }

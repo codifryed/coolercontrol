@@ -869,7 +869,7 @@ onUnmounted(() => {
                                             v-model="settingsStore.ccSettings.startup_delay"
                                             show-buttons
                                             :min="1"
-                                            :max="10"
+                                            :max="30"
                                             :suffix="` ${t('common.secondAbbr')}`"
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
@@ -1036,6 +1036,38 @@ onUnmounted(() => {
                                             :disabled="
                                                 !settingsStore.ccSettings.liquidctl_integration
                                             "
+                                            size="large"
+                                            @change="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
+                                        'SSDs and HDDs in particular can spin down and enter a low power state.' +
+                                        '\nThis option, when enabled and the drive supports it, will report drive temperatures' +
+                                        '\nas 0°C when spun down so that fan Profiles can be adjusted accordingly.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers an automatic daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestart"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">Drive Power State</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.drivetemp_suspend"
                                             size="large"
                                             @change="applyGenericDaemonChange"
                                         />

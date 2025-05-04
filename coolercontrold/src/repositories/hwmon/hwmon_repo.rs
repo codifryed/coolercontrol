@@ -22,13 +22,13 @@ use crate::device::{
     SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
-use crate::repositories::hwmon::{devices, fans, power, temps};
+use crate::repositories::hwmon::{devices, drivetemp, fans, power, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, log, trace};
+use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -95,6 +95,9 @@ pub struct HwmonDriverInfo {
     pub model: Option<String>,
     pub u_id: UID,
     pub channels: Vec<HwmonChannelInfo>,
+    /// this is used specifically for the `drivetemp` module,
+    /// which has an associated block device path if found.
+    pub block_dev_path: Option<PathBuf>,
 }
 
 /// A Repository for `HWMon` Devices
@@ -212,10 +215,7 @@ impl HwmonRepo {
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    HwmonChannelType::Temp
-                    | HwmonChannelType::Load
-                    | HwmonChannelType::Freq
-                    | HwmonChannelType::PowerCap => continue,
+                    _ => (), // other channel types are handled differently or don't have info
                 }
             }
             let device_info = DeviceInfo {
@@ -365,7 +365,7 @@ impl Repository for HwmonRepo {
         }
         debug!("Detected HWMon device paths: {base_paths:?}");
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
-        let hide_duplicate_devices = self.config.get_settings()?.hide_duplicate_devices;
+        let settings = self.config.get_settings()?;
         for path in base_paths {
             debug!("Processing HWMon device path: {path:?}");
             let device_name = devices::get_device_name(&path).await;
@@ -373,7 +373,7 @@ impl Repository for HwmonRepo {
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
                 continue;
             }
-            if hide_duplicate_devices && self.path_matches_liquidctl_device(&path) {
+            if settings.hide_duplicate_devices && self.path_matches_liquidctl_device(&path) {
                 info!(
                     "Skipping HWMon detected device: {device_name} due to an existing \
                     duplicate liquidctl device"
@@ -426,6 +426,13 @@ impl Repository for HwmonRepo {
                 debug!("No fans, temps, or power detected under {path:?}, skipping.");
                 continue;
             }
+            let block_dev_path = if device_name == DRIVETEMP && settings.drivetemp_suspend {
+                drivetemp::get_verified_block_device_path(&path)
+                    .inspect_err(|err| warn!("Error getting block device path: {err}"))
+                    .ok()
+            } else {
+                None
+            };
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -437,6 +444,7 @@ impl Repository for HwmonRepo {
                 model,
                 u_id,
                 channels,
+                block_dev_path,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -504,7 +512,11 @@ impl Repository for HwmonRepo {
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
                             let mut channel_statuses = fans::extract_fan_statuses(driver).await;
                             channel_statuses.extend(power::extract_power_status(driver).await);
-                            let temp_statuses = temps::extract_temp_statuses(driver).await;
+                            let temp_statuses = if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
+                                drivetemp::default_suspended_temps(driver)
+                            } else {
+                                temps::extract_temp_statuses(driver).await
+                            };
                             self.preloaded_statuses
                                 .borrow_mut()
                                 .insert(type_index, (channel_statuses, temp_statuses));

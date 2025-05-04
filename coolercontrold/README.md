@@ -5,8 +5,8 @@ is the main daemon containing the core logic for interfacing with devices, and i
 communication and data management and processing, additionally connecting to the
 `coolercontrol-liqctld` daemon for liquidctl supported devices.
 
-It has an REST API that services client programs, such as the Desktop Application and Web UI.
-Additionally the Web UI is embedded in the daemon for access over a local browser without the need
+It has a REST API that services client programs, such as the Desktop Application and Web UI.
+Additionally, the Web UI is embedded in the daemon for access over a local browser without the need
 for any additional package.
 
 Note that the API is not meant to be exposed over a publicly available network interface. Doing so
@@ -37,7 +37,7 @@ while still delivering a consistent data stream and cooling device control.
 
 Using asynchronous concurrency enables this application to handle often-unforeseeable device
 communication delays and poll device statuses independently, without the additional overhead and
-complexity needed for a multi-threaded shared-worker runtime. Since most of the load of the
+complexity needed for a multithreaded shared-worker runtime. Since most of the load of the
 application is sysfs IO, the single-threaded asynchronous concurrency model fits this well. As a
 Linux only application, io_uring is a possible alternative to the standard epoll methods being used
 currently, and is something we might take advantage of in the future.
@@ -102,18 +102,23 @@ cargo build --locked --release
 ## Formatting
 
 CoolerControl uses [Trunk.io](https://github.com/trunk-io) to format all files for the entire
-repository.
+repository. The first time you run this, it may take a while as it downloads all the tools and
+formatters needed for the project.
 
-This will check if there are formatting issues:
+This will check if there are formatting or linting issues:
 
 ```bash
-cd .. && make ci-check
+# cd to repository root directory
+cd ..
+make ci-check
 ```
 
-This will auto-format all files:
+This will auto-format all files. Afterward, commit any changes:
 
 ```bash
-cd .. && make ci-fmt
+# cd to repository root directory
+cd ..
+make ci-fmt
 ```
 
 **Alternatively:**  

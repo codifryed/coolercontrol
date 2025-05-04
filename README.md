@@ -78,7 +78,7 @@ CoolerControl is made up of several sub-packages:
 
 1. `coolercontrold` _(required)_ - The system service that handles controlling your hardware.
 2. `coolercontrol-liqctld` _(optional)_ - Service integration for `liquidctl` device support (AIOs,
-   USB fan hubs, etc).
+   USB fan hubs, etc.).
 3. `coolercontrol` _(optional)_ - the standalone Desktop Application. _(alternatively you can access
    the [Web UI](http://localhost:11987) in your browser)_
 
@@ -101,11 +101,11 @@ coverage:
   check out the official [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues)
   for tips on manually loading unofficial kernel modules for hardware that isn't supported
   out-of-the-box yet.
-- For newer motherboards and cards it's best to install the **latest available kernel** for your
+- For newer motherboards and cards, it's best to install the **latest available kernel** for your
   distribution which includes the latest Hwmon drivers and kernel modules.
 - Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
   of support for USB devices like fan hubs and AIOs.
-- NVidia GPUs - Fan control has been tested working on most cards with the NVidia proprietary
+- Nvidia GPUs - Fan control has been tested working on most cards with the Nvidia proprietary
   drivers. CoolerControl **automatically** uses `NVML` and the CLI tools `nvidia-settings` and
   `nvidia-smi` as a fallback.
 - AMD GPUs
@@ -124,8 +124,8 @@ coverage:
   **but not all**. If your laptop has a hwmon kernel driver, then CoolerControl will use it
   automatically. Otherwise, fan control for your laptop is most likely not supported.
 - In general, CoolerControl will detect supported devices and available capabilities
-  **automatically**. If needed the GUI will also prompt you for any additional steps. There are some
-  situations where the kernel drivers are not yet mature enough to offer full fan control
+  **automatically**. If needed, the GUI will also prompt you for any additional steps. There are
+  some situations where the kernel drivers are not yet mature enough to offer full fan control
   functionality, in which case you will get **an error** when attempting to apply changes.
 
 ## 🌐 [CoolerControl Website](https://docs.coolercontrol.org)
@@ -149,7 +149,7 @@ are invaluable to determining the cause. If you have a general question, please 
 
 If you have an idea or want to submit some changes, it's usually best to either
 [submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) first or get on
-[Discord](https://discord.gg/MbcgUFAfhV) to discuss it. For general information please read the
+[Discord](https://discord.gg/MbcgUFAfhV) to discuss it. For general information, please read the
 [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
 
 ## ⭐ Acknowledgements

@@ -36,9 +36,9 @@ use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdCarouselSettings,
-    LcdSettings, LightingSettings, Profile, ProfileMixFunctionType, ProfileType, Setting,
-    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
+    LcdCarouselSettings, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
+    ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -60,10 +60,7 @@ impl Config {
     pub async fn load_config_file() -> Result<Self> {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
-            info!(
-                "config directory doesn't exist. Attempting to create it: {}",
-                DEFAULT_CONFIG_DIR
-            );
+            info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
             cc_fs::create_dir_all(config_dir)?;
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
@@ -97,7 +94,7 @@ impl Config {
         let document = config_contents
             .parse::<DocumentMut>()
             .with_context(|| "Parsing configuration file")?;
-        trace!("Loaded configuration file: {}", document);
+        trace!("Loaded configuration file: {document}");
         let config = Self {
             path,
             path_ui,
@@ -107,25 +104,25 @@ impl Config {
         let _ = config.legacy690_ids()?;
         let _ = config.get_settings()?;
         if let Err(err) = config.get_all_devices_settings() {
-            error!("Configuration File contains invalid settings: {}", err);
+            error!("Configuration File contains invalid settings: {err}");
             return Err(err);
-        };
+        }
         if let Err(err) = config.get_all_cc_devices_settings() {
-            error!("Configuration File contains invalid settings: {}", err);
+            error!("Configuration File contains invalid settings: {err}");
             return Err(err);
-        };
+        }
         if let Err(err) = config.get_profiles().await {
-            error!("Configuration File contains invalid settings: {}", err);
+            error!("Configuration File contains invalid settings: {err}");
             return Err(err);
-        };
+        }
         if let Err(err) = config.get_functions().await {
-            error!("Configuration File contains invalid settings: {}", err);
+            error!("Configuration File contains invalid settings: {err}");
             return Err(err);
-        };
+        }
         if let Err(err) = config.get_custom_sensors() {
-            error!("Configuration File contains invalid settings: {}", err);
+            error!("Configuration File contains invalid settings: {err}");
             return Err(err);
-        };
+        }
         info!("Configuration file check successful");
         Ok(config)
     }
@@ -810,7 +807,11 @@ impl Config {
     }
 
     /// Returns `CoolerControl` general settings
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::too_many_lines
+    )]
     pub fn get_settings(&self) -> Result<CoolerControlSettings> {
         if let Some(settings_item) = self.document.borrow().get("settings") {
             let settings = settings_item
@@ -832,7 +833,7 @@ impl Config {
                     .unwrap_or(&Item::Value(Value::Integer(Formatted::new(2))))
                     .as_integer()
                     .with_context(|| "startup_delay should be an integer value")?
-                    .clamp(0, 10) as u64,
+                    .clamp(0, 30) as u64,
             );
             let thinkpad_full_speed = settings
                 .get("thinkpad_full_speed")
@@ -893,6 +894,11 @@ impl Config {
                 * 2.)
                 .round()
                 / 2.;
+            let drivetemp_suspend = settings
+                .get("drivetemp_suspend")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "drivetemp_suspend should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -905,6 +911,7 @@ impl Config {
                 ipv6_address,
                 compress,
                 poll_rate,
+                drivetemp_suspend,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -935,6 +942,9 @@ impl Config {
             Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));
         base_settings["poll_rate"] =
             Item::Value(Value::Float(Formatted::new(cc_settings.poll_rate)));
+        base_settings["drivetemp_suspend"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.drivetemp_suspend,
+        )));
     }
 
     /// This gets the `CoolerControl` settings for specific devices
@@ -1251,8 +1261,8 @@ impl Config {
      */
 
     /// Loads the current Function array from the config file.
-    /// If none are set it returns the initial default Function,
-    /// which should be always present.
+    /// If none are set, it returns the initial default Function,
+    /// which should always be present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
         let mut functions = self.get_current_functions()?;
         if functions
@@ -1272,6 +1282,26 @@ impl Config {
                 .for_each(|f| f.name = "Default Function".to_string());
         }
         Ok(functions)
+    }
+
+    /// Retrieves the function if present in the config.
+    /// This differs from `get_function` in that it should only be used when a specific function
+    /// is needed and additionally requires a non-async function.
+    pub fn get_function(&self, function_uid: &FunctionUID) -> Result<Function> {
+        self.get_current_functions()?
+            .into_iter()
+            .find_map(|mut f| {
+                if &f.uid == function_uid {
+                    if f.uid == *DEFAULT_FUNCTION_UID && &f.name == "Identity" {
+                        // update original default function name
+                        f.name = "Default Function".to_string();
+                    }
+                    Some(f)
+                } else {
+                    None
+                }
+            })
+            .ok_or(anyhow!("Function with UID: {function_uid} not found"))
     }
 
     #[allow(clippy::too_many_lines)]

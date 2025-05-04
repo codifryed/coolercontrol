@@ -166,7 +166,7 @@ pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
 ///   `"/sys/class/hwmon/hwmon0/device"`.
 /// * For a standard Linux style path, `device_path("/sys/class/hwmon/hwmon0")` would return
 ///   `"/sys/class/hwmon/hwmon0/device"`.
-fn device_path(base_path: &Path) -> PathBuf {
+pub fn device_path(base_path: &Path) -> PathBuf {
     // CentOS style path:
     if base_path.ends_with("device") {
         base_path.to_path_buf()
