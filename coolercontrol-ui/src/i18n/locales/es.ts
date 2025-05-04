@@ -104,7 +104,7 @@ export default {
         settings: {
             title: 'Configuración',
             general: 'General',
-            device: 'Dispositivos y sensores',
+            device: 'Dispositivos',
             daemon: 'Daemon',
             devices: {
                 devicesAndSensors: 'Dispositivos y sensores',
