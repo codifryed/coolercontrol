@@ -161,7 +161,7 @@ onMounted(async () => {
             >
                 <router-view v-slot="{ Component, route }">
                     <Suspense>
-                        <component :is="Component" :key="route.path" />
+                        <component :is="Component" :key="route.path + (route.query?.key ?? '')" />
                     </Suspense>
                 </router-view>
             </SplitterPanel>
