@@ -83,3 +83,7 @@ This will auto-format all files. Afterward, commit any changes:
 cd ..
 make ci-fmt
 ```
+
+## Internationalization / Languages
+
+See the [language guide and files here](src/i18n/README.md).
