@@ -106,8 +106,8 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .api_route(
             "/logout",
             post_with(auth::logout, |o| {
-                o.summary("Set Admin Password")
-                    .description("Stores a new Admin password.")
+                o.summary("Logout")
+                    .description("Logout and invalidate the current session.")
                     .tag("auth")
             }),
         )
