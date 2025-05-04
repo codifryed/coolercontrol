@@ -855,8 +855,8 @@ export default {
                 exponentialMovingAvg: 'Exponential Moving Average',
             },
             mixFunctionType: {
-                min: 'Minimum',
-                max: 'Maximum',
+                min: 'Min',
+                max: 'Max',
                 avg: 'Average',
             },
         },
