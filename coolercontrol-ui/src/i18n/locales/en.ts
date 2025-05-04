@@ -43,7 +43,7 @@ export default {
         overview: 'Overview',
         login: 'Login',
         logout: 'Logout',
-        temperature: 'Temperature',
+        temperature: 'Temp',
         duty: 'Duty',
         stay: 'Stay',
         discard: 'Discard',
