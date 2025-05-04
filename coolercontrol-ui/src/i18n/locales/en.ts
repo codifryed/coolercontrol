@@ -44,6 +44,7 @@ export default {
         login: 'Login',
         logout: 'Logout',
         temperature: 'Temperature',
+        duty: 'Duty',
         stay: 'Stay',
         discard: 'Discard',
         blankNameResetDefault: 'A blank name will reset it to the system default.',
