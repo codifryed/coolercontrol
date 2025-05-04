@@ -574,18 +574,6 @@ onUnmounted(() => {
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
-                                        <div
-                                            class="float-left py-1"
-                                            v-tooltip.top="
-                                                t('layout.settings.tooltips.triggersUIRestart')
-                                            "
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestart"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
                                         <div class="text-right float-right">
                                             {{ t('layout.settings.themeStyle') }}
                                         </div>
