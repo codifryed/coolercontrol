@@ -1382,7 +1382,7 @@ onUnmounted(() => {
                     option-label="label"
                     option-value="value"
                     :placeholder="t('views.profiles.mixFunction')"
-                    class="w-20 mr-3"
+                    class="w-full max-w-48 mr-3"
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"

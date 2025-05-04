@@ -43,7 +43,8 @@ export default {
         overview: 'Overview',
         login: 'Login',
         logout: 'Logout',
-        temperature: 'Temperature',
+        temperature: 'Temp',
+        duty: 'Duty',
         stay: 'Stay',
         discard: 'Discard',
         blankNameResetDefault: 'A blank name will reset it to the system default.',
@@ -99,7 +100,9 @@ export default {
         settings: {
             title: 'Settings',
             general: 'General',
-            device: 'Devices and Sensors',
+            device: 'Devices',
+            daemon: 'Daemon',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'Devices and Sensors',
                 detectionIssues: 'Detection Issues? See the',
@@ -203,7 +206,7 @@ export default {
                 thinkpadFanControl:
                     'This is a helper to enable ThinkPad ACPI Fan Control.\nFan control operations are disabled by default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks to your hardware.\nProceed at your own risk.',
                 thinkpadFullSpeed:
-                    'For Thinkpad Laptops this enables Full-Speed mode.\nThis allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear.\nUse with caution.',
+                    'For ThinkPad Laptops this enables Full-Speed mode.\nThis allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear.\nUse with caution.',
                 applySettingsOnStartup:
                     'Automatically apply settings on daemon startup and when waking from sleep',
                 deviceDelayAtStartup:
@@ -236,7 +239,7 @@ export default {
                 thinkPadFanControl:
                     'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks to your hardware. Proceed at your own risk.',
                 thinkPadFullSpeed:
-                    'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear. Use with caution.',
+                    'For ThinkPad Laptops this enables Full-Speed mode. This allows the fans to spin up to their absolute maximum when set to 100%, but will run the fans out of specification and cause increased wear. Use with caution.',
                 compress:
                     'Enable response compression to reduce API payload size, but note that this will increase CPU usage.',
                 liquidctlNoInit:
@@ -386,7 +389,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Time Range',
-            minutes: 'Minutes',
+            minutes: 'min',
             chartType: 'Chart Type',
             dataType: 'Data Type',
             filterSensors: 'Filter Sensors',
@@ -852,8 +855,8 @@ export default {
                 exponentialMovingAvg: 'Exponential Moving Average',
             },
             mixFunctionType: {
-                min: 'Minimum',
-                max: 'Maximum',
+                min: 'Min',
+                max: 'Max',
                 avg: 'Average',
             },
         },

@@ -103,7 +103,8 @@ export default {
         settings: {
             title: 'Configurações',
             general: 'Geral',
-            device: 'Dispositivos e sensores',
+            device: 'Dispositivos',
+            daemon: 'Daemon',
             devices: {
                 devicesAndSensors: 'Dispositivos e sensores',
                 detectionIssues: 'Problemas de detecção? Veja a',
@@ -262,7 +263,7 @@ export default {
         thinkpadFanControl:
             'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad.\nAs operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware.\nProssiga por sua conta e risco.',
         thinkpadFullSpeed:
-            'Para laptops Thinkpad, isso habilita o modo de velocidade máxima.\nIsso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado.\nUse com cautela.',
+            'Para laptops ThinkPad, isso habilita o modo de velocidade máxima.\nIsso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado.\nUse com cautela.',
         applySettingsOnStartup:
             'Aplicar automaticamente as configurações na inicialização do daemon e ao acordar do sono',
         deviceDelayAtStartup:
@@ -294,7 +295,7 @@ export default {
         thinkPadFanControl:
             'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad. As operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware. Prossiga por sua conta e risco.',
         thinkPadFullSpeed:
-            'Para laptops Thinkpad, isso habilita o modo de velocidade máxima. Isso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado. Use com cautela.',
+            'Para laptops ThinkPad, isso habilita o modo de velocidade máxima. Isso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado. Use com cautela.',
         compress:
             'Habilitar a compressão da resposta para reduzir o tamanho da carga útil da API, mas observe que isso aumentará o uso da CPU.',
         liquidctlNoInit:
@@ -329,7 +330,7 @@ export default {
     views: {
         dashboard: {
             timeRange: 'Intervalo de Tempo',
-            minutes: 'Minutos',
+            minutes: 'min',
             chartType: 'Tipo de Gráfico',
             dataType: 'Tipo de Dados',
             filterSensors: 'Filtrar Sensores',
@@ -599,7 +600,7 @@ export default {
             notImageType: 'Arquivo não é um tipo de imagem válido',
         },
         singleDashboard: {
-            minutes: 'minutos',
+            minutes: 'min',
             chartMouseActions:
                 'Ações do mouse no painel:\n- Destacar para zoom.\n- Rolar para zoom.\n- Clique direito para mover quando ampliado.\n- Duplo clique para resetar e continuar atualizando.',
             timeRange: 'Intervalo de Tempo',
@@ -764,7 +765,7 @@ export default {
             setting: 'Configuração',
         },
         singleDashboard: {
-            minutes: 'minutos',
+            minutes: 'min',
             chartMouseActions:
                 'Ações do mouse no painel:\n- Destacar para zoom.\n- Rolar para zoom.\n- Clique direito para mover quando ampliado.\n- Duplo clique para resetar e continuar atualizando.',
             timeRange: 'Intervalo de Tempo',

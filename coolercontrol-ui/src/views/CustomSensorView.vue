@@ -630,10 +630,10 @@ onMounted(async () => {
                 <div
                     v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
                     class="mt-1 w-96"
-                    v-tooltip.right="t('views.customSensors.tempWeight')"
+                    v-tooltip.right="t('views.customSensors.tempWeights')"
                 >
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        {{ t('views.customSensors.tempWeight') }}
+                        {{ t('views.customSensors.tempWeights') }}
                     </small>
                     <DataTable :value="chosenTempSources">
                         <Column

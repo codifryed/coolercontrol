@@ -188,7 +188,7 @@ onMounted(() => {
             </div>
             <div class="mt-8">
                 <div
-                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
+                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] w-max"
                 >
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')
@@ -252,7 +252,7 @@ onMounted(() => {
             </div>
             <div class="mt-8">
                 <div
-                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[60vw]"
+                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] 2xl:w-[70vw]"
                 >
                     <div class="flex flex-row justify-between items-baseline">
                         <span class="mb-4 font-semibold text-xl text-text-color">{{
