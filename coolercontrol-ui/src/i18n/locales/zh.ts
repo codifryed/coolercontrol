@@ -101,6 +101,7 @@
             title: '设置',
             general: '通用',
             device: '设备和传感器',
+            daemon: '后台服务',
             devices: {
                 devicesAndSensors: '设备和传感器',
                 detectionIssues: '检测问题？请查看',

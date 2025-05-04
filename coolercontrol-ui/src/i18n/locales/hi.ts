@@ -102,6 +102,7 @@ export default {
             title: 'सेटिंग्स',
             general: 'सामान्य',
             device: 'उपकरण और सेंसर',
+            daemon: 'डेमॉन',
             thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'उपकरण और सेंसर',

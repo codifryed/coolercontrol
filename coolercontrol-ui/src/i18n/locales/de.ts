@@ -106,6 +106,7 @@ export default {
             title: 'Einstellungen',
             general: 'Allgemein',
             device: 'Geräte und Sensoren',
+            daemon: 'Daemon',
             devices: {
                 devicesAndSensors: 'Geräte und Sensoren',
                 detectionIssues: 'Erkennungsprobleme? Siehe',

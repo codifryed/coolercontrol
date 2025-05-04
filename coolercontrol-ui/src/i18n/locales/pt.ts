@@ -104,6 +104,7 @@ export default {
             title: 'Configurações',
             general: 'Geral',
             device: 'Dispositivos e sensores',
+            daemon: 'Daemon',
             devices: {
                 devicesAndSensors: 'Dispositivos e sensores',
                 detectionIssues: 'Problemas de detecção? Veja a',

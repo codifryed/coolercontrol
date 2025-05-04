@@ -101,6 +101,7 @@ export default {
             title: '設定',
             general: '一般',
             device: '裝置和傳感器',
+            daemon: '後台服務',
             devices: {
                 devicesAndSensors: '裝置和傳感器',
                 detectionIssues: '檢測問題？請查看',

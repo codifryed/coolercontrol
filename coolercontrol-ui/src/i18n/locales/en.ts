@@ -101,6 +101,7 @@ export default {
             title: 'Settings',
             general: 'General',
             device: 'Devices and Sensors',
+            daemon: 'Daemon',
             thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'Devices and Sensors',

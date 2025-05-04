@@ -102,6 +102,7 @@ export default {
             title: '設定',
             general: '一般',
             device: 'デバイスとセンサー',
+            daemon: 'デーモン',
             devices: {
                 devicesAndSensors: 'デバイスとセンサー',
                 detectionIssues: '検出に問題がありますか？',

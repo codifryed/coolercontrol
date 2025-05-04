@@ -104,6 +104,7 @@ export default {
             title: 'Настройки',
             general: 'Общие',
             device: 'Устройства и датчики',
+            daemon: 'Демон',
             devices: {
                 devicesAndSensors: 'Устройства и датчики',
                 detectionIssues: 'Проблемы с обнаружением? См.',
