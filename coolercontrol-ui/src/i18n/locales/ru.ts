@@ -392,7 +392,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Временной диапазон',
-            minutes: 'Минуты',
+            minutes: 'мин',
             chartType: 'Тип графика',
             dataType: 'Тип данных',
             filterSensors: 'Фильтр датчиков',

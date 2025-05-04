@@ -396,7 +396,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Zeitbereich',
-            minutes: 'Minuten',
+            minutes: 'min',
             chartType: 'Diagrammtyp',
             dataType: 'Datentyp',
             filterSensors: 'Sensoren filtern',

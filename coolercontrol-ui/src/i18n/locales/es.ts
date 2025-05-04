@@ -394,7 +394,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Rango de Tiempo',
-            minutes: 'Minutos',
+            minutes: 'min',
             chartType: 'Tipo de Gráfico',
             dataType: 'Tipo de Datos',
             filterSensors: 'Filtrar Sensores',
@@ -588,7 +588,7 @@ export default {
             resetTooltip: 'Restablecer a la configuración predeterminada',
         },
         singleDashboard: {
-            minutes: 'minutos',
+            minutes: 'min',
             chartMouseActions:
                 'Acciones del ratón en el panel:\n- Resaltar para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.',
             timeRange: 'Rango de tiempo',

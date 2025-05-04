@@ -330,7 +330,7 @@ export default {
     views: {
         dashboard: {
             timeRange: 'Intervalo de Tempo',
-            minutes: 'Minutos',
+            minutes: 'min',
             chartType: 'Tipo de Gráfico',
             dataType: 'Tipo de Dados',
             filterSensors: 'Filtrar Sensores',
@@ -600,7 +600,7 @@ export default {
             notImageType: 'Arquivo não é um tipo de imagem válido',
         },
         singleDashboard: {
-            minutes: 'minutos',
+            minutes: 'min',
             chartMouseActions:
                 'Ações do mouse no painel:\n- Destacar para zoom.\n- Rolar para zoom.\n- Clique direito para mover quando ampliado.\n- Duplo clique para resetar e continuar atualizando.',
             timeRange: 'Intervalo de Tempo',
@@ -765,7 +765,7 @@ export default {
             setting: 'Configuração',
         },
         singleDashboard: {
-            minutes: 'minutos',
+            minutes: 'min',
             chartMouseActions:
                 'Ações do mouse no painel:\n- Destacar para zoom.\n- Rolar para zoom.\n- Clique direito para mover quando ampliado.\n- Duplo clique para resetar e continuar atualizando.',
             timeRange: 'Intervalo de Tempo',

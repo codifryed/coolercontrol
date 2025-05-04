@@ -403,7 +403,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Plage de Temps',
-            minutes: 'Minutes',
+            minutes: 'min',
             chartType: 'Type de Graphique',
             dataType: 'Type de Données',
             filterSensors: 'Filtrer les Capteurs',

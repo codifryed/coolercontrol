@@ -383,7 +383,7 @@ export default {
         },
         dashboard: {
             timeRange: 'النطاق الزمني',
-            minutes: 'دقائق',
+            minutes: 'دقيقة',
             chartType: 'نوع المخطط',
             dataType: 'نوع البيانات',
             filterSensors: 'تصفية المستشعرات',

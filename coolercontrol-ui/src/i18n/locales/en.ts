@@ -389,7 +389,7 @@ export default {
         },
         dashboard: {
             timeRange: 'Time Range',
-            minutes: 'Minutes',
+            minutes: 'min',
             chartType: 'Chart Type',
             dataType: 'Data Type',
             filterSensors: 'Filter Sensors',
