@@ -176,7 +176,8 @@ const getCurrentDuty = (): number | undefined => {
     return duty != null ? Number(duty) : undefined
 }
 
-const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)
+const startingDuty: number = startingDeviceSetting?.speed_fixed ?? (getCurrentDuty() || 0)
+const manualDuty: Ref<number> = ref(startingDuty)
 let dutyMin = 0
 let dutyMax = 100
 for (const device of deviceStore.allDevices()) {
