@@ -142,7 +142,7 @@ impl Device {
     ) -> UID {
         let mut hasher = Sha256::new();
         hasher.update(d_type.clone().to_string());
-        if let Some(d_id) = device_id.clone() {
+        if let Some(d_id) = device_id {
             // this should be pretty unique to the device itself, such as a serial number or device path
             hasher.update(d_id);
         } else {

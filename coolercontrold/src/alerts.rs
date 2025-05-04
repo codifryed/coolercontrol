@@ -92,7 +92,7 @@ pub struct AlertController {
 
 impl AlertController {
     /// A controller for managing and handling Alerts.
-    pub async fn init<'s>(all_devices: AllDevices) -> Result<Self> {
+    pub async fn init(all_devices: AllDevices) -> Result<Self> {
         let alert_controller = Self {
             all_devices,
             alerts: RefCell::new(LinkedHashMap::new()),

@@ -82,7 +82,7 @@ impl Processor for FunctionIdentityPreProcessor {
                     .iter()
                     .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
                     .map(|temp_status| temp_status.temp)
-                    .last()
+                    .next_back()
                     .or_else(|| {
                         log_missing_temp_sensor(data);
                         Some(EMERGENCY_MISSING_TEMP)
@@ -170,7 +170,7 @@ impl FunctionStandardPreProcessor {
                             temp_status.name == data.profile.temp_source.temp_name
                         })
                         .map(|temp_status| temp_status.temp)
-                        .last()
+                        .next_back()
                         .or_else(|| {
                             log_missing_temp_sensor(data);
                             Some(EMERGENCY_MISSING_TEMP)

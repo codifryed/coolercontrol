@@ -327,7 +327,7 @@ impl CustomSensorsRepo {
             .iter()
             .filter(|temp_status| temp_status.name == temp_source_name)
             .map(|temp_status| temp_status.temp)
-            .last()
+            .next_back()
     }
 
     fn process_temp_data(

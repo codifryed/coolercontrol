@@ -258,7 +258,7 @@ impl LcdCommander {
                         .temps
                         .iter()
                         .filter(|temp_status| temp_status.name == setting_temp_source.temp_name)
-                        .last()
+                        .next_back()
                 })
                 .map(|temp_status|
                     // rounded to nearest 10th degree to avoid updating on minuscule degree changes
