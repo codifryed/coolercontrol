@@ -691,6 +691,14 @@ const addProfile = (profileUID: UID): void => {
     )
     adjustTreeLeaves()
 }
+
+interface ProfileUIDObj {
+    profileUID: UID
+}
+
+const addProfileMenu = (profileUIDObj: ProfileUIDObj): void => addProfile(profileUIDObj.profileUID)
+emitter.on('profile-add-menu', addProfileMenu)
+
 const deleteProfile = (profileUID: UID): void => {
     if (route.params != null && route.params.profileUID === profileUID) {
         router.push({ name: 'system-overview' })
