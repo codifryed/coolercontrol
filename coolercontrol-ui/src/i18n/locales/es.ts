@@ -208,7 +208,7 @@ export default {
                 thinkpadFanControl:
                     'Esto es un asistente para habilitar el control del ventilador ACPI de ThinkPad.\nLas operaciones de control del ventilador están deshabilitadas por defecto por razones de seguridad. CoolerControl puede intentar habilitar esto por usted, pero debe ser consciente de los riesgos para su hardware.\nProceda bajo su propio riesgo.',
                 thinkpadFullSpeed:
-                    'Para las laptops Thinkpad, esto habilita el modo de velocidad máxima.\nEsto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste.\nÚselo con precaución.',
+                    'Para las laptops ThinkPad, esto habilita el modo de velocidad máxima.\nEsto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste.\nÚselo con precaución.',
                 applySettingsOnStartup:
                     'Aplicar automáticamente la configuración al iniciar el daemon y al despertar del sueño',
                 deviceDelayAtStartup:
@@ -241,7 +241,7 @@ export default {
                 thinkPadFanControl:
                     'Esto es un asistente para habilitar el control del ventilador ACPI de ThinkPad. Las operaciones de control del ventilador están deshabilitadas por defecto por razones de seguridad. CoolerControl puede intentar habilitar esto por usted, pero debe ser consciente de los riesgos para su hardware. Proceda bajo su propio riesgo.',
                 thinkPadFullSpeed:
-                    'Para las laptops Thinkpad, esto habilita el modo de velocidad máxima. Esto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste. Úselo con precaución.',
+                    'Para las laptops ThinkPad, esto habilita el modo de velocidad máxima. Esto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste. Úselo con precaución.',
                 compress:
                     'Habilitar la compresión de la respuesta para reducir el tamaño de la carga útil de la API, pero tenga en cuenta que esto aumentará el uso de la CPU.',
                 liquidctlNoInit:

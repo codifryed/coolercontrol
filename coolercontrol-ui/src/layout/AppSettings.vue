@@ -367,7 +367,7 @@ onUnmounted(() => {
                             :path="mdiLaptop"
                             :size="deviceStore.getREMSize(1.5)"
                         />
-                        {{ t('views.daemon.thinkpadFanControl') }}
+                        {{ t('layout.settings.thinkpad', 'ThinkPad') }}
                     </Tab>
                 </TabList>
                 <TabPanels class="mt-2">

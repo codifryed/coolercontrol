@@ -214,7 +214,7 @@ export default {
                 thinkpadFanControl:
                     "Ceci est un assistant pour activer le contrôle du ventilateur ACPI de ThinkPad.\nLes opérations de contrôle du ventilateur sont désactivées par défaut pour des raisons de sécurité. CoolerControl peut essayer de l'activer pour vous, mais vous devez être conscient des risques pour votre matériel.\nProcédez à vos risques et périls.",
                 thinkpadFullSpeed:
-                    "Pour les ordinateurs portables Thinkpad, cela active le mode pleine vitesse.\nCela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue.\nUtilisez avec précaution.",
+                    "Pour les ordinateurs portables ThinkPad, cela active le mode pleine vitesse.\nCela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue.\nUtilisez avec précaution.",
                 applySettingsOnStartup:
                     'Appliquer automatiquement les paramètres au démarrage du daemon et lors de la sortie de veille',
                 deviceDelayAtStartup:
@@ -248,7 +248,7 @@ export default {
                 thinkPadFanControl:
                     "Ceci est un assistant pour activer le contrôle du ventilateur ACPI de ThinkPad. Les opérations de contrôle du ventilateur sont désactivées par défaut pour des raisons de sécurité. CoolerControl peut essayer de l'activer pour vous, mais vous devez être conscient des risques pour votre matériel. Procédez à vos risques et périls.",
                 thinkPadFullSpeed:
-                    "Pour les ordinateurs portables Thinkpad, cela active le mode pleine vitesse. Cela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue. Utilisez avec précaution.",
+                    "Pour les ordinateurs portables ThinkPad, cela active le mode pleine vitesse. Cela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue. Utilisez avec précaution.",
                 compress:
                     "Activer la compression de la réponse pour réduire la taille de la charge utile de l'API, mais notez que cela augmentera l'utilisation du CPU.",
                 liquidctlNoInit:

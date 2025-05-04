@@ -262,7 +262,7 @@ export default {
         thinkpadFanControl:
             'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad.\nAs operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware.\nProssiga por sua conta e risco.',
         thinkpadFullSpeed:
-            'Para laptops Thinkpad, isso habilita o modo de velocidade máxima.\nIsso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado.\nUse com cautela.',
+            'Para laptops ThinkPad, isso habilita o modo de velocidade máxima.\nIsso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado.\nUse com cautela.',
         applySettingsOnStartup:
             'Aplicar automaticamente as configurações na inicialização do daemon e ao acordar do sono',
         deviceDelayAtStartup:
@@ -294,7 +294,7 @@ export default {
         thinkPadFanControl:
             'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad. As operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware. Prossiga por sua conta e risco.',
         thinkPadFullSpeed:
-            'Para laptops Thinkpad, isso habilita o modo de velocidade máxima. Isso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado. Use com cautela.',
+            'Para laptops ThinkPad, isso habilita o modo de velocidade máxima. Isso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado. Use com cautela.',
         compress:
             'Habilitar a compressão da resposta para reduzir o tamanho da carga útil da API, mas observe que isso aumentará o uso da CPU.',
         liquidctlNoInit:

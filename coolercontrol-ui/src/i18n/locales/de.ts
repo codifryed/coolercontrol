@@ -210,7 +210,7 @@ export default {
                 thinkpadFanControl:
                     'Dies ist ein Hilfsmittel zum Aktivieren der ThinkPad ACPI-Lüftersteuerung.\nLüftersteuerungsoperationen sind aus Sicherheitsgründen standardmäßig deaktiviert. CoolerControl kann versuchen, dies für Sie zu aktivieren, aber Sie sollten sich der Risiken für Ihre Hardware bewusst sein.\nFahren Sie auf eigenes Risiko fort.',
                 thinkpadFullSpeed:
-                    'Für Thinkpad-Laptops aktiviert dies den Vollgeschwindigkeitsmodus.\nDies ermöglicht es den Lüftern, bei Einstellung auf 100% auf ihr absolutes Maximum hochzudrehen, wird die Lüfter jedoch außerhalb der Spezifikation betreiben und zu erhöhtem Verschleiß führen.\nVerwenden Sie es mit Vorsicht.',
+                    'Für ThinkPad-Laptops aktiviert dies den Vollgeschwindigkeitsmodus.\nDies ermöglicht es den Lüftern, bei Einstellung auf 100% auf ihr absolutes Maximum hochzudrehen, wird die Lüfter jedoch außerhalb der Spezifikation betreiben und zu erhöhtem Verschleiß führen.\nVerwenden Sie es mit Vorsicht.',
                 applySettingsOnStartup:
                     'Einstellungen automatisch beim Daemon-Start und beim Aufwachen aus dem Ruhezustand anwenden',
                 deviceDelayAtStartup:
@@ -243,7 +243,7 @@ export default {
                 thinkPadFanControl:
                     'Dies ist ein Hilfsmittel zum Aktivieren der ThinkPad ACPI-Lüftersteuerung. Lüftersteuerungsoperationen sind aus Sicherheitsgründen standardmäßig deaktiviert. CoolerControl kann versuchen, dies für Sie zu aktivieren, aber Sie sollten sich der Risiken für Ihre Hardware bewusst sein. Fahren Sie auf eigenes Risiko fort.',
                 thinkPadFullSpeed:
-                    'Für Thinkpad-Laptops aktiviert dies den Vollgeschwindigkeitsmodus. Dies ermöglicht es den Lüftern, bei Einstellung auf 100% auf ihr absolutes Maximum hochzudrehen, wird die Lüfter jedoch außerhalb der Spezifikation betreiben und zu erhöhtem Verschleiß führen. Verwenden Sie es mit Vorsicht.',
+                    'Für ThinkPad-Laptops aktiviert dies den Vollgeschwindigkeitsmodus. Dies ermöglicht es den Lüftern, bei Einstellung auf 100% auf ihr absolutes Maximum hochzudrehen, wird die Lüfter jedoch außerhalb der Spezifikation betreiben und zu erhöhtem Verschleiß führen. Verwenden Sie es mit Vorsicht.',
                 compress:
                     'Aktivieren Sie die Antwortkomprimierung, um die API-Payload-Größe zu reduzieren, beachten Sie jedoch, dass dies die CPU-Auslastung erhöht.',
                 liquidctlNoInit:

@@ -200,7 +200,7 @@ export default {
                 thinkpadFanControl:
                     '這是一個幫助啟用ThinkPad ACPI風扇控制的助手。\n出於安全原因，風扇控制操作默認為禁用。CoolerControl可以嘗試為您啟用此功能，但您應該了解對硬體的風險。\n請自行承擔風險。',
                 thinkpadFullSpeed:
-                    '對於Thinkpad筆記型電腦，這將啟用全速模式。\n這允許風扇在設置為100%時旋轉到其絕對最大值，但會使風扇超出規格運行並導致磨損增加。\n請謹慎使用。',
+                    '對於ThinkPad筆記型電腦，這將啟用全速模式。\n這允許風扇在設置為100%時旋轉到其絕對最大值，但會使風扇超出規格運行並導致磨損增加。\n請謹慎使用。',
                 applySettingsOnStartup: '在啟動守護程式和從睡眠中喚醒時自動應用設置',
                 deviceDelayAtStartup:
                     '在開始裝置通信之前的延遲（以秒為單位）。\n有助於需要時間初始化或間歇性檢測到的裝置',
@@ -230,7 +230,7 @@ export default {
                 thinkPadFanControl:
                     '這是一個幫助啟用ThinkPad ACPI風扇控制的助手。風扇控制操作默認為禁用。CoolerControl可以嘗試為您啟用此功能，但您應該了解對硬體的風險。請自行承擔風險。',
                 thinkPadFullSpeed:
-                    '對於Thinkpad筆記型電腦，這將啟用全速模式。這允許風扇在設置為100%時旋轉到其絕對最大值，但會使風扇超出規格運行並導致磨損增加。請謹慎使用。',
+                    '對於ThinkPad筆記型電腦，這將啟用全速模式。這允許風扇在設置為100%時旋轉到其絕對最大值，但會使風扇超出規格運行並導致磨損增加。請謹慎使用。',
                 compress: '啟用響應壓縮以減少API有效負載大小，但請注意，這將增加CPU使用率。',
                 liquidctlNoInit:
                     '注意：僅在您或其他程式正在處理liquidctl裝置初始化時禁用此功能。這可以幫助避免與其他程式的衝突。',
