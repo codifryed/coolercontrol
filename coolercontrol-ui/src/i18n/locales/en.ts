@@ -488,7 +488,7 @@ export default {
             newProfile: 'New Profile',
             tooltip: {
                 profileType:
-                    'Profile Type:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
+                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
             },
             profileDeleted: 'Profile Deleted',
             profileDuplicated: 'Profile Duplicated',
