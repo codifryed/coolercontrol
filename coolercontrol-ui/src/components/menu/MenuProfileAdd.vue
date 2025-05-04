@@ -29,6 +29,7 @@ import { UID } from '@/models/Device.ts'
 import { Profile, ProfileType } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -37,6 +38,7 @@ const emit = defineEmits<{
     (e: 'added', profileUID: UID): void
 }>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -44,13 +46,13 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const router = useRouter()
 
 const addProfile = async (): Promise<void> => {
-    const newProfile = new Profile('New Profile', ProfileType.Default)
+    const newProfile = new Profile(t('views.profiles.newProfile'), ProfileType.Default)
     settingsStore.profiles.push(newProfile)
     await settingsStore.saveProfile(newProfile.uid)
     toast.add({
         severity: 'success',
-        summary: 'Success',
-        detail: 'Profile Created',
+        summary: t('common.success'),
+        detail: t('views.profiles.createProfile'),
         life: 3000,
     })
     emit('added', newProfile.uid)
@@ -61,7 +63,7 @@ emitter.on('profile-add', addProfile)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Add Profile' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addProfile') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="addProfile"

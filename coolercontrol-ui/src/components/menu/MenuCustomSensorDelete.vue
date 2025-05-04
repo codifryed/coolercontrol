@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceUID: UID // the main CustomSensor device has a UUID
@@ -39,6 +40,7 @@ const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
+const { t } = useI18n()
 // const toast = useToast()
 
 const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)!
@@ -46,10 +48,9 @@ const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)!
 const deleteCustomSensor = (): void => {
     const currentName: string =
         deviceSettings.sensorsAndChannels.get(props.customSensorID)?.name ?? props.customSensorID
-    // original:
     confirm.require({
-        message: `Are you sure you want to delete the custom sensor: "${currentName}"?`,
-        header: 'Delete Custom Sensor',
+        message: t('views.customSensor.deleteCustomSensorConfirm', { name: currentName }),
+        header: t('views.customSensor.deleteCustomSensor'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
         accept: async () => {
@@ -61,7 +62,7 @@ const deleteCustomSensor = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteCustomSensor"

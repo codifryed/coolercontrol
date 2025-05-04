@@ -20,6 +20,7 @@ import type { Color } from '@/models/Device'
 import { Exclude, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
 import { Dashboard } from '@/models/Dashboard.ts'
+import i18n from '@/i18n'
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
@@ -61,6 +62,31 @@ export enum ThemeMode {
     HIGH_CONTRAST_DARK = 'high-contrast-dark',
     HIGH_CONTRAST_LIGHT = 'high-contrast-light',
     CUSTOM = 'custom theme',
+}
+
+/**
+ * 获取ThemeMode的本地化显示名称
+ * @param mode ThemeMode枚举值
+ * @returns 本地化的显示名称
+ */
+export function getThemeModeDisplayName(mode: ThemeMode): string {
+    const { t } = i18n.global
+    switch (mode) {
+        case ThemeMode.SYSTEM:
+            return t('models.themeMode.system')
+        case ThemeMode.DARK:
+            return t('models.themeMode.dark')
+        case ThemeMode.LIGHT:
+            return t('models.themeMode.light')
+        case ThemeMode.HIGH_CONTRAST_DARK:
+            return t('models.themeMode.highContrastDark')
+        case ThemeMode.HIGH_CONTRAST_LIGHT:
+            return t('models.themeMode.highContrastLight')
+        case ThemeMode.CUSTOM:
+            return t('models.themeMode.custom')
+        default:
+            return String(mode)
+    }
 }
 
 export interface CustomThemeSettings {
@@ -141,4 +167,21 @@ export class SensorAndChannelSettings {
 export enum ChannelViewType {
     Control = 'Control',
     Dashboard = 'Dashboard',
+}
+
+/**
+ * 获取ChannelViewType的本地化显示名称
+ * @param type ChannelViewType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getChannelViewTypeDisplayName(type: ChannelViewType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case ChannelViewType.Control:
+            return t('models.channelViewType.control')
+        case ChannelViewType.Dashboard:
+            return t('models.channelViewType.dashboard')
+        default:
+            return String(type)
+    }
 }

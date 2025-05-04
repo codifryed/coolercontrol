@@ -50,6 +50,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import InputText from 'primevue/inputtext'
 import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderViewBox } from '@/models/Loader.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceId: UID
@@ -57,6 +58,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 interface AvailableTemp {
     deviceUID: string // needed here as well for the dropdown selector
@@ -197,7 +199,7 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
         target: '#lcd-control-pane',
         lock: true,
         fullscreen: false,
-        text: 'Processing...',
+        text: t('views.lcd.processing'),
         background: 'rgba(var(--colors-bg-one) / 0.8)',
         svgViewBox: svgLoaderViewBox,
         svg: svgLoader,
@@ -210,7 +212,12 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
     processing.close()
     if (response instanceof ErrorResponse) {
         console.error(response.error)
-        toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 10_000 })
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: response.error,
+            life: 10_000,
+        })
         return
     }
     fileDataURLs.value.push(URL.createObjectURL(response))
@@ -224,8 +231,8 @@ const validateFileSize = (file: File): void => {
     console.error('Image is too large for the LCD Screen memory')
     toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: 'Image is too large. Please choose a smaller one.',
+        summary: t('common.error'),
+        detail: t('views.lcd.imageTooLarge'),
         life: 4000,
     })
 }
@@ -237,8 +244,8 @@ const validateFileType = (file: File): void => {
     console.error('File is not an image')
     toast.add({
         severity: 'error',
-        summary: 'Error',
-        detail: 'Image does not register as an image type',
+        summary: t('common.error'),
+        detail: t('views.lcd.notImageType'),
         life: 4000,
     })
 }
@@ -267,7 +274,7 @@ const saveLCDSetting = async () => {
         target: '#lcd-control-pane',
         lock: true,
         fullscreen: false,
-        text: 'Applying...',
+        text: t('views.lcd.applying'),
         background: 'rgba(var(--colors-bg-one) / 0.8)',
         svgViewBox: svgLoaderViewBox,
         svg: svgLoader,
@@ -362,12 +369,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to these LCD Settings.',
-        header: 'Unsaved Changes',
+        message: t('views.lcd.unsavedChanges'),
+        header: t('views.lcd.unsavedChangesHeader'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -438,7 +445,7 @@ onUnmounted(() => {
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"
-                    v-tooltip.bottom="'Save LCD Settings'"
+                    v-tooltip.bottom="t('views.lcd.saveLcdSettings')"
                     @click="saveLCDSetting"
                 >
                     <svg-icon
@@ -457,7 +464,7 @@ onUnmounted(() => {
                 <div id="left-side">
                     <div class="mt-0 mr-4 w-96">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            LCD Mode
+                            {{ t('views.lcd.lcdMode') }}
                         </small>
                         <Listbox
                             :model-value="selectedLcdMode"
@@ -467,20 +474,20 @@ onUnmounted(() => {
                             checkmark
                             placeholder="Type"
                             list-style="max-height: 100%"
-                            v-tooltip.right="'The currently available LCD Modes to choose from.'"
+                            v-tooltip.right="t('views.lcd.lcdMode')"
                             @change="changeLcdMode"
                         />
                     </div>
                     <div v-if="selectedLcdMode.brightness" class="mt-4 mr-4 w-96 border-border-one">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Brightness<br />
+                            {{ t('views.lcd.brightness') }}<br />
                         </small>
                         <InputNumber
                             placeholder="Brightness"
                             v-model="selectedBrightness"
                             mode="decimal"
                             class="mt-0.5 w-full"
-                            suffix="%"
+                            :suffix="` ${t('common.percentUnit')}`"
                             showButtons
                             :min="0"
                             :max="100"
@@ -488,7 +495,7 @@ onUnmounted(() => {
                             :step="1"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="'Brightness Percent'"
+                            v-tooltip.bottom="t('views.lcd.brightnessPercent')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />
@@ -510,14 +517,14 @@ onUnmounted(() => {
                         class="mt-4 mr-4 w-96 border-border-one"
                     >
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Orientation<br />
+                            {{ t('views.lcd.orientation') }}<br />
                         </small>
                         <InputNumber
                             placeholder="Orientation"
                             v-model="selectedOrientation"
                             mode="decimal"
                             class="mt-0.5 w-full"
-                            suffix="°"
+                            :suffix="` ${t('common.tempUnit')}`"
                             showButtons
                             :min="0"
                             :max="270"
@@ -525,7 +532,7 @@ onUnmounted(() => {
                             :step="90"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="'Orientation in degrees'"
+                            v-tooltip.bottom="t('views.lcd.orientationDegrees')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />
@@ -558,7 +565,7 @@ onUnmounted(() => {
                             @uploader="filesChosen"
                         >
                             <template #empty>
-                                <p>Drag and drop files to here.</p>
+                                <p>{{ t('views.lcd.dragAndDrop') }}</p>
                             </template>
                         </FileUpload>
                     </div>
@@ -594,7 +601,7 @@ onUnmounted(() => {
                     class="mt-0 mr-4 w-96"
                 >
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Temp Source
+                        {{ t('views.lcd.tempSource') }}
                     </small>
                     <Listbox
                         v-model="chosenTemp"
@@ -608,7 +615,7 @@ onUnmounted(() => {
                         filter-placeholder="Search"
                         list-style="max-height: 100%"
                         :invalid="chosenTemp == null"
-                        v-tooltip.right="'Temperature source to use in LCD display.'"
+                        v-tooltip.right="t('views.lcd.tempSourceTooltip')"
                         @change="changeTempSource"
                     >
                         <template #optiongroup="slotProps">
@@ -646,26 +653,20 @@ onUnmounted(() => {
                 >
                     <div class="flex flex-col">
                         <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
-                            Images Path
+                            {{ t('views.lcd.imagesPath') }}
                         </small>
                         <InputText
                             v-model="imagesPath"
                             class="w-full mt-0 h-12"
                             placeholder="/tmp/your_images_path"
                             :invalid="!imagesPath"
-                            v-tooltip.right="
-                                'Enter the absolute path to the directory containing images.\n' +
-                                'The directory must contain at least one image file, ' +
-                                'and they\nmay be static images or gifs. The Carousel will cycle\n' +
-                                'through them with the selected delay. All files are processed\n' +
-                                'upon submission to ensure maximum compatibility.'
-                            "
+                            v-tooltip.right="t('views.lcd.imagesPathTooltip')"
                         />
                         <div v-if="deviceStore.isQtApp()">
                             <Button
                                 class="mt-2 w-full h-12"
                                 label="Browse"
-                                v-tooltip.right="'Browse for a image directory'"
+                                v-tooltip.right="t('views.lcd.browseTooltip')"
                                 @click="pathBrowse"
                             >
                                 <svg-icon
@@ -674,13 +675,13 @@ onUnmounted(() => {
                                     :path="mdiFolderSearchOutline"
                                     :size="deviceStore.getREMSize(1.5)"
                                 />
-                                Browse
+                                {{ t('views.lcd.browse') }}
                             </Button>
                         </div>
                     </div>
                     <div class="mt-4">
                         <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Delay Interval:
+                            {{ t('views.lcd.delayInterval') }}:
                             <span class="font-extrabold">{{ delayIntervalFormatted }}</span
                             ><br />
                         </small>
@@ -694,13 +695,10 @@ onUnmounted(() => {
                             :max="900"
                             :use-grouping="false"
                             :step="1"
-                            suffix=" sec"
+                            :suffix="` ${t('common.secondAbbr')}`"
                             button-layout="horizontal"
                             :input-style="{ width: '8rem' }"
-                            v-tooltip.bottom="
-                                'Minimum number of seconds of delay between image changes.\n' +
-                                'Note that the actual delay may be longer due to the daemon polling rate.'
-                            "
+                            v-tooltip.bottom="t('views.lcd.delayIntervalTooltip')"
                         >
                             <template #incrementicon>
                                 <span class="pi pi-plus" />

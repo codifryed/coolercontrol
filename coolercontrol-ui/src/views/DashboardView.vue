@@ -23,7 +23,14 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import type { Color, UID } from '@/models/Device.ts'
-import { ChartType, Dashboard, DashboardDeviceChannel, DataType } from '@/models/Dashboard.ts'
+import {
+    ChartType,
+    Dashboard,
+    DashboardDeviceChannel,
+    DataType,
+    getLocalizedChartType,
+    getLocalizedDataType,
+} from '@/models/Dashboard.ts'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import AxisOptions from '@/components/AxisOptions.vue'
@@ -38,12 +45,14 @@ import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import ControlsOverview from '@/components/ControlsOverview.vue'
 import { component as Fullscreen } from 'vue-fullscreen'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboardUID?: UID
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -54,7 +63,11 @@ const dashboard: Dashboard =
           settingsStore.dashboards[0])
         : settingsStore.dashboards[0] // show first dashboard by default
 
-const chartTypes = [...$enum(ChartType).values()]
+const chartTypes = [...$enum(ChartType).values()].map((type) => ({
+    value: type,
+    text: getLocalizedChartType(type),
+}))
+
 const chartMinutesMin: number = 1
 const chartMinutesMax: number = 60
 const chartMinutes: Ref<number> = ref(dashboard.timeRangeSeconds / 60)
@@ -68,7 +81,12 @@ const chartMinutesScrolled = (event: WheelEvent): void => {
         if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
     }
 }
-const dataTypes = [...$enum(DataType).values()]
+
+const dataTypes = [...$enum(DataType).values()].map((type) => ({
+    value: type,
+    text: getLocalizedDataType(type),
+}))
+
 const fullPage = ref(false)
 
 interface AvailableSensor {
@@ -253,9 +271,7 @@ onUnmounted(() => {
             <div
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="
-                    'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.'
-                "
+                v-tooltip.bottom="t('views.dashboard.mouseActions')"
             >
                 <svg-icon
                     type="mdi"
@@ -265,7 +281,7 @@ onUnmounted(() => {
             </div>
             <div
                 class="p-2 flex leading-none items-center"
-                v-tooltip.bottom="'Full Page'"
+                v-tooltip.bottom="t('views.dashboard.fullPage')"
                 @click="toggleFullPage"
             >
                 <svg-icon type="mdi" :path="mdiOverscan" :size="deviceStore.getREMSize(1.25)" />
@@ -279,8 +295,8 @@ onUnmounted(() => {
                             : controlSensorSources
                     "
                     class="w-36 h-[2.375rem]"
-                    placeholder="Filter Sensors"
-                    filter-placeholder="Search"
+                    :placeholder="t('views.dashboard.filterSensors')"
+                    :filter-placeholder="t('common.search')"
                     filter
                     :dropdown-icon="
                         chosenSensorSources.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
@@ -289,7 +305,7 @@ onUnmounted(() => {
                     option-group-label="deviceName"
                     option-group-children="sensors"
                     scroll-height="40rem"
-                    v-tooltip.bottom="'Filter by Sensor'"
+                    v-tooltip.bottom="t('views.dashboard.filterBySensor')"
                     @update:model-value="updateDashboardSensorsFilter"
                 >
                     <template #optiongroup="slotProps">
@@ -318,12 +334,14 @@ onUnmounted(() => {
                     v-model="dashboard.dataTypes"
                     :options="dataTypes"
                     class="ml-3 w-36 h-[2.375rem]"
-                    placeholder="Filter Types"
+                    :placeholder="t('views.dashboard.filterTypes')"
                     :dropdown-icon="
                         dashboard.dataTypes.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
                     "
                     scroll-height="16rem"
-                    v-tooltip.bottom="'Filter by Data Type'"
+                    option-label="text"
+                    option-value="value"
+                    v-tooltip.bottom="t('views.dashboard.filterByDataType')"
                 />
             </div>
             <div
@@ -331,11 +349,11 @@ onUnmounted(() => {
                 class="p-2 pr-0 flex flex-row bg-bg-one"
             >
                 <InputNumber
-                    placeholder="Minutes"
+                    :placeholder="t('views.dashboard.minutes')"
                     input-id="chart-minutes"
                     v-model="chartMinutes"
                     class="h-[2.375rem] chart-minutes"
-                    suffix=" min"
+                    :suffix="` ${t('views.dashboard.minutes').toLowerCase()}`"
                     show-buttons
                     :use-grouping="false"
                     :step="1"
@@ -344,7 +362,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="'Time Range'"
+                    v-tooltip.bottom="t('views.dashboard.timeRange')"
                 >
                     <template #incrementbuttonicon>
                         <span class="pi pi-plus" />
@@ -359,12 +377,14 @@ onUnmounted(() => {
                 <Select
                     v-model="dashboard.chartType"
                     :options="chartTypes"
-                    placeholder="Select a Chart Type"
+                    :placeholder="t('views.dashboard.selectChartType')"
                     class="w-32 h-[2.375rem]"
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="'Chart Type'"
+                    option-label="text"
+                    option-value="value"
+                    v-tooltip.bottom="t('views.dashboard.chartType')"
                 />
             </div>
         </div>
@@ -376,7 +396,7 @@ onUnmounted(() => {
                 class="flex flex-row pt-0.5 fixed left-0 top-0 z-50 w-full justify-between"
             >
                 <div />
-                <div v-tooltip.left="'Exit Full Page'" @click="toggleFullPage">
+                <div v-tooltip.left="t('views.dashboard.exitFullPage')" @click="toggleFullPage">
                     <svg-icon
                         type="mdi"
                         class="text-text-color-secondary"

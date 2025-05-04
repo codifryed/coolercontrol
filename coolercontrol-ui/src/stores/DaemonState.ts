@@ -20,6 +20,7 @@ import { defineStore } from 'pinia'
 import { ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 export enum DaemonStatus {
     OK = 'Ok',
@@ -29,6 +30,8 @@ export enum DaemonStatus {
 
 export const useDaemonState = defineStore('daemonState', () => {
     const toast = useToast()
+    const { t } = useI18n()
+
     // Reactive properties ------------------------------------------------
     const systemName: Ref<string> = ref('Localhost')
     const warnings: Ref<number> = ref(0)
@@ -58,8 +61,8 @@ export const useDaemonState = defineStore('daemonState', () => {
         if (newStatus === DaemonStatus.ERROR) {
             toast.add({
                 severity: 'error',
-                summary: 'Daemon Errors',
-                detail: 'The daemon logs contain errors. You should investigate.',
+                summary: t('views.daemon.daemonErrors'),
+                detail: t('views.daemon.daemonErrorsDetail'),
                 life: 4000,
             })
         }
@@ -73,8 +76,8 @@ export const useDaemonState = defineStore('daemonState', () => {
             preDisconnectedStatus.value = status.value
             toast.add({
                 severity: 'error',
-                summary: 'Daemon Disconnected',
-                detail: 'Connection with the daemon has been lost',
+                summary: t('views.daemon.daemonDisconnected'),
+                detail: t('views.daemon.daemonDisconnectedDetail'),
                 life: 4000,
             })
             status.value = DaemonStatus.ERROR
@@ -83,8 +86,8 @@ export const useDaemonState = defineStore('daemonState', () => {
             status.value = preDisconnectedStatus.value
             toast.add({
                 severity: 'success',
-                summary: 'Daemon Connection Restored',
-                detail: 'Connection with the daemon has been restored.',
+                summary: t('views.daemon.connectionRestored'),
+                detail: t('views.daemon.connectionRestoredMessage'),
                 life: 4000,
             })
             const deviceStore = useDeviceStore()

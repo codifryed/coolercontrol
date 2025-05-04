@@ -19,6 +19,7 @@
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { plainToInstance, Transform, Type } from 'class-transformer'
 import { TempInfo } from '@/models/TempInfo.ts'
+import i18n from '@/i18n'
 
 export class DeviceInfo {
     // We need a special transformer for this collection mapping to work
@@ -95,4 +96,27 @@ export enum DriverType {
     NVML = 'NVML',
     NVIDIA_CLI = 'NvidiaCLI',
     COOLERCONTROL = 'CoolerControl', // For things like CustomSensors
+}
+
+/**
+ * 获取DriverType的本地化显示名称
+ * @param type DriverType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getDriverTypeDisplayName(type: DriverType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case DriverType.KERNEL:
+            return t('models.driverType.kernel')
+        case DriverType.LIQUIDCTL:
+            return t('models.driverType.liquidctl')
+        case DriverType.NVML:
+            return t('models.driverType.nvml')
+        case DriverType.NVIDIA_CLI:
+            return t('models.driverType.nvidiaCli')
+        case DriverType.COOLERCONTROL:
+            return t('models.driverType.coolercontrol')
+        default:
+            return String(type)
+    }
 }

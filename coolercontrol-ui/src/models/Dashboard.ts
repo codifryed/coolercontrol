@@ -19,6 +19,7 @@
 import { UID } from '@/models/Device.ts'
 import { v4 as uuidV4 } from 'uuid'
 import { Type } from 'class-transformer'
+import i18n from '@/i18n'
 
 export class Dashboard {
     uid: UID = uuidV4()
@@ -74,6 +75,21 @@ export enum ChartType {
     CONTROLS = 'Controls',
 }
 
+// Get localized chart type names
+export function getLocalizedChartType(type: ChartType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case ChartType.TIME_CHART:
+            return t('models.chartType.timeChart')
+        case ChartType.TABLE:
+            return t('models.chartType.table')
+        case ChartType.CONTROLS:
+            return t('models.chartType.controls')
+        default:
+            return type
+    }
+}
+
 export enum DataType {
     TEMP = 'Temp',
     DUTY = 'Duty',
@@ -81,6 +97,27 @@ export enum DataType {
     RPM = 'RPM',
     FREQ = 'Freq',
     WATTS = 'Watts',
+}
+
+// Get localized data type names
+export function getLocalizedDataType(type: DataType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case DataType.TEMP:
+            return t('models.dataType.temp')
+        case DataType.DUTY:
+            return t('models.dataType.duty')
+        case DataType.LOAD:
+            return t('models.dataType.load')
+        case DataType.RPM:
+            return t('models.dataType.rpm')
+        case DataType.FREQ:
+            return t('models.dataType.freq')
+        case DataType.WATTS:
+            return t('models.dataType.watts')
+        default:
+            return type
+    }
 }
 
 export class DashboardDeviceChannel {

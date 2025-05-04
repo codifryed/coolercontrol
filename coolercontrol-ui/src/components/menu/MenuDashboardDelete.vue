@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboardUID: UID
@@ -40,6 +41,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
+const { t } = useI18n()
 
 const deleteDashboard = (): void => {
     const dashboardIndex: number = settingsStore.dashboards.findIndex(
@@ -50,17 +52,18 @@ const deleteDashboard = (): void => {
         return
     }
     confirm.require({
-        message: `Are you sure you want to delete the dashboard:
-            "${settingsStore.dashboards[dashboardIndex].name}"?`,
-        header: 'Delete Dashboard',
+        message: t('views.dashboard.deleteDashboardConfirm', {
+            name: settingsStore.dashboards[dashboardIndex].name,
+        }),
+        header: t('views.dashboard.deleteDashboard'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
         accept: async () => {
             settingsStore.dashboards.splice(dashboardIndex, 1)
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Dashboard Deleted',
+                summary: t('common.success'),
+                detail: t('views.dashboard.dashboardDeleted'),
                 life: 3000,
             })
             emit('deleted', props.dashboardUID)
@@ -70,7 +73,12 @@ const deleteDashboard = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete', disabled: settingsStore.dashboards.length < 2 }">
+    <div
+        v-tooltip.top="{
+            value: t('layout.menu.tooltips.delete'),
+            disabled: settingsStore.dashboards.length < 2,
+        }"
+    >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteDashboard"

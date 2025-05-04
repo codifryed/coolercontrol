@@ -25,10 +25,12 @@ import { computed, onMounted } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { mdiCircle, mdiGit, mdiHelpCircleOutline, mdiToolboxOutline } from '@mdi/js'
 import Button from 'primevue/button'
+import { useI18n } from 'vue-i18n'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
 const daemonState = useDaemonState()
+const { t } = useI18n()
 
 const healthCheck = await deviceStore.health()
 const convertLogsToHtml = computed((): string => {
@@ -72,7 +74,7 @@ onMounted(() => {
 
 <template>
     <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl font-bold">Application Information</div>
+        <div class="pl-4 py-2 text-2xl font-bold">{{ t('views.appInfo.title') }}</div>
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
@@ -82,7 +84,7 @@ onMounted(() => {
                     <span class="text-lg font-bold underline">v{{ appVersion }}</span>
                 </a>
             </h3>
-            <p class="text-sm italic">This program comes with absolutely no warranty.</p>
+            <p class="text-sm italic">{{ t('views.appInfo.noWarranty') }}</p>
             <div class="mt-8">
                 <div class="flex flex-row">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
@@ -92,11 +94,11 @@ onMounted(() => {
                                     <td
                                         class="mb-4 p-2 flex justify-end items-center font-semibold text-xl text-text-color"
                                     >
-                                        Daemon Status
+                                        {{ t('views.appInfo.daemonStatus') }}
                                     </td>
                                     <td class="pl-2">
                                         <Button
-                                            label="Acknowledge Issues"
+                                            :label="t('views.appInfo.acknowledgeIssues')"
                                             class="mb-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
                                             :disabled="daemonState.status === DaemonStatus.OK"
                                             @click="daemonState.acknowledgeLogIssues()"
@@ -104,7 +106,9 @@ onMounted(() => {
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">Status</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.status') }}
+                                    </td>
                                     <td class="table-data">
                                         <div class="flex flex-row items-center">
                                             <svg-icon
@@ -114,53 +118,65 @@ onMounted(() => {
                                                 :path="mdiCircle"
                                                 :size="deviceStore.getREMSize(1.25)"
                                             />
-                                            {{ daemonState.status }}
+                                            {{
+                                                t(
+                                                    `daemon.status.${daemonState.status.replace(/\s+/g, '').toLowerCase()}`,
+                                                )
+                                            }}
                                         </div>
                                     </td>
                                 </tr>
                                 <tr>
                                     <td class="table-data font-bold text-lg text-end">
-                                        Process Status
+                                        {{ t('views.appInfo.processStatus') }}
                                     </td>
                                     <td class="table-data">{{ healthCheck.status }}</td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">Host</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.host') }}
+                                    </td>
                                     <td class="table-data w-44">
                                         {{ healthCheck.system.name }}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">Uptime</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.uptime') }}
+                                    </td>
                                     <td class="table-data w-44">
                                         {{ healthCheck.details.uptime }}
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">Version</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.version') }}
+                                    </td>
                                     <td class="table-data">{{ healthCheck.details.version }}</td>
                                 </tr>
                                 <tr>
                                     <td class="table-data font-bold text-lg text-end">
-                                        Process ID
+                                        {{ t('views.appInfo.processId') }}
                                     </td>
                                     <td class="table-data">{{ healthCheck.details.pid }}</td>
                                 </tr>
                                 <tr>
                                     <td class="table-data font-bold text-lg text-end">
-                                        Memory Usage
+                                        {{ t('views.appInfo.memoryUsage') }}
                                     </td>
                                     <td class="table-data">
                                         {{ healthCheck.details.memory_mb }} MB
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="table-data font-bold text-lg text-end">Liquidctl</td>
+                                    <td class="table-data font-bold text-lg text-end">
+                                        {{ t('views.appInfo.liquidctl') }}
+                                    </td>
                                     <td class="table-data">
                                         {{
                                             healthCheck.details.liquidctl_connected
-                                                ? 'Connected'
-                                                : 'Disconnected'
+                                                ? t('views.appInfo.connected')
+                                                : t('views.appInfo.disconnected')
                                         }}
                                     </td>
                                 </tr>
@@ -174,7 +190,9 @@ onMounted(() => {
                 <div
                     class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[28rem]"
                 >
-                    <span class="mb-4 font-semibold text-xl text-text-color">Helpful Links</span>
+                    <span class="mb-4 font-semibold text-xl text-text-color">{{
+                        t('views.appInfo.helpfulLinks')
+                    }}</span>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
                             target="_blank"
@@ -188,9 +206,9 @@ onMounted(() => {
                                     :path="mdiHelpCircleOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                Getting Started
+                                {{ t('views.appInfo.gettingStarted') }}
                             </div> </a
-                        >&nbsp;- Help setting up fan control
+                        >&nbsp;- {{ t('views.appInfo.helpSettingUp') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a
@@ -205,9 +223,9 @@ onMounted(() => {
                                     :path="mdiToolboxOutline"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                Hardware Support
+                                {{ t('views.appInfo.hardwareSupport') }}
                             </div> </a
-                        >&nbsp;- Maximize hardware coverage
+                        >&nbsp;- {{ t('views.appInfo.hardwareSupportDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" :href="healthCheck.links.repository" class="text-accent">
@@ -218,9 +236,9 @@ onMounted(() => {
                                     :path="mdiGit"
                                     :size="deviceStore.getREMSize(2.0)"
                                 />
-                                Git Repository
+                                {{ t('views.appInfo.gitRepository') }}
                             </div> </a
-                        >&nbsp;- Submit Issues or Feature Requests
+                        >&nbsp;- {{ t('views.appInfo.gitRepositoryDesc') }}
                     </p>
                     <p class="mt-4 text-wrap flex flex-row items-center">
                         <a target="_blank" href="https://discord.gg/MbcgUFAfhV" class="text-accent">
@@ -228,33 +246,35 @@ onMounted(() => {
                                 <span class="mr-2 pi pi-discord text-[2.0rem]" />
                                 Discord
                             </div> </a
-                        >&nbsp;- Join our Discord community
+                        >&nbsp;- {{ t('views.appInfo.discordDesc') }}
                     </p>
                 </div>
             </div>
-            <div class="mt-8 mb-6">
+            <div class="mt-8">
                 <div
-                    class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color w-[60vw]"
                 >
-                    <span class="pb-2 ml-1 font-semibold text-xl text-text-color">
-                        Current Daemon Logs
-                    </span>
-                    <div
-                        id="log-output"
-                        class="w-full max-h-[42rem] overflow-x-auto overflow-y-auto bg-bg-one border border-border-one/100 p-2"
-                        v-html="convertLogsToHtml"
-                    />
-                    <div class="flex justify-center">
+                    <div class="flex flex-row justify-between items-baseline">
+                        <span class="mb-4 font-semibold text-xl text-text-color">{{
+                            t('views.appInfo.logsAndDiagnostics')
+                        }}</span>
                         <a
-                            :download="downloadLogFileName"
                             :href="downloadLogHref"
+                            :download="downloadLogFileName"
                             :data-downloadurl="downloadLogDatasetURL"
+                            class="text-accent outline-0 mb-2 text-sm"
                         >
-                            <Button
-                                label="Download Current Logs"
-                                class="mt-4 bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                            />
+                            {{ t('views.appInfo.downloadCurrentLog') }}
                         </a>
+                    </div>
+                    <div
+                        class="h-[22rem] relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
+                    >
+                        <pre
+                            id="log-output"
+                            class="whitespace-pre-wrap h-full w-full select-text outline-none"
+                            v-html="convertLogsToHtml"
+                        ></pre>
                     </div>
                 </div>
             </div>

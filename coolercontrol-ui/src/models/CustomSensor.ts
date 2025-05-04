@@ -18,6 +18,7 @@
 
 import type { UID } from './Device'
 import { Type } from 'class-transformer'
+import i18n from '@/i18n'
 
 export class CustomSensor {
     id: String
@@ -56,6 +57,48 @@ export enum CustomSensorMixFunctionType {
     Delta = 'Delta',
     Avg = 'Avg',
     WeightedAvg = 'WeightedAvg',
+}
+
+/**
+ * 获取CustomSensorType的本地化显示名称
+ * @param type CustomSensorType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getCustomSensorTypeDisplayName(type: CustomSensorType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case CustomSensorType.Mix:
+            return t('models.customSensor.sensorType.mix')
+        case CustomSensorType.File:
+            return t('models.customSensor.sensorType.file')
+        default:
+            return String(type)
+    }
+}
+
+/**
+ * 获取CustomSensorMixFunctionType的本地化显示名称
+ * @param type CustomSensorMixFunctionType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getCustomSensorMixFunctionTypeDisplayName(
+    type: CustomSensorMixFunctionType,
+): string {
+    const { t } = i18n.global
+    switch (type) {
+        case CustomSensorMixFunctionType.Min:
+            return t('models.customSensor.mixFunctionType.min')
+        case CustomSensorMixFunctionType.Max:
+            return t('models.customSensor.mixFunctionType.max')
+        case CustomSensorMixFunctionType.Delta:
+            return t('models.customSensor.mixFunctionType.delta')
+        case CustomSensorMixFunctionType.Avg:
+            return t('models.customSensor.mixFunctionType.avg')
+        case CustomSensorMixFunctionType.WeightedAvg:
+            return t('models.customSensor.mixFunctionType.weightedAvg')
+        default:
+            return String(type)
+    }
 }
 
 export type Weight = number

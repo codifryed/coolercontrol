@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     alertUID: UID
@@ -39,6 +40,7 @@ const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
+const { t } = useI18n()
 
 const deleteAlert = (): void => {
     const alertUIDToDelete: UID = props.alertUID
@@ -50,10 +52,9 @@ const deleteAlert = (): void => {
         return
     }
     const alertName = settingsStore.alerts[alertIndex].name
-    const deleteMessage: string = `Are you sure you want to delete: "${alertName}"?`
     confirm.require({
-        message: deleteMessage,
-        header: 'Delete Alert',
+        message: t('views.alerts.deleteAlertConfirm', { name: alertName }),
+        header: t('views.alerts.deleteAlert'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             const successful = await settingsStore.deleteAlert(alertUIDToDelete)
@@ -64,7 +65,7 @@ const deleteAlert = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteAlert"

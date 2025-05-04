@@ -30,11 +30,13 @@ import Button from 'primevue/button'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
+import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
+const { t } = useI18n()
 
 interface Tree {
     label: string
@@ -211,10 +213,8 @@ createTreeMenu()
 
 const saveCCDeviceSettings = async (): Promise<void> => {
     confirm.require({
-        message:
-            'Toggling devices or sensors requires a daemon and UI restart. ' +
-            'Are you sure want to do this now?',
-        header: 'Enable Devices',
+        message: t('layout.settings.devices.toggleRequiresRestart'),
+        header: t('layout.settings.devices.enableDevices'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             const ccDeviceSettingsToSet: Array<CoolerControlDeviceSettingsDTO> = []
@@ -260,8 +260,8 @@ const saveCCDeviceSettings = async (): Promise<void> => {
             } else {
                 toast.add({
                     severity: 'error',
-                    summary: 'Error',
-                    detail: 'Unknown error trying to apply changes to all devices. See logs for details.',
+                    summary: t('common.error'),
+                    detail: t('layout.settings.devices.unknownError'),
                     life: 4000,
                 })
             }
@@ -282,23 +282,17 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                             :path="mdiHelpCircleOutline"
                             :size="deviceStore.getREMSize(1.3)"
                         />
-                        Detection Issues? See the
+                        {{ t('layout.settings.devices.detectionIssues') }}
                         <a
                             target="_blank"
                             href="https://docs.coolercontrol.org/hardware-support.html"
                             class="text-accent"
                         >
-                            Hardware Support Documentation.
+                            {{ t('layout.settings.devices.hardwareSupportDoc') }}.
                         </a>
                     </td>
                 </tr>
-                <tr
-                    v-tooltip.right="
-                        'Select devices and sensors to disable or enable.\n' +
-                        'Disabling unused devices and sensors is highly\n' +
-                        'recommended.'
-                    "
-                >
+                <tr v-tooltip.right="t('layout.settings.devices.selectTooltip')">
                     <td class="flex justify-between py-4">
                         <div
                             class="flex flex-row w-full my-1 mx-4 leading-none text-center items-center"
@@ -308,14 +302,16 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                                 class="w-8"
                                 :path="mdiRestart"
                                 :size="deviceStore.getREMSize(1.0)"
-                                v-tooltip.top="'Triggers and automatic daemon restart'"
+                                v-tooltip.top="t('layout.settings.tooltips.triggersRestart')"
                             />
-                            <span class="w-full">Devices and Sensors</span>
+                            <span class="w-full">{{
+                                t('layout.settings.devices.devicesAndSensors')
+                            }}</span>
                             <Button
-                                label="Apply"
+                                :label="t('common.apply')"
                                 class="bg-accent/80 hover:!bg-accent w-80 h-[2.375rem]"
                                 @click="saveCCDeviceSettings"
-                                v-tooltip.top="'Apply settings and reload'"
+                                v-tooltip.top="t('layout.settings.tooltips.saveAndReload')"
                             />
                         </div>
                     </td>

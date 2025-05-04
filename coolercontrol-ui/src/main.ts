@@ -25,6 +25,7 @@ import 'abortcontroller-polyfill/dist/abortsignal-polyfill-only'
 
 import App from './App.vue'
 import router from './router'
+import i18n from './i18n'
 
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
@@ -51,6 +52,7 @@ app.provide('emitter', mitt())
 
 app.use(createPinia())
 app.use(router)
+app.use(i18n)
 app.use(PrimeVue, {
     unstyled: true,
     pt: CC,

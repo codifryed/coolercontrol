@@ -26,9 +26,11 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiHelpCircleOutline } from '@mdi/js'
 import FloatLabel from 'primevue/floatlabel'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import { useI18n } from 'vue-i18n'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const deviceStore = useDeviceStore()
+const { t } = useI18n()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
 const passwdInput: Ref<string> = ref('')
@@ -63,18 +65,14 @@ nextTick(async () => {
             required
             @keydown.enter="closeAndProcess"
         />
-        <label for="password">Password</label>
+        <label for="password">{{ t('common.password') }}</label>
     </FloatLabel>
     <footer class="flex items-center place-content-between mt-4">
         <Button
             class="!p-0 rounded-lg w-8 h-8"
             link
             v-tooltip.bottom="{
-                value:
-                    'Upon installation the daemon uses a default password to protect device control endpoints. \n' +
-                    'Optionally you can create a strong password for improved protection. \n' +
-                    'If you see this dialog and have not yet set a password, try refreshing the UI \n' +
-                    ' or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
+                value: t('components.password.passwordHelp'),
                 autoHide: false,
             }"
         >
@@ -91,7 +89,7 @@ nextTick(async () => {
             @click="closeAndProcess"
             :disabled="passwordIsInvalid()"
         >
-            {{ setPasswd ? 'Save Password' : 'Ok' }}
+            {{ setPasswd ? t('common.savePassword') : t('common.ok') }}
         </Button>
     </footer>
 </template>

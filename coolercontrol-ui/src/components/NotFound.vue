@@ -22,21 +22,23 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiHome } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useI18n } from 'vue-i18n'
 
 const { getREMSize } = useDeviceStore()
+const { t } = useI18n()
 </script>
 
 <template>
     <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-xl">404 Not Found</div>
+        <div class="pl-4 py-2 text-xl">{{ t('views.error.pageNotFound') }}</div>
     </div>
     <div class="m-10 text-center font-bold text-2xl">
-        <p>Just like the perfect Linux 🐧 distro,<br />this page does not exist.</p>
+        <p>{{ t('components.notFound.message') }}</p>
         <router-link to="/">
             <Button
                 class="mt-16 !rounded-lg border-2 bg-accent/70 text-text-color-secondary w-64 h-12 !p-0 hover:text-text-color hover:!bg-accent outline-0"
             >
-                Return Home
+                {{ t('views.error.returnToDashboard') }}
                 <svg-icon class="ml-4" type="mdi" :path="mdiHome" :size="getREMSize(1.75)" />
             </Button>
         </router-link>

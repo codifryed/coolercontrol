@@ -26,19 +26,25 @@ import {
     CustomSensorTempSource,
     CustomSensorType,
     CustomTempSourceData,
+    getCustomSensorTypeDisplayName,
+    getCustomSensorMixFunctionTypeDisplayName,
 } from '@/models/CustomSensor.ts'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import { onMounted, ref, type Ref, watch } from 'vue'
+import { onMounted, ref, type Ref, watch, computed } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { storeToRefs } from 'pinia'
-import { ChannelViewType, SensorAndChannelSettings } from '@/models/UISettings.ts'
+import {
+    ChannelViewType,
+    SensorAndChannelSettings,
+    getChannelViewTypeDisplayName,
+} from '@/models/UISettings.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -50,6 +56,7 @@ import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     customSensorID?: string
@@ -79,6 +86,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
+const { t } = useI18n()
 
 let contextIsDirty: boolean = false
 const shouldCreateSensor: boolean = !props.customSensorID
@@ -127,9 +135,23 @@ const isUserName: boolean =
     deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.userName != undefined
 const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
-const sensorTypes = [...$enum(CustomSensorType).keys()]
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
-const mixFunctions = [...$enum(CustomSensorMixFunctionType).keys()]
+
+// Generate options with localized display names
+const sensorTypeOptions = computed(() => {
+    return [...$enum(CustomSensorType).values()].map((type) => ({
+        value: type,
+        label: getCustomSensorTypeDisplayName(type),
+    }))
+})
+
+const mixFunctionTypeOptions = computed(() => {
+    return [...$enum(CustomSensorMixFunctionType).values()].map((type) => ({
+        value: type,
+        label: getCustomSensorMixFunctionTypeDisplayName(type),
+    }))
+})
+
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const chosenViewType: Ref<ChannelViewType> = ref(
@@ -333,12 +355,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to this Custom Sensor.',
-        header: 'Unsaved Changes',
+        message: t('views.customSensors.unsavedChanges'),
+        header: t('views.customSensors.unsavedChangesHeader'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -353,7 +375,7 @@ const viewTypeChanged = () =>
 const fileBrowse = async (): Promise<void> => {
     // @ts-ignore
     const ipc = window.ipc
-    filePath.value = await ipc.filePathDialog('Select Custom Sensor File')
+    filePath.value = await ipc.filePathDialog(t('views.customSensors.selectCustomSensorFile'))
 }
 
 onMounted(async () => {
@@ -382,7 +404,9 @@ onMounted(async () => {
     <div class="flex border-b-4 border-border-one items-center justify-between">
         <div class="flex pl-4 py-2 text-2xl overflow-hidden">
             <span class="font-bold overflow-hidden overflow-ellipsis">{{
-                shouldCreateSensor ? `New Sensor: ${currentName}` : currentName
+                shouldCreateSensor
+                    ? `${t('views.customSensors.newSensor')}: ${currentName}`
+                    : currentName
             }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
@@ -394,11 +418,11 @@ onMounted(async () => {
                 class="p-2 flex flex-row"
             >
                 <InputNumber
-                    placeholder="Minutes"
+                    :placeholder="t('views.dashboard.minutes')"
                     input-id="chart-minutes"
                     v-model="chartMinutes"
                     class="h-[2.375rem] chart-minutes"
-                    suffix=" min"
+                    :suffix="` ${t('common.minuteAbbr')}`"
                     show-buttons
                     :use-grouping="false"
                     :step="1"
@@ -407,7 +431,7 @@ onMounted(async () => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="'Time Range'"
+                    v-tooltip.bottom="t('views.dashboard.timeRange')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -422,32 +446,33 @@ onMounted(async () => {
                 <Select
                     v-model="singleDashboard.chartType"
                     :options="chartTypes"
-                    placeholder="Select a Chart Type"
+                    :placeholder="t('views.dashboard.selectChartType')"
                     class="w-32 h-full"
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="'Chart Type'"
+                    v-tooltip.bottom="t('views.dashboard.chartType')"
                 />
             </div>
             <div v-if="!shouldCreateSensor" class="p-2">
                 <Select
                     v-model="chosenViewType"
-                    :options="viewTypeOptions"
                     class="w-32 h-[2.375rem]"
-                    placeholder="View Type"
+                    :options="viewTypeOptions"
+                    :option-label="(viewType) => getChannelViewTypeDisplayName(viewType)"
                     checkmark
+                    placeholder="View Type"
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
+                    v-tooltip.right="t('views.controls.viewType')"
                     @change="viewTypeChanged"
-                    v-tooltip.bottom="'Control or View'"
                 />
             </div>
             <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
-                    label="Save"
-                    v-tooltip.bottom="'Save Sensor'"
+                    :label="t('common.save')"
+                    v-tooltip.bottom="t('views.customSensors.saveCustomSensor')"
                     :disabled="chosenViewType !== ChannelViewType.Control"
                     @click="saveSensor"
                 >
@@ -486,32 +511,36 @@ onMounted(async () => {
             <div class="w-full flex flex-col lg:flex-row">
                 <div class="mt-0 mr-4 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Sensor Type
+                        {{ t('views.customSensors.sensorType') }}
                     </small>
                     <Listbox
                         :model-value="selectedSensorType"
-                        :options="sensorTypes"
+                        :options="sensorTypeOptions"
                         class="w-full"
                         checkmark
-                        placeholder="Type"
+                        :placeholder="t('views.customSensors.type')"
                         list-style="max-height: 100%"
-                        v-tooltip.right="'Sensor Type'"
+                        v-tooltip.right="t('views.customSensors.sensorType')"
                         @change="changeSensorType"
+                        option-label="label"
+                        option-value="value"
                     />
                 </div>
                 <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-0 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Mix Function
+                        {{ t('views.customSensors.mixFunction') }}
                     </small>
                     <Listbox
                         :model-value="selectedMixFunction"
-                        :options="mixFunctions"
+                        :options="mixFunctionTypeOptions"
                         checkmark
-                        placeholder="Type"
+                        :placeholder="t('views.customSensors.type')"
                         class="w-full"
                         list-style="max-height: 100%"
-                        v-tooltip.right="'How to calculate the resulting sensor value'"
+                        v-tooltip.right="t('views.customSensors.howCalculateValue')"
                         @change="changeMixFunction"
+                        option-label="label"
+                        option-value="value"
                     />
                 </div>
                 <div
@@ -519,26 +548,20 @@ onMounted(async () => {
                     class="flex flex-col w-96 mt-1"
                 >
                     <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
-                        Temp File Location
+                        {{ t('views.customSensors.tempFile') }}
                     </small>
                     <InputText
                         v-model="filePath"
                         class="w-full h-12"
-                        placeholder="/tmp/your_temp_file"
+                        :placeholder="'/tmp/your_temp_file'"
                         :invalid="!filePath"
-                        v-tooltip.bottom="
-                            'Enter the absolute path to the temperature file to use for this ' +
-                            'sensor.\nThe file must use the sysfs data format standard:\n' +
-                            'A fixed point number in millidegrees Celsius.\n' +
-                            'e.g. 80000 for 80°C.\n' +
-                            'The file is verified upon submission.'
-                        "
+                        v-tooltip.bottom="t('views.customSensors.filePathTooltip')"
                     />
                     <div v-if="deviceStore.isQtApp()">
                         <Button
                             class="mt-2 w-full h-12"
-                            label="Browse"
-                            v-tooltip.right="'Browse for a custom sensor file'"
+                            :label="t('views.customSensors.browse')"
+                            v-tooltip.right="t('views.customSensors.browseCustomSensorFile')"
                             @click="fileBrowse"
                         >
                             <svg-icon
@@ -547,7 +570,7 @@ onMounted(async () => {
                                 :path="mdiFolderSearchOutline"
                                 :size="deviceStore.getREMSize(1.5)"
                             />
-                            Browse
+                            {{ t('views.customSensors.browse') }}
                         </Button>
                     </div>
                 </div>
@@ -558,7 +581,7 @@ onMounted(async () => {
             >
                 <div class="w-96 mr-4">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Temp Sources
+                        {{ t('views.customSensors.tempSources') }}
                     </small>
                     <Listbox
                         v-model="chosenTempSources"
@@ -570,14 +593,12 @@ onMounted(async () => {
                         option-label="tempFrontendName"
                         option-group-label="deviceName"
                         option-group-children="temps"
-                        filter-placeholder="Search"
+                        :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
                         :invalid="chosenTempSources.length === 0"
                         v-tooltip.right="{
                             escape: false,
-                            value:
-                                'Temperature sources to be used in the mix function<br/>' +
-                                '<i>Note: You can use a Mix Profile to combine multiple<br/>Customer Sensors.</i>',
+                            value: t('views.customSensors.tempSourcesTooltip'),
                         }"
                     >
                         <template #optiongroup="slotProps">
@@ -609,13 +630,17 @@ onMounted(async () => {
                 <div
                     v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
                     class="mt-1 w-96"
-                    v-tooltip.right="'The individual weight of each selected temperature source.'"
+                    v-tooltip.right="t('views.customSensors.tempWeight')"
                 >
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
-                        Temp Weights
+                        {{ t('views.customSensors.tempWeight') }}
                     </small>
                     <DataTable :value="chosenTempSources">
-                        <Column field="tempFrontendName" header="Temp Name" body-class="w-full">
+                        <Column
+                            field="tempFrontendName"
+                            :header="t('views.customSensors.tempName')"
+                            body-class="w-full"
+                        >
                             <template #body="slotProps">
                                 <span
                                     class="pi pi-minus mr-2"
@@ -623,7 +648,7 @@ onMounted(async () => {
                                 />{{ slotProps.data.tempFrontendName }}
                             </template>
                         </Column>
-                        <Column header="Weight">
+                        <Column :header="t('views.customSensors.weight')">
                             <template #body="slotProps">
                                 <InputNumber
                                     v-model="slotProps.data.weight"

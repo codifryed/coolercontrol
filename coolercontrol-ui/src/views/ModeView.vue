@@ -29,12 +29,14 @@ import { Mode } from '@/models/Mode.ts'
 import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
 import Button from 'primevue/button'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     modeUID: UID
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -160,9 +162,7 @@ onMounted(async () => {
             </div>
             <div
                 class="px-4 py-2 flex flex-row leading-none items-center"
-                v-tooltip.top="
-                    'Note: Modes do not include Profile or Function settings, only channel configurations.'
-                "
+                v-tooltip.top="t('views.mode.modeHint')"
             >
                 <svg-icon
                     type="mdi"
@@ -171,11 +171,14 @@ onMounted(async () => {
                 />
             </div>
         </div>
-        <div class="p-2" v-tooltip.bottom="{ value: 'Currently Active', disabled: !isActivated }">
+        <div
+            class="p-2"
+            v-tooltip.bottom="{ value: t('views.mode.currentlyActive'), disabled: !isActivated }"
+        >
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                 label="Save"
-                v-tooltip.bottom="'Activate Mode'"
+                v-tooltip.bottom="t('views.mode.activateMode')"
                 :disabled="isActivated"
                 @click="activateMode"
             >
@@ -201,7 +204,7 @@ onMounted(async () => {
                 }),
             }"
         >
-            <Column field="deviceName" header="Device">
+            <Column field="deviceName" :header="t('components.sensorTable.device')">
                 <template #body="slotProps">
                     <div class="flex leading-none items-center">
                         <div class="mr-2">
@@ -217,7 +220,7 @@ onMounted(async () => {
             </Column>
             <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
             <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
-            <Column field="rowID" header="Channel">
+            <Column field="rowID" :header="t('components.sensorTable.channel')">
                 <template #body="slotProps">
                     <span
                         class="pi pi-minus mr-2"
@@ -225,7 +228,7 @@ onMounted(async () => {
                     />{{ slotProps.data.channelLabel }}
                 </template>
             </Column>
-            <Column field="settingType" header="Setting">
+            <Column field="settingType" :header="t('components.modeTable.setting')">
                 <template #body="slotProps">
                     {{ slotProps.data.settingType }}
                 </template>

@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     profileUID: UID
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 
 const props = defineProps<Props>()
 
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
@@ -69,13 +71,14 @@ const deleteProfile = (): void => {
     }
     const deleteMessage: string =
         associatedChannelSettings.length === 0
-            ? `Are you sure you want to delete: "${profileName}"?`
-            : `"${profileName}" is currently being used by: ${associatedChannelSettings}.
-                Deleting this Profile will reset those channels' settings.
-                Are you sure you want to delete "${profileName}"?`
+            ? t('views.profiles.deleteProfileConfirm', { name: profileName })
+            : t('views.profiles.deleteProfileWithChannelsConfirm', {
+                  name: profileName,
+                  channels: associatedChannelSettings.join(', '),
+              })
     confirm.require({
         message: deleteMessage,
-        header: 'Delete Profile',
+        header: t('views.profiles.deleteProfile'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             // emit needs to happen first for Profiles, since they're re-loaded in by deleting
@@ -83,8 +86,8 @@ const deleteProfile = (): void => {
             await settingsStore.deleteProfile(profileUIDToDelete)
             toast.add({
                 severity: 'success',
-                summary: 'Success',
-                detail: 'Profile Deleted',
+                summary: t('common.success'),
+                detail: t('views.profiles.profileDeleted'),
                 life: 3000,
             })
         },
@@ -93,7 +96,7 @@ const deleteProfile = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete' }">
+    <div v-tooltip.top="{ value: t('common.delete') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteProfile"

@@ -55,7 +55,9 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
 const router = useRouter()
@@ -130,7 +132,7 @@ const activatePreviousMode = async (): Promise<void> => {
 const accessMenuRef = ref<DropdownInstance>()
 const accessItems = computed(() => [
     {
-        label: 'Login',
+        label: t('layout.topbar.login'),
         icon: 'pi pi-fw pi-sign-in',
         command: async () => {
             accessMenuRef.value?.handleClose()
@@ -139,7 +141,7 @@ const accessItems = computed(() => [
         visible: !deviceStore.loggedIn,
     },
     {
-        label: 'Logout',
+        label: t('layout.topbar.logout'),
         icon: 'pi pi-fw pi-sign-out',
         command: async () => {
             accessMenuRef.value?.handleClose()
@@ -148,7 +150,7 @@ const accessItems = computed(() => [
         visible: deviceStore.loggedIn,
     },
     {
-        label: 'Change Password',
+        label: t('layout.topbar.changePassword'),
         icon: 'pi pi-fw pi-shield',
         command: async () => {
             accessMenuRef.value?.handleClose()
@@ -158,63 +160,68 @@ const accessItems = computed(() => [
     },
 ])
 
-const restartItems = ref([
-    {
-        label: 'Restart UI',
-        icon: 'pi pi-fw pi-refresh',
-        command: () => {
-            deviceStore.reloadUI()
+const restartItems = computed(() => {
+    const items = [
+        {
+            label: t('layout.topbar.restartUI'),
+            icon: 'pi pi-fw pi-refresh',
+            command: () => {
+                deviceStore.reloadUI()
+            },
         },
-    },
-    {
-        label: 'Restart Daemon and UI',
-        icon: 'pi pi-fw pi-sync',
-        command: async () => {
-            confirm.require({
-                message: 'Are you sure you want to restart the daemon and the UI?',
-                header: 'Daemon Restart',
-                icon: 'pi pi-exclamation-triangle',
-                defaultFocus: 'accept',
-                accept: async () => {
-                    const successful = await deviceStore.daemonClient.shutdownDaemon()
-                    if (successful) {
-                        toast.add({
-                            severity: 'success',
-                            summary: 'Success',
-                            detail: 'Daemon shutdown signal accepted',
-                            life: 6000,
-                        })
-                        await deviceStore.waitAndReload()
-                    } else {
-                        toast.add({
-                            severity: 'error',
-                            summary: 'Error',
-                            detail: 'Unknown error sending shutdown signal. See logs for details.',
-                            life: 4000,
-                        })
-                    }
-                },
-            })
+        {
+            label: t('layout.topbar.restartDaemonAndUI'),
+            icon: 'pi pi-fw pi-sync',
+            command: async () => {
+                confirm.require({
+                    message: t('layout.topbar.restartConfirmMessage'),
+                    header: t('layout.topbar.restartConfirmHeader'),
+                    icon: 'pi pi-exclamation-triangle',
+                    defaultFocus: 'accept',
+                    accept: async () => {
+                        const successful = await deviceStore.daemonClient.shutdownDaemon()
+                        if (successful) {
+                            toast.add({
+                                severity: 'success',
+                                summary: t('common.success'),
+                                detail: t('layout.topbar.shutdownSuccess'),
+                                life: 6000,
+                            })
+                            await deviceStore.waitAndReload()
+                        } else {
+                            toast.add({
+                                severity: 'error',
+                                summary: t('common.error'),
+                                detail: t('layout.topbar.shutdownError'),
+                                life: 4000,
+                            })
+                        }
+                    },
+                })
+            },
         },
-    },
-])
-if (deviceStore.isQtApp()) {
-    restartItems.value.push({
-        label: 'Quit Desktop App',
-        icon: 'pi pi-fw pi-power-off',
-        command: async () => {
-            // call quit to the backend.
-            // @ts-ignore
-            const ipc = window.ipc
-            ipc.forceQuit()
-        },
-    })
-}
+    ]
+
+    if (deviceStore.isQtApp()) {
+        items.push({
+            label: t('layout.topbar.quitDesktopApp'),
+            icon: 'pi pi-fw pi-power-off',
+            command: async () => {
+                // call quit to the backend.
+                // @ts-ignore
+                const ipc = window.ipc
+                ipc.forceQuit()
+            },
+        })
+    }
+
+    return items
+})
 
 const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
     {
-        label: 'Dashboard',
+        label: t('layout.add.dashboard'),
         mdiIcon: mdiChartBoxPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -222,7 +229,7 @@ const addItems = computed(() => [
         },
     },
     {
-        label: 'Mode',
+        label: t('layout.add.mode'),
         mdiIcon: mdiBookmarkPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -230,7 +237,7 @@ const addItems = computed(() => [
         },
     },
     {
-        label: 'Profile',
+        label: t('layout.add.profile'),
         mdiIcon: mdiPlusBoxMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -238,7 +245,7 @@ const addItems = computed(() => [
         },
     },
     {
-        label: 'Function',
+        label: t('layout.add.function'),
         mdiIcon: mdiFlaskPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -246,7 +253,7 @@ const addItems = computed(() => [
         },
     },
     {
-        label: 'Alert',
+        label: t('layout.add.alert'),
         mdiIcon: mdiBellPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -254,7 +261,7 @@ const addItems = computed(() => [
         },
     },
     {
-        label: 'Custom Sensor',
+        label: t('layout.add.customSensor'),
         mdiIcon: mdiPlusCircleMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
@@ -269,7 +276,7 @@ const addItems = computed(() => [
         <Button
             id="logo"
             class="mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
-            v-tooltip.right="'Application Info'"
+            v-tooltip.right="t('layout.topbar.applicationInfo')"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
                 <OverlayBadge
@@ -285,7 +292,7 @@ const addItems = computed(() => [
         <Button
             id="back"
             class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-            v-tooltip.right="'Back'"
+            v-tooltip.right="t('layout.topbar.back')"
             @click="router.back()"
         >
             <svg-icon type="mdi" :path="mdiArrowLeft" :size="getREMSize(1.75)" />
@@ -404,7 +411,10 @@ const addItems = computed(() => [
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 @click="activatePreviousMode"
-                v-tooltip.right="{ value: 'Modes', disable: modesItems.length > 0 }"
+                v-tooltip.right="{
+                    value: t('layout.topbar.modes'),
+                    disable: modesItems.length > 0,
+                }"
             >
                 <svg-icon
                     type="mdi"
@@ -443,7 +453,9 @@ const addItems = computed(() => [
             id="collapse-menu"
             class="mt-2 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             v-tooltip.right="{
-                value: settingsStore.collapsedMainMenu ? 'Expand Menu' : 'Collapse Menu',
+                value: settingsStore.collapsedMainMenu
+                    ? t('layout.topbar.expandMenu')
+                    : t('layout.topbar.collapseMenu'),
             }"
             @click="emitter.emit('toggle-side-menu')"
         >
@@ -464,7 +476,7 @@ const addItems = computed(() => [
             <Button
                 id="alerts-quick"
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Alerts'"
+                v-tooltip.right="t('layout.topbar.alerts')"
             >
                 <OverlayBadge
                     v-if="numberOfActiveAlerts > 0"
@@ -493,7 +505,7 @@ const addItems = computed(() => [
             <Button
                 id="settings"
                 class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Settings'"
+                v-tooltip.right="t('layout.topbar.settings')"
             >
                 <svg-icon
                     type="mdi"
@@ -530,7 +542,7 @@ const addItems = computed(() => [
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="'Open in Browser'"
+                v-tooltip.right="t('layout.topbar.openInBrowser')"
             >
                 <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
             </Button>

@@ -28,6 +28,7 @@ import { mdiAxisArrow, mdiAxisXArrow, mdiAxisYArrow } from '@mdi/js'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ref, Ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboard: Dashboard
@@ -36,6 +37,7 @@ interface Props {
 const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 
 const precision = settingsStore.frequencyPrecision
 const freqIsMhz = precision === 1
@@ -53,7 +55,7 @@ watch(freqScaledMax, () => {
 </script>
 
 <template>
-    <div v-tooltip.bottom="'Axis Options'">
+    <div v-tooltip.bottom="t('components.axisOptions.title')">
         <popover-root>
             <popover-trigger
                 class="h-[2.375rem] rounded-lg border-2 border-border-one !py-1.5 !px-4 text-text-color outline-0 text-center justify-center items-center flex !m-0 hover:bg-surface-hover"
@@ -72,7 +74,9 @@ watch(freqScaledMax, () => {
                     <table>
                         <thead>
                             <tr>
-                                <th colspan="6" class="pb-2">Axis Options</th>
+                                <th colspan="6" class="pb-2">
+                                    {{ t('components.axisOptions.title') }}
+                                </th>
                             </tr>
                             <tr>
                                 <th
@@ -86,12 +90,16 @@ watch(freqScaledMax, () => {
                                             :path="mdiAxisXArrow"
                                             :size="deviceStore.getREMSize(1.25)"
                                         />
-                                        Duty / Temperature
+                                        {{ t('components.axisOptions.dutyTemperature') }}
                                     </span>
                                 </th>
                                 <th colspan="2" class="w-48 p-2 border-b border-border-one">
                                     <span class="flex flex-row justify-center">
-                                        {{ freqIsMhz ? 'rpm / Mhz' : 'krpm / Ghz' }}
+                                        {{
+                                            freqIsMhz
+                                                ? t('components.axisOptions.rpmMhz')
+                                                : t('components.axisOptions.krpmGhz')
+                                        }}
                                         <svg-icon
                                             class="outline-0 ml-2"
                                             type="mdi"
@@ -105,7 +113,7 @@ watch(freqScaledMax, () => {
                                     class="w-48 p-2 border-l border-b border-border-one"
                                 >
                                     <span class="flex flex-row justify-center">
-                                        watts
+                                        {{ t('components.axisOptions.watts') }}
                                         <svg-icon
                                             class="outline-0 ml-2"
                                             type="mdi"
@@ -119,13 +127,13 @@ watch(freqScaledMax, () => {
                         <tbody>
                             <tr>
                                 <td class="w-24 text-end px-2 border-r border-border-one">
-                                    AutoScale
+                                    {{ t('components.axisOptions.autoScale') }}
                                 </td>
                                 <td class="w-24 px-2 border-r border-border-one text-center">
                                     <el-switch v-model="dashboard.autoScaleDegree" size="large" />
                                 </td>
                                 <td class="w-24 text-end px-2 border-r border-border-one">
-                                    AutoScale
+                                    {{ t('components.axisOptions.autoScale') }}
                                 </td>
                                 <td class="w-24 px-2 text-center">
                                     <el-switch
@@ -134,17 +142,19 @@ watch(freqScaledMax, () => {
                                     />
                                 </td>
                                 <td class="w-24 text-end px-2 border-x border-border-one">
-                                    AutoScale
+                                    {{ t('components.axisOptions.autoScale') }}
                                 </td>
                                 <td class="w-24 px-2 text-center">
                                     <el-switch v-model="dashboard.autoScaleWatts" size="large" />
                                 </td>
                             </tr>
                             <tr>
-                                <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 border-r border-border-one">
                                     <InputNumber
-                                        placeholder="Max"
+                                        :placeholder="t('components.axisOptions.max')"
                                         v-model="dashboard.degreeMax"
                                         class="my-1"
                                         show-buttons
@@ -165,10 +175,12 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
-                                        placeholder="Max"
+                                        :placeholder="t('components.axisOptions.max')"
                                         v-model="freqScaledMax"
                                         class="my-1"
                                         show-buttons
@@ -190,10 +202,12 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-x border-border-one">Max</td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">
+                                    {{ t('components.axisOptions.max') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
-                                        placeholder="Max"
+                                        :placeholder="t('components.axisOptions.max')"
                                         v-model="dashboard.wattsMax"
                                         class="my-1"
                                         show-buttons
@@ -217,10 +231,12 @@ watch(freqScaledMax, () => {
                                 </td>
                             </tr>
                             <tr>
-                                <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 border-r border-border-one">
                                     <InputNumber
-                                        placeholder="Min"
+                                        :placeholder="t('components.axisOptions.min')"
                                         v-model="dashboard.degreeMin"
                                         class="my-1"
                                         show-buttons
@@ -241,10 +257,12 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
-                                        placeholder="Min"
+                                        :placeholder="t('components.axisOptions.min')"
                                         v-model="freqScaledMin"
                                         class="my-1"
                                         show-buttons
@@ -266,10 +284,12 @@ watch(freqScaledMax, () => {
                                         </template>
                                     </InputNumber>
                                 </td>
-                                <td class="w-24 text-end px-2 border-x border-border-one">Min</td>
+                                <td class="w-24 text-end px-2 border-x border-border-one">
+                                    {{ t('components.axisOptions.min') }}
+                                </td>
                                 <td class="w-24 px-2 text-center">
                                     <InputNumber
-                                        placeholder="Min"
+                                        :placeholder="t('components.axisOptions.min')"
                                         v-model="dashboard.wattsMin"
                                         class="my-1"
                                         show-buttons

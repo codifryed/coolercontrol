@@ -23,22 +23,26 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { AlertState } from '@/models/Alert.ts'
+import { AlertState, getAlertStateDisplayName } from '@/models/Alert.ts'
 import { mdiBellOutline, mdiBellRingOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useI18n } from 'vue-i18n'
 
 const settingsStore = useSettingsStore()
 const { getREMSize } = useDeviceStore()
+const { t } = useI18n()
 </script>
 
 <template>
     <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl font-bold">Alerts Overview</div>
+        <div class="pl-4 py-2 text-2xl font-bold">{{ t('views.alerts.alertsOverview') }}</div>
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color"> Alerts </span>
+                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                    t('views.alerts.createAlert')
+                }}</span>
                 <div class="flex flex-row">
                     <DataTable class="w-[31rem]" :value="settingsStore.alerts">
                         <Column header="">
@@ -57,26 +61,44 @@ const { getREMSize } = useDeviceStore()
                                 />
                             </template>
                         </Column>
-                        <Column field="state" header="State" />
-                        <Column field="name" header="Name" body-class="w-full text-ellipsis" />
+                        <Column field="state" :header="t('common.state')">
+                            <template #body="slotProps">
+                                <span
+                                    :class="{
+                                        'text-error': slotProps.data.state === AlertState.Active,
+                                        'text-success':
+                                            slotProps.data.state === AlertState.Inactive,
+                                    }"
+                                >
+                                    {{ getAlertStateDisplayName(slotProps.data.state) }}
+                                </span>
+                            </template>
+                        </Column>
+                        <Column
+                            field="name"
+                            :header="t('common.name')"
+                            body-class="w-full text-ellipsis"
+                        />
                     </DataTable>
                     <div class="w-full" />
                 </div>
             </div>
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color"> Alert Logs </span>
+                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                    t('views.alerts.alertLogs')
+                }}</span>
                 <DataTable
                     class="w-full"
                     :value="settingsStore.alertLogs"
                     sort-field="timestamp"
                     :sort-order="-1"
                 >
-                    <Column field="timestamp" header="Timestamp" :sortable="true">
+                    <Column field="timestamp" :header="t('common.timestamp')" :sortable="true">
                         <template #body="slotProps">
                             {{ new Date(slotProps.data.timestamp).toLocaleString() }}
                         </template>
                     </Column>
-                    <Column field="state" header="State">
+                    <Column field="state" :header="t('common.state')">
                         <template #body="slotProps">
                             <span
                                 :class="{
@@ -84,12 +106,16 @@ const { getREMSize } = useDeviceStore()
                                     'text-success': slotProps.data.state === AlertState.Inactive,
                                 }"
                             >
-                                {{ slotProps.data.state }}
+                                {{ getAlertStateDisplayName(slotProps.data.state) }}
                             </span>
                         </template>
                     </Column>
-                    <Column field="name" header="Name" />
-                    <Column field="message" header="Message" body-class="w-full text-ellipsis" />
+                    <Column field="name" :header="t('common.name')" />
+                    <Column
+                        field="message"
+                        :header="t('common.message')"
+                        body-class="w-full text-ellipsis"
+                    />
                 </DataTable>
             </div>
         </ScrollAreaViewport>

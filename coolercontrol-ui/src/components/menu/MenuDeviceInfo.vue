@@ -20,10 +20,12 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
-import { UID } from '@/models/Device.ts'
+import { DeviceType, getDeviceTypeDisplayName, UID } from '@/models/Device.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { ref, Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { DriverType, getDriverTypeDisplayName } from '@/models/DeviceInfo'
 
 interface Props {
     deviceUID: UID
@@ -35,11 +37,12 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+const { t } = useI18n()
 const systemDeviceName: Ref<string> = ref('')
-const deviceType: Ref<string> = ref('')
+const deviceType: Ref<DeviceType> = ref('' as unknown as DeviceType)
 const firmwareVersion: Ref<string> = ref('')
 const model: Ref<string> = ref('')
-const driverType: Ref<string> = ref('')
+const driverType: Ref<DriverType> = ref('' as unknown as DriverType)
 const driverName: Ref<string> = ref('')
 const driverVersion: Ref<string> = ref('')
 const driverLocations: Ref<Array<string>> = ref([])
@@ -61,7 +64,7 @@ for (const device of deviceStore.allDevices()) {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Device Details' }">
+    <div v-tooltip.top="{ value: t('components.deviceInfo.details') }">
         <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
@@ -80,44 +83,60 @@ for (const device of deviceStore.allDevices()) {
                     <table>
                         <tbody>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">System Name</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.systemName') }}
+                                </td>
                                 <td class="table-data">{{ systemDeviceName }}</td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">Device Type</td>
-                                <td class="table-data">{{ deviceType }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.deviceType') }}
+                                </td>
+                                <td class="table-data">
+                                    {{ getDeviceTypeDisplayName(deviceType) }}
+                                </td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">Device UID</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.deviceUID') }}
+                                </td>
                                 <td class="table-data">{{ props.deviceUID }}</td>
                             </tr>
                             <tr v-if="firmwareVersion">
                                 <td class="table-data font-bold text-lg text-end">
-                                    Firmware Version
+                                    {{ t('components.deviceInfo.firmwareVersion') }}
                                 </td>
                                 <td class="table-data">{{ firmwareVersion }}</td>
                             </tr>
                             <tr v-if="model">
-                                <td class="table-data font-bold text-lg text-end">Model</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.model') }}
+                                </td>
                                 <td class="table-data">{{ model }}</td>
                             </tr>
                             <tr v-if="driverName">
-                                <td class="table-data font-bold text-lg text-end">Driver Name</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.driverName') }}
+                                </td>
                                 <td class="table-data">{{ driverName }}</td>
                             </tr>
                             <tr>
-                                <td class="table-data font-bold text-lg text-end">Driver Type</td>
-                                <td class="table-data">{{ driverType }}</td>
+                                <td class="table-data font-bold text-lg text-end">
+                                    {{ t('components.deviceInfo.driverType') }}
+                                </td>
+                                <td class="table-data">
+                                    {{ getDriverTypeDisplayName(driverType) }}
+                                </td>
                             </tr>
                             <tr v-if="driverVersion">
                                 <td class="table-data font-bold text-lg text-end">
-                                    Driver Version
+                                    {{ t('components.deviceInfo.driverVersion') }}
                                 </td>
                                 <td class="table-data">{{ driverVersion }}</td>
                             </tr>
                             <tr v-if="driverLocations">
                                 <td class="table-data font-bold text-lg text-end align-text-top">
-                                    Locations
+                                    {{ t('components.deviceInfo.locations') }}
                                 </td>
                                 <td class="table-data">
                                     <p

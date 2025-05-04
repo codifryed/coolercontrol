@@ -20,6 +20,7 @@ import { DeviceInfo } from '@/models/DeviceInfo'
 import { LcInfo } from '@/models/LcInfo'
 import { Status } from '@/models/Status'
 import { Type } from 'class-transformer'
+import i18n from '@/i18n'
 
 export enum DeviceType {
     CUSTOM_SENSORS = 'CustomSensors',
@@ -27,6 +28,29 @@ export enum DeviceType {
     GPU = 'GPU',
     LIQUIDCTL = 'Liquidctl',
     HWMON = 'Hwmon',
+}
+
+/**
+ * 获取DeviceType的本地化显示名称
+ * @param type DeviceType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getDeviceTypeDisplayName(type: DeviceType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case DeviceType.CUSTOM_SENSORS:
+            return t('models.deviceType.customSensors')
+        case DeviceType.CPU:
+            return t('models.deviceType.cpu')
+        case DeviceType.GPU:
+            return t('models.deviceType.gpu')
+        case DeviceType.LIQUIDCTL:
+            return t('models.deviceType.liquidctl')
+        case DeviceType.HWMON:
+            return t('models.deviceType.hwmon')
+        default:
+            return String(type)
+    }
 }
 
 export type UID = string

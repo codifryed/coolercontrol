@@ -28,6 +28,7 @@ import { inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 
@@ -39,6 +40,7 @@ const emit = defineEmits<{
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
+const { t } = useI18n()
 
 const addDashboard = async (): Promise<void> => {
     const newDashboard = new Dashboard('New Dashboard')
@@ -52,7 +54,7 @@ emitter.on('dashboard-add', addDashboard)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Add Dashboard' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addDashboard') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="addDashboard"

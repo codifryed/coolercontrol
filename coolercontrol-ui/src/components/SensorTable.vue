@@ -29,9 +29,11 @@ import { Status } from '@/models/Status'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 
 interface Props {
     dashboard: Dashboard
@@ -386,7 +388,7 @@ onMounted(async () => {
                         }),
                     }"
                 >
-                    <Column field="deviceName" header="Device">
+                    <Column field="deviceName" :header="t('components.sensorTable.device')">
                         <template #body="slotProps">
                             <div class="flex leading-none items-center">
                                 <div class="mr-2">
@@ -402,7 +404,7 @@ onMounted(async () => {
                     </Column>
                     <!-- This workaround with rowID is needed because of an issue with DataTable and rowGrouping -->
                     <!-- Otherwise channelLabels from other devices are grouped together if they have the same name -->
-                    <Column field="rowID" header="Channel">
+                    <Column field="rowID" :header="t('components.sensorTable.channel')">
                         <template #body="slotProps">
                             <span
                                 class="pi pi-minus mr-2"
@@ -410,7 +412,7 @@ onMounted(async () => {
                             />{{ slotProps.data.channelLabel }}
                         </template>
                     </Column>
-                    <Column field="value" header="Current">
+                    <Column field="value" :header="t('components.sensorTable.current')">
                         <template #body="slotProps">
                             {{ format(slotProps.data.value, slotProps.data.dataType) }}
                             <span :style="suffixStyle(slotProps.data.dataType)">{{
@@ -418,7 +420,7 @@ onMounted(async () => {
                             }}</span>
                         </template>
                     </Column>
-                    <Column field="min" header="Min">
+                    <Column field="min" :header="t('components.sensorTable.min')">
                         <template #body="slotProps">
                             {{ format(slotProps.data.min, slotProps.data.dataType) }}
                             <span :style="suffixStyle(slotProps.data.dataType)">{{
@@ -426,7 +428,7 @@ onMounted(async () => {
                             }}</span>
                         </template>
                     </Column>
-                    <Column field="max" header="Max">
+                    <Column field="max" :header="t('components.sensorTable.max')">
                         <template #body="slotProps">
                             {{ format(slotProps.data.max, slotProps.data.dataType) }}
                             <span :style="suffixStyle(slotProps.data.dataType)">{{
@@ -434,7 +436,7 @@ onMounted(async () => {
                             }}</span>
                         </template>
                     </Column>
-                    <Column field="avg" header="Average">
+                    <Column field="avg" :header="t('components.sensorTable.average')">
                         <template #body="slotProps">
                             {{ format(slotProps.data.avg, slotProps.data.dataType) }}
                             <span :style="suffixStyle(slotProps.data.dataType)">{{

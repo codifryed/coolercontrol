@@ -22,14 +22,16 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiBellPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Props {}
 defineProps<Props>()
 const deviceStore = useDeviceStore()
+const { t } = useI18n()
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Add Alert' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }">
         <router-link :to="{ name: 'alerts', params: {} }" exact>
             <Button
                 class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"

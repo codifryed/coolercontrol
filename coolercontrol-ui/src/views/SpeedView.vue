@@ -48,6 +48,7 @@ import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     deviceUID: UID
@@ -61,6 +62,7 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
 const confirm = useConfirm()
+const { t } = useI18n()
 
 let contextIsDirty: boolean = false
 
@@ -99,9 +101,24 @@ const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const chosenViewType: Ref<ChannelViewType> = ref(
     channelIsControllable() ? uiChannelSetting.viewType : ChannelViewType.Dashboard,
 )
+
+// Create a mapping from enum values to i18n keys
+const viewTypeToKey = {
+    [ChannelViewType.Control]: 'control',
+    [ChannelViewType.Dashboard]: 'dashboard',
+}
+
 const viewTypeOptions = channelIsControllable()
-    ? [...$enum(ChannelViewType).keys()]
-    : [ChannelViewType.Dashboard]
+    ? [...$enum(ChannelViewType).keys()].map((type) => ({
+          value: type,
+          label: t(`models.channelViewType.${viewTypeToKey[type]}`),
+      }))
+    : [
+          {
+              value: ChannelViewType.Dashboard,
+              label: t(`models.channelViewType.${viewTypeToKey[ChannelViewType.Dashboard]}`),
+          },
+      ]
 
 const channelLabel =
     settingsStore.allUIDeviceSettings
@@ -122,7 +139,18 @@ const singleDashboard = ref(
         .get(props.deviceUID)!
         .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
-const chartTypes = [...$enum(ChartType).values()]
+
+// Create a mapping from enum values to i18n keys
+const chartTypeToKey = {
+    [ChartType.TIME_CHART]: 'timeChart',
+    [ChartType.TABLE]: 'table',
+    [ChartType.CONTROLS]: 'controls',
+}
+
+const chartTypes = [...$enum(ChartType).values()].map((type) => ({
+    value: type,
+    label: t(`models.chartType.${chartTypeToKey[type]}`),
+}))
 const chartMinutesMin: number = 1
 const chartMinutesMax: number = 60
 const chartMinutes: Ref<number> = ref(singleDashboard.value.timeRangeSeconds / 60)
@@ -169,11 +197,10 @@ const getProfileOptions = (): any[] => {
     }
 }
 
-const manualProfileOptions = [
-    { value: false, label: 'Automatic' },
-    { value: true, label: 'Manual' },
+const getManualProfileOptions = () => [
+    { value: false, label: t('views.speed.automatic') },
+    { value: true, label: t('views.speed.manual') },
 ]
-// todo: PWM Mode Toggle with own save function
 
 const saveSetting = async () => {
     if (manualControlEnabled.value) {
@@ -219,12 +246,12 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         return
     }
     confirm.require({
-        message: 'There are unsaved changes made to this control channel.',
-        header: 'Unsaved Changes',
+        message: t('views.speed.unsavedChangesMessage'),
+        header: t('views.speed.unsavedChanges'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
-        rejectLabel: 'Stay',
-        acceptLabel: 'Discard',
+        rejectLabel: t('common.stay'),
+        acceptLabel: t('common.discard'),
         accept: () => {
             next()
             contextIsDirty = false
@@ -309,7 +336,7 @@ onUnmounted(() => {
                     :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '8rem' }"
-                    v-tooltip.bottom="'Manual Duty'"
+                    v-tooltip.bottom="t('views.speed.manualDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -361,7 +388,7 @@ onUnmounted(() => {
                         checkmark
                         dropdown-icon="pi pi-chart-line"
                         scroll-height="40rem"
-                        v-tooltip.bottom="'Profile to apply'"
+                        v-tooltip.bottom="t('views.speed.profileToApply')"
                     />
                 </div>
             </div>
@@ -377,7 +404,7 @@ onUnmounted(() => {
                     input-id="chart-minutes"
                     v-model="chartMinutes"
                     class="h-[2.375rem] chart-minutes"
-                    suffix=" min"
+                    :suffix="` ${t('common.minuteAbbr')}`"
                     show-buttons
                     :use-grouping="false"
                     :step="1"
@@ -386,7 +413,7 @@ onUnmounted(() => {
                     button-layout="horizontal"
                     :allow-empty="false"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.bottom="'Time Range'"
+                    v-tooltip.bottom="t('views.dashboard.timeRange')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -404,16 +431,18 @@ onUnmounted(() => {
                     placeholder="Select a Chart Type"
                     class="w-32 h-full"
                     checkmark
+                    option-label="label"
+                    option-value="value"
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
-                    v-tooltip.bottom="'Chart Type'"
+                    v-tooltip.bottom="t('views.dashboard.chartType')"
                 />
             </div>
             <div class="p-2 pr-0 flex flex-row">
                 <Select
                     v-if="chosenViewType === ChannelViewType.Control"
                     v-model="manualControlEnabled"
-                    :options="manualProfileOptions"
+                    :options="getManualProfileOptions()"
                     option-label="label"
                     option-value="value"
                     class="w-32 mr-3"
@@ -421,14 +450,12 @@ onUnmounted(() => {
                     checkmark
                     dropdown-icon="pi pi-cog"
                     scroll-height="40rem"
-                    v-tooltip.bottom="'Automatic or Manual'"
+                    v-tooltip.bottom="t('views.speed.automaticOrManual')"
                 />
                 <div
                     v-if="!channelIsControllable()"
                     class="pr-4 py-2 flex flex-row leading-none items-center"
-                    v-tooltip.bottom="
-                        'The currently installed driver does not support control of this channel.'
-                    "
+                    v-tooltip.bottom="t('views.speed.driverNoSupportControl')"
                 >
                     <svg-icon
                         type="mdi"
@@ -443,17 +470,19 @@ onUnmounted(() => {
                     class="w-32"
                     placeholder="View Type"
                     checkmark
+                    option-label="label"
+                    option-value="value"
                     dropdown-icon="pi pi-sliders-h"
                     scroll-height="40rem"
                     @change="viewTypeChanged"
-                    v-tooltip.bottom="'Control or View'"
+                    v-tooltip.bottom="t('views.speed.controlOrView')"
                 />
             </div>
             <div class="p-2 flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
-                    label="Apply"
-                    v-tooltip.bottom="'Apply Setting'"
+                    :label="t('common.apply')"
+                    v-tooltip.bottom="t('views.speed.applySetting')"
                     @click="saveSetting"
                     :disabled="
                         !channelIsControllable() || chosenViewType === ChannelViewType.Dashboard

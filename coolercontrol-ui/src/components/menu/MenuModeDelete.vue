@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     modeUID: UID
@@ -39,14 +40,17 @@ const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
+const { t } = useI18n()
 
 const deleteMode = (): void => {
     const modeUIDToDelete: UID = props.modeUID
     const modeToDelete = settingsStore.modes.find((mode) => mode.uid === modeUIDToDelete)!
 
     confirm.require({
-        message: `Are you sure you want to delete the Mode: "${modeToDelete.name}"?`,
-        header: 'Delete Mode',
+        message: t('views.modes.deleteModeConfirm', {
+            name: modeToDelete.name,
+        }),
+        header: t('views.modes.deleteMode'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             await settingsStore.deleteMode(modeUIDToDelete)
@@ -57,7 +61,7 @@ const deleteMode = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete' }">
+    <div v-tooltip.top="{ value: t('layout.menu.tooltips.deleteMode') }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteMode"
