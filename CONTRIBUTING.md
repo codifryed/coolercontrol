@@ -70,6 +70,7 @@ In general, MRs should:
 - Include documentation in the repo or in the
   [readme](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/README.md).
 - Be accompanied by a completed Merge Request template (chosen when an MR is created).
+- Changes are formatted according using the repository rules. (See individual subpackage READMEs).
 
 For changes that address core functionality, affect the main features or existing architecture, or
 would require breaking changes (e.g., a major release), it's highly recommended to open an Issue to
