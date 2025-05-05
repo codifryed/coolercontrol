@@ -129,7 +129,9 @@ nix = { version = "0.29.0", default-features = false, features = [
 ] }
 pciid-parser = "0.8.0"
 # 0.8.4 requires Rust > 1.81
-libdrm_amdgpu_sys = "=0.8.3"
+libdrm_amdgpu_sys = { version = "=0.8.3", default-features = false, features = [
+  "dynamic_loading",
+] }
 hashlink = "0.10.0"
 lazy_format = "2.0.3"
 yata = "0.7.0" # moving averages
