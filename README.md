@@ -10,8 +10,8 @@
 <!-- trunk-ignore-begin(markdownlint)-->
 
 <a href="https://discord.gg/MbcgUFAfhV"><img src="https://img.shields.io/badge/_-discord-_?style=for-the-badge&label=chat&logo=discord&color=568af2&labelColor=2c313c&logoColor=dce1ec"></a>
-<a href="https://gitlab.com/coolercontrol/coolercontrol/pipelines"><img src="https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab&style=for-the-badge&color=568af2&labelColor=2c313c&logoColor=dce1ec"></a>
-<a href="https://gitlab.com/coolercontrol/coolercontrol/-/graphs/main/charts"><img src="https://img.shields.io/gitlab/last-commit/coolercontrol/coolercontrol?style=for-the-badge&logo=gitlab&color=568af2&labelColor=2c313c&logoColor=dce1ec"></a>
+<a href="https://gitlab.com/coolercontrol/coolercontrol/-/releases"><img src="https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab&style=for-the-badge&color=568af2&labelColor=2c313c&logoColor=dce1ec"></a>
+<a href="https://gitlab.com/coolercontrol/coolercontrol/-/commits"><img src="https://img.shields.io/gitlab/last-commit/coolercontrol/coolercontrol?style=for-the-badge&logo=gitlab&color=568af2&labelColor=2c313c&logoColor=dce1ec"></a>
 
 <img src="https://img.shields.io/badge/_-Linux-2c313c?style=for-the-badge&logo=linux&logoColor=dce1ec">
 <img src="https://img.shields.io/badge/_-Rust-2c313c?style=for-the-badge&logo=rust">
