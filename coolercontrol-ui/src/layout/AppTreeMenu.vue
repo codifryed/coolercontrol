@@ -695,7 +695,6 @@ const addProfile = (profileUID: UID): void => {
 interface ProfileUIDObj {
     profileUID: UID
 }
-
 const addProfileMenu = (profileUIDObj: ProfileUIDObj): void => addProfile(profileUIDObj.profileUID)
 emitter.on('profile-add-menu', addProfileMenu)
 
@@ -726,6 +725,13 @@ const addFunction = (functionUID: UID): void => {
     )
     adjustTreeLeaves()
 }
+interface FunctionUIDObj {
+    functionUID: UID
+}
+const addFunctionMenu = (functionUIDObj: FunctionUIDObj): void =>
+    addFunction(functionUIDObj.functionUID)
+emitter.on('function-add-menu', addFunctionMenu)
+
 const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
         await router.push({ name: 'system-overview' })
