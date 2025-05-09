@@ -518,7 +518,7 @@
             saveFunction: '保存功能',
             functionType: '功能类型',
             functionTypeTooltip:
-                '功能类型：\n- 恒等函数：不改变计算的配置文件值。\n- 标准：使用具有滞后设置的算法改变配置文件值。\n- 指数移动平均：使用指数移动平均算法改变配置文件值。',
+                '功能类型：<br/>- 恒等函数：不改变计算的配置文件值。<br/>- 标准：使用具有滞后设置的算法改变配置文件值。<br/>- 指数移动平均：使用指数移动平均算法改变配置文件值。',
             minimumAdjustment: '最小调整',
             minimumAdjustmentTooltip: '最小风扇速度调整：低于此值的计算变化将被忽略。',
             maximumAdjustment: '最大调整',

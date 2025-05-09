@@ -532,7 +532,7 @@ export default {
             saveFunction: 'Funktion speichern',
             functionType: 'Funktionstyp',
             functionTypeTooltip:
-                'Funktionstypen:\n- Identität: Verändert den berechneten Profilwert nicht.\n- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.\n- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
+                'Funktionstypen:<br/>- Identität: Verändert den berechneten Profilwert nicht.<br/>- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.<br/>- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
             minimumAdjustment: 'Minimale Anpassung',
             minimumAdjustmentTooltip:
                 'Minimale Lüftergeschwindigkeitsanpassung: Berechnete Änderungen unter diesem Wert werden ignoriert.',

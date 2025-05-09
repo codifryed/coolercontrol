@@ -538,7 +538,7 @@ export default {
             saveFunction: 'Enregistrer la Fonction',
             functionType: 'Type de Fonction',
             functionTypeTooltip:
-                "Types de fonction :\n- Identité : Ne modifie pas la valeur calculée du profil.\n- Standard : Modifie la valeur du profil en utilisant un algorithme avec des paramètres d'hystérésis.\n- Moyenne Mobile Exponentielle : Modifie la valeur du profil en utilisant un algorithme EMA.",
+                "Types de fonction :<br/>- Identité : Ne modifie pas la valeur calculée du profil.<br/>- Standard : Modifie la valeur du profil en utilisant un algorithme avec des paramètres d'hystérésis.<br/>- Moyenne Mobile Exponentielle : Modifie la valeur du profil en utilisant un algorithme EMA.",
             minimumAdjustment: 'Ajustement Minimum',
             minimumAdjustmentTooltip:
                 'Ajustement minimal de la vitesse du ventilateur : Les changements calculés inférieurs à cette valeur seront ignorés.',

@@ -522,7 +522,7 @@ export default {
             saveFunction: 'Save Function',
             functionType: 'Function Type',
             functionTypeTooltip:
-                'Function types:\n- Identity: Does not alter the computed profile value.\n- Standard: Alters profile value using an algorithm with hysteresis settings.\n- Exponential Moving Average: Alters profile value using an EMA algorithm.',
+                'Function types:<br/>- Identity: Does not alter the computed profile value.<br/>- Standard: Alters profile value using an algorithm with hysteresis settings.<br/>- Exponential Moving Average: Alters profile value using an EMA algorithm.',
             minimumAdjustment: 'Minimum Adjustment',
             minimumAdjustmentTooltip:
                 'Minimum fan speed adjustment: Computed changes below this value will be ignored.',

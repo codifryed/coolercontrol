@@ -464,7 +464,7 @@ export default {
             saveFunction: 'Salvar Função',
             functionType: 'Tipo de Função',
             functionTypeTooltip:
-                'Tipos de função:\n- Identidade: Não altera o valor calculado do perfil.\n- Padrão: Modifica o valor do perfil usando um algoritmo com parâmetros de histerese.\n- Média Móvel Exponencial: Modifica o valor do perfil usando um algoritmo EMA.',
+                'Tipos de função:<br/>- Identidade: Não altera o valor calculado do perfil.<br/>- Padrão: Modifica o valor do perfil usando um algoritmo com parâmetros de histerese.<br/>- Média Móvel Exponencial: Modifica o valor do perfil usando um algoritmo EMA.',
             minimumAdjustment: 'Ajuste Mínimo',
             minimumAdjustmentTooltip:
                 'Ajuste mínimo da velocidade do ventilador: Alterações calculadas menores que isso serão ignoradas.',

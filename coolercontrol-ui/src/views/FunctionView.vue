@@ -286,7 +286,10 @@ onMounted(async () => {
                     option-value="value"
                     option-label="label"
                     list-style="max-height: 100%"
-                    v-tooltip.right="t('views.functions.functionTypeTooltip')"
+                    v-tooltip.right="{
+                        escape: false,
+                        value: t('views.functions.functionTypeTooltip'),
+                    }"
                     @change="changeFunctionType"
                 />
             </div>

@@ -519,7 +519,7 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能類型',
             functionTypeTooltip:
-                '功能類型：\n- 恒等函數：不改變計算的設定檔值。\n- 標準：使用具有滯後設置的算法改變設定檔值。\n- 指數移動平均：使用指數移動平均算法改變設定檔值。',
+                '功能類型：<br/>- 恒等函數：不改變計算的設定檔值。<br/>- 標準：使用具有滯後設置的算法改變設定檔值。<br/>- 指數移動平均：使用指數移動平均算法改變設定檔值。',
             minimumAdjustment: '最小調整',
             minimumAdjustmentTooltip: '最小風扇速度調整：低於此值的計算變化將被忽略。',
             maximumAdjustment: '最大調整',
