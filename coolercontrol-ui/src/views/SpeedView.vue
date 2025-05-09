@@ -19,9 +19,9 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertOutline, mdiContentSaveOutline } from '@mdi/js'
+import { mdiAlertOutline, mdiAutoFix, mdiContentSaveOutline } from '@mdi/js'
 import Select from 'primevue/select'
-import { nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
+import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -49,6 +49,7 @@ import _ from 'lodash'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 interface Props {
     deviceUID: UID
@@ -57,12 +58,16 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
 const confirm = useConfirm()
-const { t } = useI18n()
+const dialog = useDialog()
+const fanControlWizard = defineAsyncComponent(
+    () => import('../components/wizards/fan-control/Wizard.vue'),
+)
 
 let contextIsDirty: boolean = false
 
@@ -274,6 +279,22 @@ const updateResponsiveGraphHeight = (): void => {
     }
 }
 
+const openFanControlWizard = () => {
+    dialog.open(fanControlWizard, {
+        props: {
+            header: t('components.wizards.fanControl.fanControlWizard'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {
+            deviceUID: props.deviceUID,
+            channelName: props.channelName,
+            selectedProfileUID: selectedProfile.value.uid,
+        },
+    })
+}
+
 onMounted(() => {
     // @ts-ignore
     document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
@@ -320,6 +341,21 @@ onUnmounted(() => {
             <span class="font-bold">{{ channelLabel }}</span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
+            <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0">
+                <Button
+                    class="!p-2 w-10 h-[2.375rem] bg-accent/80 hover:!bg-accent"
+                    v-tooltip.bottom="t('components.wizards.fanControl.fanControlWizard')"
+                    :disabled="!channelIsControllable()"
+                    @click="openFanControlWizard"
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiAutoFix"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </Button>
+            </div>
             <div
                 v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"
                 class="p-2 pr-0"
