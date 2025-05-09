@@ -432,8 +432,8 @@ onMounted(async () => {
                                 class="delay-input"
                                 show-buttons
                                 :suffix="` ${t('common.secondAbbr')}`"
-                                :min="0"
-                                :max="30"
+                                :min="delayMin"
+                                :max="delayMax"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
                             >
