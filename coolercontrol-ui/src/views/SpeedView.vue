@@ -394,27 +394,6 @@ onUnmounted(() => {
                 v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
                 class="flex flex-row"
             >
-                <!--                <div class="p-2 pr-1">-->
-                <!--                    <Button-->
-                <!--                        class="!p-2 w-10 h-[2.375rem]"-->
-                <!--                        label="Edit"-->
-                <!--                        v-tooltip.bottom="'Edit Profile'"-->
-                <!--                        @click="-->
-                <!--                            router.push({-->
-                <!--                                name: 'profiles',-->
-                <!--                                params: { profileUID: selectedProfile.uid },-->
-                <!--                            })-->
-                <!--                        "-->
-                <!--                        :disabled="selectedProfile.uid === '0'"-->
-                <!--                    >-->
-                <!--                        <svg-icon-->
-                <!--                            class="outline-0"-->
-                <!--                            type="mdi"-->
-                <!--                            :path="mdiPencilOutline"-->
-                <!--                            :size="deviceStore.getREMSize(1.5)"-->
-                <!--                        />-->
-                <!--                    </Button>-->
-                <!--                </div>-->
                 <div class="p-2 pr-0">
                     <Select
                         v-model="selectedProfile"
