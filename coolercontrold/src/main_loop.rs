@@ -194,7 +194,7 @@ fn fire_lcd_update<'s>(
                 "LCD Scheduler timed out after {LCD_TIMEOUT_S}s. \
                  LCD communication is taking longer than expected"
             );
-        };
+        }
     });
 }
 

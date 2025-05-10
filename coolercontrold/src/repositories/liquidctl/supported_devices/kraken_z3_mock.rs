@@ -42,12 +42,11 @@ impl DeviceSupport for KrakenZ3MockSupport {
         BaseDriver::MockKrakenZ3 // for mock testing
     }
 
-    fn extract_info(&self, _device_response: &DeviceResponse) -> DeviceInfo {
-        self.kraken_z3_support.extract_info(_device_response)
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
+        self.kraken_z3_support.extract_info(device_response)
     }
 
-    fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
-        self.kraken_z3_support
-            .get_color_channel_modes(_channel_name)
+    fn get_color_channel_modes(&self, channel_name: Option<&str>) -> Vec<LightingMode> {
+        self.kraken_z3_support.get_color_channel_modes(channel_name)
     }
 }

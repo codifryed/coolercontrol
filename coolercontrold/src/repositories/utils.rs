@@ -104,7 +104,7 @@ impl ShellCommand {
                     child_err.read_to_string(&mut stderr).await.unwrap();
                     limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_string();
-                };
+                }
                 if let Some(mut child_out) = child.stdout.take() {
                     child_out.read_to_string(&mut stdout).await.unwrap();
                     limit_output_length(&mut stderr);
@@ -146,13 +146,11 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
             stderr
         )),
         ShellCommandResult::Success { stdout, stderr } => {
-            debug!("ThinkPad ACPI Modprobe output: {} - {}", stdout, stderr);
+            debug!("ThinkPad ACPI Modprobe output: {stdout} - {stderr}");
             if stderr.is_empty() {
                 Ok(())
             } else {
-                Err(anyhow!(
-                "Error output received when trying to reload the thinkpad_acpi kernel module: {}",
-                stderr))
+                Err(anyhow!("Error output received when trying to reload the thinkpad_acpi kernel module: {stderr}"))
             }
         }
     }

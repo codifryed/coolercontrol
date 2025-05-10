@@ -103,18 +103,14 @@ impl ModeController {
         for uid in self.all_devices.keys() {
             match self.config.get_device_settings(uid) {
                 Ok(settings) => {
-                    trace!(
-                        "Settings for device: {} loaded from config file: {:?}",
-                        uid,
-                        settings
-                    );
+                    trace!("Settings for device: {uid} loaded from config file: {settings:?}");
                     for setting in &settings {
                         if let Err(err) = self
                             .settings_controller
                             .set_config_setting(uid, setting)
                             .await
                         {
-                            error!("Error setting device setting: {}", err);
+                            error!("Error setting device setting: {err}");
                             all_successful = false;
                         }
                     }
@@ -132,10 +128,7 @@ impl ModeController {
     async fn fill_data_from_mode_config_file(&self) -> Result<()> {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
-            info!(
-                "config directory doesn't exist. Attempting to create it: {}",
-                DEFAULT_CONFIG_DIR
-            );
+            info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
             cc_fs::create_dir_all(config_dir)?;
         }
         let path = Path::new(DEFAULT_MODE_CONFIG_FILE_PATH).to_path_buf();
@@ -216,7 +209,7 @@ impl ModeController {
     /// This method handles several edge cases and unknowns.
     pub async fn activate_mode(&self, mode_uid: &UID) -> Result<()> {
         let Some(mode) = self.modes.borrow().get(mode_uid).cloned() else {
-            error!("Mode not found: {}", mode_uid);
+            error!("Mode not found: {mode_uid}");
             return Err(CCError::NotFound {
                 msg: format!("Mode not found: {mode_uid}"),
             }

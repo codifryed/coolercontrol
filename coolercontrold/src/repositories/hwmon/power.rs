@@ -140,6 +140,7 @@ fn convert_micro_watts_to_watts(micro_watts: f64) -> Watts {
     (micro_watts / 1_000_000.) as Watts
 }
 
+#[allow(clippy::needless_pass_by_value)]
 /// Check and parse the content to f64
 fn check_parsing_64(content: String) -> Result<f64> {
     match content.trim().parse::<f64>() {

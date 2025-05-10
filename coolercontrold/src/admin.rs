@@ -35,7 +35,7 @@ pub async fn match_passwd(passwd: &str) -> bool {
     match load_passwd().await {
         Ok(stored_passwd) => stored_passwd == hash_passwd(passwd.as_bytes()).unwrap_or_default(),
         Err(err) => {
-            error!("Error loading password: {}", err);
+            error!("Error loading password: {err}");
             false
         }
     }

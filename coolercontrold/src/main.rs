@@ -147,7 +147,7 @@ fn main() -> Result<()> {
             .await
             {
                 error!("Error initializing API Server: {err}");
-            };
+            }
 
             // give concurrent services a moment to finish initializing:
             sleep(Duration::from_millis(10)).await;
@@ -288,7 +288,7 @@ async fn initialize_device_repos(
         }
         Err(err) if err.downcast_ref() == Some(&InitError::Disabled) => info!("{err}"),
         Err(err) => warn!("Error initializing LIQUIDCTL Repo: {err}"),
-    };
+    }
     // init these concurrently:
     moro_local::async_scope!(|init_scope| {
         init_scope.spawn(async {
@@ -404,7 +404,7 @@ async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     config.save_config_file().await.unwrap_or_default();
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
-            error!("Shutdown error: {}", err);
+            error!("Shutdown error: {err}");
         };
     }
     info!("Shutdown Complete");

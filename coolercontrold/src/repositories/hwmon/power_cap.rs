@@ -134,6 +134,7 @@ fn microjoules_to_joules(microjoules: f64) -> f64 {
     microjoules / 1_000_000.
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn check_parsing_f64(content: String) -> Result<f64> {
     match content.trim().parse::<f64>() {
         Ok(value) => Ok(value),

@@ -406,7 +406,7 @@ impl CpuRepo {
                     };
                     status_channels.push(power_status);
                 }
-                _ => continue,
+                _ => (),
             }
         }
         let temps = temps::extract_temp_statuses(driver)
@@ -478,7 +478,7 @@ impl CpuRepo {
                 match Self::init_cpu_temp(path).await {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {err}"),
-                };
+                }
                 // requires temp channels beforehand
                 let physical_id = match self.match_physical_id(device_name, &channels, index) {
                     Ok(id) => id,
@@ -638,7 +638,7 @@ impl Repository for CpuRepo {
                             },
                         );
                     }
-                    _ => continue,
+                    _ => (),
                 }
             }
             let mut device = Device::new(

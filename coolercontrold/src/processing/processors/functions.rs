@@ -331,6 +331,7 @@ impl FunctionEMAPreProcessor {
             / 100.
     }
 
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
         // keeping the sample size low allows the average to be more forward-aggressive,
         // otherwise the actual reading and the EMA take quite a while before they are the same value
@@ -622,6 +623,7 @@ mod tests {
     use crate::processing::processors::functions::FunctionEMAPreProcessor;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn current_temp_from_exponential_moving_average_test() {
         let given_expected: Vec<(&[f64], f64)> = vec![
             // these are just samples. Tested with real hardware for expected results,
