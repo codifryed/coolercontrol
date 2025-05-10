@@ -173,6 +173,7 @@ export default {
             liquidctlIntegration: 'Liquidctl-Integration',
             liquidctlDeviceInit: 'Liquidctl-Geräteinitialisierung',
             hideDuplicateDevices: 'Doppelte Geräte ausblenden',
+            drivePowerState: 'Festplattenstromzustand',
             themeMode: {
                 system: 'System',
                 dark: 'Dunkel',
@@ -226,6 +227,8 @@ export default {
                     'Vorsicht: Deaktivieren Sie dies NUR, wenn Sie oder ein anderes Programm\ndie liquidctl-Geräteinitialisierung handhaben.\nDies kann helfen, Konflikte mit anderen Programmen zu vermeiden.',
                 hideDuplicateDevices:
                     'Einige Geräte werden sowohl von Liquidctl- als auch von HWMon-Treibern unterstützt.\nLiquidctl wird standardmäßig wegen seiner zusätzlichen Funktionen verwendet. Um stattdessen HWMon-Treiber zu verwenden,\ndeaktivieren Sie dies und das Liquidctl-Gerät, um Treiberkonflikte zu vermeiden.',
+                drivePowerState:
+                    'SSDs und HDDs können insbesondere heruntergefahren werden und in einen Energiesparmodus eintreten.\nDiese Option, wenn sie aktiviert ist und das Laufwerk dies unterstützt, wird die Laufwerktemperaturen\nals 0 °C melden, wenn es heruntergefahren ist, damit die Lüfterprofile entsprechend angepasst werden können.',
                 daemonAddress:
                     'Die IP-Adresse oder der Domainname des Daemons, mit dem eine Verbindung hergestellt werden soll.\nUnterstützt IPv4, IPv6 und per DNS auflösbare Hostnamen.',
                 daemonPort: 'Der Port, der für die Verbindung mit dem Daemon verwendet wird.',

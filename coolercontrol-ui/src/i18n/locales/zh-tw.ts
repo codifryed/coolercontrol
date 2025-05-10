@@ -175,6 +175,7 @@ export default {
             liquidctlIntegration: 'Liquidctl整合',
             liquidctlDeviceInit: 'Liquidctl裝置初始化',
             hideDuplicateDevices: '隱藏重複裝置',
+            drivePowerState: '磁碟機電源狀態',
             customTheme: {
                 title: '自訂主題',
                 accent: '強調色',
@@ -215,6 +216,8 @@ export default {
                     '注意：僅在您或其他程式\n正在處理liquidctl裝置初始化時禁用此功能。這可以幫助避免與其他程式的衝突。',
                 hideDuplicateDevices:
                     '某些裝置同時受Liquidctl和HWMon驅動程式支持。\nLiquidctl默認用於其額外功能。要改用HWMon驅動程式，\n請禁用此功能和liquidctl裝置以避免驅動程式衝突。',
+                drivePowerState:
+                    'SSD和HDD尤其可以停止旋轉並進入低功耗狀態。 \n當啟用此選項且驅動器支援時，驅動器溫度將報告為0°C\n在停止旋轉時，以便風扇配置檔可以相應調整。',
                 daemonAddress:
                     '用於建立連接的守護程式的IP地址或域名。\n支持IPv4、IPv6和DNS可解析的主機名。',
                 daemonPort: '用於建立與守護程式連接的端口。',

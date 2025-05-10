@@ -169,6 +169,7 @@ export default {
             liquidctlIntegration: 'Liquidctl連携',
             liquidctlDeviceInit: 'Liquidctlデバイス初期化',
             hideDuplicateDevices: '重複するデバイスを非表示',
+            drivePowerState: 'ディスクドライブの電源状態',
             customTheme: {
                 title: 'カスタムテーマ',
                 accent: 'アクセントカラー',
@@ -233,6 +234,8 @@ export default {
                     '注意：あなた自身または別のプログラムがliquidctlデバイスの初期化を\n処理している場合にのみ、これを無効にしてください。これは他のプログラムとの競合を避けるのに役立ちます。',
                 hideDuplicateDevices:
                     '一部のデバイスはLiquidctlとHWMonの両方のドライバーでサポートされています。\nLiquidctlはその追加機能のためにデフォルトで使用されます。代わりにHWMonドライバーを使用するには、\nドライバーの競合を避けるためにこれとliquidctlデバイスを無効にしてください。',
+                drivePowerState:
+                    'SSDおよびHDDは特にスピンダウンして低電力状態に入ることがあります。\nこのオプションは有効にされ、ドライブがそれをサポートしている場合、ドライブの温度を\nスピンダウン時に0°Cとして報告し、ファンプロファイルをそれに応じて調整できるようにします。',
                 daemonAddress:
                     '接続を確立するデーモンのIPアドレスまたはドメイン名。\nIPv4、IPv6、およびDNS解決可能なホスト名をサポートします。',
                 daemonPort: 'デーモンとの接続を確立するために使用されるポート。',

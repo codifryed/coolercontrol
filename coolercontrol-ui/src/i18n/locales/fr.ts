@@ -185,6 +185,7 @@ export default {
             liquidctlDeviceInit:
                 "Attention : Désactivez cela UNIQUEMENT si vous, ou un autre programme, gérez l'initialisation de l'appareil liquidctl. Cela peut aider à éviter les conflits avec d'autres programmes.",
             hideDuplicateDevices: 'Masquer les appareils en double',
+            drivePowerState: "État d'alimentation du disque ",
             customTheme: {
                 title: 'Thème Personnalisé',
                 accent: "Couleur d'Accent",
@@ -230,6 +231,8 @@ export default {
                     "Attention : Désactivez cela UNIQUEMENT si vous, ou un autre programme, gérez l'initialisation de l'appareil liquidctl.\nCela peut aider à éviter les conflits avec d'autres programmes.",
                 hideDuplicateDevices:
                     "Certains appareils sont pris en charge à la fois par les pilotes Liquidctl et HWMon. Liquidctl est utilisé par défaut pour ses fonctionnalités supplémentaires. Pour utiliser les pilotes HWMon à la place, désactivez cela et l'appareil liquidctl pour éviter les conflits de pilotes.",
+                drivePowerState:
+                    "Les SSD et les HDD en particulier peuvent s'arrêter et entrer dans un état de faible consommation d'énergie.\nCette option, lorsqu'elle est activée et que le disque la prend en charge, rapportera les températures du disque\ncomme 0°C lorsqu'il est arrêté afin que les profils de ventilateur puissent être ajustés en conséquence.",
                 daemonAddress:
                     "L'adresse IP ou le nom de domaine du daemon pour établir une connexion.\nPrend en charge IPv4, IPv6 et les noms d'hôte résolvables par DNS.",
                 daemonPort: 'Le port utilisé pour établir une connexion avec le daemon.',
