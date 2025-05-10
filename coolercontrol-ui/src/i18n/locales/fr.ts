@@ -212,9 +212,9 @@ export default {
                 zoom: "Définir manuellement le niveau de zoom de l'interface utilisateur.",
                 desktopStartupDelay:
                     "Ajoute un délai avant de démarrer l'application de bureau (en secondes).\nAide à résoudre les problèmes qui surviennent lorsque l'application de bureau\nest démarrée automatiquement à la connexion ou démarre trop rapidement",
-                thinkpadFanControl:
+                thinkPadFanControl:
                     "Ceci est un assistant pour activer le contrôle du ventilateur ACPI de ThinkPad.\nLes opérations de contrôle du ventilateur sont désactivées par défaut pour des raisons de sécurité. CoolerControl peut essayer de l'activer pour vous, mais vous devez être conscient des risques pour votre matériel.\nProcédez à vos risques et périls.",
-                thinkpadFullSpeed:
+                thinkPadFullSpeed:
                     "Pour les ordinateurs portables ThinkPad, cela active le mode pleine vitesse.\nCela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue.\nUtilisez avec précaution.",
                 applySettingsOnStartup:
                     'Appliquer automatiquement les paramètres au démarrage du daemon et lors de la sortie de veille',
@@ -227,7 +227,7 @@ export default {
                 liquidctlIntegration:
                     "Désactiver cela désactivera complètement l'intégration de Liquidctl,\nindépendamment de l'état d'installation du package coolercontrol-liqctld. Si disponible, les pilotes HWMon seront utilisés à la place.",
                 liquidctlDeviceInit:
-                    "Attention : Désactivez cela UNIQUEMENT si vous, ou un autre programme, gérez l'initialisation de l'appareil liquidctl. Cela peut aider à éviter les conflits avec d'autres programmes.",
+                    "Attention : Désactivez cela UNIQUEMENT si vous, ou un autre programme, gérez l'initialisation de l'appareil liquidctl.\nCela peut aider à éviter les conflits avec d'autres programmes.",
                 hideDuplicateDevices:
                     "Certains appareils sont pris en charge à la fois par les pilotes Liquidctl et HWMon. Liquidctl est utilisé par défaut pour ses fonctionnalités supplémentaires. Pour utiliser les pilotes HWMon à la place, désactivez cela et l'appareil liquidctl pour éviter les conflits de pilotes.",
                 daemonAddress:
@@ -240,26 +240,6 @@ export default {
                 triggersDaemonRestart: 'Déclenche un redémarrage automatique du daemon',
                 resetToDefaults: 'Réinitialiser aux paramètres par défaut',
                 saveAndReload: "Enregistrer et recharger l'interface utilisateur",
-                daemonSsl:
-                    'Se connecter au daemon en utilisant SSL/TLS. Une configuration de proxy est requise.',
-                applyOnBoot:
-                    'Appliquer automatiquement les paramètres au démarrage du daemon et lors de la sortie de veille',
-                startupDelay:
-                    "Délai avant de commencer la communication de l'appareil (en secondes). Aide avec les appareils qui prennent du temps à s'initialiser ou sont détectés de manière intermittente",
-                thinkPadFanControl:
-                    "Ceci est un assistant pour activer le contrôle du ventilateur ACPI de ThinkPad. Les opérations de contrôle du ventilateur sont désactivées par défaut pour des raisons de sécurité. CoolerControl peut essayer de l'activer pour vous, mais vous devez être conscient des risques pour votre matériel. Procédez à vos risques et périls.",
-                thinkPadFullSpeed:
-                    "Pour les ordinateurs portables ThinkPad, cela active le mode pleine vitesse. Cela permet aux ventilateurs de tourner à leur maximum absolu lorsqu'ils sont réglés à 100 %, mais cela fera fonctionner les ventilateurs hors spécification et entraînera une usure accrue. Utilisez avec précaution.",
-                compress:
-                    "Activer la compression de la réponse pour réduire la taille de la charge utile de l'API, mais notez que cela augmentera l'utilisation du CPU.",
-                liquidctlNoInit:
-                    "Attention : Désactivez cela UNIQUEMENT si vous, ou un autre programme, gérez l'initialisation de l'appareil liquidctl. Cela peut aider à éviter les conflits avec d'autres programmes.",
-                hideDuplicate:
-                    "Certains appareils sont pris en charge à la fois par les pilotes Liquidctl et HWMon. Liquidctl est utilisé par défaut pour ses fonctionnalités supplémentaires. Pour utiliser les pilotes HWMon à la place, désactivez cela et l'appareil liquidctl pour éviter les conflits de pilotes.",
-                liquidctl:
-                    "Désactiver cela désactivera complètement l'intégration de Liquidctl, indépendamment de l'état d'installation du package coolercontrol-liqctld. Si disponible, les pilotes HWMon seront utilisés à la place.",
-                pollRate:
-                    "Le taux auquel les données du capteur sont interrogées (en secondes).\nUn taux d'interrogation plus élevé réduira l'utilisation des ressources, et un taux plus bas augmentera la réactivité.\nUn taux inférieur à 1,0 doit être utilisé avec précaution.",
             },
             applySettingAndRestart:
                 "Changer ce paramètre nécessite un redémarrage du daemon et de l'interface utilisateur. Êtes-vous sûr de vouloir le faire maintenant?",

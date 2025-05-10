@@ -198,9 +198,9 @@
                 zoom: '手动设置界面缩放级别。',
                 desktopStartupDelay:
                     '在启动桌面应用程序前添加一些延迟（以秒为单位）。\n有助于解决由于在登录时自动启动桌面应用程序或启动过快而产生的问题',
-                thinkpadFanControl:
+                thinkPadFanControl:
                     '这是一个启用ThinkPad ACPI风扇控制的辅助工具。\n为了安全起见，默认情况下风扇控制操作是禁用的。CoolerControl可以尝试为您启用此功能，但您应该了解对硬件的风险。\n风险自负。',
-                thinkpadFullSpeed:
+                thinkPadFullSpeed:
                     '对于ThinkPad笔记本电脑，这将启用全速模式。\n这允许风扇在设置为100%时转至其绝对最大速度，但会导致风扇超出规格运行并增加磨损。\n谨慎使用。',
                 applySettingsOnStartup: '在后台启动和从睡眠状态唤醒时自动应用设置',
                 deviceDelayAtStartup:
@@ -223,23 +223,6 @@
                 triggersDaemonRestart: '触发自动后台服务重启',
                 resetToDefaults: '重置为默认设置',
                 saveAndReload: '保存后台设置并重新加载界面',
-                daemonSsl: '是否使用SSL/TLS连接到后台服务。需要代理设置。',
-                applyOnBoot: '在后台启动和从睡眠状态唤醒时自动应用设置',
-                startupDelay:
-                    '启动设备通信前的延迟（以秒为单位）。有助于处理需要时间初始化或间歇性检测到的设备',
-                thinkPadFanControl:
-                    '这是一个启用ThinkPad ACPI风扇控制的辅助工具。为了安全起见，默认情况下风扇控制操作是禁用的。CoolerControl可以尝试为您启用此功能，但您应该了解对硬件的风险。风险自负。',
-                thinkPadFullSpeed:
-                    '对于ThinkPad笔记本电脑，这将启用全速模式。这允许风扇在设置为100%时转至其绝对最大速度，但会导致风扇超出规格运行并增加磨损。谨慎使用。',
-                compress: '启用响应压缩以减少API负载大小，但请注意这将增加CPU使用率。',
-                liquidctlNoInit:
-                    '注意：仅当您或其他程序正在处理liquidctl设备初始化时才禁用此功能。这可以帮助避免与其他程序的冲突。',
-                liquidctl:
-                    '禁用此功能将完全停用Liquidctl集成，无论coolercontrol-liqctld包的安装状态如何。如果可用，将使用HWMon驱动程序代替。',
-                hideDuplicate:
-                    '某些设备同时受Liquidctl和HWMon驱动程序支持。Liquidctl默认用于其额外功能。要改用HWMon驱动程序，请禁用此功能和liquidctl设备以避免驱动程序冲突。',
-                pollRate:
-                    '轮询传感器数据的速率（以秒为单位）。\n更高的轮询速率将减少资源使用，更低的轮询速率将提高响应速度。\n低于1.0的速率应谨慎使用。',
             },
             applySettingAndRestart: '更改此设置需要重启后台服务和界面。确定要立即执行此操作吗？',
             restartHeader: '应用设置并重启',
