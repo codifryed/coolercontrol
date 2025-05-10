@@ -184,7 +184,7 @@ async fn create_api_server(
         .finish_api_with(&mut open_api, api_docs)
         .layer(Extension(Arc::new(open_api)));
     let listener = TcpListener::bind(addr).await?;
-    info!("API bound to address: {}", addr);
+    info!("API bound to address: {addr}");
     axum::serve(
         listener,
         optional_layers(compress_enabled, router)

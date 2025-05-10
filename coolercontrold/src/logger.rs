@@ -107,7 +107,7 @@ async fn get_xdg_desktop_info() -> Result<String> {
                 .as_str()
                 .to_owned();
             desktops.insert(desktop);
-        };
+        }
         if let Some(type_captures) = regex_session_type.captures(&content) {
             let session_type = type_captures
                 .name("session_type")
@@ -115,7 +115,7 @@ async fn get_xdg_desktop_info() -> Result<String> {
                 .as_str()
                 .to_owned();
             sessions_types.insert(session_type);
-        };
+        }
     }
     if desktops.is_empty() {
         Ok(String::default())

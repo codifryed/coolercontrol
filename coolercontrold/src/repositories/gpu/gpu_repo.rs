@@ -174,13 +174,13 @@ impl Repository for GpuRepo {
                 .initialize_nvidia_devices(starting_nvidia_index)
                 .await?;
             self.devices.extend(nvidia_devices);
-        };
+        }
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized GPU Devices: {:?}", init_devices);
+            info!("Initialized GPU Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices
                 .iter()

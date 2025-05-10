@@ -250,7 +250,7 @@ onMounted(() => {
                     </p>
                 </div>
             </div>
-            <div class="mt-8">
+            <div class="mt-8 mb-8">
                 <div
                     class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] 2xl:w-[70vw]"
                 >

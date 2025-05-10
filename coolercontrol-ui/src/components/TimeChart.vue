@@ -493,7 +493,13 @@ const uOptions: uPlot.Options = {
                         return [50]
                     }
                 } else {
-                    return [1]
+                    if (scaleMax > 2) {
+                        return [1]
+                    } else if (scaleMax > 1) {
+                        return [0.5]
+                    } else {
+                        return [0.2]
+                    }
                 }
             },
             border: {

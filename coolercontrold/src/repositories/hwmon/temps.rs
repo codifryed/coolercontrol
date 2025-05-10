@@ -67,7 +67,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
         }
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
-    trace!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
+    trace!("Hwmon Temps detected: {temps:?} for {base_path:?}");
     Ok(temps)
 }
 
@@ -153,6 +153,7 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
     false
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn check_parsing_32(content: String) -> Result<i32> {
     match content.trim().parse::<i32>() {
         Ok(value) => Ok(value),
@@ -181,10 +182,7 @@ async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
         .and_then(|label| {
             let temp_label = label.trim();
             if temp_label.is_empty() {
-                info!(
-                    "Temp label is empty: {:?}/temp{}_label",
-                    base_path, channel_number
-                );
+                info!("Temp label is empty: {base_path:?}/temp{channel_number}_label");
                 None
             } else {
                 Some(temp_label.to_string())

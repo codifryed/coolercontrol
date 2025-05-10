@@ -171,6 +171,7 @@ export default {
             liquidctlIntegration: 'Integração com Liquidctl',
             liquidctlDeviceInit: 'Inicialização de dispositivo Liquidctl',
             hideDuplicateDevices: 'Ocultar dispositivos duplicados',
+            drivePowerState: 'Estado de Energia do Disco Rígido',
             entitiesBelowSensorsEnabledMessage:
                 'As entidades agora serão exibidas abaixo dos sensores.',
             entitiesBelowSensorsDisabledMessage:
@@ -260,9 +261,9 @@ export default {
         zoom: 'Definir manualmente o nível de zoom da interface do usuário.',
         desktopStartupDelay:
             'Adiciona um atraso antes de iniciar o aplicativo de desktop (em segundos).\nAjuda com problemas que surgem ao ter o aplicativo de desktop\niniciado automaticamente no login ou iniciado muito rapidamente',
-        thinkpadFanControl:
+        thinkPadFanControl:
             'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad.\nAs operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware.\nProssiga por sua conta e risco.',
-        thinkpadFullSpeed:
+        thinkPadFullSpeed:
             'Para laptops ThinkPad, isso habilita o modo de velocidade máxima.\nIsso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado.\nUse com cautela.',
         applySettingsOnStartup:
             'Aplicar automaticamente as configurações na inicialização do daemon e ao acordar do sono',
@@ -275,9 +276,11 @@ export default {
         liquidctlIntegration:
             'Desativar isso desativará completamente a integração do Liquidctl,\nindependentemente do estado de instalação do pacote coolercontrol-liqctld. Se disponível, os drivers HWMon serão utilizados em vez disso.',
         liquidctlDeviceInit:
-            'Cuidado: Desative isso SOMENTE se você, ou outro programa,\nestiver lidando com a inicialização do dispositivo liquidctl. Isso pode ajudar a evitar conflitos com outros programas.',
+            'Cuidado: Desative isso SOMENTE se você, ou outro programa,\nestiver lidando com a inicialização do dispositivo liquidctl.\nIsso pode ajudar a evitar conflitos com outros programas.',
         hideDuplicateDevices:
             'Alguns dispositivos são suportados por drivers Liquidctl e HWMon.\nO Liquidctl é usado por padrão por seus recursos adicionais. Para usar drivers HWMon em vez disso,\ndesative isso e o dispositivo liquidctl para evitar conflitos de drivers.',
+        drivePowerState:
+            'Os SSDs e HDDs, em particular, podem desacelerar e entrar em um estado de baixo consumo de energia.\nEssa opção, quando ativada e se o disco a suportar, reportará as temperaturas do disco\ncomo 0°C quando desacelerado, para que os perfis de ventilador possam ser ajustados de acordo.',
         daemonAddress:
             'O endereço IP ou nome de domínio do daemon para estabelecer uma conexão.\nSuporta IPv4, IPv6 e nomes de host resolvíveis por DNS.',
         daemonPort: 'A porta usada para estabelecer uma conexão com o daemon.',
@@ -287,25 +290,6 @@ export default {
         triggersDaemonRestart: 'Aciona uma reinicialização automática do daemon',
         resetToDefaults: 'Redefinir para as configurações padrão',
         saveAndReload: 'Salvar e recarregar a interface do usuário',
-        daemonSsl: 'Se deve conectar ao daemon usando SSL/TLS. É necessário um proxy.',
-        applyOnBoot:
-            'Aplicar automaticamente as configurações na inicialização do daemon e ao acordar do sono',
-        startupDelay:
-            'Atraso antes de iniciar a comunicação do dispositivo (em segundos). Ajuda com dispositivos que demoram para inicializar ou são detectados intermitentemente',
-        thinkPadFanControl:
-            'Este é um assistente para habilitar o controle do ventilador ACPI do ThinkPad. As operações de controle do ventilador estão desativadas por padrão por razões de segurança. O CoolerControl pode tentar habilitar isso para você, mas você deve estar ciente dos riscos para o seu hardware. Prossiga por sua conta e risco.',
-        thinkPadFullSpeed:
-            'Para laptops ThinkPad, isso habilita o modo de velocidade máxima. Isso permite que os ventiladores girem até o máximo absoluto quando configurados para 100%, mas fará com que os ventiladores funcionem fora da especificação e causem desgaste aumentado. Use com cautela.',
-        compress:
-            'Habilitar a compressão da resposta para reduzir o tamanho da carga útil da API, mas observe que isso aumentará o uso da CPU.',
-        liquidctlNoInit:
-            'Cuidado: Desative isso SOMENTE se você, ou outro programa, estiver lidando com a inicialização do dispositivo liquidctl. Isso pode ajudar a evitar conflitos com outros programas.',
-        hideDuplicate:
-            'Alguns dispositivos são suportados por drivers Liquidctl e HWMon. O Liquidctl é usado por padrão por seus recursos adicionais. Para usar drivers HWMon em vez disso, desative isso e o dispositivo liquidctl para evitar conflitos de drivers.',
-        liquidctl:
-            'Desativar isso desativará completamente a integração do Liquidctl, independentemente do estado de instalação do pacote coolercontrol-liqctld. Se disponível, os drivers HWMon serão utilizados em vez disso.',
-        pollRate:
-            'A taxa em que os dados do sensor são pesquisados (em segundos).\nUma taxa de pesquisa mais alta reduzirá o uso de recursos, e uma taxa mais baixa aumentará a capacidade de resposta.\nUma taxa inferior a 1,0 deve ser usada com cautela.',
     },
     applySettingAndRestart:
         'Alterar esta configuração requer uma reinicialização do daemon e da interface do usuário. Você tem certeza de que deseja fazer isso agora?',
