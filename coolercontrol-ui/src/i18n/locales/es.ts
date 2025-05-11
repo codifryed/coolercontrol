@@ -180,6 +180,7 @@ export default {
             liquidctlIntegration: 'Integración con Liquidctl',
             liquidctlDeviceInit: 'Inicialización de dispositivos Liquidctl',
             hideDuplicateDevices: 'Ocultar dispositivos duplicados',
+            drivePowerState: 'Estado de energía del disco',
             customTheme: {
                 title: 'Tema Personalizado',
                 accent: 'Color de Acento',
@@ -206,9 +207,9 @@ export default {
                 zoom: 'Establecer manualmente el nivel de zoom de la interfaz de usuario.',
                 desktopStartupDelay:
                     'Agrega un retraso antes de iniciar la aplicación de escritorio (en segundos).\nAyuda con problemas que surgen al tener la aplicación de escritorio\niniciada automáticamente al iniciar sesión o al iniciar demasiado rápido',
-                thinkpadFanControl:
+                thinkPadFanControl:
                     'Esto es un asistente para habilitar el control del ventilador ACPI de ThinkPad.\nLas operaciones de control del ventilador están deshabilitadas por defecto por razones de seguridad. CoolerControl puede intentar habilitar esto por usted, pero debe ser consciente de los riesgos para su hardware.\nProceda bajo su propio riesgo.',
-                thinkpadFullSpeed:
+                thinkPadFullSpeed:
                     'Para las laptops ThinkPad, esto habilita el modo de velocidad máxima.\nEsto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste.\nÚselo con precaución.',
                 applySettingsOnStartup:
                     'Aplicar automáticamente la configuración al iniciar el daemon y al despertar del sueño',
@@ -221,9 +222,11 @@ export default {
                 liquidctlIntegration:
                     'Deshabilitar esto desactivará completamente la integración de Liquidctl,\nindependientemente del estado de instalación del paquete coolercontrol-liqctld. Si está disponible, se utilizarán controladores HWMon en su lugar.',
                 liquidctlDeviceInit:
-                    'Precaución: Deshabilite esto SOLO si usted, o otro programa,\nestán manejando la inicialización del dispositivo liquidctl. Esto puede ayudar a evitar conflictos con otros programas.',
+                    'Precaución: Deshabilite esto SOLO si usted, o otro programa,\nestán manejando la inicialización del dispositivo liquidctl.\nEsto puede ayudar a evitar conflictos con otros programas.',
                 hideDuplicateDevices:
                     'Algunos dispositivos son compatibles tanto con los controladores Liquidctl como con los HWMon.\nLiquidctl se usa por defecto por sus características adicionales. Para usar controladores HWMon en su lugar,\ndeshabilite esto y el dispositivo liquidctl para evitar conflictos de controladores.',
+                drivePowerState:
+                    'Los SSD y los HDD en particular pueden detenerse y entrar en un estado de bajo consumo.\nEsta opción, cuando está habilitada y la unidad lo soporta, informará las temperaturas de la unidad\ncomo 0°C cuando esté detenida para que los perfiles del ventilador puedan ajustarse en consecuencia.',
                 daemonAddress:
                     'La dirección IP o el nombre de dominio del daemon para establecer una conexión.\nAdmite IPv4, IPv6 y nombres de host resolubles por DNS.',
                 daemonPort: 'El puerto utilizado para establecer una conexión con el daemon.',
@@ -233,26 +236,6 @@ export default {
                 triggersDaemonRestart: 'Activa un reinicio automático del daemon',
                 resetToDefaults: 'Restablecer a la configuración predeterminada',
                 saveAndReload: 'Guardar y recargar la interfaz de usuario',
-                daemonSsl:
-                    'Si conectarse al daemon usando SSL/TLS. Se requiere una configuración de proxy.',
-                applyOnBoot:
-                    'Aplicar automáticamente la configuración al iniciar el daemon y al despertar del sueño',
-                startupDelay:
-                    'Retraso antes de comenzar la comunicación del dispositivo (en segundos). Ayuda con dispositivos que tardan en inicializarse o se detectan de manera intermitente',
-                thinkPadFanControl:
-                    'Esto es un asistente para habilitar el control del ventilador ACPI de ThinkPad. Las operaciones de control del ventilador están deshabilitadas por defecto por razones de seguridad. CoolerControl puede intentar habilitar esto por usted, pero debe ser consciente de los riesgos para su hardware. Proceda bajo su propio riesgo.',
-                thinkPadFullSpeed:
-                    'Para las laptops ThinkPad, esto habilita el modo de velocidad máxima. Esto permite que los ventiladores giren hasta su máximo absoluto cuando se establece al 100%, pero hará que los ventiladores funcionen fuera de especificación y causará un mayor desgaste. Úselo con precaución.',
-                compress:
-                    'Habilitar la compresión de la respuesta para reducir el tamaño de la carga útil de la API, pero tenga en cuenta que esto aumentará el uso de la CPU.',
-                liquidctlNoInit:
-                    'Precaución: Deshabilite esto SOLO si usted, o otro programa, están manejando la inicialización del dispositivo liquidctl. Esto puede ayudar a evitar conflictos con otros programas.',
-                hideDuplicate:
-                    'Algunos dispositivos son compatibles tanto con los controladores Liquidctl como con los HWMon. Liquidctl se usa por defecto por sus características adicionales. Para usar controladores HWMon en su lugar, deshabilite esto y el dispositivo liquidctl para evitar conflictos de controladores.',
-                liquidctl:
-                    'Deshabilitar esto desactivará completamente la integración de Liquidctl, independientemente del estado de instalación del paquete coolercontrol-liqctld. Si está disponible, se utilizarán controladores HWMon en su lugar.',
-                pollRate:
-                    'La tasa a la que se sondean los datos del sensor (en segundos).\nUna tasa de sondeo más alta reducirá el uso de recursos, y una más baja aumentará la capacidad de respuesta.\nSe debe usar con precaución una tasa inferior a 1.0.',
             },
             applySettingAndRestart:
                 'Cambiar esta configuración requiere un reinicio del daemon y la interfaz de usuario. ¿Está seguro de que desea hacer esto ahora?',

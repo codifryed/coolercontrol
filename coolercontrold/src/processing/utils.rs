@@ -24,6 +24,7 @@ use std::collections::VecDeque;
 ///   - the profile is sorted
 ///   - a (`critical_temp`, 100%) failsafe is enforced
 ///   - only the first profile step with duty=100% is kept
+#[allow(clippy::float_cmp)]
 pub fn normalize_profile(
     profile: &[(f64, u8)],
     critical_temp: f64,
@@ -40,6 +41,7 @@ pub fn normalize_profile(
     normalized_profile.push(sorted_profile.pop_front().unwrap());
     let (mut previous_temp, mut previous_duty) = normalized_profile[0];
     for (temp, duty) in sorted_profile {
+        // strict comparison should be fine here, as we're comparing its own previous value:
         if temp == previous_temp {
             continue; // skip duplicate temps
         }
@@ -63,6 +65,11 @@ pub fn normalize_profile(
 /// Interpolate duty from a given temp and profile(temp, duty)
 /// profile must be normalized first for this function to work as expected
 /// Returned duty is rounded to the nearest integer
+#[allow(
+    clippy::float_cmp,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
     let mut step_below = &normalized_profile[0];
     let mut step_above = normalized_profile.last().unwrap();

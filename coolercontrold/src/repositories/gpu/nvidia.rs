@@ -119,10 +119,7 @@ impl GpuNVidia {
             let preloaded_statuses_map = self.nvidia_preloaded_statuses.borrow();
             let preloaded_statuses = preloaded_statuses_map.get(type_index);
             if preloaded_statuses.is_none() {
-                error!(
-                    "There is no status preloaded for this Nvidia device: {}",
-                    type_index
-                );
+                error!("There is no status preloaded for this Nvidia device: {type_index}");
                 continue;
             }
             let nv_status = preloaded_statuses.unwrap().clone();
@@ -210,7 +207,7 @@ impl GpuNVidia {
             .device_count()
             .inspect_err(|err| error!("Error getting NVML device count: {err}"))
             .ok()?;
-        debug!("Found {} NVML devices", device_count);
+        debug!("Found {device_count} NVML devices");
         for device_index in 0..device_count {
             let Ok(accessible_device) = NVML
                 .get()?
@@ -627,7 +624,7 @@ impl GpuNVidia {
                     }
                 }
                 _ => {
-                    error!("Unexpected Nvidia temp name: {}", nvidia_temp_name);
+                    error!("Unexpected Nvidia temp name: {nvidia_temp_name}");
                 }
             }
         }
@@ -751,10 +748,10 @@ impl GpuNVidia {
                     Nvidia card with the proprietary drivers installed, allow access to either \
                     NVML or the CLI tools: nvidia-smi and nvidia-settings."
                 );
-                debug!("Error trying to communicate with nvidia-smi: {}", stderr);
+                debug!("Error trying to communicate with nvidia-smi: {stderr}");
             }
             Success { stdout, stderr: _ } => {
-                debug!("Nvidia raw status output: {}", stdout);
+                debug!("Nvidia raw status output: {stdout}");
                 for line in stdout.lines() {
                     if line.trim().is_empty() {
                         continue; // skip any empty lines
@@ -763,7 +760,7 @@ impl GpuNVidia {
                     if values.len() >= 5 {
                         match values[0].parse::<u8>() {
                             Err(err) => {
-                                error!("Something unexpected in nvidia status output: {}", err);
+                                error!("Something unexpected in nvidia status output: {err}");
                             }
                             Ok(index) => {
                                 nvidia_statuses.push(StatusNvidia {
@@ -796,7 +793,7 @@ impl GpuNVidia {
         }
         match self.get_nvidia_device_infos().await {
             Err(err) => {
-                error!("{}", err);
+                error!("{err}");
                 Ok(devices) // skip nvidia devices if something has unexpectedly gone wrong
             }
             Ok(mut nvidia_infos) => {
@@ -948,10 +945,7 @@ impl GpuNVidia {
         while Instant::now() < search_timeout_time {
             sleep(Duration::from_millis(500)).await;
             if let Ok(environment_xauthority) = std::env::var("XAUTHORITY") {
-                info!(
-                    "Found existing Xauthority in the environment: {}",
-                    environment_xauthority
-                );
+                info!("Found existing Xauthority in the environment: {environment_xauthority}");
                 return Some(environment_xauthority);
             }
             let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, None)
@@ -965,15 +959,12 @@ impl GpuNVidia {
                 .find(|path| path.is_absolute());
             if let Some(xauthority_path) = xauthority_path_opt {
                 if let Some(xauthority_str) = xauthority_path.to_str() {
-                    info!("Xauthority found in file path: {}", xauthority_str);
+                    info!("Xauthority found in file path: {xauthority_str}");
                     return Some(xauthority_str.to_owned());
                 }
             }
         }
-        error!(
-            "Xauthority not found within {:?}.",
-            XAUTHORITY_SEARCH_TIMEOUT
-        );
+        error!("Xauthority not found within {XAUTHORITY_SEARCH_TIMEOUT:?}.");
         None
     }
 
@@ -1002,15 +993,11 @@ impl GpuNVidia {
                 .await;
             match command_result {
                 Success { stdout, stderr } => {
-                    debug!(
-                        "Nvidia gpu info output from display :{} - {}",
-                        display_id, stdout
-                    );
+                    debug!("Nvidia gpu info output from display :{display_id} - {stdout}");
                     if stdout.is_empty() {
                         warn!(
-                            "nvidia-settings returned no data for display :{} - \
-                            will retry on next display. Error output: {}",
-                            display_id, stderr
+                            "nvidia-settings returned no data for display :{display_id} - \
+                            will retry on next display. Error output: {stderr}"
                         );
                         continue;
                     }
@@ -1171,7 +1158,7 @@ impl GpuNVidia {
                 ))
             }
             Success { stdout, stderr } => {
-                debug!("Nvidia-settings output: {} - {}", stdout, stderr);
+                debug!("Nvidia-settings output: {stdout} - {stderr}");
                 if stderr.is_empty() {
                     Ok(())
                 } else {

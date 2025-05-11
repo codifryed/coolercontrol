@@ -72,6 +72,11 @@ const singleDashboard = ref(
         .get(props.deviceUID)!
         .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
+// Fixes an issue with the original implementation where there was a saved types filter for
+// single Dashboards - which would annoyingly hide some metrics like i.e. RPMs.
+if (singleDashboard.value.dataTypes.length > 0) {
+    singleDashboard.value.dataTypes = []
+}
 
 const chartTypes = [...$enum(ChartType).values()].map((type) => ({
     value: type,

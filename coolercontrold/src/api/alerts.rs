@@ -82,6 +82,7 @@ pub async fn delete(
         .map_err(handle_error)
 }
 
+#[allow(clippy::float_cmp)]
 fn validate_alert(alert: &AlertDto) -> Result<(), CCError> {
     validate_name_string(&alert.name)?;
     if alert.channel_source.device_uid.is_empty() {

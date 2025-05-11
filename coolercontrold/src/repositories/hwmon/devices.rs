@@ -370,6 +370,7 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
 //     Ok(processor_ids)
 // }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone)]
 pub struct PciDeviceNames {
     #[allow(dead_code)]

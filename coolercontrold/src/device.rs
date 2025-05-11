@@ -64,6 +64,7 @@ pub struct Device {
 
     /// An optional device identifier. This should be pretty unique,
     /// like a serial number or pci device path to be taken into account for the uid.
+    #[allow(clippy::struct_field_names)]
     device_id: Option<String>,
 
     /// A double-sided Vector of statuses
@@ -126,6 +127,7 @@ impl Device {
         }
     }
 
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     fn calc_history_stack_size(poll_rate: f64) -> usize {
         (STATUS_SIZE_SECONDS / poll_rate).ceil() as usize
     }

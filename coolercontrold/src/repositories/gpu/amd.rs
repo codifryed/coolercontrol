@@ -102,7 +102,7 @@ impl GpuAMD {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Fans: {err}"),
-            };
+            }
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
                     temps
@@ -111,7 +111,7 @@ impl GpuAMD {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {err}"),
-            };
+            }
             let device_path = path
                 .join("device")
                 .canonicalize()
@@ -129,7 +129,7 @@ impl GpuAMD {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {err}"),
-            };
+            }
             match power::init_power(&path).await {
                 Ok(power) => channels.extend(
                     power
@@ -138,7 +138,7 @@ impl GpuAMD {
                         .collect::<Vec<HwmonChannelInfo>>(),
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Power: {err}"),
-            };
+            }
             let fan_curve_info = Self::get_fan_curve_info(&device_path)
                 .await
                 .inspect_err(|err| {
@@ -408,7 +408,7 @@ impl GpuAMD {
                         };
                         channels.insert(channel.name.clone(), channel_info);
                     }
-                    HwmonChannelType::Temp | HwmonChannelType::PowerCap => continue,
+                    HwmonChannelType::Temp | HwmonChannelType::PowerCap => (),
                 }
             }
             let amd_status = self.get_amd_status(&amd_driver).await;

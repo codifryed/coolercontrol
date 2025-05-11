@@ -133,6 +133,8 @@ const channelLabel =
 const createNewDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel)
     dash.timeRangeSeconds = 300
+    // needed due to reduced default data type range:
+    dash.dataTypes = []
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID, props.channelName))
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)!
@@ -144,6 +146,11 @@ const singleDashboard = ref(
         .get(props.deviceUID)!
         .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
+// Fixes an issue with the original implementation where there was a saved types filter for
+// single Dashboards - which would annoyingly hide some metrics like i.e. RPMs.
+if (singleDashboard.value.dataTypes.length > 0) {
+    singleDashboard.value.dataTypes = []
+}
 
 // Create a mapping from enum values to i18n keys
 const chartTypeToKey = {

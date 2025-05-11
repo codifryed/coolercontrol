@@ -307,7 +307,7 @@ impl LcdCommander {
             })
             .await;
         let Ok((image_path, image_template)) = generate_image
-            .inspect_err(|err| error!("Error generating image for lcd scheduler: {}", err))
+            .inspect_err(|err| error!("Error generating image for lcd scheduler: {err}"))
         else {
             return;
         };
@@ -352,10 +352,7 @@ impl LcdCommander {
         }
         let device_type = self.all_devices[&device_uid].borrow().d_type.clone();
         trace!("Time to generate LCD image: {:?}", start.elapsed());
-        debug!(
-            "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
-            device_uid, lcd_settings
-        );
+        debug!("Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}");
         if let Some(repo) = self.repos.get(&device_type) {
             if let Err(err) = repo
                 .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
@@ -709,10 +706,7 @@ impl LcdCommander {
                     temp_source: None,
                 };
                 let device_type = self.all_devices[device_uid].borrow().d_type.clone();
-                debug!(
-                    "Applying scheduled LCD setting. Device: {}, Setting: {:?}",
-                    device_uid, lcd_settings
-                );
+                debug!("Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}");
                 let device_uid = device_uid.to_owned();
                 let channel_name = channel_name.to_owned();
                 scope.spawn(async move {

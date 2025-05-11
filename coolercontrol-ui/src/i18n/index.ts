@@ -39,7 +39,7 @@ const i18n = createI18n({
     globalInjection: true,
 })
 
-console.log('i18n instance created:', {
+console.debug('i18n instance created:', {
     currentLanguage: i18n.global.locale,
     availableMessages: Object.keys(i18n.global.messages),
 })

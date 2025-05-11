@@ -128,6 +128,7 @@ fn hertz_to_megahertz(hertz: u64) -> Mhz {
     (hertz / 1_000_000) as Mhz
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn check_parsing_64(content: String) -> Result<u64> {
     match content.trim().parse::<u64>() {
         Ok(value) => Ok(value),

@@ -298,6 +298,7 @@ async fn get_current_pwm_enable(base_path: &Path, channel_number: &u8) -> Option
     current_pwm_enable
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn check_parsing_8(content: String) -> Result<u8> {
     match content.trim().parse::<u8>() {
         Ok(value) => Ok(value),
@@ -305,6 +306,7 @@ pub fn check_parsing_8(content: String) -> Result<u8> {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn check_parsing_32(content: String) -> Result<u32> {
     match content.trim().parse::<u32>() {
         Ok(value) => Ok(value),
@@ -465,7 +467,7 @@ pub async fn set_pwm_enable_to_default(
     };
     if let Err(err) = set_pwm_enable_if_not_already(default_value, base_path, channel_info).await {
         warn!("Failed to reset pwm_enable to default: {err}");
-    };
+    }
     debug!(
         "Reset Hwmon value at {base_path:?}/pwm{}_enable to starting default value of {default_value}",
         channel_info.number

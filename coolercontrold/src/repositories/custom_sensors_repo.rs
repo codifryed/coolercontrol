@@ -140,6 +140,7 @@ impl CustomSensorsRepo {
         Ok(())
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn update_device_info_temps(&self) {
         let temp_infos = self
             .sensors
@@ -368,6 +369,7 @@ impl CustomSensorsRepo {
         (max - min).abs()
     }
 
+    #[allow(clippy::cast_precision_loss)]
     fn process_mix_avg(temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
@@ -450,6 +452,7 @@ impl CustomSensorsRepo {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     fn verify_i32(content: String) -> Result<i32> {
         content.trim().parse::<i32>().map_err(|err| {
             CCError::UserError {
@@ -487,6 +490,7 @@ impl Repository for CustomSensorsRepo {
         DeviceType::CustomSensors
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -706,6 +710,7 @@ mod tests {
 
     // Calculates the delta between the minimum and maximum temperature values in the given vector of TempData.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_calculate_delta() {
         let temp_data = vec![
             TempData {
@@ -727,6 +732,7 @@ mod tests {
 
     // Returns the absolute value of the delta.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_absolute_value() {
         let temp_data = vec![
             TempData {
@@ -748,6 +754,7 @@ mod tests {
 
     // Returns 0.0 if the given vector of TempData is empty.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_empty_vector() {
         let temp_data = vec![];
         let result = CustomSensorsRepo::process_mix_delta(&temp_data);
@@ -756,6 +763,7 @@ mod tests {
 
     // Returns 0.0 if all temperature values in the given vector of TempData are the same.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_same_temperatures() {
         let temp_data = vec![
             TempData {
@@ -777,6 +785,7 @@ mod tests {
 
     // Returns the difference between the only two temperature values in the given vector of TempData if it contains exactly two elements.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_two_elements() {
         let temp_data = vec![
             TempData {
@@ -794,6 +803,7 @@ mod tests {
 
     // Returns the minimum temperature from a vector of temperature data.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_minimum_temperature() {
         let temp_data = vec![
             TempData {
@@ -815,6 +825,7 @@ mod tests {
 
     // Returns 0 when all temperatures in the vector are 0.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_zero_when_all_temperatures_are_zero() {
         let temp_data = vec![
             TempData {
@@ -836,6 +847,7 @@ mod tests {
 
     // Returns the only temperature in the vector when there is only one temperature.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_single_temperature_when_only_one_temperature() {
         let temp_data = vec![TempData {
             temp: 25.0,
@@ -847,6 +859,7 @@ mod tests {
 
     // Returns the minimum temperature when there are multiple temperatures in the vector that are the same.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_minimum_temperature_with_multiple_same_temperatures() {
         let temp_data = vec![
             TempData {
@@ -868,6 +881,7 @@ mod tests {
 
     // Returns the maximum temperature value from a vector of TempData structs with positive values
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_max_temp_from_positive_values() {
         let temp_data = vec![
             TempData {
@@ -889,6 +903,7 @@ mod tests {
 
     // Returns 0 when all temperature values in the vector are 0
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_0_when_all_temps_are_0() {
         let temp_data = vec![
             TempData {
@@ -910,6 +925,7 @@ mod tests {
 
     // Returns the maximum temperature value when all temperature values in the vector are the same
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_all_temps_are_same() {
         let temp_data = vec![
             TempData {
@@ -931,6 +947,7 @@ mod tests {
 
     // Returns 0 when the vector is empty
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_0_when_vector_is_empty() {
         let temp_data: Vec<TempData> = vec![];
         let result = CustomSensorsRepo::process_mix_max(&temp_data);
@@ -939,6 +956,7 @@ mod tests {
 
     // Returns the maximum temperature value when the vector has only one element
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_vector_has_one_element() {
         let temp_data = vec![TempData {
             temp: 30.0,
@@ -950,6 +968,7 @@ mod tests {
 
     // Returns the maximum temperature value when the vector has two elements with different temperature values
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_max_temp_when_vector_has_two_elements_with_different_temps() {
         let temp_data = vec![
             TempData {
@@ -967,6 +986,7 @@ mod tests {
 
     // Calculates the weighted average of a list of temperature data with weights.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn calculates_weighted_average() {
         let temp_data = vec![
             TempData {
@@ -988,6 +1008,7 @@ mod tests {
 
     // Returns the correct weighted average for a list of temperature data with weights.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_correct_weighted_average() {
         let temp_data = vec![
             TempData {
@@ -1009,6 +1030,7 @@ mod tests {
 
     // Returns 0 when given an empty list of temperature data.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_zero_for_empty_list() {
         let temp_data = vec![];
         let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
@@ -1017,6 +1039,7 @@ mod tests {
 
     // Calculates the average temperature correctly when given a vector of valid temperature data.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn calculates_average_temperature_correctly() {
         let temp_data = vec![
             TempData {
@@ -1038,6 +1061,7 @@ mod tests {
 
     // Returns 0 when given an empty vector of temperature data.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_zero_for_empty_vector() {
         let temp_data = vec![];
         let result = CustomSensorsRepo::process_mix_avg(&temp_data);
@@ -1046,6 +1070,7 @@ mod tests {
 
     // Returns the only temperature value in the vector when given a vector of length 1.
     #[test]
+    #[allow(clippy::float_cmp)]
     fn returns_single_value_for_vector_of_length_one() {
         let temp_data = vec![TempData {
             temp: 15.0,
@@ -1057,6 +1082,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[allow(clippy::float_cmp)]
     fn test_file_temp_status_valid() {
         cc_fs::test_runtime(async {
             // given:
@@ -1087,6 +1113,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[allow(clippy::float_cmp)]
     fn test_file_temp_status_invalid() {
         cc_fs::test_runtime(async {
             // given:
@@ -1111,6 +1138,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[allow(clippy::float_cmp)]
     fn test_file_temp_valid() {
         cc_fs::test_runtime(async {
             // given:
@@ -1141,6 +1169,7 @@ mod tests {
 
     #[test]
     #[serial]
+    #[allow(clippy::float_cmp)]
     fn test_file_temp_valid_with_return() {
         cc_fs::test_runtime(async {
             // given:

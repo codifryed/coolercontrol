@@ -829,7 +829,12 @@ onUnmounted(() => {
                         <!--Daemon Settings-->
                         <table class="bg-bg-two rounded-lg mb-4">
                             <tbody>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.applyOnBoot')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.applySettingsOnStartup'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -844,7 +849,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.startupDelay')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.deviceDelayAtStartup'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -871,7 +881,12 @@ onUnmounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.pollRate')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.pollingRate'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -914,7 +929,12 @@ onUnmounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.compress')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.compressApiPayload'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -944,7 +964,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.liquidctl')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.liquidctlIntegration'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -974,7 +999,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.liquidctlNoInit')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.liquidctlDeviceInit'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -994,7 +1024,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.hideDuplicate')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.hideDuplicateDevices'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -1030,11 +1065,10 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        'SSDs and HDDs in particular can spin down and enter a low power state.' +
-                                        '\nThis option, when enabled and the drive supports it, will report drive temperatures' +
-                                        '\nas 0°C when spun down so that fan Profiles can be adjusted accordingly.'
-                                    "
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.drivePowerState'),
+                                    }"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
@@ -1049,7 +1083,9 @@ onUnmounted(() => {
                                                 :size="deviceStore.getREMSize(1.0)"
                                             />
                                         </div>
-                                        <div class="text-right float-right">Drive Power State</div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.drivePowerState') }}
+                                        </div>
                                     </td>
                                     <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
@@ -1065,7 +1101,12 @@ onUnmounted(() => {
                         </table>
                         <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
                             <tbody>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonAddress')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.daemonAddress'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1081,7 +1122,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonPort')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.daemonPort'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1109,7 +1155,12 @@ onUnmounted(() => {
                                         </InputNumber>
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.daemonSsl')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.sslTls'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1168,7 +1219,12 @@ onUnmounted(() => {
                         <!--Desktop Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.startInTray')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.startInTray'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
@@ -1183,7 +1239,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.closeToTray')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.closeToTray'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -1198,7 +1259,12 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr v-tooltip.right="t('layout.settings.tooltips.zoom')">
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.zoom'),
+                                    }"
+                                >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
@@ -1227,9 +1293,10 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.desktopStartupDelay')
-                                    "
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.desktopStartupDelay'),
+                                    }"
                                 >
                                     <td
                                         class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-t-2"
@@ -1266,9 +1333,10 @@ onUnmounted(() => {
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.thinkPadFanControl')
-                                    "
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.thinkPadFanControl'),
+                                    }"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
@@ -1286,9 +1354,10 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.thinkPadFullSpeed')
-                                    "
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.thinkPadFullSpeed'),
+                                    }"
                                 >
                                     <td
                                         class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
