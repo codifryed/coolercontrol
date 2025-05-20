@@ -378,7 +378,7 @@ const functionTitle = (): string => {
 }
 const option = {
     title: {
-        show: true,
+        show: false,
         text: functionTitle(),
         link: chosenFunction.value.uid !== '0' ? '' : undefined,
         target: 'self',
