@@ -1382,7 +1382,7 @@ onUnmounted(() => {
                     option-label="label"
                     option-value="value"
                     :placeholder="t('views.profiles.mixFunction')"
-                    class="w-full max-w-48 mr-3"
+                    class="max-w-48 mr-3"
                     checkmark
                     dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
@@ -1393,7 +1393,7 @@ onUnmounted(() => {
                     :options="memberProfileOptions"
                     option-label="name"
                     :placeholder="t('views.profiles.memberProfiles')"
-                    class="w-48"
+                    class="max-w-48"
                     scroll-height="40rem"
                     dropdown-icon="pi pi-chart-line"
                     v-tooltip.bottom="t('views.profiles.profilesToMix')"
