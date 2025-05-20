@@ -30,7 +30,7 @@ import { v4 as uuidV4 } from 'uuid'
 interface Props {
     deviceUID: UID
     channelName: string
-    selectedProfileUID: UID
+    selectedProfileUID?: UID
 }
 
 const props = defineProps<Props>()

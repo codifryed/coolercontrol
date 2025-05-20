@@ -35,7 +35,7 @@ import { useI18n } from 'vue-i18n'
 interface Props {
     deviceUID: UID
     channelName: string
-    selectedProfileUID: UID
+    selectedProfileUID?: UID
 }
 
 const emit = defineEmits<{

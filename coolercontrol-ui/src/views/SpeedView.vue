@@ -297,7 +297,7 @@ const openFanControlWizard = () => {
         data: {
             deviceUID: props.deviceUID,
             channelName: props.channelName,
-            selectedProfileUID: selectedProfile.value.uid,
+            selectedProfileUID: manualControlEnabled.value ? undefined : selectedProfile.value.uid,
         },
     })
 }

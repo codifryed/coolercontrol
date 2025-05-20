@@ -44,7 +44,7 @@ const closeDialog = () => {
 
 const deviceUID: UID = dialogRef.value.data.deviceUID
 const channelName: string = dialogRef.value.data.channelName
-const selectedProfileUID: Ref<UID> = ref(dialogRef.value.data.selectedProfileUID)
+const selectedProfileUID: Ref<UID | undefined> = ref(dialogRef.value.data.selectedProfileUID)
 const currentStep: Ref<number> = ref(1)
 const newProfileName: Ref<string> = ref('')
 const newProfileType: Ref<ProfileType> = ref(ProfileType.Graph)
