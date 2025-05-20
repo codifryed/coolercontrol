@@ -334,7 +334,7 @@ impl AlertController {
                     &mut alerts_to_fire,
                     alert,
                     lazy_format!(
-                        "{channel_name}: {channel_value} is greater than allowed maximum: {max}"
+                        "{channel_name}: {channel_value:.1} is greater than allowed maximum: {max}"
                     ),
                 );
             } else if channel_value < alert.min {
@@ -347,7 +347,7 @@ impl AlertController {
                     &mut alerts_to_fire,
                     alert,
                     lazy_format!(
-                        "{channel_name}: {channel_value} is less than allowed minimum: {min}"
+                        "{channel_name}: {channel_value:.1} is less than allowed minimum: {min}"
                     ),
                 );
             } else if alert.state != AlertState::Inactive {
@@ -358,7 +358,7 @@ impl AlertController {
                     &mut alerts_to_fire,
                     alert,
                     format!(
-                    "{channel_name}: {channel_value} is again within allowed range: {min} - {max}"
+                    "{channel_name}: {channel_value:.1} is again within allowed range: {min} - {max}"
                 ),
                 );
             }
