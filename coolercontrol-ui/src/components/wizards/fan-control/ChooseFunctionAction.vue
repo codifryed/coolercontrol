@@ -22,12 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import {
-    mdiArrowLeft,
-    mdiFlaskEmptyOutline,
-    mdiFlaskOutline,
-    mdiFlaskPlusOutline,
-} from '@mdi/js'
+import { mdiArrowLeft, mdiFlaskEmptyOutline, mdiFlaskOutline, mdiFlaskPlusOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { UID } from '@/models/Device.ts'
 
