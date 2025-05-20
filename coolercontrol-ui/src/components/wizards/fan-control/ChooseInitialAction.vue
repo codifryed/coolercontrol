@@ -28,11 +28,9 @@ import { useI18n } from 'vue-i18n'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
 import { v4 as uuidV4 } from 'uuid'
 import {
-    mdiArrowLeft,
     mdiChartBoxOutline,
     mdiChartBoxPlusOutline,
     mdiCogOutline,
-    mdiContentSaveOutline,
     mdiFan,
     mdiPencilBoxOutline,
     mdiRestore,

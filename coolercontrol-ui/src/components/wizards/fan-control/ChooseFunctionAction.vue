@@ -24,7 +24,6 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import {
     mdiArrowLeft,
-    mdiChartBoxOutline,
     mdiFlaskEmptyOutline,
     mdiFlaskOutline,
     mdiFlaskPlusOutline,
