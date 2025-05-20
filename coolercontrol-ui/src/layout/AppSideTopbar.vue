@@ -43,6 +43,7 @@ import {
     mdiPlusBoxMultipleOutline,
     mdiPlusCircleMultipleOutline,
     mdiPower,
+    mdiTuneVerticalVariant,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -397,6 +398,27 @@ const addItems = computed(() => [
                 </Menu>
             </template>
         </el-dropdown>
+
+        <!--Controls-->
+        <router-link
+            exact
+            :to="{ name: 'system-controls' }"
+            class="outline-none"
+            v-slot="{ isActive }"
+        >
+            <Button
+                id="controls"
+                class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                v-tooltip.right="t('layout.topbar.controls')"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiTuneVerticalVariant"
+                    :size="getREMSize(1.75)"
+                    :class="{ 'text-accent': isActive }"
+                />
+            </Button>
+        </router-link>
 
         <!--Modes Quick Menu-->
         <el-dropdown

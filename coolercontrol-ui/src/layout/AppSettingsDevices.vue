@@ -288,7 +288,7 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                             href="https://docs.coolercontrol.org/hardware-support.html"
                             class="text-accent"
                         >
-                            {{ t('layout.settings.devices.hardwareSupportDoc') }}.
+                            {{ t('layout.settings.devices.hardwareSupportDoc') }}
                         </a>
                     </td>
                 </tr>
