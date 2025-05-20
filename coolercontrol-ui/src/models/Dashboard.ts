@@ -62,10 +62,9 @@ export class Dashboard {
         this.name = dashboardName
     }
 
+    // Dashboards build by default when there are none (first-run)
     static defaults(): Array<Dashboard> {
-        const controls = new Dashboard('Controls')
-        controls.chartType = ChartType.CONTROLS
-        return [new Dashboard('System'), controls]
+        return [new Dashboard('System')]
     }
 }
 
