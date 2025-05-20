@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertOutline, mdiAutoFix, mdiContentSaveOutline } from '@mdi/js'
+import { mdiAlertOutline, mdiContentSaveOutline, mdiTuneVerticalVariant } from '@mdi/js'
 import Select from 'primevue/select'
 import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
@@ -350,7 +350,7 @@ onUnmounted(() => {
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0">
                 <Button
-                    class="!p-2 w-10 h-[2.375rem] bg-accent/80 hover:!bg-accent"
+                    class="!p-2 w-12 h-[2.375rem] bg-accent/80 hover:!bg-accent"
                     v-tooltip.bottom="t('components.wizards.fanControl.fanControlWizard')"
                     :disabled="!channelIsControllable()"
                     @click="openFanControlWizard"
@@ -358,8 +358,8 @@ onUnmounted(() => {
                     <svg-icon
                         class="outline-0"
                         type="mdi"
-                        :path="mdiAutoFix"
-                        :size="deviceStore.getREMSize(1.5)"
+                        :path="mdiTuneVerticalVariant"
+                        :size="deviceStore.getREMSize(1.25)"
                     />
                 </Button>
             </div>
