@@ -80,40 +80,44 @@ const nextStep = () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full">{{ t('components.wizards.fanControl.chooseProfileNameType') }}:</div>
-        <div class="mt-0 flex flex-col">
-            <InputText
-                v-model="nameInput"
-                :placeholder="t('common.name')"
-                ref="inputArea"
-                id="property-name"
-                class="w-20rem bg-bg-two"
-                :invalid="nameInvalid"
-                :input-style="{ background: 'var(--bg-bg-two)' }"
-            />
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="w-full mb-2">
+                {{ t('components.wizards.fanControl.chooseProfileNameType') }}:
+            </div>
+            <div class="mt-0 flex flex-col">
+                <InputText
+                    v-model="nameInput"
+                    :placeholder="t('common.name')"
+                    ref="inputArea"
+                    id="property-name"
+                    class="w-full h-11"
+                    :invalid="nameInvalid"
+                    :input-style="{ background: 'rgb(var(--color-bg-one))' }"
+                />
+            </div>
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('views.profiles.profileType') }}
+                </small>
+                <Select
+                    v-model="selectedType"
+                    :options="profileTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('views.profiles.profileType')"
+                    class="w-full h-11 mr-3 bg-bg-one !justify-end"
+                    dropdown-icon="pi pi-chart-line"
+                    scroll-height="400px"
+                    checkmark
+                />
+            </div>
+            <p>
+                <span v-html="t('views.profiles.tooltip.profileType')" />
+            </p>
         </div>
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('views.profiles.profileType') }}
-            </small>
-            <Select
-                v-model="selectedType"
-                :options="profileTypeOptions"
-                option-label="label"
-                option-value="value"
-                :placeholder="t('views.profiles.profileType')"
-                class="w-full h-[2.375rem] mr-3 bg-bg-two"
-                dropdown-icon="pi pi-chart-line"
-                scroll-height="400px"
-                checkmark
-            />
-        </div>
-        <p>
-            <span v-html="t('views.profiles.tooltip.profileType')" />
-        </p>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 1)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 1)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -122,7 +126,7 @@ const nextStep = () => {
                 />
             </Button>
             <Button
-                class="w-24 h-[2.375rem]"
+                class="w-24 bg-bg-one"
                 :label="t('common.next')"
                 :disabled="nameInvalid"
                 @click="nextStep"

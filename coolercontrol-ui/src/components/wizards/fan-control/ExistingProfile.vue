@@ -68,24 +68,26 @@ const saveSetting = async () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-72">
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('components.wizards.fanControl.existingProfile') }}:
-            </small>
-            <Select
-                v-model="selectedProfile"
-                :options="getProfileOptions()"
-                option-label="name"
-                placeholder="Profile"
-                class="w-full mr-4 h-full bg-bg-two"
-                checkmark
-                dropdown-icon="pi pi-chart-line"
-                scroll-height="40rem"
-            />
+    <div class="flex flex-col justify-between min-w-72 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="mt-4 flex flex-col">
+                <small class="ml-2 mb-1 text-sm">
+                    {{ t('components.wizards.fanControl.existingProfile') }}:
+                </small>
+                <Select
+                    v-model="selectedProfile"
+                    :options="getProfileOptions()"
+                    option-label="name"
+                    placeholder="Profile"
+                    class="w-full mr-4 h-11 !justify-end"
+                    checkmark
+                    dropdown-icon="pi pi-chart-line"
+                    scroll-height="40rem"
+                />
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 1)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 1)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -94,7 +96,7 @@ const saveSetting = async () => {
                 />
             </Button>
             <Button
-                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                class="bg-accent/80 hover:!bg-accent w-32"
                 label="Apply"
                 v-tooltip.bottom="'Apply'"
                 @click="saveSetting"

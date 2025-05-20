@@ -45,6 +45,7 @@ const closeDialog = () => {
 const deviceUID: UID = dialogRef.value.data.deviceUID
 const channelName: string = dialogRef.value.data.channelName
 const selectedProfileUID: Ref<UID | undefined> = ref(dialogRef.value.data.selectedProfileUID)
+const isControlView: boolean = dialogRef.value.data.isControlView ?? false
 const currentStep: Ref<number> = ref(1)
 const newProfileName: Ref<string> = ref('')
 const newProfileType: Ref<ProfileType> = ref(ProfileType.Graph)
@@ -67,6 +68,7 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :selected-profile-u-i-d="selectedProfileUID"
+        :is-control-view="isControlView"
     />
     <ExistingProfile
         v-else-if="currentStep === 2"

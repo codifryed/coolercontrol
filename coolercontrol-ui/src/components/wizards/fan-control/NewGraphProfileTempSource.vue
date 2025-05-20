@@ -150,58 +150,60 @@ watch(currentDeviceStatus, () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full">
-            {{ t('components.wizards.fanControl.newGraphProfile') }}:
-            <span class="font-bold">{{ props.name }}</span>
-        </div>
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('views.profiles.tempSource') }}
-            </small>
-            <Select
-                v-model="chosenTemp"
-                :options="tempSources"
-                class="w-full h-[2.375rem] bg-bg-two"
-                option-label="tempFrontendName"
-                option-group-label="deviceName"
-                option-group-children="temps"
-                :placeholder="t('views.profiles.tempSource')"
-                :filter-placeholder="t('common.search')"
-                filter
-                checkmark
-                scroll-height="40rem"
-                :invalid="chosenTemp == null"
-                dropdown-icon="pi pi-inbox"
-            >
-                <template #optiongroup="slotProps">
-                    <div class="flex items-center">
-                        <svg-icon
-                            type="mdi"
-                            :path="mdiMemory"
-                            :size="deviceStore.getREMSize(1.3)"
-                            class="mr-2"
-                        />
-                        <div>{{ slotProps.option.deviceName }}</div>
-                    </div>
-                </template>
-                <template #option="slotProps">
-                    <div class="flex w-full items-center justify-between">
-                        <div>
-                            <span
-                                class="pi pi-minus mr-2 ml-1"
-                                :style="{ color: slotProps.option.lineColor }"
-                            />{{ slotProps.option.tempFrontendName }}
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="w-full mb-2">
+                {{ t('components.wizards.fanControl.newGraphProfile') }}:
+                <span class="font-bold">{{ props.name }}</span>
+            </div>
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('views.profiles.tempSource') }}
+                </small>
+                <Select
+                    v-model="chosenTemp"
+                    :options="tempSources"
+                    class="w-full h-11 !justify-end"
+                    option-label="tempFrontendName"
+                    option-group-label="deviceName"
+                    option-group-children="temps"
+                    :placeholder="t('views.profiles.tempSource')"
+                    :filter-placeholder="t('common.search')"
+                    filter
+                    checkmark
+                    scroll-height="40rem"
+                    :invalid="chosenTemp == null"
+                    dropdown-icon="pi pi-inbox"
+                >
+                    <template #optiongroup="slotProps">
+                        <div class="flex items-center">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiMemory"
+                                :size="deviceStore.getREMSize(1.3)"
+                                class="mr-2"
+                            />
+                            <div>{{ slotProps.option.deviceName }}</div>
                         </div>
-                        <div>
-                            {{ slotProps.option.temp + ' °' }}
+                    </template>
+                    <template #option="slotProps">
+                        <div class="flex w-full items-center justify-between">
+                            <div>
+                                <span
+                                    class="pi pi-minus mr-2 ml-1"
+                                    :style="{ color: slotProps.option.lineColor }"
+                                />{{ slotProps.option.tempFrontendName }}
+                            </div>
+                            <div>
+                                {{ slotProps.option.temp + ' °' }}
+                            </div>
                         </div>
-                    </div>
-                </template>
-            </Select>
+                    </template>
+                </Select>
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 3)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 3)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -210,7 +212,7 @@ watch(currentDeviceStatus, () => {
                 />
             </Button>
             <Button
-                class="w-24 h-[2.375rem]"
+                class="w-24 bg-bg-one"
                 :label="t('common.next')"
                 :disabled="chosenTemp == null"
                 @click="nextStep"

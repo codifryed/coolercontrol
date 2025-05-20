@@ -114,212 +114,219 @@ const nextStep = async (): Promise<void> => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full">{{ t('components.wizards.fanControl.chooseFunctionNameType') }}:</div>
-        <div class="mt-0 flex flex-col">
-            <InputText
-                v-model="nameInput"
-                :placeholder="t('common.name')"
-                ref="inputArea"
-                id="property-name"
-                class="w-20rem bg-bg-two"
-                :invalid="nameInvalid"
-                :input-style="{ background: 'var(--bg-bg-two)' }"
-            />
-        </div>
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('views.functions.functionType') }}
-            </small>
-            <Select
-                v-model="selectedType"
-                :options="functionTypeOptions"
-                option-label="label"
-                option-value="value"
-                :placeholder="t('views.functions.functionType')"
-                class="w-full h-[2.375rem] mr-3 bg-bg-two"
-                dropdown-icon="pi pi-chart-line"
-                scroll-height="400px"
-                checkmark
-            />
-        </div>
-        <p>
-            <span v-html="t('views.functions.functionTypeTooltip')" />
-        </p>
-        <div class="border-border-one border-2 rounded-lg">
-            <table class="m-0.5 bg-bg-two">
-                <tbody>
-                    <tr v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')">
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="w-full">
+                {{ t('components.wizards.fanControl.chooseFunctionNameType') }}:
+            </div>
+            <div class="mt-0 flex flex-col">
+                <InputText
+                    v-model="nameInput"
+                    :placeholder="t('common.name')"
+                    ref="inputArea"
+                    id="property-name"
+                    class="w-full h-11"
+                    :invalid="nameInvalid"
+                    :input-style="{ background: 'rgb(var(--colors-bg-one))' }"
+                />
+            </div>
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('views.functions.functionType') }}
+                </small>
+                <Select
+                    v-model="selectedType"
+                    :options="functionTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('views.functions.functionType')"
+                    class="w-full h-11 mr-3 bg-bg-one !justify-end"
+                    dropdown-icon="pi pi-chart-line"
+                    scroll-height="400px"
+                    checkmark
+                />
+            </div>
+            <p>
+                <span v-html="t('views.functions.functionTypeTooltip')" />
+            </p>
+            <div class="pr-1 w-full border-border-one border-2 rounded-lg">
+                <table class="m-0.5 w-full bg-bg-two">
+                    <tbody>
+                        <tr
+                            class="w-full"
+                            v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')"
                         >
-                            {{ t('views.functions.minimumAdjustment') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
-                        >
-                            <InputNumber
-                                v-model="chosenDutyMinimum"
-                                class="min-duty-input"
-                                show-buttons
-                                :min="dutyMin"
-                                :max="chosenDutyMaximum - 1"
-                                :suffix="` ${t('common.percentUnit')}`"
-                                button-layout="horizontal"
-                                :input-style="{ width: '5rem' }"
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
                             >
-                                <template #incrementicon>
-                                    <span class="pi pi-plus" />
-                                </template>
-                                <template #decrementicon>
-                                    <span class="pi pi-minus" />
-                                </template>
-                            </InputNumber>
-                        </td>
-                    </tr>
-                    <tr v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')">
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                        >
-                            {{ t('views.functions.maximumAdjustment') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                        >
-                            <InputNumber
-                                v-model="chosenDutyMaximum"
-                                class="max-duty-input"
-                                show-buttons
-                                :min="chosenDutyMinimum + 1"
-                                :max="dutyMax"
-                                :suffix="` ${t('common.percentUnit')}`"
-                                button-layout="horizontal"
-                                :input-style="{ width: '5rem' }"
+                                {{ t('views.functions.minimumAdjustment') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-b-2"
                             >
-                                <template #incrementicon>
-                                    <span class="pi pi-plus" />
-                                </template>
-                                <template #decrementicon>
-                                    <span class="pi pi-minus" />
-                                </template>
-                            </InputNumber>
-                        </td>
-                    </tr>
-                    <tr
-                        v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
-                    >
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                        >
-                            {{ t('views.functions.windowSize') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                        >
-                            <InputNumber
-                                v-model="chosenWindowSize"
-                                class="window-size-input"
-                                show-buttons
-                                :min="windowSizeMin"
-                                :max="windowSizeMax"
-                                button-layout="horizontal"
-                                :input-style="{ width: '5rem' }"
+                                <InputNumber
+                                    v-model="chosenDutyMinimum"
+                                    class="min-duty-input"
+                                    show-buttons
+                                    :min="dutyMin"
+                                    :max="chosenDutyMaximum - 1"
+                                    :suffix="` ${t('common.percentUnit')}`"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '5rem' }"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                        </tr>
+                        <tr v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')">
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                             >
-                                <template #incrementicon>
-                                    <span class="pi pi-plus" />
-                                </template>
-                                <template #decrementicon>
-                                    <span class="pi pi-minus" />
-                                </template>
-                            </InputNumber>
-                        </td>
-                    </tr>
-                    <tr
-                        v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
-                    >
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
-                        >
-                            {{ t('views.functions.hysteresisThreshold') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                        >
-                            <InputNumber
-                                v-model="chosenDeviance"
-                                class="deviance-input"
-                                show-buttons
-                                :suffix="` ${t('common.tempUnit')}`"
-                                :step="0.1"
-                                :min="devianceMin"
-                                :max="devianceMax"
-                                :min-fraction-digits="1"
-                                :max-fraction-digits="1"
-                                button-layout="horizontal"
-                                :input-style="{ width: '5rem' }"
+                                {{ t('views.functions.maximumAdjustment') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-t-2"
                             >
-                                <template #incrementicon>
-                                    <span class="pi pi-plus" />
-                                </template>
-                                <template #decrementicon>
-                                    <span class="pi pi-minus" />
-                                </template>
-                            </InputNumber>
-                        </td>
-                    </tr>
-                    <tr
-                        v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
-                    >
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                <InputNumber
+                                    v-model="chosenDutyMaximum"
+                                    class="max-duty-input"
+                                    show-buttons
+                                    :min="chosenDutyMinimum + 1"
+                                    :max="dutyMax"
+                                    :suffix="` ${t('common.percentUnit')}`"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '5rem' }"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                        </tr>
+                        <tr
+                            v-if="selectedType === FunctionType.ExponentialMovingAvg"
+                            v-tooltip.right="t('views.functions.windowSizeTooltip')"
                         >
-                            {{ t('views.functions.hysteresisDelay') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                        >
-                            <InputNumber
-                                v-model="chosenDelay"
-                                class="delay-input"
-                                show-buttons
-                                :suffix="` ${t('common.secondAbbr')}`"
-                                :min="delayMin"
-                                :max="delayMax"
-                                button-layout="horizontal"
-                                :input-style="{ width: '5rem' }"
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
                             >
-                                <template #incrementicon>
-                                    <span class="pi pi-plus" />
-                                </template>
-                                <template #decrementicon>
-                                    <span class="pi pi-minus" />
-                                </template>
-                            </InputNumber>
-                        </td>
-                    </tr>
-                    <tr
-                        v-if="selectedType === FunctionType.Standard"
-                        v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
-                    >
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                                {{ t('views.functions.windowSize') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <InputNumber
+                                    v-model="chosenWindowSize"
+                                    class="window-size-input"
+                                    show-buttons
+                                    :min="windowSizeMin"
+                                    :max="windowSizeMax"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '5rem' }"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                        </tr>
+                        <tr
+                            v-if="selectedType === FunctionType.Standard"
+                            v-tooltip.right="t('views.functions.hysteresisThresholdTooltip')"
                         >
-                            {{ t('views.functions.onlyDownward') }}
-                        </td>
-                        <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.hysteresisThreshold') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <InputNumber
+                                    v-model="chosenDeviance"
+                                    class="deviance-input"
+                                    show-buttons
+                                    :suffix="` ${t('common.tempUnit')}`"
+                                    :step="0.1"
+                                    :min="devianceMin"
+                                    :max="devianceMax"
+                                    :min-fraction-digits="1"
+                                    :max-fraction-digits="1"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '5rem' }"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                        </tr>
+                        <tr
+                            v-if="selectedType === FunctionType.Standard"
+                            v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
                         >
-                            <el-switch v-model="chosenOnlyDownward" size="large" />
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.hysteresisDelay') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <InputNumber
+                                    v-model="chosenDelay"
+                                    class="delay-input"
+                                    show-buttons
+                                    :suffix="` ${t('common.secondAbbr')}`"
+                                    :min="delayMin"
+                                    :max="delayMax"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '5rem' }"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                        </tr>
+                        <tr
+                            v-if="selectedType === FunctionType.Standard"
+                            v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
+                        >
+                            <td
+                                class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            >
+                                {{ t('views.functions.onlyDownward') }}
+                            </td>
+                            <td
+                                class="py-4 px-2 text-center items-center border-border-one border-l-2 border-t-2"
+                            >
+                                <el-switch v-model="chosenOnlyDownward" size="large" />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 10)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -328,7 +335,7 @@ const nextStep = async (): Promise<void> => {
                 />
             </Button>
             <Button
-                class="w-24 h-[2.375rem]"
+                class="w-24 bg-bg-one"
                 :label="t('common.next')"
                 :disabled="currentFunction == null || nameInvalid"
                 @click="nextStep"

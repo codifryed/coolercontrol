@@ -80,17 +80,22 @@ const saveSetting = async () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full text-lg">
-            {{ t('components.wizards.fanControl.newDefaultProfile') }}:
-            <span class="font-bold">{{ props.name }}</span
-            ><br />
-            {{ t('components.wizards.fanControl.willCreatedAndAppliedTo') }}
-            <span class="font-bold">{{ channelLabel }}</span
-            >.
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <span class="text-xl text-center underline">{{
+                t('components.wizards.fanControl.summary')
+            }}</span>
+            <div class="w-full text-lg">
+                {{ t('components.wizards.fanControl.newDefaultProfile') }}:
+                <span class="font-bold">{{ props.name }}</span
+                ><br /><br />
+                {{ t('components.wizards.fanControl.willCreatedAndAppliedTo') }}
+                <span class="font-bold">{{ channelLabel }}</span
+                >.
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 3)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 3)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -99,7 +104,7 @@ const saveSetting = async () => {
                 />
             </Button>
             <Button
-                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
                 v-tooltip.bottom="t('views.speed.applySetting')"
                 @click="saveSetting"

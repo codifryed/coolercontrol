@@ -110,47 +110,49 @@ const saveSetting = async () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full text-lg">
-            {{ t('components.wizards.fanControl.newMixProfile') }}:
-            <span class="font-bold">{{ props.name }}</span
-            ><br />
-            {{ t('components.wizards.fanControl.willCreatedAndAppliedTo') }}
-            <span class="font-bold">{{ channelLabel }}</span
-            >:
-        </div>
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('views.profiles.applyMixFunction') }}
-            </small>
-            <Select
-                v-model="chosenProfileMixFunction"
-                :options="mixFunctionTypeOptions"
-                option-label="label"
-                option-value="value"
-                class="w-full mr-3 bg-bg-two"
-                checkmark
-                dropdown-icon="pi pi-sliders-v"
-                scroll-height="40rem"
-            />
-        </div>
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('views.profiles.profilesToMix') }}
-            </small>
-            <MultiSelect
-                v-model="chosenMemberProfiles"
-                :options="memberProfileOptions"
-                option-label="name"
-                :placeholder="t('views.profiles.memberProfiles')"
-                class="w-full bg-bg-two"
-                scroll-height="40rem"
-                dropdown-icon="pi pi-chart-line"
-                :invalid="chosenMemberProfiles.length < 2"
-            />
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="w-full text-lg">
+                {{ t('components.wizards.fanControl.newMixProfile') }}:
+                <span class="font-bold">{{ props.name }}</span
+                ><br /><br />
+                {{ t('components.wizards.fanControl.willCreatedAndAppliedTo') }}
+                <span class="font-bold">{{ channelLabel }}</span
+                ><br /><br />{{ t('components.wizards.fanControl.withSettings') }}:
+            </div>
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('views.profiles.profilesToMix') }}
+                </small>
+                <MultiSelect
+                    v-model="chosenMemberProfiles"
+                    :options="memberProfileOptions"
+                    option-label="name"
+                    :placeholder="t('views.profiles.memberProfiles')"
+                    class="w-full h-11 bg-bg-one items-center"
+                    scroll-height="40rem"
+                    dropdown-icon="pi pi-chart-line"
+                    :invalid="chosenMemberProfiles.length < 2"
+                />
+            </div>
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('views.profiles.applyMixFunction') }}
+                </small>
+                <Select
+                    v-model="chosenProfileMixFunction"
+                    :options="mixFunctionTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    class="w-full mr-3 h-11 bg-bg-one !justify-end"
+                    checkmark
+                    dropdown-icon="pi pi-sliders-v"
+                    scroll-height="40rem"
+                />
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 3)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 3)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -159,7 +161,7 @@ const saveSetting = async () => {
                 />
             </Button>
             <Button
-                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
                 v-tooltip.bottom="t('views.speed.applySetting')"
                 :disabled="chosenMemberProfiles.length < 2"

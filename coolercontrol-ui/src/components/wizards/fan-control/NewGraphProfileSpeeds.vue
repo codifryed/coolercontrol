@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiArrowLeft } from '@mdi/js'
+import { mdiArrowLeft, mdiInformationSlabCircleOutline } from '@mdi/js'
 import { UID } from '@/models/Device.ts'
 import {
     Function,
@@ -1020,7 +1020,7 @@ const updateResponsiveGraphHeight = (): void => {
             // 4rem
             graphEl.style.height = `max(calc(80vh - (${panelHeight}px + 0.5rem)), 20rem)`
         } else {
-            graphEl.style.height = 'max(calc(80vh - 4rem), 20rem)'
+            graphEl.style.height = 'max(calc(80vh - 6rem), 20rem)'
         }
     }
 }
@@ -1087,7 +1087,7 @@ const nextStep = () => {
             />
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 8)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 8)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -1095,13 +1095,13 @@ const nextStep = () => {
                     :size="deviceStore.getREMSize(1.5)"
                 />
             </Button>
-            <div>
+            <div class="flex flex-row">
                 <InputNumber
                     :placeholder="t('common.duty')"
                     v-model="selectedDuty"
                     inputId="selected-duty"
                     mode="decimal"
-                    class="duty-input mr-6"
+                    class="duty-input h-11"
                     :suffix="` ${t('common.percentUnit')}`"
                     showButtons
                     :min="dutyMin"
@@ -1110,8 +1110,8 @@ const nextStep = () => {
                     :use-grouping="false"
                     :step="1"
                     button-layout="horizontal"
-                    :input-style="{ width: '5rem', background: 'var(--bg-bg-two)' }"
-                    v-tooltip.bottom="t('views.profiles.selectedPointDuty')"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.top="t('views.profiles.selectedPointDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1120,12 +1120,23 @@ const nextStep = () => {
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
+                <div
+                    class="p-2 mx-4 leading-none items-center"
+                    v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
+                >
+                    <svg-icon
+                        type="mdi"
+                        class="h-7"
+                        :path="mdiInformationSlabCircleOutline"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                </div>
                 <InputNumber
                     :placeholder="t('common.temperature')"
                     v-model="selectedTemp"
                     inputId="selected-temp"
                     mode="decimal"
-                    class="temp-input"
+                    class="temp-input h-11"
                     :suffix="` ${t('common.tempUnit')}`"
                     showButtons
                     :min="inputNumberTempMin()"
@@ -1136,8 +1147,8 @@ const nextStep = () => {
                     :min-fraction-digits="1"
                     :max-fraction-digits="1"
                     button-layout="horizontal"
-                    :input-style="{ width: '5rem', background: 'var(--bg-bg-two)' }"
-                    v-tooltip.bottom="t('views.profiles.selectedPointTemp')"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.top="t('views.profiles.selectedPointTemp')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1147,7 +1158,7 @@ const nextStep = () => {
                     </template>
                 </InputNumber>
             </div>
-            <Button class="w-24 h-[2.375rem]" :label="t('common.next')" @click="nextStep" />
+            <Button class="w-24 bg-bg-one" :label="t('common.next')" @click="nextStep" />
         </div>
     </div>
 </template>
@@ -1156,6 +1167,6 @@ const nextStep = () => {
 #control-graph-wiz {
     overflow: hidden;
     // This is adjusted dynamically on resize with js above
-    height: max(calc(80vh - 4rem), 20rem);
+    height: max(calc(80vh - 6rem), 20rem);
 }
 </style>

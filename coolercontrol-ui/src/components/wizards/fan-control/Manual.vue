@@ -82,38 +82,44 @@ const saveSetting = async () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-96">
-        <div class="w-full">{{ t('components.wizards.fanControl.selectSpeed') }}:</div>
-        <InputNumber
-            :placeholder="t('common.duty')"
-            v-model="manualDuty"
-            mode="decimal"
-            class="duty-input w-full bg-bg-two"
-            :suffix="` ${t('common.percentUnit')}`"
-            showButtons
-            :min="dutyMin"
-            :max="dutyMax"
-            :use-grouping="false"
-            :step="1"
-            button-layout="horizontal"
-            :input-style="{ width: '8rem', background: 'var(--bg-bg-two)' }"
-        >
-            <template #incrementicon>
-                <span class="pi pi-plus" />
-            </template>
-            <template #decrementicon>
-                <span class="pi pi-minus" />
-            </template>
-        </InputNumber>
-        <Slider
-            v-model="manualDuty"
-            class="!w-[23.25rem] ml-1.5"
-            :step="1"
-            :min="dutyMin"
-            :max="dutyMax"
-        />
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="mt-4 flex flex-col">
+            <div class="w-full ml-2 mb-1 text-sm">
+                {{ t('components.wizards.fanControl.selectSpeed') }}:
+            </div>
+            <InputNumber
+                :placeholder="t('common.duty')"
+                v-model="manualDuty"
+                mode="decimal"
+                class="duty-input w-full h-11"
+                :suffix="` ${t('common.percentUnit')}`"
+                showButtons
+                :min="dutyMin"
+                :max="dutyMax"
+                :use-grouping="false"
+                :step="1"
+                button-layout="horizontal"
+                :input-style="{ width: '8rem', background: 'rgb(var(--colors-bg-one))' }"
+            >
+                <template #incrementicon>
+                    <span class="pi pi-plus" />
+                </template>
+                <template #decrementicon>
+                    <span class="pi pi-minus" />
+                </template>
+            </InputNumber>
+            <div class="mx-1.5 mt-4">
+                <Slider
+                    v-model="manualDuty"
+                    class="!w-full"
+                    :step="1"
+                    :min="dutyMin"
+                    :max="dutyMax"
+                />
+            </div>
+        </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 1)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 1)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -122,7 +128,7 @@ const saveSetting = async () => {
                 />
             </Button>
             <Button
-                class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"
                 v-tooltip.bottom="t('views.speed.applySetting')"
                 @click="saveSetting"

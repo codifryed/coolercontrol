@@ -59,24 +59,26 @@ const nextStep = () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-y-4 w-72">
-        <div class="mt-0 flex flex-col">
-            <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                {{ t('components.wizards.fanControl.existingFunction') }}:
-            </small>
-            <Select
-                v-model="selectedFunction"
-                :options="getFunctionOptions()"
-                option-label="name"
-                placeholder="Function"
-                class="w-full mr-4 h-full bg-bg-two"
-                checkmark
-                dropdown-icon="pi pi-chart-line"
-                scroll-height="40rem"
-            />
+    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+        <div class="flex flex-col gap-y-4">
+            <div class="mt-0 flex flex-col">
+                <small class="ml-2 mb-1 font-light text-sm">
+                    {{ t('components.wizards.fanControl.existingFunction') }}:
+                </small>
+                <Select
+                    v-model="selectedFunction"
+                    :options="getFunctionOptions()"
+                    option-label="name"
+                    placeholder="Function"
+                    class="w-full mr-4 h-11 bg-bg-one !justify-end"
+                    checkmark
+                    dropdown-icon="pi pi-chart-line"
+                    scroll-height="40rem"
+                />
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 h-[2.375rem]" label="Back" @click="emit('nextStep', 10)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -85,7 +87,7 @@ const nextStep = () => {
                 />
             </Button>
             <Button
-                class="w-24 h-[2.375rem]"
+                class="w-24 bg-bg-one"
                 :label="t('common.next')"
                 :disabled="selectedFunction == null"
                 @click="nextStep"
