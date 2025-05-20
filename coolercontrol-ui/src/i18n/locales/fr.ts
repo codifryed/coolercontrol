@@ -799,7 +799,7 @@ export default {
                 createNewFunction: 'Créer une nouvelle fonction',
                 existingFunction: 'Choisir une fonction existante',
                 defaultFunction: 'Utiliser la fonction par défaut',
-                chooseFunctionNameType: "Choisir un nom et un type de fonction",
+                chooseFunctionNameType: 'Choisir un nom et un type de fonction',
                 newFunctionName: 'Fonction pour {profileName}',
                 summary: 'Résumé',
                 aNewProfile: 'Un nouveau profil',

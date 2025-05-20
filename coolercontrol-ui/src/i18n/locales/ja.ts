@@ -784,7 +784,8 @@ export default {
                 newMixProfile: '新しいミックスプロファイル',
                 newGraphProfile: '新しいグラフプロファイル',
                 functionFor: '適用する機能を選択：',
-                functionDescription: '機能を使用すると、プロファイル出力の適用方法をさらに制御できます。',
+                functionDescription:
+                    '機能を使用すると、プロファイル出力の適用方法をさらに制御できます。',
                 createNewFunction: '新しい機能を作成',
                 existingFunction: '既存の機能を選択',
                 defaultFunction: 'デフォルト機能を使用',
