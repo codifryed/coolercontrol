@@ -787,6 +787,9 @@ export default {
                 aNewProfile: 'एक नई प्रोफ़ाइल',
                 andFunction: 'और फ़ंक्शन',
             },
+            profile: {
+                willCreated: 'बनाई जाएगी।',
+            },
         },
     },
     auth: {

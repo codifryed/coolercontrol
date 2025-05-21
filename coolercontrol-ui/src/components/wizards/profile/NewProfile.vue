@@ -61,7 +61,7 @@ const nextStep = () => {
     emit('profileType', selectedType.value)
     switch (selectedType.value) {
         case ProfileType.Default:
-            emit('nextStep', 5)
+            emit('nextStep', 13)
             break
         case ProfileType.Fixed:
             emit('nextStep', 6)

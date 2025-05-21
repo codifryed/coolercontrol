@@ -790,6 +790,9 @@ export default {
                 aNewProfile: 'Новый профиль',
                 andFunction: 'и функция',
             },
+            profile: {
+                willCreated: 'будет создан.',
+            },
         },
     },
     auth: {

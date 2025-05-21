@@ -775,6 +775,9 @@ export default {
                     aNewProfile: 'ملف تعريف جديد',
                     andFunction: 'ووظيفة',
                 },
+                profile: {
+                    willCreated: 'سيتم إنشاؤه.',
+                },
             },
         },
         auth: {

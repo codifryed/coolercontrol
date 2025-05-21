@@ -757,6 +757,9 @@ export default {
                 aNewProfile: '新設定檔',
                 andFunction: '及功能',
             },
+            profile: {
+                willCreated: '將被建立。',
+            },
         },
     },
     auth: {

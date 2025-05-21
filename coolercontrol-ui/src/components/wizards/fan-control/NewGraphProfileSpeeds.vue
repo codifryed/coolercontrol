@@ -20,7 +20,6 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiArrowLeft, mdiInformationSlabCircleOutline } from '@mdi/js'
-import { UID } from '@/models/Device.ts'
 import {
     Function,
     FunctionType,
@@ -66,8 +65,6 @@ echarts.use([
 ])
 
 interface Props {
-    deviceUID: UID
-    channelName: string
     name: string
     tempSource: ProfileTempSource
     speedProfile: Array<[number, number]>

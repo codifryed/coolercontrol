@@ -757,6 +757,9 @@
                 aNewProfile: '新配置文件',
                 andFunction: '和功能',
             },
+            profile: {
+                willCreated: '将被创建。',
+            },
         },
     },
     auth: {

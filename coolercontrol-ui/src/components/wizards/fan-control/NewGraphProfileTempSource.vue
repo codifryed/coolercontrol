@@ -21,7 +21,6 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiArrowLeft, mdiMemory } from '@mdi/js'
 import Button from 'primevue/button'
-import { UID } from '@/models/Device.ts'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import Select from 'primevue/select'
@@ -31,8 +30,6 @@ import { ProfileTempSource } from '@/models/Profile.ts'
 import { storeToRefs } from 'pinia'
 
 interface Props {
-    deviceUID: UID
-    channelName: string
     name: string
     tempSource: ProfileTempSource | undefined
 }

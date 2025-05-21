@@ -805,6 +805,9 @@ export default {
                 aNewProfile: 'Un nouveau profil',
                 andFunction: 'et fonction',
             },
+            profile: {
+                willCreated: 'sera créé.',
+            },
         },
     },
     auth: {

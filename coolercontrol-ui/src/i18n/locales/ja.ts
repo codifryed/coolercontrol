@@ -795,6 +795,9 @@ export default {
                 aNewProfile: '新しいプロファイル',
                 andFunction: 'と機能',
             },
+            profile: {
+                willCreated: '作成されます。',
+            },
         },
     },
     auth: {
