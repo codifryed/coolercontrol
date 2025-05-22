@@ -33,7 +33,9 @@ import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
 
 interface Props {
-    name: string // newProfileName
+    profileName?: string
+    functionName?: string
+    newFunction?: Function
 }
 
 const props = defineProps<Props>()
@@ -54,10 +56,17 @@ const devianceMax: number = 100
 const delayMin: number = 0
 const delayMax: number = 30
 
-const newFunction = new Function(
-    t('components.wizards.fanControl.newFunctionName', { profileName: props.name }),
-    FunctionType.Standard,
-)
+const newFunction =
+    props.newFunction === undefined
+        ? new Function(
+              props.profileName !== undefined
+                  ? t('components.wizards.fanControl.newFunctionName', {
+                        profileName: props.profileName,
+                    })
+                  : (props.functionName ?? ''),
+              FunctionType.Standard,
+          )
+        : props.newFunction
 const currentFunction: Ref<Function> = ref(newFunction)
 
 let startingWindowSize = 8 // 8 is the recommended default
@@ -94,6 +103,7 @@ const nextStep = async (): Promise<void> => {
         console.error('Changing of the default Function is not allowed.')
         return
     }
+    currentFunction.value.name = nameInput.value
     currentFunction.value.f_type = selectedType.value
     currentFunction.value.duty_minimum = chosenDutyMinimum.value
     currentFunction.value.duty_maximum = chosenDutyMaximum.value
@@ -326,7 +336,12 @@ const nextStep = async (): Promise<void> => {
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
+            <Button
+                v-if="props.profileName !== undefined"
+                class="w-24 bg-bg-one"
+                label="Back"
+                @click="emit('nextStep', 10)"
+            >
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -334,6 +349,7 @@ const nextStep = async (): Promise<void> => {
                     :size="deviceStore.getREMSize(1.5)"
                 />
             </Button>
+            <div v-else />
             <Button
                 class="w-24 bg-bg-one"
                 :label="t('common.next')"

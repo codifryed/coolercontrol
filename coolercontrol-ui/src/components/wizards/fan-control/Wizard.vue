@@ -142,7 +142,8 @@ const setFunctionUID = (funUID: UID): void => {
         v-else-if="currentStep === 11"
         @next-step="(step: number) => (currentStep = step)"
         @new-function="(fun: Function) => (newFunction = fun)"
-        :name="newProfileName"
+        :profile-name="newProfileName"
+        :new-function="newFunction"
     />
     <ExistingFunction
         v-else-if="currentStep === 12"
