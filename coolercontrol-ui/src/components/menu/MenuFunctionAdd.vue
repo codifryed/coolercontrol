@@ -22,41 +22,44 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiFlaskPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { inject } from 'vue'
+import { defineAsyncComponent, inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
-import { UID } from '@/models/Device.ts'
-import { Function } from '@/models/Profile.ts'
-import { useToast } from 'primevue/usetoast'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 interface Props {}
 
 defineProps<Props>()
-const emit = defineEmits<{
-    (e: 'added', functionUID: UID): void
-}>()
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
-const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-const router = useRouter()
+
+const dialog = useDialog()
+const functionWizard = defineAsyncComponent(() => import('../wizards/function/Wizard.vue'))
 
 const addFunction = async (): Promise<void> => {
-    const newFunction = new Function(t('views.functions.newFunction'))
-    settingsStore.functions.push(newFunction)
-    await settingsStore.saveFunction(newFunction.uid)
-    toast.add({
-        severity: 'success',
-        summary: t('common.success'),
-        detail: t('views.functions.createFunction'),
-        life: 3000,
+    dialog.open(functionWizard, {
+        props: {
+            header: t('views.functions.newFunction'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
     })
-    emit('added', newFunction.uid)
-    await router.push({ name: 'functions', params: { functionUID: newFunction.uid } })
+    // Now handled by the new Function Wizard
+    // const newFunction = new Function(t('views.functions.newFunction'))
+    // settingsStore.functions.push(newFunction)
+    // await settingsStore.saveFunction(newFunction.uid)
+    // toast.add({
+    //     severity: 'success',
+    //     summary: t('common.success'),
+    //     detail: t('views.functions.createFunction'),
+    //     life: 3000,
+    // })
+    // emit('added', newFunction.uid)
+    // await router.push({ name: 'functions', params: { functionUID: newFunction.uid } })
 }
 // be able to add a function from the side menu add button:
 emitter.on('function-add', addFunction)
