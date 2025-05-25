@@ -130,9 +130,9 @@ const customSensor: CustomSensor = await collectCustomSensor()
 // @ts-ignore
 const sensorID: Ref<string> = ref(customSensor.id)
 const currentName: string =
-    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.name ?? sensorID.value
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value
 const isUserName: boolean =
-    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.userName != undefined
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.userName != undefined
 const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
@@ -155,7 +155,7 @@ const mixFunctionTypeOptions = computed(() => {
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const chosenViewType: Ref<ChannelViewType> = ref(
-    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.viewType ??
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.viewType ??
         ChannelViewType.Control,
 )
 const viewTypeOptions = [...$enum(ChannelViewType).keys()]
@@ -256,12 +256,12 @@ const saveSensor = async (): Promise<void> => {
         if (successful) {
             // need to set the sensor name in the UI settings before we restart
             deviceSettings.sensorsAndChannels.set(
-                customSensor.id as string,
+                customSensor.id,
                 new SensorAndChannelSettings(),
             )
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
                     sensorName.value
             }
             await deviceStore.waitAndReload(1)
@@ -272,11 +272,11 @@ const saveSensor = async (): Promise<void> => {
         if (successful) {
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
                     sensorName.value
             } else {
                 // reset name
-                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
                     undefined
             }
             await deviceStore.waitAndReload(1)
@@ -308,18 +308,18 @@ const changeMixFunction = (event: ListboxChangeEvent): void => {
 }
 
 const createNewDashboard = (): Dashboard => {
-    const dash = new Dashboard(customSensor.id as string)
+    const dash = new Dashboard(customSensor.id)
     dash.timeRangeSeconds = 300
     dash.deviceChannelNames.push(
-        new DashboardDeviceChannel(customSensorsDeviceUID, customSensor.id as string),
+        new DashboardDeviceChannel(customSensorsDeviceUID, customSensor.id),
     )
-    if (deviceSettings.sensorsAndChannels.has(customSensor.id as string)) {
-        deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.channelDashboard = dash
+    if (deviceSettings.sensorsAndChannels.has(customSensor.id)) {
+        deviceSettings.sensorsAndChannels.get(customSensor.id)!.channelDashboard = dash
     }
     return dash
 }
 const singleDashboard = ref(
-    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.channelDashboard ??
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.channelDashboard ??
         createNewDashboard(),
 )
 const chartTypes = [...$enum(ChartType).values()]
@@ -369,7 +369,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
     })
 }
 const viewTypeChanged = () =>
-    (deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.viewType =
+    (deviceSettings.sensorsAndChannels.get(customSensor.id)!.viewType =
         chosenViewType.value)
 
 const fileBrowse = async (): Promise<void> => {

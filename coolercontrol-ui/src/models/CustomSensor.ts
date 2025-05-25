@@ -21,7 +21,7 @@ import { Type } from 'class-transformer'
 import i18n from '@/i18n'
 
 export class CustomSensor {
-    id: String
+    id: string
 
     cs_type: CustomSensorType
     mix_function: CustomSensorMixFunctionType
@@ -32,7 +32,7 @@ export class CustomSensor {
     file_path?: string
 
     constructor(
-        id: String,
+        id: string,
         cs_type: CustomSensorType = CustomSensorType.Mix,
         mix_function: CustomSensorMixFunctionType = CustomSensorMixFunctionType.Max,
         sources: Array<CustomTempSourceData> = [],
