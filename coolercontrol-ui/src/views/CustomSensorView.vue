@@ -155,8 +155,7 @@ const mixFunctionTypeOptions = computed(() => {
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const chosenViewType: Ref<ChannelViewType> = ref(
-    deviceSettings.sensorsAndChannels.get(customSensor.id)?.viewType ??
-        ChannelViewType.Control,
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.viewType ?? ChannelViewType.Control,
 )
 const viewTypeOptions = [...$enum(ChannelViewType).keys()]
 
@@ -255,14 +254,10 @@ const saveSensor = async (): Promise<void> => {
         const successful = await settingsStore.saveCustomSensor(customSensor)
         if (successful) {
             // need to set the sensor name in the UI settings before we restart
-            deviceSettings.sensorsAndChannels.set(
-                customSensor.id,
-                new SensorAndChannelSettings(),
-            )
+            deviceSettings.sensorsAndChannels.set(customSensor.id, new SensorAndChannelSettings())
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
-                    sensorName.value
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
             }
             await deviceStore.waitAndReload(1)
         }
@@ -272,12 +267,10 @@ const saveSensor = async (): Promise<void> => {
         if (successful) {
             if (sensorName.value) {
                 sensorName.value = deviceStore.sanitizeString(sensorName.value)
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
-                    sensorName.value
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
             } else {
                 // reset name
-                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName =
-                    undefined
+                deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = undefined
             }
             await deviceStore.waitAndReload(1)
         }
@@ -369,8 +362,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
     })
 }
 const viewTypeChanged = () =>
-    (deviceSettings.sensorsAndChannels.get(customSensor.id)!.viewType =
-        chosenViewType.value)
+    (deviceSettings.sensorsAndChannels.get(customSensor.id)!.viewType = chosenViewType.value)
 
 const fileBrowse = async (): Promise<void> => {
     // @ts-ignore
