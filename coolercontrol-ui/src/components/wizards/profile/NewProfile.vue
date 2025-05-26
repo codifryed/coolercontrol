@@ -114,14 +114,7 @@ const nextStep = () => {
             </p>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 1)">
-                <svg-icon
-                    class="outline-0"
-                    type="mdi"
-                    :path="mdiArrowLeft"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </Button>
+            <div />
             <Button
                 class="w-24 bg-bg-one"
                 :label="t('common.next')"
