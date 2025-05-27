@@ -708,6 +708,9 @@ export default {
             dashboards: 'Dashboards',
             dashboardsDesc:
                 "Dashboards are a curated collection of charts to view your system's sensor data.",
+            controls: 'Controls',
+            controlsDesc:
+                "Controls provide an interactive interface to manage your system's fans and other devices. Each controllable channel lets you adjust speeds, set Profiles, and monitor status in real-time.",
             profiles: 'Profiles',
             profilesDesc:
                 'Profiles define customizable settings for controlling fan speeds. The same Profile can be used for multiple fans and devices.',

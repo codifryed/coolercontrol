@@ -731,6 +731,9 @@ export default {
             dashboards: 'Dashboards',
             dashboardsDesc:
                 'Dashboards sind eine kuratierte Sammlung von Diagrammen zur Ansicht der Sensordaten Ihres Systems.',
+            controls: 'Steuerungen',
+            controlsDesc:
+                'Steuerungen bieten eine interaktive Oberfläche zur Verwaltung der Lüfter und anderer Geräte Ihres Systems. Jeder steuerbare Kanal ermöglicht es Ihnen, die Geschwindigkeiten anzupassen, Profile festzulegen und den Status in Echtzeit zu überwachen.',
             profiles: 'Profile',
             profilesDesc:
                 'Profile definieren anpassbare Einstellungen zur Steuerung der Lüftergeschwindigkeiten. Dasselbe Profil kann für mehrere Lüfter und Geräte verwendet werden.',

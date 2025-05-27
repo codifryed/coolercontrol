@@ -714,6 +714,9 @@ export default {
             dashboards: 'Paneles',
             dashboardsDesc:
                 'Los paneles son una colección seleccionada de gráficos para ver los datos de los sensores de su sistema.',
+            controls: 'Controles',
+            controlsDesc:
+                'Los controles proporcionan una interfaz interactiva para gestionar los ventiladores y otros dispositivos de su sistema. Cada canal controlable le permite ajustar velocidades, establecer Perfiles y monitorear el estado en tiempo real.',
             profiles: 'Perfiles',
             profilesDesc:
                 'Los perfiles definen configuraciones personalizables para controlar las velocidades de los ventiladores. El mismo Perfil puede usarse para múltiples ventiladores y dispositivos.',

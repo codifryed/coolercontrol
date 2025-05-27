@@ -728,6 +728,9 @@ export default {
             dashboards: 'Tableaux de Bord',
             dashboardsDesc:
                 'Les tableaux de bord sont une collection organisée de graphiques pour visualiser les données des capteurs de votre système.',
+            controls: 'Contrôles',
+            controlsDesc:
+                "Les contrôles offrent une interface interactive pour gérer les ventilateurs et autres appareils de votre système. Chaque canal contrôlable vous permet d'ajuster les vitesses, de définir des profils et de surveiller l'état en temps réel.",
             profiles: 'Profils',
             profilesDesc:
                 'Les profils définissent des paramètres personnalisables pour contrôler les vitesses des ventilateurs. Le même profil peut être utilisé pour plusieurs ventilateurs et appareils.',

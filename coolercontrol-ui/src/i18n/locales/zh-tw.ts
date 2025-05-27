@@ -685,6 +685,9 @@ export default {
             letsStart: '好的，讓我們開始吧！',
             dashboards: '儀表板',
             dashboardsDesc: '儀表板是一個精選的圖表集合，用於查看系統的傳感器數據。',
+            controls: '控制項',
+            controlsDesc:
+                '控制功能提供互動式介面來管理您的系統風扇和其他裝置。每個可控制的通道都允許您調整速度、設置設定檔，並即時監控狀態。',
             profiles: '設定檔',
             profilesDesc:
                 '設定檔定義了控制風扇速度的可自定義設置。同一個設定檔可用於多個風扇和設備。',
