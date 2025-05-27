@@ -760,6 +760,9 @@
             profile: {
                 willCreated: '将被创建。',
             },
+            customSensor: {
+                new: '新建自定义传感器',
+            },
         },
     },
     auth: {

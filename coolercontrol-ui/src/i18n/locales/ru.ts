@@ -793,6 +793,9 @@ export default {
             profile: {
                 willCreated: 'будет создан.',
             },
+            customSensor: {
+                new: 'Новый пользовательский датчик',
+            },
         },
     },
     auth: {

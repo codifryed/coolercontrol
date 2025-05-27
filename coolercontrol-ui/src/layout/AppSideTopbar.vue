@@ -266,7 +266,7 @@ const addItems = computed(() => [
         mdiIcon: mdiPlusCircleMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
-            router.push({ name: 'custom-sensors' })
+            emitter.emit('custom-sensor-add')
         },
     },
 ])

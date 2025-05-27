@@ -778,6 +778,9 @@ export default {
                 profile: {
                     willCreated: 'سيتم إنشاؤه.',
                 },
+                customSensor: {
+                    new: 'مستشعر مخصص جديد',
+                },
             },
         },
         auth: {

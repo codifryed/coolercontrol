@@ -790,6 +790,9 @@ export default {
             profile: {
                 willCreated: 'बनाई जाएगी।',
             },
+            customSensor: {
+                new: 'नया कस्टम सेंसर',
+            },
         },
     },
     auth: {

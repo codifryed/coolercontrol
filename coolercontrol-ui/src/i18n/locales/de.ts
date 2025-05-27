@@ -811,6 +811,9 @@ export default {
             profile: {
                 willCreated: 'wird erstellt.',
             },
+            customSensor: {
+                new: 'Neuer benutzerdefinierter Sensor',
+            },
         },
     },
     auth: {

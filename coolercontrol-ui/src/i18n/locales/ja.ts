@@ -798,6 +798,9 @@ export default {
             profile: {
                 willCreated: '作成されます。',
             },
+            customSensor: {
+                new: '新しいカスタムセンサー',
+            },
         },
     },
     auth: {

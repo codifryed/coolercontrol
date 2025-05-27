@@ -760,6 +760,9 @@ export default {
             profile: {
                 willCreated: '將被建立。',
             },
+            customSensor: {
+                new: '新自訂感測器',
+            },
         },
     },
     auth: {
