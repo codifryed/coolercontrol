@@ -668,6 +668,12 @@ const addMode = (modeUID: UID): void => {
     )
     adjustTreeLeaves()
 }
+interface ModeUIDObj {
+    modeUID: UID
+}
+const addModeMenu = (modeUIDObj: ModeUIDObj): void => addMode(modeUIDObj.modeUID)
+emitter.on('mode-add-menu', addModeMenu)
+
 const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
         await router.push({ name: 'system-overview' })
