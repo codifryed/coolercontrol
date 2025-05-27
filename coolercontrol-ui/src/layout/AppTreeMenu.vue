@@ -581,6 +581,13 @@ const addDashbaord = (dashboardUID: UID) => {
     )
     adjustTreeLeaves()
 }
+interface DashboardUIDObj {
+    dashboardUID: UID
+}
+const addDashboardMenu = (dashboardUIDObj: DashboardUIDObj): void =>
+    addDashbaord(dashboardUIDObj.dashboardUID)
+emitter.on('dashboard-add-menu', addDashboardMenu)
+
 const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
         await router.push({ name: 'system-overview' })
