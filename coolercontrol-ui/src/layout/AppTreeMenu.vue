@@ -764,7 +764,7 @@ const addAlert = (alertUIDObj: AlertUIDObj): void => {
     )
     adjustTreeLeaves()
 }
-emitter.on('alert-add', addAlert)
+emitter.on('alert-add-menu', addAlert)
 
 const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {

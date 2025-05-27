@@ -258,7 +258,7 @@ const addItems = computed(() => [
         mdiIcon: mdiBellPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
-            router.push({ name: 'alerts' })
+            emitter.emit('alert-add')
         },
     },
     {
