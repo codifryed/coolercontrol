@@ -19,13 +19,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiArrowLeft } from '@mdi/js'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import { computed, ref, type Ref } from 'vue'
 import { getProfileTypeDisplayName, ProfileType } from '@/models/Profile.ts'
 import { $enum } from 'ts-enum-util'
-import { DEFAULT_NAME_STRING_LENGTH, useDeviceStore } from '@/stores/DeviceStore.ts'
+import { DEFAULT_NAME_STRING_LENGTH } from '@/stores/DeviceStore.ts'
 import InputText from 'primevue/inputtext'
 import { useI18n } from 'vue-i18n'
 
@@ -42,7 +41,6 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const deviceStore = useDeviceStore()
 
 const selectedType: Ref<ProfileType> = ref(props.type)
 const profileTypeOptions = computed(() => {
