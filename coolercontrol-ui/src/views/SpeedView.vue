@@ -69,7 +69,7 @@ const fanControlWizard = defineAsyncComponent(
     () => import('../components/wizards/fan-control/Wizard.vue'),
 )
 
-let contextIsDirty: boolean = false
+const contextIsDirty: Ref<boolean> = ref(false)
 
 const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false
@@ -226,7 +226,7 @@ const saveSetting = async () => {
             props.channelName,
             setting,
         )
-        contextIsDirty = false
+        contextIsDirty.value = false
     } else {
         const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
         await settingsStore.saveDaemonDeviceSettingProfile(
@@ -234,7 +234,7 @@ const saveSetting = async () => {
             props.channelName,
             setting,
         )
-        contextIsDirty = false
+        contextIsDirty.value = false
     }
 }
 
@@ -254,7 +254,7 @@ const viewTypeChanged = () => {
 }
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty) {
+    if (!contextIsDirty.value) {
         next()
         return
     }
@@ -267,7 +267,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -328,7 +328,7 @@ onMounted(() => {
     )
 
     watch([manualControlEnabled, manualDuty, selectedProfile], () => {
-        contextIsDirty = true
+        contextIsDirty.value = true
     })
     watch(selectedProfile, () => {
         setTimeout(updateResponsiveGraphHeight)
@@ -504,6 +504,7 @@ onUnmounted(() => {
             <div class="p-2 flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.apply')"
                     v-tooltip.bottom="t('views.speed.applySetting')"
                     @click="saveSetting"

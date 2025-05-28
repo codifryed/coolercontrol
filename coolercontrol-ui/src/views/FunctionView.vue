@@ -48,7 +48,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { t } = useI18n()
 
-let contextIsDirty: boolean = false
+const contextIsDirty: Ref<boolean> = ref(false)
 
 const dutyMin: number = 1
 const dutyMax: number = 100
@@ -107,7 +107,7 @@ const saveFunctionState = async () => {
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
     const successful = await settingsStore.updateFunction(currentFunction.value.uid)
     if (successful) {
-        contextIsDirty = false
+        contextIsDirty.value = false
         toast.add({
             severity: 'success',
             summary: t('common.success'),
@@ -188,7 +188,7 @@ const addScrollEventListeners = (): void => {
 }
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty) {
+    if (!contextIsDirty.value) {
         next()
         return
     }
@@ -201,7 +201,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -224,7 +224,7 @@ onMounted(async () => {
             chosenOnlyDownward,
         ],
         () => {
-            contextIsDirty = true
+            contextIsDirty.value = true
         },
     )
     onBeforeRouteUpdate(checkForUnsavedChanges)
@@ -243,6 +243,7 @@ onMounted(async () => {
             <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
                     v-tooltip.bottom="t('views.functions.saveFunction')"
                     @click="saveFunctionState"

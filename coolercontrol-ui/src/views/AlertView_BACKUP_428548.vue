@@ -177,8 +177,13 @@ const saveAlert = async (): Promise<void> => {
         const successful = await settingsStore.createAlert(alert)
         if (successful) {
             await settingsStore.loadAlertsAndLogs()
+<<<<<<< HEAD
             emitter.emit('alert-add-menu', { alertUID: alert.uid })
+            contextIsDirty = false
+=======
+            emitter.emit('alert-add', { alertUID: alert.uid })
             contextIsDirty.value = false
+>>>>>>> main
             await router.push({ name: 'alerts', params: { alertUID: alert.uid } })
         }
     } else {

@@ -66,7 +66,7 @@ const { t } = useI18n()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
-const contextIsDirty: Ref<boolean> = ref(false)
+let contextIsDirty: boolean = false
 const shouldCreateAlert: boolean = !props.alertUID
 
 const collectAlert = async (): Promise<Alert> => {
@@ -178,12 +178,12 @@ const saveAlert = async (): Promise<void> => {
         if (successful) {
             await settingsStore.loadAlertsAndLogs()
             emitter.emit('alert-add-menu', { alertUID: alert.uid })
-            contextIsDirty.value = false
+            contextIsDirty = false
             await router.push({ name: 'alerts', params: { alertUID: alert.uid } })
         }
     } else {
         const successful = await settingsStore.updateAlert(alert.uid)
-        if (successful) contextIsDirty.value = false
+        if (successful) contextIsDirty = false
     }
 }
 
@@ -270,7 +270,7 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
 }
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty.value) {
+    if (!contextIsDirty) {
         next()
         return
     }
@@ -283,7 +283,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty.value = false
+            contextIsDirty = false
         },
         reject: () => next(false),
     })
@@ -327,7 +327,7 @@ onMounted(async () => {
         await fillChannelSources()
     })
     watch([chosenChannelSource, chosenMax, chosenMin, chosenName], () => {
-        contextIsDirty.value = true
+        contextIsDirty = true
     })
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
@@ -344,7 +344,6 @@ onMounted(async () => {
             <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
-                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
                     v-tooltip.bottom="t('views.alerts.saveAlert')"
                     :disabled="chosenChannelSource == null || chosenName.length === 0"
