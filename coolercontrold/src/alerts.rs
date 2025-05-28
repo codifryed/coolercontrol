@@ -328,29 +328,34 @@ impl AlertController {
                 if alert.state == AlertState::Active {
                     continue;
                 }
+                // round up to clearly display greater than.
+                let channel_value_rounded = (channel_value * 10.).ceil() / 10.;
                 let channel_name = alert.channel_source.channel_name.clone();
                 let max = alert.max;
                 Self::activate_alert(
                     &mut alerts_to_fire,
                     alert,
                     lazy_format!(
-                        "{channel_name}: {channel_value:.1} is greater than allowed maximum: {max}"
+                        "{channel_name}: {channel_value_rounded} is greater than allowed maximum: {max}"
                     ),
                 );
             } else if channel_value < alert.min {
                 if alert.state == AlertState::Active {
                     continue;
                 }
+                // round down to clearly display less than.
+                let channel_value_rounded = (channel_value * 10.).floor() / 10.;
                 let channel_name = alert.channel_source.channel_name.clone();
                 let min = alert.min;
                 Self::activate_alert(
                     &mut alerts_to_fire,
                     alert,
                     lazy_format!(
-                        "{channel_name}: {channel_value:.1} is less than allowed minimum: {min}"
+                        "{channel_name}: {channel_value_rounded} is less than allowed minimum: {min}"
                     ),
                 );
             } else if alert.state != AlertState::Inactive {
+                let channel_value_rounded = (channel_value * 10.).round() / 10.;
                 let channel_name = alert.channel_source.channel_name.clone();
                 let min = alert.min;
                 let max = alert.max;
@@ -358,7 +363,7 @@ impl AlertController {
                     &mut alerts_to_fire,
                     alert,
                     format!(
-                    "{channel_name}: {channel_value:.1} is again within allowed range: {min} - {max}"
+                    "{channel_name}: {channel_value_rounded} is again within allowed range: {min} - {max}"
                 ),
                 );
             }
