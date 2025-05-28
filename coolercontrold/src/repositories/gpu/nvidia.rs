@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
-use nu_glob::glob;
+use nu_glob::{glob, Uninterruptible};
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
 use nvml_wrapper::enums::device::SampleValue;
 use nvml_wrapper::structs::device::FieldId;
@@ -948,13 +948,13 @@ impl GpuNVidia {
                 info!("Found existing Xauthority in the environment: {environment_xauthority}");
                 return Some(environment_xauthority);
             }
-            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, None)
+            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
                 .unwrap()
-                .chain(glob(GLOB_XAUTHORITY_PATH_USER, None).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, None).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, None).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, None).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, None).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, Uninterruptible).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, Uninterruptible).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, Uninterruptible).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, Uninterruptible).unwrap())
                 .filter_map(Result::ok)
                 .find(|path| path.is_absolute());
             if let Some(xauthority_path) = xauthority_path_opt {

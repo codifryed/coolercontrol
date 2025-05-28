@@ -22,7 +22,7 @@ use chrono::{DateTime, Local};
 use env_logger::Logger;
 use log::{info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
-use nu_glob::glob;
+use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
@@ -88,7 +88,7 @@ async fn get_dmi_system_info(name: &str) -> String {
 async fn get_xdg_desktop_info() -> Result<String> {
     let mut desktops = HashSet::new();
     let mut sessions_types = HashSet::new();
-    let environ_paths = glob("/proc/*/environ", None)?
+    let environ_paths = glob("/proc/*/environ", Uninterruptible)?
         .filter_map(Result::ok)
         .collect::<Vec<PathBuf>>();
     let regex_desktop = Regex::new(r"XDG_SESSION_DESKTOP=(?P<desktop>\w+)")?;
