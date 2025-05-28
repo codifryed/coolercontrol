@@ -100,7 +100,7 @@ const confirm = useConfirm()
 const router = useRouter()
 const { t } = useI18n()
 
-let contextIsDirty: boolean = false
+const contextIsDirty: Ref<boolean> = ref(false)
 
 const currentProfile = computed(
     () => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!,
@@ -781,6 +781,7 @@ const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): v
             data[i].value[0] = comparisonLimit
         }
     }
+    contextIsDirty.value = true
 }
 
 const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): void => {
@@ -805,6 +806,7 @@ const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): v
             data[i].value[1] = posY
         }
     }
+    contextIsDirty.value = true
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1037,6 +1039,7 @@ const addPointToLine = (params: any) => {
     // this needs a bit of time for the graph to refresh before being set correctly:
     setTimeout(() => (selectedPointIndex.value = indexToInsertAt), 50)
     setTimeout(() => showTooltip(indexToInsertAt), 350) // wait until point animation is complete before showing tooltip
+    contextIsDirty.value = true
 }
 
 const deletePointFromLine = (params: any) => {
@@ -1065,6 +1068,7 @@ const deletePointFromLine = (params: any) => {
     // @ts-ignore
     option.graphic = graphicData
     controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
+    contextIsDirty.value = true
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1194,7 +1198,7 @@ const saveProfileState = async () => {
     }
     const successful = await settingsStore.updateProfile(currentProfile.value.uid)
     if (successful) {
-        contextIsDirty = false
+        contextIsDirty.value = false
         toast.add({
             severity: 'success',
             summary: t('common.success'),
@@ -1266,7 +1270,7 @@ const contextIsVerifiedClean = (): boolean => {
     return true
 }
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty && contextIsVerifiedClean()) {
+    if (!contextIsDirty.value && contextIsVerifiedClean()) {
         next()
         return
     }
@@ -1279,7 +1283,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -1354,7 +1358,7 @@ onMounted(async () => {
     watch(
         [chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction, selectedType],
         () => {
-            contextIsDirty = true
+            contextIsDirty.value = true
         },
     )
     onBeforeRouteUpdate(checkForUnsavedChanges)
@@ -1564,6 +1568,7 @@ onUnmounted(() => {
                 />
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
                     v-tooltip.bottom="t('views.profiles.saveProfile')"
                     @click="saveProfileState"

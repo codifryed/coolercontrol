@@ -88,7 +88,7 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 const { t } = useI18n()
 
-let contextIsDirty: boolean = false
+const contextIsDirty: Ref<boolean> = ref(false)
 const shouldCreateSensor: boolean = !props.customSensorID
 const customSensorIdNumbers: Array<number> = []
 let customSensorsDeviceUID: UID = ''
@@ -350,7 +350,7 @@ const chartKey: Ref<string> = ref(uuidV4())
 // })
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty) {
+    if (!contextIsDirty.value) {
         next()
         return
     }
@@ -363,7 +363,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -388,7 +388,7 @@ onMounted(async () => {
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true })()
     })
     watch([selectedSensorType, selectedMixFunction, filePath, chosenTempSources], () => {
-        contextIsDirty = true
+        contextIsDirty.value = true
     })
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
@@ -471,6 +471,7 @@ onMounted(async () => {
             <div class="p-2">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
                     v-tooltip.bottom="t('views.customSensors.saveCustomSensor')"
                     :disabled="chosenViewType !== ChannelViewType.Control"
