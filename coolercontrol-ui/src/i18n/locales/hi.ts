@@ -92,6 +92,7 @@ export default {
             back: 'वापस',
             expandMenu: 'मेनू विस्तृत करें',
             collapseMenu: 'मेनू संकुचित करें',
+            controls: 'कंट्रोल',
             alerts: 'अलर्ट',
             settings: 'सेटिंग्स',
             openInBrowser: 'ब्राउज़र में खोलें',
@@ -103,7 +104,7 @@ export default {
             general: 'सामान्य',
             device: 'उपकरण और सेंसर',
             daemon: 'डेमॉन',
-            thinkpad: 'ThinkPad',
+            thinkpad: 'थिंकपैड',
             devices: {
                 devicesAndSensors: 'उपकरण और सेंसर',
                 detectionIssues: 'पहचान समस्याएं? देखें',

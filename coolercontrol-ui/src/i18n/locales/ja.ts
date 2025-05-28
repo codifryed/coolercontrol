@@ -92,6 +92,7 @@ export default {
             back: '戻る',
             expandMenu: 'メニューを展開',
             collapseMenu: 'メニューを折りたたむ',
+            controls: 'コントロール',
             alerts: 'アラート',
             settings: '設定',
             openInBrowser: 'ブラウザで開く',
@@ -103,6 +104,7 @@ export default {
             general: '一般',
             device: 'デバイスとセンサー',
             daemon: 'デーモン',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'デバイスとセンサー',
                 detectionIssues: '検出に問題がありますか？',

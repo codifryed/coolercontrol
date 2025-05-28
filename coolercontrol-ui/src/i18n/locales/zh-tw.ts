@@ -91,6 +91,7 @@ export default {
             back: '返回',
             expandMenu: '展開選單',
             collapseMenu: '折疊選單',
+            controls: '控制項',
             alerts: '警報',
             settings: '設定',
             openInBrowser: '在瀏覽器中開啟',
@@ -102,6 +103,7 @@ export default {
             general: '一般',
             device: '裝置和傳感器',
             daemon: '後台服務',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: '裝置和傳感器',
                 detectionIssues: '檢測問題？請查看',

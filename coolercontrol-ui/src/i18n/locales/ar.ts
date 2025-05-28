@@ -92,6 +92,7 @@ export default {
             back: 'رجوع',
             expandMenu: 'توسيع القائمة',
             collapseMenu: 'طي القائمة',
+            controls: 'عناصر التحكم',
             alerts: 'التنبيهات',
             settings: 'الإعدادات',
             openInBrowser: 'فتح في المتصفح',
@@ -102,6 +103,8 @@ export default {
             title: 'الإعدادات',
             general: 'عام',
             device: 'الأجهزة والمستشعرات',
+            daemon: 'شيطان',
+            thinkpad: 'ثينك باد',
             devices: {
                 devicesAndSensors: 'الأجهزة والمستشعرات',
                 detectionIssues: 'مشاكل في الكشف؟ راجع',

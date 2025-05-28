@@ -91,6 +91,7 @@
             back: '返回',
             expandMenu: '展开菜单',
             collapseMenu: '折叠菜单',
+            controls: '控制器',
             alerts: '警报',
             settings: '设置',
             openInBrowser: '在浏览器中打开',
@@ -102,6 +103,7 @@
             general: '通用',
             device: '设备和传感器',
             daemon: '后台服务',
+            thinkpad: '联想ThinkPad',
             devices: {
                 devicesAndSensors: '设备和传感器',
                 detectionIssues: '检测问题？请查看',

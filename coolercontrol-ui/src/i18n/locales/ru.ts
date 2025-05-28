@@ -94,6 +94,7 @@ export default {
             back: 'Назад',
             expandMenu: 'Развернуть меню',
             collapseMenu: 'Свернуть меню',
+            controls: 'Управление',
             alerts: 'Оповещения',
             settings: 'Настройки',
             openInBrowser: 'Открыть в браузере',
@@ -105,6 +106,7 @@ export default {
             general: 'Общие',
             device: 'Устройства',
             daemon: 'Демон',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'Устройства и датчики',
                 detectionIssues: 'Проблемы с обнаружением? См.',
