@@ -71,6 +71,7 @@ aide = { version = "=0.13.5", features = [
   "axum-multipart",
 ] }
 headers = "0.4.0"
+# >=0.9.0 w/ chrono04 doesn't look to be compatible with old aide/axum
 schemars = { version = "0.8.22", features = ["chrono"] }
 mime = "0.3.17"
 # Held back due to Axum update above:
