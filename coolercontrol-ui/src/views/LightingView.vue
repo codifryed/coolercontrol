@@ -55,7 +55,7 @@ const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
 const channelLabel =
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
         ?.name ?? props.channelName
-let contextIsDirty: boolean = false
+let contextIsDirty: Ref<boolean> = ref(false)
 const lightingModes: Array<LightingMode> = []
 const noneLightingMode = new LightingMode('none', 'None', 0, 0, false, false, LightingModeType.NONE)
 lightingModes.push(noneLightingMode)
@@ -154,7 +154,7 @@ const parseRgbString = (rgbColor: string): [number, number, number] => {
 const saveLighting = async (): Promise<void> => {
     if (selectedMode.value.type === LightingModeType.NONE) {
         await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
-        contextIsDirty = false
+        contextIsDirty.value = false
         return
     }
     const setting = new DeviceSettingWriteLightingDTO(selectedMode.value.name)
@@ -170,7 +170,7 @@ const saveLighting = async (): Promise<void> => {
         }
     }
     await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.channelName, setting)
-    contextIsDirty = false
+    contextIsDirty.value = false
 }
 
 const changeLightingSpeed = (event: ListboxChangeEvent): void => {
@@ -210,7 +210,7 @@ watch(selectedMode, () => {
 })
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty) {
+    if (!contextIsDirty.value) {
         next()
         return
     }
@@ -223,7 +223,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: 'Discard',
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -237,7 +237,7 @@ onMounted(() => {
         nextTick(addScrollEventListeners)
     })
     watch([selectedMode, selectedSpeed, selectedBackwardEnabled, selectedNumberOfColors], () => {
-        contextIsDirty = true
+        contextIsDirty.value = true
     })
 })
 </script>
@@ -252,6 +252,7 @@ onMounted(() => {
             <div class="p-2 flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
                     v-tooltip.bottom="t('views.lighting.saveLightingSettings')"
                     @click="saveLighting"

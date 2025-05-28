@@ -84,7 +84,7 @@ const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
 const channelLabel =
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
         ?.name ?? props.channelName
-let contextIsDirty: boolean = false
+let contextIsDirty: Ref<boolean> = ref(false)
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
 for (const device of deviceStore.allDevices()) {
@@ -253,7 +253,7 @@ const validateFileType = (file: File): void => {
 const saveLCDSetting = async () => {
     if (selectedLcdMode.value.type === LcdModeType.NONE) {
         await settingsStore.saveDaemonDeviceSettingReset(props.deviceId, props.channelName)
-        contextIsDirty = false
+        contextIsDirty.value = false
         return
     }
     const setting = new DeviceSettingWriteLcdDTO(selectedLcdMode.value.name)
@@ -290,7 +290,7 @@ const saveLCDSetting = async () => {
         await settingsStore.saveDaemonDeviceSettingLcd(props.deviceId, props.channelName, setting)
     }
     uploading.close()
-    contextIsDirty = false
+    contextIsDirty.value = false
 }
 
 const updateTemps = () => {
@@ -364,7 +364,7 @@ watch(fileDataURLs.value, () => {
 })
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    if (!contextIsDirty) {
+    if (!contextIsDirty.value) {
         next()
         return
     }
@@ -377,7 +377,7 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         acceptLabel: t('common.discard'),
         accept: () => {
             next()
-            contextIsDirty = false
+            contextIsDirty.value = false
         },
         reject: () => next(false),
     })
@@ -416,7 +416,7 @@ onMounted(async () => {
             imagesDelayInterval,
         ],
         () => {
-            contextIsDirty = true
+            contextIsDirty.value = true
         },
     )
 
@@ -444,6 +444,7 @@ onUnmounted(() => {
             <div class="p-2 flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    :class="{ 'animate-pulse-fast': contextIsDirty }"
                     label="Save"
                     v-tooltip.bottom="t('views.lcd.saveLcdSettings')"
                     @click="saveLCDSetting"
