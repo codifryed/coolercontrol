@@ -84,7 +84,7 @@ const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
 const channelLabel =
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
         ?.name ?? props.channelName
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
 for (const device of deviceStore.allDevices()) {

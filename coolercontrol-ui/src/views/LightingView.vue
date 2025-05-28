@@ -55,7 +55,7 @@ const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
 const channelLabel =
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
         ?.name ?? props.channelName
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 const lightingModes: Array<LightingMode> = []
 const noneLightingMode = new LightingMode('none', 'None', 0, 0, false, false, LightingModeType.NONE)
 lightingModes.push(noneLightingMode)

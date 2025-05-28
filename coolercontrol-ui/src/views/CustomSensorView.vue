@@ -88,7 +88,7 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 const { t } = useI18n()
 
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 const shouldCreateSensor: boolean = !props.customSensorID
 const customSensorIdNumbers: Array<number> = []
 let customSensorsDeviceUID: UID = ''

@@ -66,7 +66,7 @@ const { t } = useI18n()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 const shouldCreateAlert: boolean = !props.alertUID
 
 const collectAlert = async (): Promise<Alert> => {

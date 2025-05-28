@@ -64,7 +64,7 @@ const componentKey: Ref<number> = ref(0)
 const confirm = useConfirm()
 const { t } = useI18n()
 
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 
 const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false

@@ -48,7 +48,7 @@ const toast = useToast()
 const confirm = useConfirm()
 const { t } = useI18n()
 
-let contextIsDirty: Ref<boolean> = ref(false)
+const contextIsDirty: Ref<boolean> = ref(false)
 
 const dutyMin: number = 1
 const dutyMax: number = 100
