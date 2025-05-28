@@ -25,7 +25,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const POWER_AVERAGE_SUFFIX: &str = "average";
 const PATTERN_POWER_FILE_NUMBER: &str = r"^power(?P<number>\d+)_(average|input)$";
@@ -69,11 +69,14 @@ pub async fn init_power(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
         });
     }
     powers.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    trace!("Hwmon Power detected: {powers:?} for {base_path:?}");
+    trace!(
+        "Hwmon Power detected: {powers:?} for {}",
+        base_path.display()
+    );
     Ok(powers)
 }
 async fn insert_power_metrics(
-    base_path: &PathBuf,
+    base_path: &Path,
     file_name: &str,
     preferred_powers: &mut HashMap<u8, String>,
     power_inputs: &mut Vec<(u8, String)>,
@@ -124,13 +127,16 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
 }
 
 /// Check if the power channel is usable
-async fn sensor_is_not_usable(base_path: &PathBuf, file_name: &str) -> bool {
+async fn sensor_is_not_usable(base_path: &Path, file_name: &str) -> bool {
     cc_fs::read_sysfs(base_path.join(file_name))
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
         .inspect_err(|err| {
-            warn!("Error reading power value from: {base_path:?}/{file_name} - {err}");
+            warn!(
+                "Error reading power value from: {}/{file_name} - {err}",
+                base_path.display()
+            );
         })
         .is_err()
 }
@@ -150,14 +156,17 @@ fn check_parsing_64(content: String) -> Result<f64> {
 }
 
 /// Read the power label
-async fn get_power_channel_label(base_path: &PathBuf, channel_number: u8) -> Option<String> {
+async fn get_power_channel_label(base_path: &Path, channel_number: u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format_power_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {
             let power_label = label.trim();
             if power_label.is_empty() {
-                warn!("Power label is empty: {base_path:?}/power{channel_number}_label");
+                warn!(
+                    "Power label is empty: {}/power{channel_number}_label",
+                    base_path.display()
+                );
                 None
             } else {
                 Some(power_label.to_string())

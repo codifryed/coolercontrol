@@ -1173,6 +1173,7 @@ impl GpuNVidia {
     }
 
     /// Sets the nvidia fan duty
+    #[allow(clippy::format_push_string)]
     async fn set_nvidia_settings_fan_duty(
         &self,
         nvidia_info: &NvidiaDeviceInfo,

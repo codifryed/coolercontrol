@@ -178,7 +178,7 @@ pub async fn process_carousel_images(
             mime::IMAGE_PNG
         };
         let processed_image_path = create_carousel_lcd_image_path(&content_type, image_hash);
-        debug!("New Image Path created: {processed_image_path:?}");
+        debug!("New Image Path created: {}", processed_image_path.display());
         if processed_image_path.exists().not() {
             let file_data = cc_fs::read_image(&path).await?;
             let Ok((_, processed_image_data)) = process_image(
@@ -189,15 +189,16 @@ pub async fn process_carousel_images(
             )
             .await
             else {
-                debug!("Image processing failed for path: {path:?}");
+                debug!("Image processing failed for path: {}", path.display());
                 continue;
             };
             // We cut the official number in half here as there are issues with images bigger than
             // this, particularly for the carousel as it applies new gif/images regularly.
             if processed_image_data.len() > lcd_info.max_image_size_bytes as usize / 2 {
                 info!(
-                    "Skipping Image file {path:?}, as after processing still too large for LCD. \
+                    "Skipping Image file {}, as after processing still too large for LCD. \
                     Max Size: {}MBs",
+                    path.display(),
                     lcd_info.max_image_size_bytes / 1_000_000 / 2
                 );
                 // This will cause files that are on the edge size-wise to be processed again
@@ -271,19 +272,22 @@ fn verify_images(images_path: &Path) -> Result<Vec<PathBuf>> {
                     let path = entry.path();
                     let extension = path.extension()?.to_str()?;
                     if SUPPORTED_IMAGE_FORMATS.contains(&extension).not() {
-                        debug!("Unsupported image format: {extension} at {path:?}");
+                        debug!(
+                            "Unsupported image format: {extension} at {}",
+                            path.display()
+                        );
                         return None;
                     }
                     let file_size_bytes = cc_fs::metadata(&path).map_or(0, |meta| meta.size());
                     if file_size_bytes > MAX_SCANNABLE_IMAGE_FILE_SIZE_BYTES {
-                        info!("Image size too large for LCD (>50MB) at {path:?}");
+                        info!("Image size too large for LCD (>50MB) at {}", path.display());
                         return None;
                     }
                     if file_size_bytes == 0 {
-                        debug!("Image size is empty {path:?}");
+                        debug!("Image size is empty {}", path.display());
                         return None;
                     }
-                    debug!("Image verification complete for: {path:?}");
+                    debug!("Image verification complete for: {}", path.display());
                     Some(path)
                 },
             )

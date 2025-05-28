@@ -144,14 +144,14 @@ impl ModeController {
             })?;
             cc_fs::write_string(&path, default_mode_config)
                 .await
-                .with_context(|| format!("Writing new configuration file: {path:?}"))?;
+                .with_context(|| format!("Writing new configuration file: {}", path.display()))?;
             // make sure the file is readable:
             cc_fs::read_txt(&path)
                 .await
-                .with_context(|| format!("Reading configuration file {path:?}"))?
+                .with_context(|| format!("Reading configuration file {}", path.display()))?
         };
         let mode_config: ModeConfigFile = serde_json::from_str(&config_contents)
-            .with_context(|| format!("Parsing Mode configuration file {path:?}"))?;
+            .with_context(|| format!("Parsing Mode configuration file {}", path.display()))?;
         {
             let mut modes_lock = self.modes.borrow_mut();
             modes_lock.clear();

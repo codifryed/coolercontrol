@@ -142,14 +142,14 @@ impl AlertController {
             })?;
             cc_fs::write_string(&path, default_alert_config)
                 .await
-                .with_context(|| format!("Writing new configuration file: {path:?}"))?;
+                .with_context(|| format!("Writing new configuration file: {}", path.display()))?;
             // make sure the file is readable:
             cc_fs::read_txt(&path)
                 .await
-                .with_context(|| format!("Reading configuration file {path:?}"))?
+                .with_context(|| format!("Reading configuration file {}", path.display()))?
         };
         let alert_config: AlertConfigFile = serde_json::from_str(&config_contents)
-            .with_context(|| format!("Parsing Alert configuration file {path:?}"))?;
+            .with_context(|| format!("Parsing Alert configuration file {}", path.display()))?;
         {
             let mut alerts_lock = self.alerts.borrow_mut();
             alerts_lock.clear();

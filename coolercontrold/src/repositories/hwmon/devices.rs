@@ -109,7 +109,7 @@ fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub async fn get_device_name(base_path: &PathBuf) -> String {
+pub async fn get_device_name(base_path: &Path) -> String {
     if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
         contents.trim().to_string()
     } else {
@@ -121,8 +121,9 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
         let hwmon_number = captures.name("number").unwrap().as_str().to_string();
         let hwmon_name = format!("Hwmon#{hwmon_number}");
         info!(
-            "Hwmon driver at location: {:?} has no name set, using default: {}",
-            base_path, &hwmon_name
+            "Hwmon driver at location: {} has no name set, using default: {}",
+            base_path.display(),
+            &hwmon_name
         );
         hwmon_name
     }
@@ -177,7 +178,7 @@ pub fn device_path(base_path: &Path) -> PathBuf {
 
 fn get_canonical_path_str(path: &Path) -> Option<String> {
     cc_fs::canonicalize(path)
-        .inspect_err(|err| warn!("Error getting device path from {path:?}, {err}"))
+        .inspect_err(|err| warn!("Error getting device path from {}, {err}", path.display()))
         .ok()
         .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
 }

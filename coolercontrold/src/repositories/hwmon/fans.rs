@@ -49,7 +49,10 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
         init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    trace!("Hwmon pwm fans detected: {fans:?} for {base_path:?}");
+    trace!(
+        "Hwmon pwm fans detected: {fans:?} for {}",
+        base_path.display()
+    );
     Ok(fans)
 }
 
@@ -74,7 +77,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
 ///
 /// This function will return an error if it fails to read or parse any of the fan attributes.
 async fn init_pwm_fan(
-    base_path: &PathBuf,
+    base_path: &Path,
     file_name: &str,
     fans: &mut Vec<HwmonChannelInfo>,
     device_name: &str,
@@ -137,7 +140,7 @@ async fn init_pwm_fan(
 ///
 /// This function will return an error if it fails to read or parse any of the fan attributes.
 async fn init_rpm_only_fan(
-    base_path: &PathBuf,
+    base_path: &Path,
     file_name: &str,
     fans: &mut Vec<HwmonChannelInfo>,
     device_name: &str,
@@ -169,7 +172,10 @@ async fn init_rpm_only_fan(
     let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
     let channel_name = get_fan_channel_name(channel_number);
     let label = get_fan_channel_label(base_path, &channel_number).await;
-    info!("Uncontrollable RPM-only fan found at {base_path:?}/{file_name}");
+    info!(
+        "Uncontrollable RPM-only fan found at {}/{file_name}",
+        base_path.display()
+    );
     fans.push(HwmonChannelInfo {
         hwmon_type: HwmonChannelType::Fan,
         number: channel_number,
@@ -257,7 +263,10 @@ async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) ->
         .map(pwm_value_to_duty)
         .inspect_err(|err| {
             if log_error {
-                warn!("Could not read fan pwm value at {pwm_path:?} ; {err}");
+                warn!(
+                    "Could not read fan pwm value at {} ; {err}",
+                    pwm_path.display()
+                );
             }
         })
         .ok()
@@ -272,7 +281,10 @@ async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> 
         .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
         .inspect_err(|err| {
             if log_error {
-                warn!("Could not read fan rpm value at {fan_input_path:?}: {err}");
+                warn!(
+                    "Could not read fan rpm value at {}: {err}",
+                    fan_input_path.display()
+                );
             }
         })
         .ok()
@@ -293,7 +305,10 @@ async fn get_current_pwm_enable(base_path: &Path, channel_number: &u8) -> Option
         .and_then(check_parsing_8)
         .ok();
     if current_pwm_enable.is_none() {
-        debug!("No pwm_enable found for fan#{channel_number} at location:{pwm_enable_path:?}");
+        debug!(
+            "No pwm_enable found for fan#{channel_number} at location:{}",
+            pwm_enable_path.display()
+        );
     }
     current_pwm_enable
 }
@@ -319,13 +334,14 @@ fn check_parsing_32(content: String) -> Result<u32> {
 fn determine_pwm_writable(base_path: &Path, channel_number: u8) -> bool {
     let pwm_path = base_path.join(format_pwm!(channel_number));
     let pwm_writable = cc_fs::metadata(&pwm_path)
-        .inspect_err(|_| error!("PWM file metadata is not readable: {pwm_path:?}"))
+        .inspect_err(|_| error!("PWM file metadata is not readable: {}", pwm_path.display()))
         // This check should be sufficient, as we're running as root:
         .is_ok_and(|att| att.permissions().readonly().not());
     if pwm_writable.not() {
         warn!(
-            "PWM fan at {pwm_path:?} is NOT writable - \
-            Fan control is not currently supported by the installed driver."
+            "PWM fan at {} is NOT writable - \
+            Fan control is not currently supported by the installed driver.",
+            pwm_path.display()
         );
     }
     pwm_writable
@@ -364,14 +380,17 @@ fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Op
 /// Returns:
 ///
 /// an `Option<String>`.
-async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
+async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
         .and_then(|label| {
             let fan_label = label.trim();
             if fan_label.is_empty() {
-                warn!("Fan label is empty for {base_path:?}/fan{channel_number}_label");
+                warn!(
+                    "Fan label is empty for {}/fan{channel_number}_label",
+                    base_path.display()
+                );
                 None
             } else {
                 Some(fan_label.to_string())
@@ -458,7 +477,7 @@ fn get_fan_channel_name(channel_number: u8) -> String {
 // }
 
 pub async fn set_pwm_enable_to_default(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
     let Some(default_value) = channel_info.pwm_enable_default else {
@@ -469,7 +488,8 @@ pub async fn set_pwm_enable_to_default(
         warn!("Failed to reset pwm_enable to default: {err}");
     }
     debug!(
-        "Reset Hwmon value at {base_path:?}/pwm{}_enable to starting default value of {default_value}",
+        "Reset Hwmon value at {}/pwm{}_enable to starting default value of {default_value}",
+        base_path.display(),
         channel_info.number
     );
     Ok(())
