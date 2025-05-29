@@ -24,19 +24,27 @@ import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Fieldset from 'primevue/fieldset'
 import Divider from 'primevue/divider'
-import { onMounted, Ref, ref } from 'vue'
+import { defineAsyncComponent, onMounted, Ref, ref } from 'vue'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
-
-const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
+import { useDialog } from 'primevue/usedialog'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
     dashboard: Dashboard
 }
 
 const props = defineProps<Props>()
+
+const { t } = useI18n()
+const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
+const dialog = useDialog()
+const fanControlWizard = defineAsyncComponent(
+    () => import('../components/wizards/fan-control/Wizard.vue'),
+)
+
 const includesDevice = (deviceUID: UID): boolean =>
     props.dashboard.deviceChannelNames.length === 0 ||
     props.dashboard.deviceChannelNames.some(
@@ -48,6 +56,27 @@ const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
         (deviceChannel) =>
             deviceChannel.deviceUID === deviceUID && deviceChannel.channelName === channelName,
     )
+
+const openFanControlWizard = (
+    deviceUID: UID,
+    channelName: string,
+    currentProfileUID: UID | undefined,
+) => {
+    dialog.open(fanControlWizard, {
+        props: {
+            header: t('components.wizards.fanControl.fanControlWizard'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {
+            deviceUID: deviceUID,
+            channelName: channelName,
+            selectedProfileUID: currentProfileUID,
+            isControlView: true,
+        },
+    })
+}
 
 const deviceControlData: Ref<Array<DeviceControlData>> = ref([])
 
@@ -63,9 +92,11 @@ interface ChannelControlData {
     channelLabel: string
     channelColor: string
     icon: any
-    to: any // route for Control Page
+    to: any // route for Control Page/SpeedView
+    onClick: (deviceUID: UID, channelName: string, currentProfileUID?: UID) => void
     duty?: number
     rpm?: number
+    profileUID?: UID
     profileLabel?: string
     profileTo?: any
     lcdMode?: string
@@ -135,12 +166,11 @@ const initWidgetData = () => {
                 channelLabel: deviceSettings.sensorsAndChannels.get(channelName)!.name,
                 channelColor: deviceSettings.sensorsAndChannels.get(channelName)!.color,
                 icon: mdiFan,
-                to: {
-                    name: 'device-speed',
-                    params: { deviceUID: device.uid, channelName: channelName },
-                },
+                to: '',
+                onClick: openFanControlWizard,
                 duty: duty,
                 rpm: rpm,
+                profileUID: profileUID,
                 profileLabel: profileLabel,
                 profileTo: profileTo,
             })
@@ -168,6 +198,7 @@ const initWidgetData = () => {
                     name: 'device-lighting',
                     params: { deviceId: device.uid, channelName: channelName },
                 },
+                onClick: () => {},
                 lightingMode: lightingMode,
             })
         }
@@ -194,6 +225,7 @@ const initWidgetData = () => {
                     name: 'device-lcd',
                     params: { deviceId: device.uid, channelName: channelName },
                 },
+                onClick: () => {},
                 lcdMode: lcdMode,
             })
         }
@@ -236,7 +268,16 @@ onMounted(async () => {
                         :key="channelControl.channelID"
                         class="pl-4 mt-5"
                     >
-                        <router-link :to="channelControl.to ?? ''">
+                        <router-link
+                            :to="channelControl.to ?? ''"
+                            @click="
+                                channelControl.onClick(
+                                    deviceControl.deviceUID,
+                                    channelControl.channelID,
+                                    channelControl.profileUID,
+                                )
+                            "
+                        >
                             <Fieldset class="w-80 h-[8.5rem] bg-bg-two/85 hover:bg-bg-two/100">
                                 <template #legend>
                                     <div class="text-ellipsis flex flex-row items-center">

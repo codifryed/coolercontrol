@@ -23,26 +23,45 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
+import { defineAsyncComponent, inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {}
+
 defineProps<Props>()
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
+const dialog = useDialog()
+const customSensorWizard = defineAsyncComponent(() => import('../wizards/custom-sensor/Wizard.vue'))
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+
+const addCustomSensor = (): void => {
+    dialog.open(customSensorWizard, {
+        props: {
+            header: t('components.wizards.customSensor.new'),
+            position: 'center',
+            modal: true,
+            dismissableMask: false,
+        },
+        data: {},
+    })
+}
+emitter.on('custom-sensor-add', addCustomSensor)
 </script>
 
 <template>
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.addCustomSensor') }">
-        <router-link :to="{ name: 'custom-sensors', params: {} }" exact>
-            <Button
-                class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            >
-                <svg-icon
-                    type="mdi"
-                    :path="mdiPlusCircleMultipleOutline"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </Button>
-        </router-link>
+        <Button
+            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
+            @click="addCustomSensor"
+        >
+            <svg-icon
+                type="mdi"
+                :path="mdiPlusCircleMultipleOutline"
+                :size="deviceStore.getREMSize(1.5)"
+            />
+        </Button>
     </div>
 </template>
 

@@ -21,7 +21,7 @@ use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use cached::proc_macro::cached;
 use log::{debug, info, warn};
-use nu_glob::{glob, GlobResult};
+use nu_glob::{glob, GlobResult, Uninterruptible};
 use pciid_parser::Database;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
@@ -70,9 +70,9 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
 /// Note: checking for both path types works because we are specifically looking for pwm and
 /// temp files. Just checking base paths would not work due to the same "device" directory.
 fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
-    let pwm_glob_results = glob(&glob_paths.pwm, None)
+    let pwm_glob_results = glob(&glob_paths.pwm, Uninterruptible)
         .unwrap()
-        .chain(glob(&glob_paths.pwm_centos, None).unwrap())
+        .chain(glob(&glob_paths.pwm_centos, Uninterruptible).unwrap())
         .collect::<Vec<GlobResult>>();
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let mut base_paths = pwm_glob_results
@@ -83,9 +83,9 @@ fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
-    let temp_glob_results = glob(&glob_paths.temp, None)
+    let temp_glob_results = glob(&glob_paths.temp, Uninterruptible)
         .unwrap()
-        .chain(glob(&glob_paths.temp_centos, None).unwrap())
+        .chain(glob(&glob_paths.temp_centos, Uninterruptible).unwrap())
         .collect::<Vec<GlobResult>>();
     base_paths.append(
         &mut temp_glob_results
@@ -109,7 +109,7 @@ fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub async fn get_device_name(base_path: &PathBuf) -> String {
+pub async fn get_device_name(base_path: &Path) -> String {
     if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
         contents.trim().to_string()
     } else {
@@ -121,8 +121,9 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
         let hwmon_number = captures.name("number").unwrap().as_str().to_string();
         let hwmon_name = format!("Hwmon#{hwmon_number}");
         info!(
-            "Hwmon driver at location: {:?} has no name set, using default: {}",
-            base_path, &hwmon_name
+            "Hwmon driver at location: {} has no name set, using default: {}",
+            base_path.display(),
+            &hwmon_name
         );
         hwmon_name
     }
@@ -177,7 +178,7 @@ pub fn device_path(base_path: &Path) -> PathBuf {
 
 fn get_canonical_path_str(path: &Path) -> Option<String> {
     cc_fs::canonicalize(path)
-        .inspect_err(|err| warn!("Error getting device path from {path:?}, {err}"))
+        .inspect_err(|err| warn!("Error getting device path from {}, {err}", path.display()))
         .ok()
         .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
 }

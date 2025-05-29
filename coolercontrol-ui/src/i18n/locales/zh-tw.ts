@@ -91,6 +91,7 @@ export default {
             back: '返回',
             expandMenu: '展開選單',
             collapseMenu: '折疊選單',
+            controls: '控制項',
             alerts: '警報',
             settings: '設定',
             openInBrowser: '在瀏覽器中開啟',
@@ -102,6 +103,7 @@ export default {
             general: '一般',
             device: '裝置和傳感器',
             daemon: '後台服務',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: '裝置和傳感器',
                 detectionIssues: '檢測問題？請查看',
@@ -505,7 +507,7 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能類型',
             functionTypeTooltip:
-                '功能類型：\n- 恒等函數：不改變計算的設定檔值。\n- 標準：使用具有滯後設置的算法改變設定檔值。\n- 指數移動平均：使用指數移動平均算法改變設定檔值。',
+                '功能類型：<br/>- 恒等函數：不改變計算的設定檔值。<br/>- 標準：使用具有滯後設置的算法改變設定檔值。<br/>- 指數移動平均：使用指數移動平均算法改變設定檔值。',
             minimumAdjustment: '最小調整',
             minimumAdjustmentTooltip: '最小風扇速度調整：低於此值的計算變化將被忽略。',
             maximumAdjustment: '最大調整',
@@ -685,6 +687,9 @@ export default {
             letsStart: '好的，讓我們開始吧！',
             dashboards: '儀表板',
             dashboardsDesc: '儀表板是一個精選的圖表集合，用於查看系統的傳感器數據。',
+            controls: '控制項',
+            controlsDesc:
+                '控制功能提供互動式介面來管理您的系統風扇和其他裝置。每個可控制的通道都允許您調整速度、設置設定檔，並即時監控狀態。',
             profiles: '設定檔',
             profilesDesc:
                 '設定檔定義了控制風扇速度的可自定義設置。同一個設定檔可用於多個風扇和設備。',
@@ -726,6 +731,43 @@ export default {
         },
         modeTable: {
             setting: '設置',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: '風扇控制精靈',
+                editCurrentProfile: '編輯當前設定檔',
+                editCurrentFunction: '編輯當前功能',
+                currentSettings: '查看當前設置',
+                manualSpeed: '設置手動風扇速度',
+                createNewProfile: '建立新設定檔',
+                existingProfile: '選擇現有設定檔',
+                resetSettings: '重置為預設設置',
+                chooseProfileNameType: '選擇設定檔名稱和類型',
+                newDefaultProfile: '新建預設設定檔',
+                profileCreatedApplied: '設定檔已建立並套用',
+                willCreatedAndAppliedTo: '將建立並套用到',
+                newFixedProfile: '新建固定設定檔',
+                withSettings: '使用以下設置',
+                selectSpeed: '選擇您的速度',
+                newMixProfile: '新建混合設定檔',
+                newGraphProfile: '新建圖表設定檔',
+                functionFor: '選擇要套用於此的功能',
+                functionDescription: '功能允許您進一步控制設定檔輸出的套用方式。',
+                createNewFunction: '建立新功能',
+                existingFunction: '選擇現有功能',
+                defaultFunction: '使用預設功能',
+                chooseFunctionNameType: '選擇功能名稱和類型',
+                newFunctionName: '{profileName}的功能',
+                summary: '摘要',
+                aNewProfile: '新設定檔',
+                andFunction: '及功能',
+            },
+            profile: {
+                willCreated: '將被建立。',
+            },
+            customSensor: {
+                new: '新自訂感測器',
+            },
         },
     },
     auth: {

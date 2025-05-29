@@ -367,7 +367,7 @@ impl Repository for HwmonRepo {
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
         let settings = self.config.get_settings()?;
         for path in base_paths {
-            debug!("Processing HWMon device path: {path:?}");
+            debug!("Processing HWMon device path: {}", path.display());
             let device_name = devices::get_device_name(&path).await;
             debug!("Detected Device Name: {device_name}");
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
@@ -423,7 +423,10 @@ impl Repository for HwmonRepo {
                 Err(err) => error!("Error initializing Hwmon Power: {err}"),
             }
             if channels.is_empty() {
-                debug!("No fans, temps, or power detected under {path:?}, skipping.");
+                debug!(
+                    "No fans, temps, or power detected under {}, skipping.",
+                    path.display()
+                );
                 continue;
             }
             let block_dev_path = if device_name == DRIVETEMP && settings.drivetemp_suspend {

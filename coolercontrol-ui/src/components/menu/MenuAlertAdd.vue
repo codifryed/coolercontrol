@@ -23,26 +23,41 @@ import { mdiBellPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
+import { defineAsyncComponent, inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {}
+
 defineProps<Props>()
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
+const dialog = useDialog()
+const alertWizard = defineAsyncComponent(() => import('../wizards/alert/Wizard.vue'))
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+
+const addAlert = (): void => {
+    dialog.open(alertWizard, {
+        props: {
+            header: t('views.alerts.newAlert'),
+            position: 'center',
+            modal: true,
+            dismissableMask: false,
+        },
+        data: {},
+    })
+}
+emitter.on('alert-add', addAlert)
 </script>
 
 <template>
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }">
-        <router-link :to="{ name: 'alerts', params: {} }" exact>
-            <Button
-                class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            >
-                <svg-icon
-                    type="mdi"
-                    :path="mdiBellPlusOutline"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </Button>
-        </router-link>
+        <Button
+            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
+            @click="addAlert"
+        >
+            <svg-icon type="mdi" :path="mdiBellPlusOutline" :size="deviceStore.getREMSize(1.5)" />
+        </Button>
     </div>
 </template>
 

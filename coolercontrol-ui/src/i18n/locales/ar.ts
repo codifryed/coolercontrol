@@ -92,6 +92,7 @@ export default {
             back: 'رجوع',
             expandMenu: 'توسيع القائمة',
             collapseMenu: 'طي القائمة',
+            controls: 'عناصر التحكم',
             alerts: 'التنبيهات',
             settings: 'الإعدادات',
             openInBrowser: 'فتح في المتصفح',
@@ -102,6 +103,8 @@ export default {
             title: 'الإعدادات',
             general: 'عام',
             device: 'الأجهزة والمستشعرات',
+            daemon: 'شيطان',
+            thinkpad: 'ثينك باد',
             devices: {
                 devicesAndSensors: 'الأجهزة والمستشعرات',
                 detectionIssues: 'مشاكل في الكشف؟ راجع',
@@ -499,7 +502,7 @@ export default {
             saveFunction: 'حفظ الوظيفة',
             functionType: 'نوع الوظيفة',
             functionTypeTooltip:
-                'أنواع الوظائف:\n- هوية: لا تغير قيمة ملف التعريف المحسوبة.\n- قياسية: تغير قيمة ملف التعريف باستخدام خوارزمية مع إعدادات التخلف.\n- متوسط متحرك أسي: تغير قيمة ملف التعريف باستخدام خوارزمية المتوسط المتحرك الأسي.',
+                'أنواع الوظائف:<br/> هوية: لا تغير قيمة ملف التعريف المحسوبة.<br/> قياسية: تغير قيمة ملف التعريف باستخدام خوارزمية مع إعدادات التخلف.<br/> متوسط متحرك أسي: تغير قيمة ملف التعريف باستخدام خوارزمية المتوسط المتحرك الأسي.',
             minimumAdjustment: 'الحد الأدنى للتعديل',
             minimumAdjustmentTooltip:
                 'الحد الأدنى لتعديل سرعة المروحة: سيتم تجاهل التغييرات المحسوبة أقل من هذه القيمة.',
@@ -698,6 +701,9 @@ export default {
                 dashboards: 'لوحات المعلومات',
                 dashboardsDesc:
                     'لوحات المعلومات هي مجموعة منظمة من المخططات لعرض بيانات مستشعر نظامك.',
+                controls: 'التحكمات',
+                controlsDesc:
+                    'توفر التحكمات واجهة تفاعلية لإدارة مراوح النظام والأجهزة الأخرى. يتيح لك كل قناة قابلة للتحكم ضبط السرعات، وتعيين ملفات التعريف، ومراقبة الحالة في الوقت الفعلي.',
                 profiles: 'ملفات التعريف',
                 profilesDesc:
                     'تحدد ملفات التعريف إعدادات قابلة للتخصيص للتحكم في سرعات المروحة. يمكن استخدام نفس ملف التعريف لمراوح وأجهزة متعددة.',
@@ -743,6 +749,44 @@ export default {
             },
             modeTable: {
                 setting: 'الإعداد',
+            },
+            wizards: {
+                fanControl: {
+                    fanControlWizard: 'معالج التحكم في المروحة',
+                    editCurrentProfile: 'تحرير الملف الشخصي الحالي',
+                    editCurrentFunction: 'تحرير الوظيفة الحالية',
+                    currentSettings: 'عرض الإعدادات الحالية',
+                    manualSpeed: 'ضبط سرعة المروحة يدويًا',
+                    createNewProfile: 'إنشاء ملف شخصي جديد',
+                    existingProfile: 'اختر ملفًا شخصيًا موجودًا',
+                    resetSettings: 'إعادة تعيين إلى إعدادات المصنع',
+                    chooseProfileNameType: 'اختر اسم ملف التعريف ونوعه',
+                    newDefaultProfile: 'الملف الشخصي الافتراضي الجديد',
+                    profileCreatedApplied: 'تم إنشاء الملف الشخصي وتطبيقه',
+                    willCreatedAndAppliedTo: 'سيتم إنشاؤه وتطبيقه على',
+                    newFixedProfile: 'ملف ثابت جديد',
+                    withSettings: 'مع الإعدادات التالية',
+                    selectSpeed: 'اختر سرعتك',
+                    newMixProfile: 'ملف تعريف جديد',
+                    newGraphProfile: 'ملف تعريف الرسم البياني الجديد',
+                    functionFor: 'اختر وظيفة سيتم تطبيقها على',
+                    functionDescription:
+                        'تتيح لك الوظائف مزيدًا من التحكم في كيفية تطبيق مخرجات الملف الشخصي.',
+                    createNewFunction: 'إنشاء دالة جديدة',
+                    existingFunction: 'اختر دالة موجودة',
+                    defaultFunction: 'استخدم الوظيفة الافتراضية',
+                    chooseFunctionNameType: 'اختر اسم وظيفة ونوعها',
+                    newFunctionName: 'دالة لـ {profileName}',
+                    summary: 'ملخص',
+                    aNewProfile: 'ملف تعريف جديد',
+                    andFunction: 'ووظيفة',
+                },
+                profile: {
+                    willCreated: 'سيتم إنشاؤه.',
+                },
+                customSensor: {
+                    new: 'مستشعر مخصص جديد',
+                },
             },
         },
         auth: {

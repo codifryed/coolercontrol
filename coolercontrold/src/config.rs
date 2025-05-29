@@ -131,21 +131,26 @@ impl Config {
         info!("Writing new configuration file");
         cc_fs::write(&path, DEFAULT_CONFIG_FILE_BYTES.to_vec())
             .await
-            .with_context(|| format!("Writing new configuration file: {path:?}"))?;
+            .with_context(|| format!("Writing new configuration file: {}", path.display()))?;
         cc_fs::read_txt(&path)
             .await
-            .with_context(|| format!("Reading configuration file {path:?}"))
+            .with_context(|| format!("Reading configuration file {}", path.display()))
     }
 
     pub fn verify_writeability(&self) -> Result<()> {
         cc_fs::metadata(&self.path)
             .inspect_err(|err| {
                 error!(
-                    "Config file metadata is not readable: {:?} - {err}",
-                    self.path
+                    "Config file metadata is not readable: {} - {err}",
+                    self.path.display()
                 );
             })
-            .with_context(|| format!("Verifying Config file writeability: {:?}", self.path))
+            .with_context(|| {
+                format!(
+                    "Verifying Config file writeability: {}",
+                    self.path.display()
+                )
+            })
             .and_then(|att| {
                 if att.permissions().readonly() {
                     Err(anyhow!("Config file is not writable"))
@@ -163,7 +168,7 @@ impl Config {
         }
         cc_fs::write_string(&self.path, document_content)
             .await
-            .with_context(|| format!("Saving configuration file: {:?}", &self.path))
+            .with_context(|| format!("Saving configuration file: {}", &self.path.display()))
     }
 
     /// saves a backup of the daemon config file
@@ -172,26 +177,36 @@ impl Config {
         let doc_content = self.document.borrow().to_string();
         cc_fs::write_string(&backup_path, doc_content)
             .await
-            .with_context(|| format!("Saving backup configuration file: {:?}", &backup_path))
+            .with_context(|| {
+                format!(
+                    "Saving backup configuration file: {}",
+                    &backup_path.display()
+                )
+            })
     }
 
     pub async fn save_ui_config_file(&self, ui_settings: String) -> Result<()> {
         cc_fs::write_string(&self.path_ui, ui_settings)
             .await
-            .with_context(|| format!("Saving UI configuration file: {:?}", &self.path_ui))
+            .with_context(|| format!("Saving UI configuration file: {}", &self.path_ui.display()))
     }
 
     pub async fn save_backup_ui_config_file(&self, ui_settings: String) -> Result<()> {
         let backup_path = Path::new(DEFAULT_BACKUP_UI_CONFIG_FILE_PATH).to_path_buf();
         cc_fs::write_string(&backup_path, ui_settings)
             .await
-            .with_context(|| format!("Saving backup UI configuration file: {:?}", &backup_path))
+            .with_context(|| {
+                format!(
+                    "Saving backup UI configuration file: {}",
+                    &backup_path.display()
+                )
+            })
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {
         let ui_result = cc_fs::read_txt(&self.path_ui)
             .await
-            .with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui));
+            .with_context(|| format!("Loading UI configuration file {}", self.path_ui.display()));
         match ui_result {
             Ok(ui_settings) => Ok(ui_settings),
             Err(err) => {
@@ -204,8 +219,8 @@ impl Config {
                     }
                 }
                 error!(
-                    "Error reading UI configuration file: {:?} - {err}",
-                    &self.path_ui
+                    "Error reading UI configuration file: {} - {err}",
+                    self.path_ui.display()
                 );
                 Err(err)
             }

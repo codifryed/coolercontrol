@@ -22,31 +22,36 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiBookmarkPlusOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { inject } from 'vue'
+import { defineAsyncComponent, inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
-import { UID } from '@/models/Device.ts'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 interface Props {}
 
 defineProps<Props>()
-const emit = defineEmits<{
-    (e: 'added', modeUID: UID): void
-}>()
 
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
+const dialog = useDialog()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-const router = useRouter()
 const { t } = useI18n()
 
-const addMode = async (): Promise<void> => {
-    const newModeUID = await settingsStore.createMode('New Mode')
-    if (newModeUID == null) return
-    emit('added', newModeUID)
-    await router.push({ name: 'modes', params: { modeUID: newModeUID } })
+const modeWizard = defineAsyncComponent(() => import('../wizards/mode/Wizard.vue'))
+const addMode = (): void => {
+    dialog.open(modeWizard, {
+        props: {
+            header: t('views.modes.createMode'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
+    })
+    // Now handled by the wizard
+    // const newModeUID = await settingsStore.createMode('New Mode')
+    // if (newModeUID == null) return
+    // emit('added', newModeUID)
+    // await router.push({ name: 'modes', params: { modeUID: newModeUID } })
 }
 // be able to add a mode from the side menu add button:
 emitter.on('mode-add', addMode)

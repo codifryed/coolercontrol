@@ -24,7 +24,7 @@ use futures_util::future::join_all;
 use log::{info, trace};
 use regex::Regex;
 use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const PATTERN_FREQ_INPUT_NUMBER: &str = r"^freq(?P<number>\d+)_input$";
 
@@ -58,7 +58,10 @@ pub async fn init_freqs(base_path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
         }
     }
     freqs.sort_by(|f1, f2| f1.number.cmp(&f2.number));
-    trace!("Hwmon Frequencies detected: {freqs:?} for {base_path:?}");
+    trace!(
+        "Hwmon Frequencies detected: {freqs:?} for {}",
+        base_path.display()
+    );
     Ok(freqs)
 }
 
@@ -110,14 +113,15 @@ pub async fn extract_freq_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
     .await
 }
 
-async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
     cc_fs::read_sysfs(base_path.join(format!("freq{channel_number}_input")))
         .await
         .and_then(check_parsing_64)
         .map(hertz_to_megahertz)
         .inspect_err(|err| {
             info!(
-                "Error reading frequency value from: {base_path:?}/freq{channel_number}_input - {err}"
+                "Error reading frequency value from: {}/freq{channel_number}_input - {err}",
+                base_path.display(),
             );
         })
         .is_ok()
@@ -136,14 +140,17 @@ fn check_parsing_64(content: String) -> Result<u64> {
     }
 }
 
-async fn get_freq_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
+async fn get_freq_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format!("freq{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
             let freq_label = label.trim();
             if freq_label.is_empty() {
-                info!("Freq label is empty: {base_path:?}/freq{channel_number}_label");
+                info!(
+                    "Freq label is empty: {}/freq{channel_number}_label",
+                    base_path.display()
+                );
                 None
             } else {
                 Some(freq_label.to_string())

@@ -96,6 +96,7 @@ export default {
             back: 'Zurück',
             expandMenu: 'Menü erweitern',
             collapseMenu: 'Menü einklappen',
+            controls: 'Steuerungen',
             alerts: 'Warnungen',
             settings: 'Einstellungen',
             openInBrowser: 'Im Browser öffnen',
@@ -107,6 +108,7 @@ export default {
             general: 'Allgemein',
             device: 'Geräte',
             daemon: 'Daemon',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'Geräte und Sensoren',
                 detectionIssues: 'Erkennungsprobleme? Siehe',
@@ -515,7 +517,7 @@ export default {
             saveFunction: 'Funktion speichern',
             functionType: 'Funktionstyp',
             functionTypeTooltip:
-                'Funktionstypen:\n- Identität: Verändert den berechneten Profilwert nicht.\n- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.\n- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
+                'Funktionstypen:<br/>- Identität: Verändert den berechneten Profilwert nicht.<br/>- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.<br/>- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
             minimumAdjustment: 'Minimale Anpassung',
             minimumAdjustmentTooltip:
                 'Minimale Lüftergeschwindigkeitsanpassung: Berechnete Änderungen unter diesem Wert werden ignoriert.',
@@ -731,6 +733,9 @@ export default {
             dashboards: 'Dashboards',
             dashboardsDesc:
                 'Dashboards sind eine kuratierte Sammlung von Diagrammen zur Ansicht der Sensordaten Ihres Systems.',
+            controls: 'Steuerungen',
+            controlsDesc:
+                'Steuerungen bieten eine interaktive Oberfläche zur Verwaltung der Lüfter und anderer Geräte Ihres Systems. Jeder steuerbare Kanal ermöglicht es Ihnen, die Geschwindigkeiten anzupassen, Profile festzulegen und den Status in Echtzeit zu überwachen.',
             profiles: 'Profile',
             profilesDesc:
                 'Profile definieren anpassbare Einstellungen zur Steuerung der Lüftergeschwindigkeiten. Dasselbe Profil kann für mehrere Lüfter und Geräte verwendet werden.',
@@ -776,6 +781,44 @@ export default {
         },
         modeTable: {
             setting: 'Einstellung',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: 'Fan Control Wizard',
+                editCurrentProfile: 'Aktuelles Profil bearbeiten',
+                editCurrentFunction: 'Aktuelle Funktion bearbeiten',
+                currentSettings: 'Aktuelle Einstellungen anzeigen',
+                manualSpeed: 'Manuelle Lüftergeschwindigkeit einstellen',
+                createNewProfile: 'Erstelle ein neues Profil',
+                existingProfile: 'Wählen Sie ein vorhandenes Profil',
+                resetSettings: 'Zurücksetzen auf die Werkseinstellungen',
+                chooseProfileNameType: 'Wählen Sie einen Profilnamen und einen Typ',
+                newDefaultProfile: 'Neues Standardprofil',
+                profileCreatedApplied: 'Profil erstellt und angewendet',
+                willCreatedAndAppliedTo: 'wird erstellt und angewendet auf',
+                newFixedProfile: 'Neues festes Profil',
+                withSettings: 'mit den folgenden Einstellungen',
+                selectSpeed: 'Wählen Sie Ihre Geschwindigkeit',
+                newMixProfile: 'Neues Mix-Profil',
+                newGraphProfile: 'Neues Graph-Profil',
+                functionFor: 'Wählen Sie eine anzuwendende Funktion aus',
+                functionDescription:
+                    'Funktionen ermöglichen es Ihnen, weiter zu steuern, wie das Profil-Output angewendet wird.',
+                createNewFunction: 'Erstelle eine neue Funktion',
+                existingFunction: 'Wählen Sie eine vorhandene Funktion',
+                defaultFunction: 'Verwenden Sie die Standardfunktion',
+                chooseFunctionNameType: 'Wählen Sie einen Funktionsnamen und -typ',
+                newFunctionName: 'Funktion für {profileName}',
+                summary: 'Zusammenfassung',
+                aNewProfile: 'Ein neues Profil',
+                andFunction: 'und Funktion',
+            },
+            profile: {
+                willCreated: 'wird erstellt.',
+            },
+            customSensor: {
+                new: 'Neuer benutzerdefinierter Sensor',
+            },
         },
     },
     auth: {

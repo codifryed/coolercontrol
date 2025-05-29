@@ -91,6 +91,7 @@ export default {
             back: 'Back',
             expandMenu: 'Expand Menu',
             collapseMenu: 'Collapse Menu',
+            controls: 'Controls',
             alerts: 'Alerts',
             settings: 'Settings',
             openInBrowser: 'Open in Browser',
@@ -471,7 +472,7 @@ export default {
             newProfile: 'New Profile',
             tooltip: {
                 profileType:
-                    'Profile Type:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
+                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
             },
             profileDeleted: 'Profile Deleted',
             profileDuplicated: 'Profile Duplicated',
@@ -505,7 +506,7 @@ export default {
             saveFunction: 'Save Function',
             functionType: 'Function Type',
             functionTypeTooltip:
-                'Function types:\n- Identity: Does not alter the computed profile value.\n- Standard: Alters profile value using an algorithm with hysteresis settings.\n- Exponential Moving Average: Alters profile value using an EMA algorithm.',
+                'Function types:<br/>- Identity: Does not alter the computed profile value.<br/>- Standard: Alters profile value using an algorithm with hysteresis settings.<br/>- Exponential Moving Average: Alters profile value using an EMA algorithm.',
             minimumAdjustment: 'Minimum Adjustment',
             minimumAdjustmentTooltip:
                 'Minimum fan speed adjustment: Computed changes below this value will be ignored.',
@@ -707,6 +708,9 @@ export default {
             dashboards: 'Dashboards',
             dashboardsDesc:
                 "Dashboards are a curated collection of charts to view your system's sensor data.",
+            controls: 'Controls',
+            controlsDesc:
+                "Controls provide an interactive interface to manage your system's fans and other devices. Each controllable channel lets you adjust speeds, set Profiles, and monitor status in real-time.",
             profiles: 'Profiles',
             profilesDesc:
                 'Profiles define customizable settings for controlling fan speeds. The same Profile can be used for multiple fans and devices.',
@@ -751,6 +755,44 @@ export default {
         },
         modeTable: {
             setting: 'Setting',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: 'Fan Control Wizard',
+                editCurrentProfile: 'Edit Current Profile',
+                editCurrentFunction: 'Edit Current Function',
+                currentSettings: 'View Current Settings',
+                manualSpeed: 'Set a Manual Fan Speed',
+                createNewProfile: 'Create a New Profile',
+                existingProfile: 'Choose an Existing Profile',
+                resetSettings: 'Reset to Default Settings',
+                chooseProfileNameType: 'Choose a Profile Name and Type',
+                newDefaultProfile: 'New Default Profile',
+                profileCreatedApplied: 'Profile Created and Applied',
+                willCreatedAndAppliedTo: 'will be created and applied to',
+                newFixedProfile: 'New Fixed Profile',
+                withSettings: 'with the following settings',
+                selectSpeed: 'Select your speed',
+                newMixProfile: 'New Mix Profile',
+                newGraphProfile: 'New Graph Profile',
+                functionFor: 'Choose a Function to be applied to',
+                functionDescription:
+                    'Functions allow you to further control how Profile output is applied.',
+                createNewFunction: 'Create a New Function',
+                existingFunction: 'Choose an Existing Function',
+                defaultFunction: 'Use the Default Function',
+                chooseFunctionNameType: 'Choose a Function Name and Type',
+                newFunctionName: 'Function for {profileName}',
+                summary: 'Summary',
+                aNewProfile: 'A new Profile',
+                andFunction: 'and Function',
+            },
+            profile: {
+                willCreated: 'will be created.',
+            },
+            customSensor: {
+                new: 'New Custom Sensor',
+            },
         },
     },
     auth: {

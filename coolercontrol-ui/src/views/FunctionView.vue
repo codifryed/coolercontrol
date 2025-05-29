@@ -164,7 +164,7 @@ const changeFunctionType = (event: ListboxChangeEvent): void => {
     if (event.value === null) {
         return // do not update on unselect
     }
-    selectedType.value = event.value.value // Get the value field
+    selectedType.value = event.value
 }
 
 // const inputArea = ref()
@@ -284,9 +284,13 @@ onMounted(async () => {
                     class="w-full"
                     checkmark
                     placeholder="Type"
+                    option-value="value"
                     option-label="label"
                     list-style="max-height: 100%"
-                    v-tooltip.right="t('views.functions.functionTypeTooltip')"
+                    v-tooltip.right="{
+                        escape: false,
+                        value: t('views.functions.functionTypeTooltip'),
+                    }"
                     @change="changeFunctionType"
                 />
             </div>
@@ -429,8 +433,8 @@ onMounted(async () => {
                                 class="delay-input"
                                 show-buttons
                                 :suffix="` ${t('common.secondAbbr')}`"
-                                :min="0"
-                                :max="30"
+                                :min="delayMin"
+                                :max="delayMax"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
                             >

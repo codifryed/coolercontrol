@@ -22,43 +22,49 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiPlusBoxMultipleOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { inject } from 'vue'
+import { defineAsyncComponent, inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
-import { UID } from '@/models/Device.ts'
-import { Profile, ProfileType } from '@/models/Profile.ts'
-import { useToast } from 'primevue/usetoast'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 interface Props {}
 
 defineProps<Props>()
-const emit = defineEmits<{
-    (e: 'added', profileUID: UID): void
-}>()
+// const emit = defineEmits<{
+//     (e: 'added', profileUID: UID): void
+// }>()
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
-const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-const router = useRouter()
+
+const dialog = useDialog()
+const profileWizard = defineAsyncComponent(() => import('../wizards/profile/Wizard.vue'))
 
 const addProfile = async (): Promise<void> => {
-    const newProfile = new Profile(t('views.profiles.newProfile'), ProfileType.Default)
-    settingsStore.profiles.push(newProfile)
-    await settingsStore.saveProfile(newProfile.uid)
-    toast.add({
-        severity: 'success',
-        summary: t('common.success'),
-        detail: t('views.profiles.createProfile'),
-        life: 3000,
+    dialog.open(profileWizard, {
+        props: {
+            header: t('views.profiles.newProfile'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
     })
-    emit('added', newProfile.uid)
-    await router.push({ name: 'profiles', params: { profileUID: newProfile.uid } })
+    // Now handled by the New Profile Wizard:
+    // const newProfile = new Profile(t('views.profiles.newProfile'), ProfileType.Default)
+    // settingsStore.profiles.push(newProfile)
+    // await settingsStore.saveProfile(newProfile.uid)
+    // toast.add({
+    //     severity: 'success',
+    //     summary: t('common.success'),
+    //     detail: t('views.profiles.createProfile'),
+    //     life: 3000,
+    // })
+    // emit('added', newProfile.uid)
+    // await router.push({ name: 'profiles', params: { profileUID: newProfile.uid } })
 }
-// be able to add a profile from the side menu add button:
+// to be able to add a profile from the side menu add button:
 emitter.on('profile-add', addProfile)
 </script>
 

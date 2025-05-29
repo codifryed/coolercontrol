@@ -43,6 +43,7 @@ import {
     mdiPlusBoxMultipleOutline,
     mdiPlusCircleMultipleOutline,
     mdiPower,
+    mdiTuneVerticalVariant,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -257,7 +258,7 @@ const addItems = computed(() => [
         mdiIcon: mdiBellPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
-            router.push({ name: 'alerts' })
+            emitter.emit('alert-add')
         },
     },
     {
@@ -265,7 +266,7 @@ const addItems = computed(() => [
         mdiIcon: mdiPlusCircleMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
-            router.push({ name: 'custom-sensors' })
+            emitter.emit('custom-sensor-add')
         },
     },
 ])
@@ -398,6 +399,27 @@ const addItems = computed(() => [
             </template>
         </el-dropdown>
 
+        <!--Controls-->
+        <router-link
+            exact
+            :to="{ name: 'system-controls' }"
+            class="outline-none"
+            v-slot="{ isActive }"
+        >
+            <Button
+                id="controls"
+                class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                v-tooltip.right="t('layout.topbar.controls')"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiTuneVerticalVariant"
+                    :size="getREMSize(1.75)"
+                    :class="{ 'text-accent': isActive }"
+                />
+            </Button>
+        </router-link>
+
         <!--Modes Quick Menu-->
         <el-dropdown
             id="modes-quick"
@@ -413,7 +435,7 @@ const addItems = computed(() => [
                 @click="activatePreviousMode"
                 v-tooltip.right="{
                     value: t('layout.topbar.modes'),
-                    disable: modesItems.length > 0,
+                    disabled: modesItems.length > 0,
                 }"
             >
                 <svg-icon

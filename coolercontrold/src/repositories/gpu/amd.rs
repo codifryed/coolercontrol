@@ -168,7 +168,7 @@ impl GpuAMD {
         amd_infos
     }
 
-    async fn init_load(device_path: &PathBuf) -> Option<HwmonChannelInfo> {
+    async fn init_load(device_path: &Path) -> Option<HwmonChannelInfo> {
         if let Ok(load) = cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
             match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
@@ -183,7 +183,10 @@ impl GpuAMD {
                 }
             }
         } else {
-            warn!("No AMDGPU load found: {device_path:?}/device/gpu_busy_percent");
+            warn!(
+                "No AMDGPU load found: {}/device/gpu_busy_percent",
+                device_path.display()
+            );
             None
         }
     }

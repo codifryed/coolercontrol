@@ -92,6 +92,7 @@ export default {
             back: '戻る',
             expandMenu: 'メニューを展開',
             collapseMenu: 'メニューを折りたたむ',
+            controls: 'コントロール',
             alerts: 'アラート',
             settings: '設定',
             openInBrowser: 'ブラウザで開く',
@@ -103,6 +104,7 @@ export default {
             general: '一般',
             device: 'デバイスとセンサー',
             daemon: 'デーモン',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'デバイスとセンサー',
                 detectionIssues: '検出に問題がありますか？',
@@ -547,7 +549,7 @@ export default {
             saveFunction: '機能を保存',
             functionType: '機能タイプ',
             functionTypeTooltip:
-                '機能タイプ：\n- 恒等関数：計算されたプロファイル値を変更しません。\n- 標準：ヒステリシス設定を持つアルゴリズムでプロファイル値を変更します。\n- 指数移動平均：EMAアルゴリズムを使用してプロファイル値を変更します。',
+                '機能タイプ：<br/>- 恒等関数：計算されたプロファイル値を変更しません。<br/>- 標準：ヒステリシス設定を持つアルゴリズムでプロファイル値を変更します。<br/>- 指数移動平均：EMAアルゴリズムを使用してプロファイル値を変更します。',
             minimumAdjustment: '最小調整',
             minimumAdjustmentTooltip:
                 '最小ファン速度調整：この値未満の計算された変更は無視されます。',
@@ -718,6 +720,9 @@ export default {
             dashboards: 'ダッシュボード',
             dashboardsDesc:
                 'ダッシュボードは、システムのセンサーデータを表示するためのキュレーションされたチャートのコレクションです。',
+            controls: 'コントロール',
+            controlsDesc:
+                'コントロールは、システムのファンや他のデバイスを管理するためのインタラクティブなインターフェースを提供します。各制御可能なチャネルで速度の調整、プロファイルの設定、リアルタイムでのステータス監視が可能です。',
             profiles: 'プロファイル',
             profilesDesc:
                 'プロファイルは、ファン速度を制御するためのカスタマイズ可能な設定を定義します。同じプロファイルを複数のファンとデバイスに使用できます。',
@@ -763,6 +768,44 @@ export default {
         },
         modeTable: {
             setting: '設定',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: 'ファン制御ウィザード',
+                editCurrentProfile: '現在のプロファイルを編集',
+                editCurrentFunction: '現在の機能を編集',
+                currentSettings: '現在の設定を表示',
+                manualSpeed: '手動でファン速度を設定',
+                createNewProfile: '新しいプロファイルを作成',
+                existingProfile: '既存のプロファイルを選択',
+                resetSettings: 'デフォルト設定にリセット',
+                chooseProfileNameType: 'プロファイル名とタイプを選択',
+                newDefaultProfile: '新しいデフォルトプロファイル',
+                profileCreatedApplied: 'プロファイルが作成され適用されました',
+                willCreatedAndAppliedTo: 'が作成され、次に適用されます：',
+                newFixedProfile: '新しい固定プロファイル',
+                withSettings: '次の設定で：',
+                selectSpeed: '速度を選択してください',
+                newMixProfile: '新しいミックスプロファイル',
+                newGraphProfile: '新しいグラフプロファイル',
+                functionFor: '適用する機能を選択：',
+                functionDescription:
+                    '機能を使用すると、プロファイル出力の適用方法をさらに制御できます。',
+                createNewFunction: '新しい機能を作成',
+                existingFunction: '既存の機能を選択',
+                defaultFunction: 'デフォルト機能を使用',
+                chooseFunctionNameType: '機能名とタイプを選択',
+                newFunctionName: '{profileName}の機能',
+                summary: '概要',
+                aNewProfile: '新しいプロファイル',
+                andFunction: 'と機能',
+            },
+            profile: {
+                willCreated: '作成されます。',
+            },
+            customSensor: {
+                new: '新しいカスタムセンサー',
+            },
         },
     },
     auth: {

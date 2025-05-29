@@ -95,6 +95,7 @@ export default {
             back: 'Atrás',
             expandMenu: 'Expandir menú',
             collapseMenu: 'Contraer menú',
+            controls: 'Controles',
             alerts: 'Alertas',
             settings: 'Configuración',
             openInBrowser: 'Abrir en navegador',
@@ -106,6 +107,7 @@ export default {
             general: 'General',
             device: 'Dispositivos',
             daemon: 'Daemon',
+            thinkpad: 'ThinkPad',
             devices: {
                 devicesAndSensors: 'Dispositivos y sensores',
                 detectionIssues: '¿Problemas de detección? Consulte la',
@@ -511,7 +513,7 @@ export default {
             saveFunction: 'Guardar Función',
             functionType: 'Tipo de Función',
             functionTypeTooltip:
-                'Tipos de función:\n- Identidad: No altera el valor calculado del perfil.\n- Estándar: Altera el valor del perfil usando un algoritmo con configuración de histéresis.\n- Promedio Móvil Exponencial: Altera el valor del perfil usando un algoritmo EMA.',
+                'Tipos de función:<br/>- Identidad: No altera el valor calculado del perfil.<br/>- Estándar: Altera el valor del perfil usando un algoritmo con configuración de histéresis.<br/>- Promedio Móvil Exponencial: Altera el valor del perfil usando un algoritmo EMA.',
             minimumAdjustment: 'Ajuste Mínimo',
             minimumAdjustmentTooltip:
                 'Ajuste mínimo de velocidad del ventilador: Los cambios calculados por debajo de este valor serán ignorados.',
@@ -714,6 +716,9 @@ export default {
             dashboards: 'Paneles',
             dashboardsDesc:
                 'Los paneles son una colección seleccionada de gráficos para ver los datos de los sensores de su sistema.',
+            controls: 'Controles',
+            controlsDesc:
+                'Los controles proporcionan una interfaz interactiva para gestionar los ventiladores y otros dispositivos de su sistema. Cada canal controlable le permite ajustar velocidades, establecer Perfiles y monitorear el estado en tiempo real.',
             profiles: 'Perfiles',
             profilesDesc:
                 'Los perfiles definen configuraciones personalizables para controlar las velocidades de los ventiladores. El mismo Perfil puede usarse para múltiples ventiladores y dispositivos.',
@@ -759,6 +764,44 @@ export default {
         },
         modeTable: {
             setting: 'Configuración',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: 'Asistente de Control de Ventiladores',
+                editCurrentProfile: 'Editar Perfil Actual',
+                editCurrentFunction: 'Editar Función Actual',
+                currentSettings: 'Ver Configuración Actual',
+                manualSpeed: 'Establecer una Velocidad Manual del Ventilador',
+                createNewProfile: 'Crear un Nuevo Perfil',
+                existingProfile: 'Elegir un Perfil Existente',
+                resetSettings: 'Restablecer a Configuración Predeterminada',
+                chooseProfileNameType: 'Elegir un Nombre y Tipo de Perfil',
+                newDefaultProfile: 'Nuevo Perfil Predeterminado',
+                profileCreatedApplied: 'Perfil Creado y Aplicado',
+                willCreatedAndAppliedTo: 'será creado y aplicado a',
+                newFixedProfile: 'Nuevo Perfil Fijo',
+                withSettings: 'con la siguiente configuración',
+                selectSpeed: 'Seleccione su velocidad',
+                newMixProfile: 'Nuevo Perfil de Mezcla',
+                newGraphProfile: 'Nuevo Perfil Gráfico',
+                functionFor: 'Elija una Función para aplicar a',
+                functionDescription:
+                    'Las funciones le permiten controlar aún más cómo se aplica la salida del Perfil.',
+                createNewFunction: 'Crear una Nueva Función',
+                existingFunction: 'Elegir una Función Existente',
+                defaultFunction: 'Usar la Función Predeterminada',
+                chooseFunctionNameType: 'Elegir un Nombre y Tipo de Función',
+                newFunctionName: 'Función para {profileName}',
+                summary: 'Resumen',
+                aNewProfile: 'Un nuevo Perfil',
+                andFunction: 'y Función',
+            },
+            profile: {
+                willCreated: 'será creado.',
+            },
+            customSensor: {
+                new: 'Nuevo Sensor Personalizado',
+            },
         },
     },
     auth: {

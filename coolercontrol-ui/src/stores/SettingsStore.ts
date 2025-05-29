@@ -377,14 +377,14 @@ export const useSettingsStore = defineStore('settings', () => {
         await deviceStore.daemonClient.saveFunctionsOrder(functionsDTO)
     }
 
-    async function saveFunction(functionUID: UID): Promise<void> {
+    async function saveFunction(functionUID: UID): Promise<boolean> {
         console.debug('Saving Function')
         const fun_to_save = functions.value.find((fun) => fun.uid === functionUID)
         if (fun_to_save == null) {
             console.error('Function to save not found: ' + functionUID)
-            return
+            return false
         }
-        await deviceStore.daemonClient.saveFunction(fun_to_save)
+        return await deviceStore.daemonClient.saveFunction(fun_to_save)
     }
 
     async function updateFunction(functionUID: UID): Promise<boolean> {
@@ -427,14 +427,14 @@ export const useSettingsStore = defineStore('settings', () => {
         await deviceStore.daemonClient.saveProfilesOrder(profilesDTO)
     }
 
-    async function saveProfile(profileUID: UID): Promise<void> {
+    async function saveProfile(profileUID: UID): Promise<boolean> {
         console.debug('Saving Profile')
         const profile_to_save = profiles.value.find((profile) => profile.uid === profileUID)
         if (profile_to_save == null) {
             console.error('Profile to save not found: ' + profileUID)
-            return
+            return false
         }
-        await deviceStore.daemonClient.saveProfile(profile_to_save)
+        return await deviceStore.daemonClient.saveProfile(profile_to_save)
     }
 
     async function updateProfile(profileUID: UID): Promise<boolean> {

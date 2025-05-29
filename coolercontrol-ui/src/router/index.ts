@@ -38,6 +38,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: 'controls',
+                    name: 'system-controls',
+                    component: () => import('@/views/ControlsView.vue'),
+                    props: true,
+                },
+                {
                     path: 'app-info',
                     name: 'app-info',
                     component: () => import('@/views/AppInfoView.vue'),

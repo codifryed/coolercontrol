@@ -252,6 +252,18 @@ const steps = [
             },
         },
     },
+    {
+        attachTo: { element: '#controls' },
+        content: {
+            title: t('components.onboarding.controls'),
+            description: t('components.onboarding.controlsDesc'),
+        },
+        options: {
+            popper: {
+                placement: 'right',
+            },
+        },
+    },
     // {
     //     attachTo: { element: '#modes-quick' },
     //     content: {

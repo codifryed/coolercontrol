@@ -91,6 +91,7 @@
             back: '返回',
             expandMenu: '展开菜单',
             collapseMenu: '折叠菜单',
+            controls: '控制器',
             alerts: '警报',
             settings: '设置',
             openInBrowser: '在浏览器中打开',
@@ -102,6 +103,7 @@
             general: '通用',
             device: '设备和传感器',
             daemon: '后台服务',
+            thinkpad: '联想ThinkPad',
             devices: {
                 devicesAndSensors: '设备和传感器',
                 detectionIssues: '检测问题？请查看',
@@ -504,7 +506,7 @@
             saveFunction: '保存功能',
             functionType: '功能类型',
             functionTypeTooltip:
-                '功能类型：\n- 恒等函数：不改变计算的配置文件值。\n- 标准：使用具有滞后设置的算法改变配置文件值。\n- 指数移动平均：使用指数移动平均算法改变配置文件值。',
+                '功能类型：<br/>- 恒等函数：不改变计算的配置文件值。<br/>- 标准：使用具有滞后设置的算法改变配置文件值。<br/>- 指数移动平均：使用指数移动平均算法改变配置文件值。',
             minimumAdjustment: '最小调整',
             minimumAdjustmentTooltip: '最小风扇速度调整：低于此值的计算变化将被忽略。',
             maximumAdjustment: '最大调整',
@@ -685,6 +687,9 @@
             letsStart: '好的，让我们开始吧！',
             dashboards: '仪表盘',
             dashboardsDesc: '仪表盘是一个精选的图表集合，用于查看系统的传感器数据。',
+            controls: '控制器',
+            controlsDesc:
+                '控制器提供了一个交互式界面来管理系统的风扇和其他设备。每个可控制的通道都允许您实时调整转速、设置配置文件和监控状态。',
             profiles: '配置文件',
             profilesDesc:
                 '配置文件定义了控制风扇速度的可自定义设置。同一个配置文件可用于多个风扇和设备。',
@@ -726,6 +731,43 @@
         },
         modeTable: {
             setting: '设置',
+        },
+        wizards: {
+            fanControl: {
+                fanControlWizard: '风扇控制向导',
+                editCurrentProfile: '编辑当前配置文件',
+                editCurrentFunction: '编辑当前功能',
+                currentSettings: '查看当前设置',
+                manualSpeed: '设置手动风扇转速',
+                createNewProfile: '创建新配置文件',
+                existingProfile: '选择现有配置文件',
+                resetSettings: '重置为默认设置',
+                chooseProfileNameType: '选择配置文件名称和类型',
+                newDefaultProfile: '新建默认配置文件',
+                profileCreatedApplied: '配置文件已创建并应用',
+                willCreatedAndAppliedTo: '将创建并应用到',
+                newFixedProfile: '新建固定配置文件',
+                withSettings: '使用以下设置',
+                selectSpeed: '选择转速',
+                newMixProfile: '新建混合配置文件',
+                newGraphProfile: '新建曲线配置文件',
+                functionFor: '选择要应用的功能',
+                functionDescription: '功能允许您进一步控制如何应用配置文件输出。',
+                createNewFunction: '创建新功能',
+                existingFunction: '选择现有功能',
+                defaultFunction: '使用默认功能',
+                chooseFunctionNameType: '选择功能名称和类型',
+                newFunctionName: '{profileName}的功能',
+                summary: '摘要',
+                aNewProfile: '新配置文件',
+                andFunction: '和功能',
+            },
+            profile: {
+                willCreated: '将被创建。',
+            },
+            customSensor: {
+                new: '新建自定义传感器',
+            },
         },
     },
     auth: {

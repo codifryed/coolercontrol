@@ -581,9 +581,16 @@ const addDashbaord = (dashboardUID: UID) => {
     )
     adjustTreeLeaves()
 }
-const deleteDashboard = (dashboardUID: UID): void => {
+interface DashboardUIDObj {
+    dashboardUID: UID
+}
+const addDashboardMenu = (dashboardUIDObj: DashboardUIDObj): void =>
+    addDashbaord(dashboardUIDObj.dashboardUID)
+emitter.on('dashboard-add-menu', addDashboardMenu)
+
+const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
 }
@@ -617,7 +624,7 @@ const rearrangeDashboards = (): void => {
  *
  * @param {string} _ - the UID of the mode that was just activated/deactivated
  */
-const activeModesChange = (_: UID): void => {
+const activeModesChange = async (_: UID): Promise<void> => {
     treeRef
         .value!.getNode('modes')
         .getChildren()
@@ -635,7 +642,7 @@ const activeModesChange = (_: UID): void => {
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
 }
 emitter.on('active-modes-change-menu', activeModesChange)
@@ -668,9 +675,15 @@ const addMode = (modeUID: UID): void => {
     )
     adjustTreeLeaves()
 }
-const deleteMode = (modeUID: UID): void => {
+interface ModeUIDObj {
+    modeUID: UID
+}
+const addModeMenu = (modeUIDObj: ModeUIDObj): void => addMode(modeUIDObj.modeUID)
+emitter.on('mode-add-menu', addModeMenu)
+
+const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(`modes_${modeUID}`))
 }
@@ -691,9 +704,16 @@ const addProfile = (profileUID: UID): void => {
     )
     adjustTreeLeaves()
 }
-const deleteProfile = (profileUID: UID): void => {
+
+interface ProfileUIDObj {
+    profileUID: UID
+}
+const addProfileMenu = (profileUIDObj: ProfileUIDObj): void => addProfile(profileUIDObj.profileUID)
+emitter.on('profile-add-menu', addProfileMenu)
+
+const deleteProfile = async (profileUID: UID): Promise<void> => {
     if (route.params != null && route.params.profileUID === profileUID) {
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(`profiles_${profileUID}`))
 }
@@ -718,9 +738,16 @@ const addFunction = (functionUID: UID): void => {
     )
     adjustTreeLeaves()
 }
-const deleteFunction = (functionUID: UID): void => {
+interface FunctionUIDObj {
+    functionUID: UID
+}
+const addFunctionMenu = (functionUIDObj: FunctionUIDObj): void =>
+    addFunction(functionUIDObj.functionUID)
+emitter.on('function-add-menu', addFunctionMenu)
+
+const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
 }
@@ -750,11 +777,11 @@ const addAlert = (alertUIDObj: AlertUIDObj): void => {
     )
     adjustTreeLeaves()
 }
-emitter.on('alert-add', addAlert)
+emitter.on('alert-add-menu', addAlert)
 
-const deleteAlert = (alertUID: UID): void => {
+const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {
-        router.push({ name: 'system-overview' })
+        await router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(`alerts_${alertUID}`))
 }
