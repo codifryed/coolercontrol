@@ -25,7 +25,7 @@ use log::{debug, info, trace};
 use nu_glob::glob;
 use regex::Regex;
 use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const GLOB_RAPL_ENERGY_PATH: &str = "/sys/class/powercap/intel-rapl:?/energy_uj";
 const PATTERN_RAPL_ZONE_NUMBER: &str = r"/(?P<rapl>intel-rapl):(?P<number>\d+)";
@@ -57,7 +57,10 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
     for path in base_paths {
         let rapl_name = get_rapl_name(&path).await;
         let Some(captures) = regex_package_number.captures(&rapl_name) else {
-            debug!("PowerCap driver Name at location: {path:?} is not a package, skipping");
+            debug!(
+                "PowerCap driver Name at location: {} is not a package, skipping",
+                path.display()
+            );
             continue;
         };
         let package_number: u8 = captures
@@ -100,7 +103,7 @@ pub fn calculate_power_watts(joule_count: f64, previous_joule_count: f64, poll_r
 /// Get the name of the `RAPL` package.
 /// This is often `package-0`. Note that for multi-physical-cpu systems this is a better
 /// indication of which CPU this belongs to than the `RAPL` zone number.
-async fn get_rapl_name(base_path: &PathBuf) -> String {
+async fn get_rapl_name(base_path: &Path) -> String {
     if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
         contents.trim().to_string()
     } else {
@@ -112,20 +115,24 @@ async fn get_rapl_name(base_path: &PathBuf) -> String {
         // Real zone numbers don't always match the package number, but this is only a fallback:
         let rapl_name = format!("package-{zone_number}");
         info!(
-            "PowerCap driver at location: {base_path:?} has no name set, using default: {rapl_name}"
+            "PowerCap driver at location: {} has no name set, using default: {rapl_name}",
+            base_path.display()
         );
         rapl_name
     }
 }
 
 /// Check if the energy channel is usable.
-async fn energy_is_not_usable(base_path: &PathBuf) -> bool {
+async fn energy_is_not_usable(base_path: &Path) -> bool {
     cc_fs::read_sysfs(base_path.join("energy_uj"))
         .await
         .and_then(check_parsing_f64)
         .map(microjoules_to_joules)
         .inspect_err(|err| {
-            info!("Error reading energy value from: {base_path:?}/energy_uj - {err}");
+            info!(
+                "Error reading energy value from: {}/energy_uj - {err}",
+                base_path.display()
+            );
         })
         .is_err()
 }

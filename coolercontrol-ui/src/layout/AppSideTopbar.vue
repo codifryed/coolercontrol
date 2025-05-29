@@ -435,7 +435,7 @@ const addItems = computed(() => [
                 @click="activatePreviousMode"
                 v-tooltip.right="{
                     value: t('layout.topbar.modes'),
-                    disable: modesItems.length > 0,
+                    disabled: modesItems.length > 0,
                 }"
             >
                 <svg-icon

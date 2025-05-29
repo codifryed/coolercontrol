@@ -67,7 +67,10 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
         }
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
-    trace!("Hwmon Temps detected: {temps:?} for {base_path:?}");
+    trace!(
+        "Hwmon Temps detected: {temps:?} for {}",
+        base_path.display()
+    );
     Ok(temps)
 }
 
@@ -138,14 +141,20 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
         .await
         .and_then(check_parsing_32)
         .map(|degrees| f64::from(degrees) / 1000.0f64)
-        .inspect_err(|err| debug!("Error reading temperature value from: {temp_path:?} ; {err}"))
+        .inspect_err(|err| {
+            debug!(
+                "Error reading temperature value from: {} ; {err}",
+                temp_path.display()
+            );
+        })
         .ok();
     if let Some(degrees) = possible_degrees {
         let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
         if !has_sane_value {
             debug!(
-                "Ignoring temperature sensor at {temp_path:?} as value: {degrees} is outside of \
-                usable range"
+                "Ignoring temperature sensor at {} as value: {degrees} is outside of \
+                usable range",
+                temp_path.display()
             );
         }
         return has_sane_value;
@@ -175,14 +184,17 @@ fn check_parsing_32(content: String) -> Result<i32> {
 /// Returns:
 ///
 /// an `Option<String>`.
-async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
+async fn get_temp_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format!("temp{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
             let temp_label = label.trim();
             if temp_label.is_empty() {
-                info!("Temp label is empty: {base_path:?}/temp{channel_number}_label");
+                info!(
+                    "Temp label is empty: {}/temp{channel_number}_label",
+                    base_path.display()
+                );
                 None
             } else {
                 Some(temp_label.to_string())
