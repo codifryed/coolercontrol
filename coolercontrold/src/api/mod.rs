@@ -326,6 +326,7 @@ fn create_app_state<'s>(
         main_scope,
     );
     let profile_handle = ProfileHandle::new(
+        all_devices.clone(),
         settings_controller.clone(),
         config.clone(),
         modes_controller.clone(),

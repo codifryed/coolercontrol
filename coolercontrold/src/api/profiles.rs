@@ -82,10 +82,61 @@ pub async fn delete(
 
 fn validate_profile(profile: &Profile) -> Result<(), CCError> {
     validate_name_string(&profile.name)?;
-    if profile.p_type == ProfileType::Mix && profile.member_profile_uids.is_empty() {
+    if profile.uid.is_empty() {
         return Err(CCError::UserError {
-            msg: "A Mix profile must have at least one member profile".to_string(),
+            msg: "Invalid Profile UID, cannot be empty".to_string(),
         });
+    }
+    if profile.p_type == ProfileType::Fixed && profile.speed_fixed.is_none() {
+        return Err(CCError::UserError {
+            msg: "A Fixed profile must have a fixed speed".to_string(),
+        });
+    }
+    if profile.p_type == ProfileType::Mix {
+        if profile.member_profile_uids.is_empty() {
+            return Err(CCError::UserError {
+                msg: "A Mix profile must have at least one member profile".to_string(),
+            });
+        }
+        if profile.mix_function_type.is_none() {
+            return Err(CCError::UserError {
+                msg: "A Mix profile must have a mix function set".to_string(),
+            });
+        }
+    }
+    if profile.p_type == ProfileType::Graph {
+        if profile.function_uid.is_empty() {
+            // A Valid function_uid is verified upon entity creation/update
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a Function".to_string(),
+            });
+        }
+        if profile.temp_source.is_none() {
+            // A Valid temp_source is verified upon entity creation/update
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a Temp Source".to_string(),
+            });
+        }
+        if profile.temp_source.as_ref().unwrap().temp_name.is_empty() {
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a valid Temp Source Name".to_string(),
+            });
+        }
+        if profile.temp_source.as_ref().unwrap().device_uid.is_empty() {
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a valid Temp Source DeviceUID".to_string(),
+            });
+        }
+        if profile.speed_profile.is_none() {
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a Speed Profile set".to_string(),
+            });
+        }
+        if profile.speed_profile.as_ref().unwrap().is_empty() {
+            return Err(CCError::UserError {
+                msg: "A Graph profile must have a Speed Profile with values".to_string(),
+            });
+        }
     }
     Ok(())
 }
