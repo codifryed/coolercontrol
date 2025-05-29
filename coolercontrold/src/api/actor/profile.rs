@@ -15,19 +15,22 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 use crate::api::actor::{run_api_actor, ApiActor};
+use crate::api::CCError;
 use crate::config::Config;
 use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
-use crate::setting::{Profile, ProfileUID};
+use crate::setting::{Profile, ProfileType, ProfileUID};
+use crate::AllDevices;
 use anyhow::Result;
 use moro_local::Scope;
+use std::ops::Not;
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 struct ProfileActor {
+    all_devices: AllDevices,
     receiver: mpsc::Receiver<ProfileMessage>,
     settings_controller: Rc<SettingsController>,
     config: Rc<Config>,
@@ -58,17 +61,55 @@ enum ProfileMessage {
 
 impl ProfileActor {
     pub fn new(
+        all_devices: AllDevices,
         receiver: mpsc::Receiver<ProfileMessage>,
         settings_controller: Rc<SettingsController>,
         config: Rc<Config>,
         mode_controller: Rc<ModeController>,
     ) -> Self {
         Self {
+            all_devices,
             receiver,
             settings_controller,
             config,
             mode_controller,
         }
+    }
+
+    fn verify_profile_internals(&self, profile: &Profile) -> Result<()> {
+        if profile.p_type == ProfileType::Graph {
+            // verify function exists
+            let _ = self.config.get_function(&profile.function_uid)?;
+            // verify temp_source exists
+            let Some(temp_source) = profile.temp_source.as_ref() else {
+                return Err(CCError::UserError {
+                    msg: "Temp Source not present in Profile".to_string(),
+                }
+                .into());
+            };
+            let Some(temp_source_device_lock) = self.all_devices.get(&temp_source.device_uid)
+            else {
+                return Err(CCError::UserError {
+                    msg: format!("No Device found with given UID: {}", temp_source.device_uid),
+                }
+                .into());
+            };
+            let temp_exists = temp_source_device_lock
+                .borrow()
+                .info
+                .temps
+                .contains_key(&temp_source.temp_name);
+            if temp_exists.not() {
+                return Err(CCError::UserError {
+                    msg: format!(
+                        "Device with given UID: {} doesn't have a temp name: {}",
+                        temp_source.device_uid, temp_source.temp_name
+                    ),
+                }
+                .into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -100,6 +141,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                 respond_to,
             } => {
                 let result = async {
+                    self.verify_profile_internals(&profile)?;
                     self.config.set_profile(profile)?;
                     self.config.save_config_file().await
                 }
@@ -112,6 +154,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
             } => {
                 let result = async {
                     let profile_uid = profile.uid.clone();
+                    self.verify_profile_internals(&profile)?;
                     self.config.update_profile(profile)?;
                     self.settings_controller.profile_updated(&profile_uid).await;
                     self.config.save_config_file().await
@@ -145,6 +188,7 @@ pub struct ProfileHandle {
 
 impl ProfileHandle {
     pub fn new<'s>(
+        all_devices: AllDevices,
         settings_controller: Rc<SettingsController>,
         config: Rc<Config>,
         mode_controller: Rc<ModeController>,
@@ -152,7 +196,13 @@ impl ProfileHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = ProfileActor::new(receiver, settings_controller, config, mode_controller);
+        let actor = ProfileActor::new(
+            all_devices,
+            receiver,
+            settings_controller,
+            config,
+            mode_controller,
+        );
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }
