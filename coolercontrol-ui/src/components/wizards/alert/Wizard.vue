@@ -39,6 +39,7 @@ const newAlert: Ref<Alert | undefined> = ref()
         v-if="currentStep === 1"
         @next-step="(step: number) => (currentStep = step)"
         @new-alert="(alert: Alert) => (newAlert = alert)"
+        @close="closeDialog"
         :alert="newAlert"
     />
     <Summary

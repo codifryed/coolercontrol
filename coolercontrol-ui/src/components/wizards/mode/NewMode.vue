@@ -72,7 +72,7 @@ const saveMode = async (): Promise<void> => {
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <div />
+            <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />
             <Button
                 class="bg-accent/80 hover:!bg-accent w-32"
                 :label="t('common.apply')"

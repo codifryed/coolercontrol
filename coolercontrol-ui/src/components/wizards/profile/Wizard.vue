@@ -66,6 +66,7 @@ const setFunctionUID = (funUID: UID): void => {
         @next-step="(step: number) => (currentStep = step)"
         @profile-name="(name: string) => (newProfileName = name)"
         @profile-type="(type: ProfileType) => (newProfileType = type)"
+        @close="closeDialog"
         :name="newProfileName"
         :type="newProfileType"
     />
