@@ -1161,7 +1161,7 @@ const nextStep = () => {
 </template>
 
 <style scoped lang="scss">
-#control-graph-wiz {
+#control-graph-wiz #control-panel {
     overflow: hidden;
     // This is adjusted dynamically on resize with js above
     height: max(calc(80vh - 6rem), 20rem);
