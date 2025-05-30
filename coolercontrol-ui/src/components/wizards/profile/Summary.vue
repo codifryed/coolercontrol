@@ -152,7 +152,7 @@ const saveProfileAndFunction = async (): Promise<void> => {
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 3)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
