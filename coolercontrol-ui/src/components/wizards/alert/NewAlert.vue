@@ -59,6 +59,7 @@ const emit = defineEmits<{
     (e: 'nextStep', step: number): void
     (e: 'newAlert', alert: Alert): void
     (e: 'name', name: string): void
+    (e: 'close'): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -465,7 +466,7 @@ onMounted(async () => {
         </div>
     </div>
     <div class="flex flex-row justify-between mt-4">
-        <div />
+        <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />
         <Button
             class="w-24 bg-bg-one"
             :label="t('common.next')"

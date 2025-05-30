@@ -38,6 +38,7 @@ const emit = defineEmits<{
     (e: 'nextStep', step: number): void
     (e: 'profileName', name: string): void
     (e: 'profileType', type: ProfileType): void
+    (e: 'close'): void
 }>()
 
 const { t } = useI18n()
@@ -112,7 +113,7 @@ const nextStep = () => {
             </p>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <div />
+            <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />
             <Button
                 class="w-24 bg-bg-one"
                 :label="t('common.next')"

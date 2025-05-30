@@ -41,6 +41,7 @@ const newName: Ref<string> = ref('')
         @next-step="(step: number) => (currentStep = step)"
         @new-custom-sensor="(sensor: CustomSensor) => (newCustomSensor = sensor)"
         @name="(name: string) => (newName = name)"
+        @close="closeDialog"
         :custom-sensor="newCustomSensor"
         :name="newName"
     />

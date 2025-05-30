@@ -42,6 +42,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'nextStep', step: number): void
     (e: 'newFunction', fun: Function): void
+    (e: 'close'): void
 }>()
 
 const { t } = useI18n()
@@ -337,11 +338,12 @@ const nextStep = async (): Promise<void> => {
         </div>
         <div class="flex flex-row justify-between mt-4">
             <Button
-                v-if="props.profileName !== undefined"
+                v-if="props.profileName === undefined"
                 class="w-24 bg-bg-one"
-                label="Back"
-                @click="emit('nextStep', 10)"
-            >
+                :label="t('common.cancel')"
+                @click="emit('close')"
+            />
+            <Button v-else class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
@@ -349,7 +351,6 @@ const nextStep = async (): Promise<void> => {
                     :size="deviceStore.getREMSize(1.5)"
                 />
             </Button>
-            <div v-else />
             <Button
                 class="w-24 bg-bg-one"
                 :label="t('common.next')"

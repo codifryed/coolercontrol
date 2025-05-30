@@ -39,6 +39,7 @@ const newFunction: Ref<Function | undefined> = ref()
         v-if="currentStep === 11"
         @next-step="(step: number) => (currentStep = step)"
         @new-function="(fun: Function) => (newFunction = fun)"
+        @close="closeDialog"
         :function-name="''"
         :new-function="newFunction"
     />
