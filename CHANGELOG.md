@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.2.0] - 2025-05-31
+
+### Added
+
+- Support for older Intel CPUs (#437)
+- Support for liquidctl MPGCooler driver (#436)
+- Support for liquidctl AsusRyujin driver (#441)
+- Support for liquidctl Coolit Hydro GT driver (#442)
+- Zero Temperature Drive Power State (#443)
+- Project Vision document (!297)
+- International Language support i18n (!296 @kuilei0926)
+- Fan control and entity creation wizards (!305)
+
+### Changed
+
+- Dependencies updated (!308)
+- Reduce log level for drivetemp slow devices (!287)
+- Improved code documentation and log messages
+- Various minor implementation improvements
+- UI Refresh no longer needed for theme changes (!296 @kuilei0926)
+- Load libdrm_amdgpu dynamically (!303)
+
+### Fixed
+
+- Added liquidctl initialization retries and max startup delay (#438)
+- Badge links in docs (!304 @pallaswept)
+- Daemon crash in some rare situations (!294)
+- Minor OpenAPI documentation (!301 @caferen)
+- Missing metrics for single Dashboards (!306)
+- Long float values in Alert logs (!307)
+
 ## [2.1.0] - 2025-04-05
 
 ### Added
