@@ -99,7 +99,7 @@ test_all:
   artifacts:
     when: always
     reports:
-      junit: coolercontrold/results.xml
+      junit: coolercontrold/report.xml
       codequality: coolercontrold/gl-code-quality-report.json
       sast: coolercontrold/gl-sast-report.json
     name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
