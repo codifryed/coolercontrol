@@ -16,11 +16,11 @@ test:
 	@cargo test --locked $(release)
 
 ci-test:
-	@cargo install cargo2junit
 	@cargo build --locked $(release)
 	@./target/debug/$(executable) --version
-	@RUSTC_BOOTSTRAP=1 cargo test --locked $(release) -- -Z unstable-options --format json --report-time | tee results.json
-	@cat results.json | cargo2junit > results.xml
+	@RUSTC_BOOTSTRAP=1 cargo test --locked --no-fail-fast $(release) -- -Z unstable-options --format json | gitlab-report -p test > report.xml
+	@cargo clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
+	@cargo audit --locked $(release) --json | gitlab-report -p audit > gl-sast-report.json
     
 vendor:
 	@cargo vendor --locked

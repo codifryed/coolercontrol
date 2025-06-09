@@ -99,6 +99,8 @@ test_all:
     when: always
     reports:
       junit: coolercontrold/results.xml
+      codequality: coolercontrold/gl-code-quality-report.json
+      sast: coolercontrold/gl-sast-report.json
     name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
     paths:
       - coolercontrol/build/coolercontrol
