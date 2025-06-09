@@ -25,10 +25,12 @@ variables:
   ARTIFACT_NAME_UBUNTU_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   ARTIFACT_NAME_UBUNTU_LIQCTLD: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
+  SECRET_DETECTION_ENABLED: 'true'
 
 stages:
   - test
   - build
+  - secret-detection
   - test_packages
   - upload_packages
   - release
@@ -70,6 +72,10 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 test_all:
   stage: test
   <<: [*cache_template, *main_image_template]
+  include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
   needs: []
@@ -94,6 +100,11 @@ test_all:
       - coolercontrol/build/coolercontrol
       - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
+
+secret_detection:
+  stage: secret-detection
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
 
 ############################################################################################
 # compile all release artifacts
