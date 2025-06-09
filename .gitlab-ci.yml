@@ -25,6 +25,7 @@ variables:
   ARTIFACT_NAME_UBUNTU_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   ARTIFACT_NAME_UBUNTU_LIQCTLD: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
+  SECRET_DETECTION_ENABLED: 'true'
 
 stages:
   - test
@@ -67,11 +68,20 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 # development pipeline tests
 ############################################################################################
 
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+- template: Security/Dependency-Scanning.gitlab-ci.yml
+
 test_all:
   stage: test
   <<: [*cache_template, *main_image_template]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
+    # This allows us to run a single job for MR branches that are pushed to, and allow these tests
+    # to run for external MRs.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
   needs: []
   before_script:
     - python3 --version
@@ -88,7 +98,9 @@ test_all:
   artifacts:
     when: always
     reports:
-      junit: coolercontrold/results.xml
+      junit: coolercontrold/report.xml
+      codequality: coolercontrold/gl-code-quality-report.json
+      sast: coolercontrold/gl-sast-report.json
     name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
     paths:
       - coolercontrol/build/coolercontrol

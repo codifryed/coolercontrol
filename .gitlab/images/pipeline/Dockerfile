@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         desktop-file-utils appstream-util \
         # rust
         cargo \
+        jq \
         # python
         python3-pip \
         python3-venv \
@@ -73,7 +74,8 @@ RUN mkdir -p /etc/apt/keyrings && \
 
 RUN pip3 install --upgrade pip
 
-# for our conversion to gitlib junit test results
-RUN cargo install cargo2junit nixpkgs-fmt
+# for our conversion to gitlib test results
+RUN rustup component add clippy && \
+    cargo install cargo-audit gitlab-report nixpkgs-fmt --locked
 
 RUN apt-get -y autoclean
