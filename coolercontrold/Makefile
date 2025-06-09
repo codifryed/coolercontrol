@@ -20,7 +20,7 @@ ci-test:
 	@./target/debug/$(executable) --version
 	@RUSTC_BOOTSTRAP=1 cargo test --locked --no-fail-fast $(release) -- -Z unstable-options --format json | gitlab-report -p test > report.xml
 	@cargo clippy --locked $(release) --message-format=json | gitlab-report -p clippy > gl-code-quality-report.json
-	@cargo audit --locked $(release) --json | gitlab-report -p audit > gl-sast-report.json
+	@cargo audit --json | gitlab-report -p audit > gl-sast-report.json
     
 vendor:
 	@cargo vendor --locked
