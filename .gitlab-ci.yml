@@ -30,7 +30,6 @@ variables:
 stages:
   - test
   - build
-  - secret-detection
   - test_packages
   - upload_packages
   - release
@@ -69,13 +68,14 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 # development pipeline tests
 ############################################################################################
 
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+- template: Security/Dependency-Scanning.gitlab-ci.yml
+
 test_all:
   stage: test
   <<: [*cache_template, *main_image_template]
-  include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
   needs: []
@@ -100,11 +100,6 @@ test_all:
       - coolercontrol/build/coolercontrol
       - coolercontrold/target/debug/coolercontrold
     expire_in: 3 days
-
-secret_detection:
-  stage: secret-detection
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
 
 ############################################################################################
 # compile all release artifacts
