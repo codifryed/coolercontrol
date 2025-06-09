@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         desktop-file-utils appstream-util \
         # rust
         cargo \
+        jq \
         # python
         python3-pip \
         python3-venv \
