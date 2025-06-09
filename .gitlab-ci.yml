@@ -77,7 +77,9 @@ test_all:
   stage: test
   <<: [*cache_template, *main_image_template]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
   needs: []
   before_script:
     - python3 --version
