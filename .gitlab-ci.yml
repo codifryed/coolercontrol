@@ -72,6 +72,7 @@ include:
 - template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
 - template: Security/Dependency-Scanning.gitlab-ci.yml
+- template: License-Management.gitlab-ci.yml
 
 test_all:
   stage: test
