@@ -65,13 +65,13 @@ impl Config {
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
-        let config_contents = match cc_fs::read_txt(&path).await {
-            Ok(contents) => {
-                if contents.trim().is_empty() {
+        let config_content = match cc_fs::read_txt(&path).await {
+            Ok(content) => {
+                if content.trim().is_empty() {
                     error!("Error: Config file is empty. Creating a new Config file.");
                     Self::create_new_config_file(&path).await?
                 } else {
-                    contents
+                    content
                 }
             }
             Err(err) => {
@@ -91,7 +91,7 @@ impl Config {
                 Self::create_new_config_file(&path).await?
             }
         };
-        let document = config_contents
+        let document = config_content
             .parse::<DocumentMut>()
             .with_context(|| "Parsing configuration file")?;
         trace!("Loaded configuration file: {document}");
@@ -135,6 +135,24 @@ impl Config {
         cc_fs::read_txt(&path)
             .await
             .with_context(|| format!("Reading configuration file {}", path.display()))
+    }
+
+    /// Loads the default Config (Used for Testing)
+    #[allow(dead_code)]
+    pub fn init_default_config() -> Result<Self> {
+        // We rarely should write these files during testing, but just in case:
+        let path = Path::new("/tmp/config.toml").to_path_buf();
+        let path_ui = Path::new("/tmp/config-ui.json").to_path_buf();
+        let config_content = String::from_utf8(DEFAULT_CONFIG_FILE_BYTES.to_vec())?;
+        let document = config_content
+            .parse::<DocumentMut>()
+            .with_context(|| "Parsing configuration file")?;
+        trace!("Loaded configuration file: {document}");
+        Ok(Self {
+            path,
+            path_ui,
+            document: RefCell::new(document),
+        })
     }
 
     pub fn verify_writeability(&self) -> Result<()> {
@@ -1850,5 +1868,52 @@ impl Config {
         } else {
             cs_table["file_path"] = Item::None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cc_fs;
+    use crate::config::Config;
+    use serial_test::serial;
+    use std::cell::RefCell;
+    use std::path::Path;
+    use toml_edit::DocumentMut;
+
+    #[test]
+    #[serial]
+    fn verify_default_config() {
+        cc_fs::test_runtime(async {
+            let path = Path::new("/tmp/config.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui: path_ui.clone(),
+                document: RefCell::new(document),
+            };
+
+            // test parsing of default config data to make sure everything is readable:
+            assert!(config.legacy690_ids().is_ok(), "Legacy 690 IDs");
+            assert!(
+                config.get_settings().is_ok(),
+                "CoolerControl general settings"
+            );
+            assert!(
+                config.get_all_devices_settings().is_ok(),
+                "All device settings"
+            );
+            assert!(
+                config.get_all_cc_devices_settings().is_ok(),
+                "All CC device settings"
+            );
+            assert!(config.get_profiles().await.is_ok(), "Get Profiles");
+            assert!(config.get_functions().await.is_ok(), "Get Functions");
+            assert!(config.get_custom_sensors().is_ok(), "Get Custom sensors");
+
+            // teardown:
+            cc_fs::remove_file(path).unwrap();
+        });
     }
 }
