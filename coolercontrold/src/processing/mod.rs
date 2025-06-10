@@ -27,6 +27,7 @@ mod commanders;
 pub mod processors;
 pub mod settings;
 mod utils;
+mod settings_engine_test;
 
 #[derive(Debug, Clone)]
 pub enum DeviceChannelProfileSetting {
