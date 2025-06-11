@@ -19,7 +19,7 @@
 use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
-use crate::processing::processors::image;
+use crate::engine::processors::image;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;

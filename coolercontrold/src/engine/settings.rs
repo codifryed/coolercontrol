@@ -23,10 +23,10 @@ use std::rc::Rc;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID};
-use crate::processing::commanders::graph::GraphProfileCommander;
-use crate::processing::commanders::lcd::LcdCommander;
-use crate::processing::commanders::mix::MixProfileCommander;
-use crate::processing::{processors, DeviceChannelProfileSetting};
+use crate::engine::commanders::graph::GraphProfileCommander;
+use crate::engine::commanders::lcd::LcdCommander;
+use crate::engine::commanders::mix::MixProfileCommander;
+use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,

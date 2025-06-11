@@ -28,8 +28,8 @@ use moro_local::Scope;
 use serde::{Deserialize, Serialize};
 
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
-use crate::processing::commanders::graph::GraphProfileCommander;
-use crate::processing::DeviceChannelProfileSetting;
+use crate::engine::commanders::graph::GraphProfileCommander;
+use crate::engine::DeviceChannelProfileSetting;
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
 
 type MixProfile = Profile;
@@ -290,7 +290,7 @@ impl Hash for NormalizedMixProfile {
 
 #[cfg(test)]
 mod tests {
-    use crate::processing::commanders::mix::MixProfileCommander;
+    use crate::engine::commanders::mix::MixProfileCommander;
     use crate::setting::ProfileMixFunctionType;
 
     #[test]

@@ -18,7 +18,7 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::config::Config;
-use crate::processing::settings::SettingsController;
+use crate::engine::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::setting::CustomSensor;
 use anyhow::Result;

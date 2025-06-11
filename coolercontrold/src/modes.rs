@@ -34,7 +34,7 @@ use crate::api::modes::ActiveModesDto;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
-use crate::processing::settings::SettingsController;
+use crate::engine::settings::SettingsController;
 use crate::setting::{ProfileUID, Setting};
 use crate::{cc_fs, AllDevices};
 

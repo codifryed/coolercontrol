@@ -32,7 +32,7 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 use crate::api::CCError;
 use crate::cc_fs;
 use crate::device::UID;
-use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
+use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,

@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::processing::{utils, Processor, SpeedProfileData};
+use crate::engine::{utils, Processor, SpeedProfileData};
 use crate::setting::ProfileUID;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
