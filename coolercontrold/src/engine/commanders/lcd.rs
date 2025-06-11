@@ -35,7 +35,7 @@ use crate::api::CCError;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::engine::processors;
-use crate::engine::settings::ReposByType;
+use crate::engine::main::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
 

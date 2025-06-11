@@ -38,7 +38,7 @@ use crate::api::actor::{
 use crate::config::Config;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
-use crate::engine::settings::SettingsController;
+use crate::engine::main::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::{AllDevices, Repos, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};

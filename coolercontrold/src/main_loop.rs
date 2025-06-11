@@ -20,7 +20,7 @@ use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::modes::ModeController;
-use crate::engine::settings::SettingsController;
+use crate::engine::main::SettingsController;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};

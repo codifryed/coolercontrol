@@ -19,7 +19,7 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
 use crate::modes::ModeController;
-use crate::engine::settings::SettingsController;
+use crate::engine::main::SettingsController;
 use crate::setting::{Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 use anyhow::Result;

@@ -6,7 +6,7 @@ mod tests {
         ChannelInfo, Device, DeviceInfo, DeviceType, DeviceUID, SpeedOptions, Status, TempStatus,
         UID,
     };
-    use crate::engine::settings::SettingsController;
+    use crate::engine::main::SettingsController;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{LcdSettings, LightingSettings, Profile, ProfileType, TempSource};
     use anyhow::{anyhow, Result};

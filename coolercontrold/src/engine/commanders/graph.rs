@@ -28,7 +28,7 @@ use crate::engine::processors::functions::{
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::engine::processors::profiles::GraphProcessor;
-use crate::engine::settings::ReposByType;
+use crate::engine::main::ReposByType;
 use crate::engine::{
     utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
 };

@@ -25,7 +25,7 @@ use crate::setting::{Function, ProfileUID, TempSource};
 
 mod commanders;
 pub mod processors;
-pub mod settings;
+pub mod main;
 mod settings_engine_test;
 mod utils;
 

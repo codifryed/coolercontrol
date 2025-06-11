@@ -23,7 +23,7 @@ use crate::alerts::AlertController;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::modes::ModeController;
-use crate::engine::settings::SettingsController;
+use crate::engine::main::SettingsController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;

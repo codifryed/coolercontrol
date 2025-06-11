@@ -20,7 +20,7 @@ use crate::api::devices::DeviceDto;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
 use crate::modes::ModeController;
-use crate::engine::settings::SettingsController;
+use crate::engine::main::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
