@@ -2092,9 +2092,9 @@ dependencies = [
 
 [[package]]
 name = "nu-glob"
-version = "0.105.1"
+version = "0.104.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45887876f9a0f0045fa9fa29904753015b312481df5918b53f995876c524d420"
+checksum = "c462e5b22f4192b7d03e646475320566a829474b5749d881b57ca5c4fd391726"
 
 [[package]]
 name = "num-bigint"

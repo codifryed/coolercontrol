@@ -117,7 +117,8 @@ psutil = { version = "5.2.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.105.1"
+# >=0.105.0 requires >Rust 1.82 (edition2024)
+nu-glob = "=0.104.1"
 # our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
 sha2 = "0.10.8"
