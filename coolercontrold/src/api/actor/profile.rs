@@ -19,7 +19,7 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
 use crate::modes::ModeController;
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::setting::{Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 use anyhow::Result;
@@ -32,7 +32,7 @@ use tokio_util::sync::CancellationToken;
 struct ProfileActor {
     all_devices: AllDevices,
     receiver: mpsc::Receiver<ProfileMessage>,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     config: Rc<Config>,
     mode_controller: Rc<ModeController>,
 }
@@ -63,14 +63,14 @@ impl ProfileActor {
     pub fn new(
         all_devices: AllDevices,
         receiver: mpsc::Receiver<ProfileMessage>,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
         mode_controller: Rc<ModeController>,
     ) -> Self {
         Self {
             all_devices,
             receiver,
-            settings_controller,
+            engine,
             config,
             mode_controller,
         }
@@ -156,7 +156,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                     let profile_uid = profile.uid.clone();
                     self.verify_profile_internals(&profile)?;
                     self.config.update_profile(profile)?;
-                    self.settings_controller.profile_updated(&profile_uid).await;
+                    self.engine.profile_updated(&profile_uid).await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -167,7 +167,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .profile_deleted(&profile_uid)
                         .await?;
                     self.config.delete_profile(&profile_uid)?;
@@ -189,7 +189,7 @@ pub struct ProfileHandle {
 impl ProfileHandle {
     pub fn new<'s>(
         all_devices: AllDevices,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
         mode_controller: Rc<ModeController>,
         cancel_token: CancellationToken,
@@ -199,7 +199,7 @@ impl ProfileHandle {
         let actor = ProfileActor::new(
             all_devices,
             receiver,
-            settings_controller,
+            engine,
             config,
             mode_controller,
         );

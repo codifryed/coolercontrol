@@ -23,7 +23,7 @@ use crate::alerts::AlertController;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::modes::ModeController;
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
@@ -111,7 +111,7 @@ fn main() -> Result<()> {
         let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        let settings_controller = Rc::new(SettingsController::new(
+        let engine = Rc::new(Engine::new(
             all_devices.clone(),
             &repos,
             config.clone(),
@@ -120,7 +120,7 @@ fn main() -> Result<()> {
             ModeController::init(
                 config.clone(),
                 all_devices.clone(),
-                settings_controller.clone(),
+                engine.clone(),
             )
             .await?,
         );
@@ -134,7 +134,7 @@ fn main() -> Result<()> {
             if let Err(err) = api::start_server(
                 all_devices,
                 Rc::clone(&repos),
-                settings_controller.clone(),
+                engine.clone(),
                 config.clone(),
                 custom_sensors_repo,
                 mode_controller.clone(),
@@ -156,7 +156,7 @@ fn main() -> Result<()> {
             main_loop::run(
                 Rc::clone(&config),
                 Rc::clone(&repos),
-                settings_controller,
+                engine,
                 mode_controller,
                 alert_controller,
                 status_handle,

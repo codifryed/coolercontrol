@@ -20,7 +20,7 @@ use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
 use crate::modes::ModeController;
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};
@@ -50,7 +50,7 @@ const FULL_SECOND_MS: u64 = 1000;
 pub async fn run(
     config: Rc<Config>,
     repos: Repos,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     mode_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
     status_handle: StatusHandle,
@@ -78,12 +78,12 @@ pub async fn run(
                     () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
-                fire_snapshots_and_processes(&repos, &settings_controller, &mut lcd_update_trigger, &status_handle, scope).await;
+                fire_snapshots_and_processes(&repos, &engine, &mut lcd_update_trigger, &status_handle, scope).await;
                 alert_controller.process_alerts();
             } else if sleep_listener.is_resuming() {
                 wake_from_sleep(
                     &config,
-                    &settings_controller,
+                    &engine,
                     &mode_controller,
                     &sleep_listener,
                 )
@@ -145,7 +145,7 @@ fn fire_preloads<'s>(
 /// LCD updates and `process_scheduled_speeds` to apply any scheduled speed settings.
 async fn fire_snapshots_and_processes<'s>(
     repos: &'s Repos,
-    settings_controller: &'s Rc<SettingsController>,
+    engine: &'s Rc<Engine>,
     lcd_update_trigger: &mut LCDUpdateTrigger,
     status_handle: &'s StatusHandle,
     scope: &'s Scope<'s, 's, Result<()>>,
@@ -156,8 +156,8 @@ async fn fire_snapshots_and_processes<'s>(
             error!("Error trying to update status: {err}");
         }
     }
-    fire_lcd_update(settings_controller, lcd_update_trigger, scope);
-    settings_controller.process_scheduled_speeds(scope);
+    fire_lcd_update(engine, lcd_update_trigger, scope);
+    engine.process_scheduled_speeds(scope);
     status_handle.broadcast_status().await;
 }
 
@@ -168,12 +168,12 @@ async fn fire_snapshots_and_processes<'s>(
 ///
 /// Due to the long-running time of this function, it will be called every other loop tick.
 fn fire_lcd_update<'s>(
-    settings_controller: &Rc<SettingsController>,
+    engine: &Rc<Engine>,
     lcd_update_trigger: &mut LCDUpdateTrigger,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     if lcd_update_trigger.not_triggered()
-        || settings_controller
+        || engine
             .lcd_commander
             .scheduled_settings
             .borrow()
@@ -181,7 +181,7 @@ fn fire_lcd_update<'s>(
     {
         return;
     }
-    let lcd_commander = Rc::clone(&settings_controller.lcd_commander);
+    let lcd_commander = Rc::clone(&engine.lcd_commander);
     scope.spawn(async move {
         if timeout(
             Duration::from_secs(LCD_TIMEOUT_S),
@@ -208,7 +208,7 @@ fn fire_lcd_update<'s>(
 /// flags to indicate that the system is no longer preparing to sleep or resuming.
 async fn wake_from_sleep(
     config: &Rc<Config>,
-    settings_controller: &Rc<SettingsController>,
+    engine: &Rc<Engine>,
     mode_controller: &Rc<ModeController>,
     sleep_listener: &SleepListener,
 ) -> Result<()> {
@@ -223,10 +223,10 @@ async fn wake_from_sleep(
     sleep(startup_delay).await;
     if config.get_settings()?.apply_on_boot {
         info!("Re-initializing and re-applying settings after waking from sleep");
-        settings_controller.reinitialize_devices().await;
+        engine.reinitialize_devices().await;
         mode_controller.apply_all_saved_device_settings().await;
     }
-    settings_controller.reinitialize_all_status_histories()?;
+    engine.reinitialize_all_status_histories()?;
     sleep_listener.resuming(false);
     sleep_listener.preparing_to_sleep(false);
     Ok(())

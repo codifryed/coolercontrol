@@ -18,7 +18,7 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::config::Config;
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::setting::CustomSensor;
 use anyhow::Result;
@@ -30,7 +30,7 @@ use tokio_util::sync::CancellationToken;
 struct CustomSensorActor {
     receiver: mpsc::Receiver<CustomSensorMessage>,
     custom_sensors_repo: Rc<CustomSensorsRepo>,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     config: Rc<Config>,
 }
 
@@ -64,13 +64,13 @@ impl CustomSensorActor {
     pub fn new(
         receiver: mpsc::Receiver<CustomSensorMessage>,
         custom_sensors_repo: Rc<CustomSensorsRepo>,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
     ) -> Self {
         Self {
             receiver,
             custom_sensors_repo,
-            settings_controller,
+            engine,
             config,
         }
     }
@@ -140,7 +140,7 @@ impl ApiActor<CustomSensorMessage> for CustomSensorActor {
             } => {
                 let result = async {
                     let cs_device_uid = self.custom_sensors_repo.get_device_uid();
-                    self.settings_controller
+                    self.engine
                         .custom_sensor_deleted(&cs_device_uid, &custom_sensor_id)
                         .await?;
                     self.custom_sensors_repo
@@ -162,14 +162,14 @@ pub struct CustomSensorHandle {
 impl CustomSensorHandle {
     pub fn new<'s>(
         custom_sensors_repo: Rc<CustomSensorsRepo>,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
         let actor =
-            CustomSensorActor::new(receiver, custom_sensors_repo, settings_controller, config);
+            CustomSensorActor::new(receiver, custom_sensors_repo, engine, config);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

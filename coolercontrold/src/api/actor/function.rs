@@ -18,7 +18,7 @@
 
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::config::Config;
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::setting::{Function, FunctionUID};
 use anyhow::Result;
 use moro_local::Scope;
@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 struct FunctionActor {
     receiver: mpsc::Receiver<FunctionMessage>,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     config: Rc<Config>,
 }
 
@@ -57,12 +57,12 @@ enum FunctionMessage {
 impl FunctionActor {
     pub fn new(
         receiver: mpsc::Receiver<FunctionMessage>,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
     ) -> Self {
         Self {
             receiver,
-            settings_controller,
+            engine,
             config,
         }
     }
@@ -109,7 +109,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
                 let result = async {
                     let function_uid = function.uid.clone();
                     self.config.update_function(function)?;
-                    self.settings_controller
+                    self.engine
                         .function_updated(&function_uid)
                         .await;
                     self.config.save_config_file().await
@@ -123,7 +123,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
             } => {
                 let result = async {
                     self.config.delete_function(&function_uid)?;
-                    self.settings_controller
+                    self.engine
                         .function_deleted(&function_uid)
                         .await;
                     self.config.save_config_file().await
@@ -142,13 +142,13 @@ pub struct FunctionHandle {
 
 impl FunctionHandle {
     pub fn new<'s>(
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         config: Rc<Config>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = FunctionActor::new(receiver, settings_controller, config);
+        let actor = FunctionActor::new(receiver, engine, config);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

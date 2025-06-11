@@ -46,7 +46,7 @@ const SYNC_CHANNEL_NAME: &str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 
-pub struct SettingsController {
+pub struct Engine {
     all_devices: AllDevices,
     repos: ReposByType,
     config: Rc<Config>,
@@ -55,7 +55,7 @@ pub struct SettingsController {
     pub lcd_commander: Rc<LcdCommander>,
 }
 
-impl SettingsController {
+impl Engine {
     pub fn new(all_devices: AllDevices, repos: &Repos, config: Rc<Config>) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
@@ -81,7 +81,7 @@ impl SettingsController {
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        SettingsController {
+        Engine {
             all_devices,
             repos: repos_by_type,
             config,

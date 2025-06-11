@@ -6,7 +6,7 @@ mod tests {
         ChannelInfo, Device, DeviceInfo, DeviceType, DeviceUID, SpeedOptions, Status, TempStatus,
         UID,
     };
-    use crate::engine::main::SettingsController;
+    use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{LcdSettings, LightingSettings, Profile, ProfileType, TempSource};
     use anyhow::{anyhow, Result};
@@ -110,7 +110,7 @@ mod tests {
 
     fn setup_single_device() -> (
         DeviceLock,
-        SettingsController,
+        Engine,
         Rc<Config>,
         Rc<RefCell<Vec<u8>>>,
     ) {
@@ -142,10 +142,10 @@ mod tests {
         let all_repos = Rc::new(repos);
         let config = Rc::new(Config::init_default_config().unwrap());
         config.create_device_list(&all_devices);
-        let settings_controller =
-            SettingsController::new(all_devices, &all_repos, Rc::clone(&config));
+        let engine =
+            Engine::new(all_devices, &all_repos, Rc::clone(&config));
 
-        (device, settings_controller, config, set_speeds)
+        (device, engine, config, set_speeds)
     }
 
     #[test]
@@ -153,12 +153,12 @@ mod tests {
     fn test_no_application_without_settings() {
         cc_fs::test_runtime(async {
             // Given
-            let (_device, settings_controller, _config, set_speeds) = setup_single_device();
+            let (_device, engine, _config, set_speeds) = setup_single_device();
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
                 for _ in 0..3 {
-                    settings_controller.process_scheduled_speeds(scope);
+                    engine.process_scheduled_speeds(scope);
                 }
                 Ok(())
             })
@@ -176,7 +176,7 @@ mod tests {
     fn test_simple_profile_speeds() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, settings_controller, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -218,7 +218,7 @@ mod tests {
             config.set_profile(profile).unwrap();
 
             // Schedule the profile
-            settings_controller
+            engine
                 .set_profile(&device_uid, &fan_channel_name, &profile_uid)
                 .await
                 .unwrap();
@@ -234,7 +234,7 @@ mod tests {
                         temp,
                     });
                     device.borrow_mut().set_status(status);
-                    settings_controller.process_scheduled_speeds(scope);
+                    engine.process_scheduled_speeds(scope);
                     temp += 20.;
                 }
                 Ok(())
@@ -253,7 +253,7 @@ mod tests {
     fn test_initial_application() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, settings_controller, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -295,14 +295,14 @@ mod tests {
             config.set_profile(profile).unwrap();
 
             // Schedule the profile
-            settings_controller
+            engine
                 .set_profile(&device_uid, &fan_channel_name, &profile_uid)
                 .await
                 .unwrap();
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
-                settings_controller.process_scheduled_speeds(scope);
+                engine.process_scheduled_speeds(scope);
                 Ok(())
             })
             .await;
@@ -319,7 +319,7 @@ mod tests {
     fn test_safety_latch_fires() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, settings_controller, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -361,7 +361,7 @@ mod tests {
             config.set_profile(profile).unwrap();
 
             // Schedule the profile
-            settings_controller
+            engine
                 .set_profile(&device_uid, &fan_channel_name, &profile_uid)
                 .await
                 .unwrap();
@@ -377,7 +377,7 @@ mod tests {
                         temp: 50.,
                     });
                     device.borrow_mut().set_status(status);
-                    settings_controller.process_scheduled_speeds(scope);
+                    engine.process_scheduled_speeds(scope);
                 }
                 Ok(())
             })

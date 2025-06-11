@@ -34,7 +34,7 @@ use crate::api::modes::ActiveModesDto;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
-use crate::engine::main::SettingsController;
+use crate::engine::main::Engine;
 use crate::setting::{ProfileUID, Setting};
 use crate::{cc_fs, AllDevices};
 
@@ -45,7 +45,7 @@ const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/mode
 pub struct ModeController {
     config: Rc<Config>,
     all_devices: AllDevices,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     modes: RefCell<HashMap<UID, Mode>>,
     mode_order: RefCell<Vec<UID>>,
     active_modes: RefCell<ActiveModes>,
@@ -57,12 +57,12 @@ impl ModeController {
     pub async fn init(
         config: Rc<Config>,
         all_devices: AllDevices,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
     ) -> Result<Self> {
         let mode_controller = Self {
             config,
             all_devices,
-            settings_controller,
+            engine,
             modes: RefCell::new(HashMap::new()),
             mode_order: RefCell::new(Vec::new()),
             active_modes: RefCell::new(ActiveModes::new()),
@@ -106,7 +106,7 @@ impl ModeController {
                     trace!("Settings for device: {uid} loaded from config file: {settings:?}");
                     for setting in &settings {
                         if let Err(err) = self
-                            .settings_controller
+                            .engine
                             .set_config_setting(uid, setting)
                             .await
                         {
@@ -275,7 +275,7 @@ impl ModeController {
     ) -> Result<()> {
         let saved_device_settings = self.config.get_device_settings(device_uid)?;
         for setting in saved_device_settings {
-            let settings_controller = Rc::clone(&self.settings_controller);
+            let engine = Rc::clone(&self.engine);
             let config = Rc::clone(&self.config);
             let device_uid = device_uid.clone();
             let channel_name = setting.channel_name.clone();
@@ -286,7 +286,7 @@ impl ModeController {
             };
             scope.spawn(async move {
                 debug!("Applying RESET Mode Setting: {reset_setting:?} to device: {device_uid}");
-                if let Err(err) = settings_controller
+                if let Err(err) = engine
                     .set_reset(&device_uid, &channel_name)
                     .await
                 {
@@ -312,7 +312,7 @@ impl ModeController {
             {
                 // There are settings applied to a channel that the Mode doesn't contain.
                 // We reset these settings - as no setting in a Mode == default settings.
-                let settings_controller = Rc::clone(&self.settings_controller);
+                let engine = Rc::clone(&self.engine);
                 let config = Rc::clone(&self.config);
                 let device_uid = device_uid.clone();
                 let channel_name = saved_setting_channel_name.clone();
@@ -323,7 +323,7 @@ impl ModeController {
                 };
                 scope.spawn(async move {
                     debug!("Applying Mode Setting: {reset_setting:?} to device: {device_uid}");
-                    if let Err(err) = settings_controller
+                    if let Err(err) = engine
                         .set_reset(&device_uid, &channel_name)
                         .await
                     {
@@ -359,13 +359,13 @@ impl ModeController {
                     continue; // do not attempt to apply a setting for a disabled channel
                 }
             }
-            let settings_controller = Rc::clone(&self.settings_controller);
+            let engine = Rc::clone(&self.engine);
             let config = Rc::clone(&self.config);
             let device_uid = device_uid.clone();
             let setting = setting.clone();
             scope.spawn(async move {
                 debug!("Applying Mode Setting: {setting:?} to device: {device_uid}");
-                if let Err(err) = settings_controller
+                if let Err(err) = engine
                     .set_config_setting(&device_uid, &setting)
                     .await
                 {
