@@ -137,8 +137,7 @@ struct SpeedProfileData {
 }
 
 impl SpeedProfileData {
-    #[allow(clippy::borrowed_box)]
-    fn apply<'a>(&'a mut self, processor: &'a Box<dyn Processor>) -> &'a mut Self {
+    fn apply<'a>(&'a mut self, processor: &'a dyn Processor) -> &'a mut Self {
         if processor.is_applicable(self) {
             processor.process(self)
         } else {
