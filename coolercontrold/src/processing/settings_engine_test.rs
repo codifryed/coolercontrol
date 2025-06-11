@@ -248,4 +248,145 @@ mod tests {
         });
     }
 
+    #[test]
+    #[serial]
+    fn test_initial_application() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, settings_controller, config, set_speeds) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Set up a profile
+            let profile_uid = "profile123".to_string();
+            let profile = Profile {
+                uid: profile_uid.clone(),
+                name: "Test Profile".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile).unwrap();
+
+            // Schedule the profile
+            settings_controller
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                settings_controller.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Should have a speed applied immediately
+            assert_eq!(set_speeds.borrow().clone(), vec![75]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_safety_latch_fires() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, settings_controller, config, set_speeds) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Set up a profile
+            let profile_uid = "profile123".to_string();
+            let profile = Profile {
+                uid: profile_uid.clone(),
+                name: "Test Profile".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile).unwrap();
+
+            // Schedule the profile
+            settings_controller
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                // Process speeds many times
+                for _ in 0..32 {
+                    // Safety Latch fires after 30 secs (incl. poll-rate) have passed with no duty
+                    let mut status = Status::default();
+                    status.temps.push(TempStatus {
+                        name: temp_channel_name.clone(),
+                        temp: 50.,
+                    });
+                    device.borrow_mut().set_status(status);
+                    settings_controller.process_scheduled_speeds(scope);
+                }
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Only fires twice, once at start and once from safety latch
+            assert_eq!(set_speeds.borrow().clone(), vec![75, 75]);
+        });
+    }
 }
