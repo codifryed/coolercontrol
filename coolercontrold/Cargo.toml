@@ -22,7 +22,7 @@ io_uring = ["dep:tokio-uring"]
 log = "0.4.27"
 env_logger = "0.11.8"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.39", features = [
+clap = { version = "4.5.40", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.98"
@@ -47,7 +47,7 @@ async-trait = "0.1.88"
 axum = { version = "=0.7.9", features = ["multipart", "macros"] }
 # Axum-Extra held back as 0.10.0 has some breaking changes as well as Axum update above:
 axum-extra = { version = "=0.9.6", features = ["typed-header"] }
-tower-http = { version = "0.6.4", features = [
+tower-http = { version = "0.6.6", features = [
   "timeout",
   "trace",
   "limit",
@@ -70,7 +70,7 @@ aide = { version = "=0.13.5", features = [
   "axum-extra",
   "axum-multipart",
 ] }
-headers = "0.4.0"
+headers = "0.4.1"
 # >=0.9.0 w/ chrono04 doesn't look to be compatible with old aide/axum
 schemars = { version = "0.8.22", features = ["chrono"] }
 mime = "0.3.17"
@@ -84,7 +84,7 @@ hyper = { version = "1.6.0", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.13", default-features = false, features = [
+hyper-util = { version = "0.1.14", default-features = false, features = [
   "client",
   "http1",
   "tokio",
@@ -98,7 +98,7 @@ zbus = { version = "5.7.1", default-features = false, features = [
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-sysinfo = { version = "0.35.1", default-features = false, features = [
+sysinfo = { version = "0.35.2", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.41", features = [
@@ -117,11 +117,12 @@ psutil = { version = "5.2.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.104.1"
+# >=0.105.0 requires >Rust 1.82 (edition2024)
+nu-glob = "=0.104.1"
 # our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
 sha2 = "0.10.8"
-toml_edit = "0.22.26"
+toml_edit = "0.22.27"
 nix = { version = "0.30.1", default-features = false, features = [
   "user",
   "signal",
