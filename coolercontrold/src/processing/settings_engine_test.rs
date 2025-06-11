@@ -3,8 +3,8 @@ mod tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
-        ChannelInfo, Device, DeviceInfo, DeviceType, DeviceUID, SpeedOptions, Status, TempInfo,
-        TempStatus, UID,
+        ChannelInfo, Device, DeviceInfo, DeviceType, DeviceUID, SpeedOptions, Status, TempStatus,
+        UID,
     };
     use crate::processing::settings::SettingsController;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
@@ -108,44 +108,55 @@ mod tests {
         async fn reinitialize_devices(&self) {}
     }
 
+    fn setup_single_device() -> (
+        DeviceLock,
+        SettingsController,
+        Rc<Config>,
+        Rc<RefCell<Vec<u8>>>,
+    ) {
+        let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
+        let mut repos = Repositories::default();
+        let set_speeds = Rc::new(RefCell::new(Vec::new()));
+
+        // Create mock repository
+        let mock_repo = Rc::new(MockRepository {
+            device_type: DeviceType::Hwmon,
+            set_speeds: Rc::clone(&set_speeds),
+        });
+        repos.hwmon = Some(mock_repo);
+
+        let device = Rc::new(RefCell::new(Device::new(
+            "Test Device".to_string(),
+            DeviceType::Hwmon,
+            0,
+            None,
+            DeviceInfo::default(),
+            None,
+            1.0,
+        )));
+
+        let device_uid = device.borrow().uid.clone();
+        devices.insert(device_uid.clone(), Rc::clone(&device));
+
+        let all_devices = Rc::new(devices);
+        let all_repos = Rc::new(repos);
+        let config = Rc::new(Config::init_default_config().unwrap());
+        config.create_device_list(&all_devices);
+        let settings_controller =
+            SettingsController::new(all_devices, &all_repos, Rc::clone(&config));
+
+        (device, settings_controller, config, set_speeds)
+    }
+
     #[test]
     #[serial]
-    fn test_process_scheduled_speeds_multiple_calls() {
+    fn test_no_application_without_settings() {
         cc_fs::test_runtime(async {
-            // Setup test environment
-            let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
-            let mut repos = Repositories::default();
-            let set_speeds = Rc::new(RefCell::new(Vec::new()));
+            // Given
+            let (_device, settings_controller, _config, set_speeds) = setup_single_device();
 
-            // Create mock repository
-            let mock_repo = Rc::new(MockRepository {
-                device_type: DeviceType::Hwmon,
-                set_speeds: Rc::clone(&set_speeds),
-            });
-            repos.hwmon = Some(mock_repo);
-
-            // Create a test device
-            let device = Device::new(
-                "Test Device".to_string(),
-                DeviceType::Hwmon,
-                0,
-                None,
-                DeviceInfo::default(),
-                None,
-                1.0,
-            );
-            let device_uid = device.uid.clone();
-            devices.insert(device_uid, Rc::new(RefCell::new(device)));
-
-            // Create settings controller
-            let all_devices = Rc::new(devices);
-            let all_repos = Rc::new(repos);
-            let config = Rc::new(Config::init_default_config().unwrap());
-            let settings_controller = SettingsController::new(all_devices, &all_repos, config);
-
-            // Create scope for async operations
+            // When
             let scope_result = moro_local::async_scope!(|scope| {
-                // Process speeds multiple times
                 for _ in 0..3 {
                     settings_controller.process_scheduled_speeds(scope);
                 }
@@ -153,78 +164,43 @@ mod tests {
             })
             .await;
 
-            // Verify the number of speed updates
-            // Note: Haven't set any profiles, so 0 times set.
+            // Then
             assert!(scope_result.is_ok());
+            // Note: Haven't set any profiles, so none set
             assert_eq!(set_speeds.borrow().len(), 0);
         });
     }
 
     #[test]
-    fn test_process_scheduled_speeds_with_profile() {
+    #[serial]
+    fn test_simple_profile_speeds() {
         cc_fs::test_runtime(async {
-            // Setup test environment
-            let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
-            let mut repos = Repositories::default();
-            let set_speeds = Rc::new(RefCell::new(Vec::new()));
-
-            // Create mock repository
-            let mock_repo = Rc::new(MockRepository {
-                device_type: DeviceType::Hwmon,
-                set_speeds: Rc::clone(&set_speeds),
-            });
-            repos.hwmon = Some(mock_repo);
+            // Given
+            let (device, settings_controller, config, set_speeds) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let mut device_info = DeviceInfo::default();
             let fan_channel_name = "fan1".to_string();
-            device_info.channels.insert(
+            device.borrow_mut().info.channels.insert(
                 fan_channel_name.clone(),
                 ChannelInfo {
                     speed_options: Some(SpeedOptions {
-                        profiles_enabled: false, // for testing setting of internal profiles
                         manual_profiles_enabled: true,
                         fixed_enabled: true,
-                        max_duty: 100,
                         ..Default::default()
                     }),
                     ..Default::default()
                 },
             );
             let temp_channel_name = "temp1".to_string();
-            device_info.temps.insert(
-                temp_channel_name.clone(),
-                TempInfo {
-                    label: temp_channel_name.clone(),
-                    number: 1,
-                },
-            );
-            let mut device = Device::new(
-                "Test Device".to_string(),
-                DeviceType::Hwmon,
-                0,
-                None,
-                device_info,
-                None,
-                1.0,
-            );
             let mut status = Status::default();
             status.temps.push(TempStatus {
                 name: temp_channel_name.clone(),
                 temp: 100.0,
             });
-            device.initialize_status_history_with(status, 1.0);
-            let device_uid = device.uid.clone();
-            let device_rc = Rc::new(RefCell::new(device));
-            devices.insert(device_uid.clone(), Rc::clone(&device_rc));
-
-            // Create settings controller
-            let all_devices = Rc::new(devices);
-            let all_repos = Rc::new(repos);
-            let config = Rc::new(Config::init_default_config().unwrap());
-            config.create_device_list(&all_devices);
-            let settings_controller =
-                SettingsController::new(all_devices, &all_repos, Rc::clone(&config));
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
 
             // Set up a profile
             let profile_uid = "profile123".to_string();
@@ -247,7 +223,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            // Create scope for async loop operations
+            // When
             let scope_result = moro_local::async_scope!(|scope| {
                 let mut temp = 30.;
                 // Process speeds multiple times
@@ -257,7 +233,7 @@ mod tests {
                         name: temp_channel_name.clone(),
                         temp,
                     });
-                    device_rc.borrow_mut().set_status(status);
+                    device.borrow_mut().set_status(status);
                     settings_controller.process_scheduled_speeds(scope);
                     temp += 20.;
                 }
@@ -265,11 +241,11 @@ mod tests {
             })
             .await;
 
-            // Verify speed updates were applied
+            // Then
             assert!(scope_result.is_ok());
-            assert_eq!(set_speeds.borrow().len(), 3);
             // speeds from profile & default function
             assert_eq!(set_speeds.borrow().clone(), vec![50, 75, 100]);
         });
     }
+
 }
