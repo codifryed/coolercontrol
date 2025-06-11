@@ -18,8 +18,8 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::CCError;
 use crate::config::Config;
-use crate::modes::ModeController;
 use crate::engine::main::Engine;
+use crate::modes::ModeController;
 use crate::setting::{Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 use anyhow::Result;
@@ -167,9 +167,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine
-                        .profile_deleted(&profile_uid)
-                        .await?;
+                    self.engine.profile_deleted(&profile_uid).await?;
                     self.config.delete_profile(&profile_uid)?;
                     self.config.save_config_file().await?;
                     self.mode_controller.profile_deleted(&profile_uid).await
@@ -196,13 +194,7 @@ impl ProfileHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = ProfileActor::new(
-            all_devices,
-            receiver,
-            engine,
-            config,
-            mode_controller,
-        );
+        let actor = ProfileActor::new(all_devices, receiver, engine, config, mode_controller);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

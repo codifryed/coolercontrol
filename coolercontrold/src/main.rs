@@ -22,8 +22,8 @@ use std::time::Duration;
 use crate::alerts::AlertController;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
-use crate::modes::ModeController;
 use crate::engine::main::Engine;
+use crate::modes::ModeController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
@@ -47,10 +47,10 @@ mod api;
 mod cc_fs;
 mod config;
 mod device;
+mod engine;
 mod logger;
 mod main_loop;
 mod modes;
-mod engine;
 mod repositories;
 mod setting;
 mod sleep_listener;
@@ -111,18 +111,9 @@ fn main() -> Result<()> {
         let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        let engine = Rc::new(Engine::new(
-            all_devices.clone(),
-            &repos,
-            config.clone(),
-        ));
+        let engine = Rc::new(Engine::new(all_devices.clone(), &repos, config.clone()));
         let mode_controller = Rc::new(
-            ModeController::init(
-                config.clone(),
-                all_devices.clone(),
-                engine.clone(),
-            )
-            .await?,
+            ModeController::init(config.clone(), all_devices.clone(), engine.clone()).await?,
         );
 
         moro_local::async_scope!(|main_scope| -> Result<()> {

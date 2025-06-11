@@ -168,8 +168,7 @@ impl CustomSensorHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor =
-            CustomSensorActor::new(receiver, custom_sensors_repo, engine, config);
+        let actor = CustomSensorActor::new(receiver, custom_sensors_repo, engine, config);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

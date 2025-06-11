@@ -105,11 +105,7 @@ impl ModeController {
                 Ok(settings) => {
                     trace!("Settings for device: {uid} loaded from config file: {settings:?}");
                     for setting in &settings {
-                        if let Err(err) = self
-                            .engine
-                            .set_config_setting(uid, setting)
-                            .await
-                        {
+                        if let Err(err) = self.engine.set_config_setting(uid, setting).await {
                             error!("Error setting device setting: {err}");
                             all_successful = false;
                         }
@@ -286,10 +282,7 @@ impl ModeController {
             };
             scope.spawn(async move {
                 debug!("Applying RESET Mode Setting: {reset_setting:?} to device: {device_uid}");
-                if let Err(err) = engine
-                    .set_reset(&device_uid, &channel_name)
-                    .await
-                {
+                if let Err(err) = engine.set_reset(&device_uid, &channel_name).await {
                     error!("Error setting device setting: {err}");
                 }
                 config.set_device_setting(&device_uid, &reset_setting);
@@ -323,10 +316,7 @@ impl ModeController {
                 };
                 scope.spawn(async move {
                     debug!("Applying Mode Setting: {reset_setting:?} to device: {device_uid}");
-                    if let Err(err) = engine
-                        .set_reset(&device_uid, &channel_name)
-                        .await
-                    {
+                    if let Err(err) = engine.set_reset(&device_uid, &channel_name).await {
                         error!("Error resetting device setting for Mode: {err}");
                     }
                     config.set_device_setting(&device_uid, &reset_setting);
@@ -365,10 +355,7 @@ impl ModeController {
             let setting = setting.clone();
             scope.spawn(async move {
                 debug!("Applying Mode Setting: {setting:?} to device: {device_uid}");
-                if let Err(err) = engine
-                    .set_config_setting(&device_uid, &setting)
-                    .await
-                {
+                if let Err(err) = engine.set_config_setting(&device_uid, &setting).await {
                     error!("Error applying setting device setting for Mode: {err}");
                     return; // don't save setting if it wasn't successfully applied
                 }

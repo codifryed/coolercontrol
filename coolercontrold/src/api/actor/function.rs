@@ -109,9 +109,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
                 let result = async {
                     let function_uid = function.uid.clone();
                     self.config.update_function(function)?;
-                    self.engine
-                        .function_updated(&function_uid)
-                        .await;
+                    self.engine.function_updated(&function_uid).await;
                     self.config.save_config_file().await
                 }
                 .await;
@@ -123,9 +121,7 @@ impl ApiActor<FunctionMessage> for FunctionActor {
             } => {
                 let result = async {
                     self.config.delete_function(&function_uid)?;
-                    self.engine
-                        .function_deleted(&function_uid)
-                        .await;
+                    self.engine.function_deleted(&function_uid).await;
                     self.config.save_config_file().await
                 }
                 .await;

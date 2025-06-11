@@ -19,8 +19,8 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::devices::DeviceDto;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
-use crate::modes::ModeController;
 use crate::engine::main::Engine;
+use crate::modes::ModeController;
 use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
@@ -159,10 +159,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 channel_name,
                 respond_to,
             } => {
-                let response = self
-                    .engine
-                    .get_lcd_image(&device_uid, &channel_name)
-                    .await;
+                let response = self.engine.get_lcd_image(&device_uid, &channel_name).await;
                 let _ = respond_to.send(response);
             }
             DeviceMessage::DeviceImageProcess {
@@ -342,9 +339,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.engine
-                        .set_reset(&device_uid, &channel_name)
-                        .await?;
+                    self.engine.set_reset(&device_uid, &channel_name).await?;
                     let config_setting = Setting {
                         channel_name,
                         reset_to_default: Some(true),
@@ -395,13 +390,7 @@ impl DeviceHandle {
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = DeviceActor::new(
-            receiver,
-            all_devices,
-            engine,
-            modes_controller,
-            config,
-        );
+        let actor = DeviceActor::new(receiver, all_devices, engine, modes_controller, config);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }

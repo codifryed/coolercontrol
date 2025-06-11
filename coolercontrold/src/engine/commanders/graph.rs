@@ -23,12 +23,12 @@ use std::rc::Rc;
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::engine::main::ReposByType;
 use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::engine::processors::profiles::GraphProcessor;
-use crate::engine::main::ReposByType;
 use crate::engine::{
     utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
 };

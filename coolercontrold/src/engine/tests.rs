@@ -108,12 +108,7 @@ mod tests {
         async fn reinitialize_devices(&self) {}
     }
 
-    fn setup_single_device() -> (
-        DeviceLock,
-        Engine,
-        Rc<Config>,
-        Rc<RefCell<Vec<u8>>>,
-    ) {
+    fn setup_single_device() -> (DeviceLock, Engine, Rc<Config>, Rc<RefCell<Vec<u8>>>) {
         let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
         let mut repos = Repositories::default();
         let set_speeds = Rc::new(RefCell::new(Vec::new()));
@@ -142,8 +137,7 @@ mod tests {
         let all_repos = Rc::new(repos);
         let config = Rc::new(Config::init_default_config().unwrap());
         config.create_device_list(&all_devices);
-        let engine =
-            Engine::new(all_devices, &all_repos, Rc::clone(&config));
+        let engine = Engine::new(all_devices, &all_repos, Rc::clone(&config));
 
         (device, engine, config, set_speeds)
     }

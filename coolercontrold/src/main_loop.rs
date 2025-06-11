@@ -19,8 +19,8 @@
 use crate::alerts::AlertController;
 use crate::api::actor::StatusHandle;
 use crate::config::Config;
-use crate::modes::ModeController;
 use crate::engine::main::Engine;
+use crate::modes::ModeController;
 use crate::sleep_listener::SleepListener;
 use crate::Repos;
 use anyhow::{Context, Result};
@@ -173,11 +173,7 @@ fn fire_lcd_update<'s>(
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
     if lcd_update_trigger.not_triggered()
-        || engine
-            .lcd_commander
-            .scheduled_settings
-            .borrow()
-            .is_empty()
+        || engine.lcd_commander.scheduled_settings.borrow().is_empty()
     {
         return;
     }
