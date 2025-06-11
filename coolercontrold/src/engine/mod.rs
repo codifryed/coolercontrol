@@ -24,8 +24,8 @@ use crate::device::{ChannelName, DeviceUID, Duty, Temp};
 use crate::setting::{Function, ProfileUID, TempSource};
 
 mod commanders;
-pub mod processors;
 pub mod main;
+pub mod processors;
 mod tests;
 mod utils;
 
@@ -137,7 +137,8 @@ struct SpeedProfileData {
 }
 
 impl SpeedProfileData {
-    fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
+    #[allow(clippy::borrowed_box)]
+    fn apply<'a>(&'a mut self, processor: &'a Box<dyn Processor>) -> &'a mut Self {
         if processor.is_applicable(self) {
             processor.process(self)
         } else {

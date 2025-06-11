@@ -39,12 +39,12 @@ use log::{debug, error};
 use moro_local::Scope;
 
 struct ProcessorCollection {
-    fun_safety_latch: Rc<dyn Processor>,
-    fun_identity_pre: Rc<dyn Processor>,
-    fun_ema_pre: Rc<dyn Processor>,
-    fun_std_pre: Rc<dyn Processor>,
-    graph_proc: Rc<dyn Processor>,
-    fun_duty_thresh_post: Rc<dyn Processor>,
+    fun_safety_latch: Box<dyn Processor>,
+    fun_identity_pre: Box<dyn Processor>,
+    fun_ema_pre: Box<dyn Processor>,
+    fun_std_pre: Box<dyn Processor>,
+    graph_proc: Box<dyn Processor>,
+    fun_duty_thresh_post: Box<dyn Processor>,
 }
 
 /// This is the commander for Graph Profile Processing.
@@ -69,12 +69,12 @@ impl GraphProfileCommander {
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
             processors: ProcessorCollection {
-                fun_safety_latch: Rc::new(FunctionSafetyLatchProcessor::new()),
-                fun_identity_pre: Rc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
-                fun_ema_pre: Rc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
-                fun_std_pre: Rc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
-                graph_proc: Rc::new(GraphProcessor::new()),
-                fun_duty_thresh_post: Rc::new(FunctionDutyThresholdPostProcessor::new()),
+                fun_safety_latch: Box::new(FunctionSafetyLatchProcessor::new()),
+                fun_identity_pre: Box::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
+                fun_ema_pre: Box::new(FunctionEMAPreProcessor::new(all_devices.clone())),
+                fun_std_pre: Box::new(FunctionStandardPreProcessor::new(all_devices.clone())),
+                graph_proc: Box::new(GraphProcessor::new()),
+                fun_duty_thresh_post: Box::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
             process_output_cache: RefCell::new(HashMap::new()),
