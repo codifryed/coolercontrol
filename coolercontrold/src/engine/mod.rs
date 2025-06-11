@@ -26,7 +26,7 @@ use crate::setting::{Function, ProfileUID, TempSource};
 mod commanders;
 pub mod processors;
 pub mod main;
-mod settings_engine_test;
+mod tests;
 mod utils;
 
 #[derive(Debug, Clone)]
