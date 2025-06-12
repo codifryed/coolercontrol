@@ -36,7 +36,7 @@ mod engine_tests {
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
     use serial_test::serial;
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::rc::Rc;
 
@@ -44,6 +44,7 @@ mod engine_tests {
     struct MockRepository {
         device_type: DeviceType,
         set_speeds: Rc<RefCell<Vec<u8>>>,
+        should_fail: Rc<Cell<bool>>,
     }
 
     #[async_trait(?Send)]
@@ -88,6 +89,9 @@ mod engine_tests {
             _channel_name: &str,
             speed_fixed: u8,
         ) -> Result<()> {
+            if self.should_fail.get() {
+                return Err(anyhow!("Simulated failure to apply speed"));
+            }
             self.set_speeds.borrow_mut().push(speed_fixed);
             Ok(())
         }
@@ -132,15 +136,23 @@ mod engine_tests {
         async fn reinitialize_devices(&self) {}
     }
 
-    fn setup_single_device() -> (DeviceLock, Engine, Rc<Config>, Rc<RefCell<Vec<u8>>>) {
+    fn setup_single_device() -> (
+        DeviceLock,
+        Engine,
+        Rc<Config>,
+        Rc<RefCell<Vec<u8>>>,
+        Rc<Cell<bool>>,
+    ) {
         let mut devices: HashMap<DeviceUID, DeviceLock> = HashMap::new();
         let mut repos = Repositories::default();
         let set_speeds = Rc::new(RefCell::new(Vec::new()));
+        let should_fail = Rc::new(Cell::new(false));
 
         // Create mock repository
         let mock_repo = Rc::new(MockRepository {
             device_type: DeviceType::Hwmon,
             set_speeds: Rc::clone(&set_speeds),
+            should_fail: Rc::clone(&should_fail),
         });
         repos.hwmon = Some(mock_repo);
 
@@ -163,7 +175,7 @@ mod engine_tests {
         config.create_device_list(&all_devices);
         let engine = Engine::new(all_devices, &all_repos, Rc::clone(&config));
 
-        (device, engine, config, set_speeds)
+        (device, engine, config, set_speeds, should_fail)
     }
 
     #[test]
@@ -171,7 +183,7 @@ mod engine_tests {
     fn test_no_application_without_settings() {
         cc_fs::test_runtime(async {
             // Given
-            let (_device, engine, _config, set_speeds) = setup_single_device();
+            let (_device, engine, _config, set_speeds, _should_fail) = setup_single_device();
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
@@ -194,7 +206,7 @@ mod engine_tests {
     fn test_simple_profile_speeds() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, engine, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -271,7 +283,7 @@ mod engine_tests {
     fn test_initial_application() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, engine, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -337,7 +349,7 @@ mod engine_tests {
     fn test_safety_latch_fires() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, engine, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -413,7 +425,7 @@ mod engine_tests {
     fn test_duty_thresholds() {
         cc_fs::test_runtime(async {
             // Given
-            let (device, engine, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -525,7 +537,7 @@ mod engine_tests {
         // currently applied duty.
         cc_fs::test_runtime(async {
             // Given
-            let (device, engine, config, set_speeds) = setup_single_device();
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
             let fan_channel_name = "fan1".to_string();
@@ -610,6 +622,318 @@ mod engine_tests {
             assert!(scope_result.is_ok());
             // Only fires twice, once at start and once from safety latch
             assert_eq!(set_speeds.borrow().clone(), vec![50, 53]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_multiple_channel_profiles() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, config, set_speeds, _) = setup_single_device();
+
+            // Create a test device with multiple temperature sensors & fans
+            let fan1_channel = "fan1".to_string();
+            let fan2_channel = "fan2".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan1_channel.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            device.borrow_mut().info.channels.insert(
+                fan2_channel.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+
+            let temp1_channel = "temp1".to_string();
+            let temp2_channel = "temp2".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp1_channel.clone(),
+                temp: 50.0,
+            });
+            status.temps.push(TempStatus {
+                name: temp2_channel.clone(),
+                temp: 60.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Set up two different profiles
+            let profile1_uid = "profile1".to_string();
+            let profile1 = Profile {
+                uid: profile1_uid.clone(),
+                name: "Profile 1".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp1_channel.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile1).unwrap();
+
+            let profile2_uid = "profile2".to_string();
+            let profile2 = Profile {
+                uid: profile2_uid.clone(),
+                name: "Profile 2".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(40.0, 60), (60.0, 80), (80.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp2_channel.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile2).unwrap();
+
+            // Schedule both profiles
+            engine
+                .set_profile(&device_uid, &fan1_channel, &profile1_uid)
+                .await
+                .unwrap();
+            engine
+                .set_profile(&device_uid, &fan2_channel, &profile2_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                engine.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Both fans should have speeds applied based on their respective profiles
+            // Note: due to hashmap usage, fan order is non-deterministic
+            assert!(
+                set_speeds.borrow().clone() == vec![80, 75]
+                    || set_speeds.borrow().clone() == vec![75, 80]
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_profile_switching() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, config, set_speeds, _) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Set up two profiles
+            let profile1_uid = "profile1".to_string();
+            let profile1 = Profile {
+                uid: profile1_uid.clone(),
+                name: "Profile 1".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile1).unwrap();
+
+            let profile2_uid = "profile2".to_string();
+            let profile2 = Profile {
+                uid: profile2_uid.clone(),
+                name: "Profile 2".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 30), (50.0, 50), (70.0, 70)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile2).unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                // Start with profile 1
+                engine
+                    .set_profile(&device_uid, &fan_channel_name, &profile1_uid)
+                    .await
+                    .unwrap();
+                engine.process_scheduled_speeds(scope);
+
+                // Switch to profile 2
+                engine
+                    .set_profile(&device_uid, &fan_channel_name, &profile2_uid)
+                    .await
+                    .unwrap();
+                engine.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Should see speeds from both profiles
+            assert_eq!(set_speeds.borrow().clone(), vec![75, 50]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_invalid_profile_handling() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, _config, set_speeds, _) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let device_uid = device.borrow().uid.clone();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                // Try to set a non-existent profile
+                let result = engine
+                    .set_profile(&device_uid, &fan_channel_name, &"nonexistent".to_string())
+                    .await;
+                engine.process_scheduled_speeds(scope);
+                result
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_err());
+            assert_eq!(set_speeds.borrow().len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_device_failure_handling() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, config, set_speeds, should_fail) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Set up a profile
+            let profile_uid = "profile123".to_string();
+            let profile = Profile {
+                uid: profile_uid.clone(),
+                name: "Test Profile".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                ..Default::default()
+            };
+            config.set_profile(profile).unwrap();
+
+            // Schedule the profile
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                // First run - should succeed
+                engine.process_scheduled_speeds(scope);
+
+                // Simulate device failure & a new duty to set
+                let mut status = Status::default();
+                status.temps.push(TempStatus {
+                    name: temp_channel_name.clone(),
+                    temp: 30.,
+                });
+                device.borrow_mut().set_status(status);
+                should_fail.set(true);
+                engine.process_scheduled_speeds(scope);
+
+                // Reset failure state & engine should retry to apply
+                should_fail.set(false);
+                engine.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Should see speeds from successful attempts only
+            assert_eq!(set_speeds.borrow().clone(), vec![75, 50]);
         });
     }
 }
