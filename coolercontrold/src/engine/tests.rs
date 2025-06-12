@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod engine_tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
