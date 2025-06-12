@@ -1,3 +1,25 @@
+/*
+ * CoolerControl - monitor and control your cooling and other devices
+ * Copyright (c) 2021-2025  Guy Boldon, Eren Simsek and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// ! These are somewhat "integration" tests for the control engine of CoolerControl.
+// ! The setup and tests are meant to cover the main control functions as well as the
+// ! interaction of the various processors and functions together.
+
 #[cfg(test)]
 mod engine_tests {
     use crate::cc_fs;
@@ -8,7 +30,9 @@ mod engine_tests {
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
-    use crate::setting::{LcdSettings, LightingSettings, Profile, ProfileType, TempSource};
+    use crate::setting::{
+        Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, TempSource,
+    };
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
     use serial_test::serial;
@@ -381,6 +405,211 @@ mod engine_tests {
             assert!(scope_result.is_ok());
             // Only fires twice, once at start and once from safety latch
             assert_eq!(set_speeds.borrow().clone(), vec![75, 75]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_duty_thresholds() {
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, config, set_speeds) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Setup Function with duty thresholds
+            let function_uid = "function123".to_string();
+            let function = Function {
+                uid: function_uid.clone(),
+                name: "Function1".to_string(),
+                f_type: FunctionType::Identity,
+                duty_minimum: 5,
+                duty_maximum: 10,
+                ..Default::default()
+            };
+            config.set_function(function).unwrap();
+
+            // Set up a profile
+            let profile_uid = "profile123".to_string();
+            let profile = Profile {
+                uid: profile_uid.clone(),
+                name: "Test Profile".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (100.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                function_uid,
+                ..Default::default()
+            };
+            config.set_profile(profile).unwrap();
+
+            // Schedule the profile
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                // temp change to test the minimum duty threshold
+                let mut temp = 30.;
+                // takes 5 iterations to hit 35 degrees,
+                // which then breaks the minimum duty threshold of 5%.
+                for _ in 0..5 {
+                    let mut status = Status::default();
+                    status.temps.push(TempStatus {
+                        name: temp_channel_name.clone(),
+                        temp,
+                    });
+                    device.borrow_mut().set_status(status);
+                    engine.process_scheduled_speeds(scope);
+                    temp += 1.;
+                }
+                // temp change to test the maximum duty threshold
+                temp = 50.;
+                // it takes 4 iterations using the maximum duty threshold of 10%,
+                // to hit the target duty of 95%. The rest of the iterations are just to confirm
+                // that the duty stays there.
+                for i in 0..20 {
+                    let mut status = Status::default();
+                    status.temps.push(TempStatus {
+                        name: temp_channel_name.clone(),
+                        temp,
+                    });
+                    device.borrow_mut().set_status(status);
+                    engine.process_scheduled_speeds(scope);
+                    if i < 3 {
+                        temp += 15.;
+                    }
+                }
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Only fires twice, once at start and once from safety latch
+            assert_eq!(set_speeds.borrow().clone(), vec![50, 55, 65, 75, 85, 95]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_safety_latch_fires_despite_duty_thresholds() {
+        // This tests that when the safety latch fires, that it applies whatever duty should be set.
+        // This also helps to make sure the target duty is hit, even if it's 1% away from the
+        // currently applied duty.
+        cc_fs::test_runtime(async {
+            // Given
+            let (device, engine, config, set_speeds) = setup_single_device();
+
+            // Create a test device with temperature sensor & fan
+            let fan_channel_name = "fan1".to_string();
+            device.borrow_mut().info.channels.insert(
+                fan_channel_name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        manual_profiles_enabled: true,
+                        fixed_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+            let temp_channel_name = "temp1".to_string();
+            let mut status = Status::default();
+            status.temps.push(TempStatus {
+                name: temp_channel_name.clone(),
+                temp: 50.0,
+            });
+            device
+                .borrow_mut()
+                .initialize_status_history_with(status, 1.0);
+            let device_uid = device.borrow().uid.clone();
+
+            // Setup Function with duty thresholds
+            let function_uid = "function123".to_string();
+            let function = Function {
+                uid: function_uid.clone(),
+                name: "Function1".to_string(),
+                f_type: FunctionType::Identity,
+                duty_minimum: 5,
+                duty_maximum: 10,
+                ..Default::default()
+            };
+            config.set_function(function).unwrap();
+
+            // Set up a profile
+            let profile_uid = "profile123".to_string();
+            let profile = Profile {
+                uid: profile_uid.clone(),
+                name: "Test Profile".to_string(),
+                p_type: ProfileType::Graph,
+                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (100.0, 100)]),
+                temp_source: Some(TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                }),
+                function_uid,
+                ..Default::default()
+            };
+            config.set_profile(profile).unwrap();
+
+            // Schedule the profile
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // When
+            let scope_result = moro_local::async_scope!(|scope| {
+                let mut temp = 30.;
+                // A small temp change brings the duty to just under the 5% min threshold.
+                // When the safety latch fires, it should be for a <5% duty change.
+                for i in 0..32 {
+                    let mut status = Status::default();
+                    status.temps.push(TempStatus {
+                        name: temp_channel_name.clone(),
+                        temp,
+                    });
+                    device.borrow_mut().set_status(status);
+                    engine.process_scheduled_speeds(scope);
+                    if i == 0 {
+                        temp += 2.;
+                    }
+                }
+                Ok(())
+            })
+            .await;
+
+            // Then
+            assert!(scope_result.is_ok());
+            // Only fires twice, once at start and once from safety latch
+            assert_eq!(set_speeds.borrow().clone(), vec![50, 53]);
         });
     }
 }
