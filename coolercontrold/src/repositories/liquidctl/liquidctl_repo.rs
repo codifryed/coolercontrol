@@ -104,8 +104,8 @@ impl LiquidctlRepo {
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
                 None => {
-                    warn!(
-                        "Liquidctl Device is currently not supported: {:?}. If support is desired, please create a feature request.",
+                    info!(
+                        "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
                         device_response.device_type
                     );
                     continue;
