@@ -26,7 +26,7 @@ use yata::methods::TMA;
 use yata::prelude::Method;
 
 use crate::device::Temp;
-use crate::processing::{NormalizedGraphProfile, Processor, SpeedProfileData};
+use crate::engine::{NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileUID};
 use crate::AllDevices;
@@ -620,7 +620,7 @@ fn log_missing_temp_sensor(data: &SpeedProfileData) {
 
 #[cfg(test)]
 mod tests {
-    use crate::processing::processors::functions::FunctionEMAPreProcessor;
+    use crate::engine::processors::functions::FunctionEMAPreProcessor;
 
     #[test]
     #[allow(clippy::float_cmp)]

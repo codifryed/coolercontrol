@@ -23,13 +23,13 @@ use std::rc::Rc;
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
-use crate::processing::processors::functions::{
+use crate::engine::main::ReposByType;
+use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
-use crate::processing::processors::profiles::GraphProcessor;
-use crate::processing::settings::ReposByType;
-use crate::processing::{
+use crate::engine::processors::profiles::GraphProcessor;
+use crate::engine::{
     utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
 };
 use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
@@ -39,12 +39,12 @@ use log::{debug, error};
 use moro_local::Scope;
 
 struct ProcessorCollection {
-    fun_safety_latch: Rc<dyn Processor>,
-    fun_identity_pre: Rc<dyn Processor>,
-    fun_ema_pre: Rc<dyn Processor>,
-    fun_std_pre: Rc<dyn Processor>,
-    graph_proc: Rc<dyn Processor>,
-    fun_duty_thresh_post: Rc<dyn Processor>,
+    fun_safety_latch: FunctionSafetyLatchProcessor,
+    fun_identity_pre: FunctionIdentityPreProcessor,
+    fun_ema_pre: FunctionEMAPreProcessor,
+    fun_std_pre: FunctionStandardPreProcessor,
+    graph_proc: GraphProcessor,
+    fun_duty_thresh_post: FunctionDutyThresholdPostProcessor,
 }
 
 /// This is the commander for Graph Profile Processing.
@@ -69,12 +69,12 @@ impl GraphProfileCommander {
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
             processors: ProcessorCollection {
-                fun_safety_latch: Rc::new(FunctionSafetyLatchProcessor::new()),
-                fun_identity_pre: Rc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
-                fun_ema_pre: Rc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
-                fun_std_pre: Rc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
-                graph_proc: Rc::new(GraphProcessor::new()),
-                fun_duty_thresh_post: Rc::new(FunctionDutyThresholdPostProcessor::new()),
+                fun_safety_latch: FunctionSafetyLatchProcessor::new(),
+                fun_identity_pre: FunctionIdentityPreProcessor::new(all_devices.clone()),
+                fun_ema_pre: FunctionEMAPreProcessor::new(all_devices.clone()),
+                fun_std_pre: FunctionStandardPreProcessor::new(all_devices.clone()),
+                graph_proc: GraphProcessor::new(),
+                fun_duty_thresh_post: FunctionDutyThresholdPostProcessor::new(),
             },
             all_devices,
             process_output_cache: RefCell::new(HashMap::new()),

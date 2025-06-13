@@ -36,9 +36,9 @@ use crate::api::actor::{
     ModeHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
 use crate::config::Config;
+use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
-use crate::processing::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::{AllDevices, Repos, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
@@ -84,7 +84,7 @@ type Port = u16;
 pub async fn start_server<'s>(
     all_devices: AllDevices,
     repos: Repos,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     config: Rc<Config>,
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     modes_controller: Rc<ModeController>,
@@ -114,7 +114,7 @@ pub async fn start_server<'s>(
     let app_state = create_app_state(
         all_devices,
         repos,
-        &settings_controller,
+        &engine,
         config,
         &custom_sensors_repo,
         &modes_controller,
@@ -305,7 +305,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
 fn create_app_state<'s>(
     all_devices: AllDevices,
     repos: Repos,
-    settings_controller: &Rc<SettingsController>,
+    engine: &Rc<Engine>,
     config: Rc<Config>,
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
     modes_controller: &Rc<ModeController>,
@@ -319,7 +319,7 @@ fn create_app_state<'s>(
     let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
-        settings_controller.clone(),
+        engine.clone(),
         modes_controller.clone(),
         config.clone(),
         cancel_token.clone(),
@@ -327,21 +327,21 @@ fn create_app_state<'s>(
     );
     let profile_handle = ProfileHandle::new(
         all_devices.clone(),
-        settings_controller.clone(),
+        engine.clone(),
         config.clone(),
         modes_controller.clone(),
         cancel_token.clone(),
         main_scope,
     );
     let function_handle = FunctionHandle::new(
-        settings_controller.clone(),
+        engine.clone(),
         config.clone(),
         cancel_token.clone(),
         main_scope,
     );
     let custom_sensor_handle = CustomSensorHandle::new(
         custom_sensors_repo.clone(),
-        settings_controller.clone(),
+        engine.clone(),
         config.clone(),
         cancel_token.clone(),
         main_scope,

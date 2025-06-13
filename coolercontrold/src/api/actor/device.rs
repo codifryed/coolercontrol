@@ -19,8 +19,8 @@ use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::devices::DeviceDto;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
+use crate::engine::main::Engine;
 use crate::modes::ModeController;
-use crate::processing::settings::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
@@ -34,7 +34,7 @@ use tokio_util::sync::CancellationToken;
 struct DeviceActor {
     receiver: mpsc::Receiver<DeviceMessage>,
     all_devices: AllDevices,
-    settings_controller: Rc<SettingsController>,
+    engine: Rc<Engine>,
     modes_controller: Rc<ModeController>,
     config: Rc<Config>,
 }
@@ -117,14 +117,14 @@ impl DeviceActor {
     pub fn new(
         receiver: mpsc::Receiver<DeviceMessage>,
         all_devices: AllDevices,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
     ) -> Self {
         Self {
             receiver,
             all_devices,
-            settings_controller,
+            engine,
             modes_controller,
             config,
         }
@@ -144,7 +144,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
     async fn handle_message(&mut self, msg: DeviceMessage) {
         match msg {
             DeviceMessage::ThinkPadFanControl { enable, respond_to } => {
-                let response = self.settings_controller.thinkpad_fan_control(&enable).await;
+                let response = self.engine.thinkpad_fan_control(&enable).await;
                 let _ = respond_to.send(response);
             }
             DeviceMessage::DevicesGet { respond_to } => {
@@ -159,10 +159,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 channel_name,
                 respond_to,
             } => {
-                let response = self
-                    .settings_controller
-                    .get_lcd_image(&device_uid, &channel_name)
-                    .await;
+                let response = self.engine.get_lcd_image(&device_uid, &channel_name).await;
                 let _ = respond_to.send(response);
             }
             DeviceMessage::DeviceImageProcess {
@@ -172,7 +169,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let response = self
-                    .settings_controller
+                    .engine
                     .process_lcd_image(&device_uid, &channel_name, &mut files)
                     .await;
                 let _ = respond_to.send(response);
@@ -188,11 +185,11 @@ impl ApiActor<DeviceMessage> for DeviceActor {
             } => {
                 let result = async {
                     let processed_image_data = self
-                        .settings_controller
+                        .engine
                         .process_lcd_image(&device_uid, &channel_name, &mut files)
                         .await?;
                     let image_path = self
-                        .settings_controller
+                        .engine
                         .save_lcd_image(&processed_image_data.0, processed_image_data.1)
                         .await?;
                     let lcd_settings = LcdSettings {
@@ -204,7 +201,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         temp_source: None,
                         colors: Vec::with_capacity(0),
                     };
-                    self.settings_controller
+                    self.engine
                         .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
                         .await?;
                     let config_setting = Setting {
@@ -232,7 +229,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .set_fixed_speed(&device_uid, &channel_name, duty)
                         .await?;
                     let config_settings = Setting {
@@ -255,7 +252,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .set_profile(&device_uid, &channel_name, &profile_uid)
                         .await?;
                     let config_setting = Setting {
@@ -277,7 +274,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .set_lcd(&device_uid, &channel_name, &lcd_settings)
                         .await?;
                     let config_setting = Setting {
@@ -299,7 +296,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .set_lighting(&device_uid, &channel_name, &lighting_settings)
                         .await?;
                     let config_setting = Setting {
@@ -321,7 +318,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
+                    self.engine
                         .set_pwm_mode(&device_uid, &channel_name, pwm_mode)
                         .await?;
                     let config_setting = Setting {
@@ -342,9 +339,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.settings_controller
-                        .set_reset(&device_uid, &channel_name)
-                        .await?;
+                    self.engine.set_reset(&device_uid, &channel_name).await?;
                     let config_setting = Setting {
                         channel_name,
                         reset_to_default: Some(true),
@@ -388,20 +383,14 @@ pub struct DeviceHandle {
 impl DeviceHandle {
     pub fn new<'s>(
         all_devices: AllDevices,
-        settings_controller: Rc<SettingsController>,
+        engine: Rc<Engine>,
         modes_controller: Rc<ModeController>,
         config: Rc<Config>,
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = DeviceActor::new(
-            receiver,
-            all_devices,
-            settings_controller,
-            modes_controller,
-            config,
-        );
+        let actor = DeviceActor::new(receiver, all_devices, engine, modes_controller, config);
         main_scope.spawn(run_api_actor(actor, cancel_token));
         Self { sender }
     }
