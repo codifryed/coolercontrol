@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.2.1] - 2025-06-13
+
+### Added
+
+- Improved security and quality checks for the GitLab CI Pipeline (!312)
+
+### Changed
+
+- Improved test coverage for main control engine (!315)
+- Updated copyright year (!316)
+
+### Fixed
+
+- Disabled support for AsusRyujin liquidctl driver (#457)
+
+### Security
+
+- Vulnerability issue with dependency (!314)
+
 ## [2.2.0] - 2025-05-31
 
 ### Added
