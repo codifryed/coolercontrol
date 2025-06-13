@@ -25,13 +25,14 @@ mod engine_tests {
     use crate::cc_fs;
     use crate::config::Config;
     use crate::device::{
-        ChannelInfo, Device, DeviceInfo, DeviceType, DeviceUID, SpeedOptions, Status, TempStatus,
-        UID,
+        ChannelInfo, ChannelName, Device, DeviceInfo, DeviceType, DeviceUID, Duty, SpeedOptions,
+        Status, Temp, TempName, TempStatus, UID,
     };
     use crate::engine::main::Engine;
     use crate::repositories::repository::{DeviceList, DeviceLock, Repositories, Repository};
     use crate::setting::{
-        Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, TempSource,
+        Function, FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
+        ProfileUID, TempSource,
     };
     use anyhow::{anyhow, Result};
     use async_trait::async_trait;
@@ -39,6 +40,7 @@ mod engine_tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::rc::Rc;
+    use uuid::Uuid;
 
     // Mock repository for testing
     struct MockRepository {
@@ -178,6 +180,141 @@ mod engine_tests {
         (device, engine, config, set_speeds, should_fail)
     }
 
+    fn create_controllable_fan(device: &DeviceLock, fan_name: &str) -> ChannelName {
+        let fan_channel_name = fan_name.to_string();
+        device.borrow_mut().info.channels.insert(
+            fan_channel_name.clone(),
+            ChannelInfo {
+                speed_options: Some(SpeedOptions {
+                    manual_profiles_enabled: true,
+                    fixed_enabled: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        fan_channel_name
+    }
+
+    fn create_temp(device: &DeviceLock, temp_name: &str) -> TempName {
+        let temp_channel_name = temp_name.to_string();
+        let mut status = Status::default();
+        status.temps.push(TempStatus {
+            name: temp_channel_name.clone(),
+            temp: 20.0,
+        });
+        device
+            .borrow_mut()
+            .initialize_status_history_with(status, 1.0);
+        temp_channel_name
+    }
+
+    fn create_two_temps(
+        device: &DeviceLock,
+        temp1_name: &str,
+        temp2_name: &str,
+    ) -> (TempName, TempName) {
+        let temp1_channel_name = temp1_name.to_string();
+        let temp2_channel_name = temp2_name.to_string();
+        let mut status = Status::default();
+        status.temps.push(TempStatus {
+            name: temp1_channel_name.clone(),
+            temp: 20.0,
+        });
+        status.temps.push(TempStatus {
+            name: temp2_channel_name.clone(),
+            temp: 20.0,
+        });
+        device
+            .borrow_mut()
+            .initialize_status_history_with(status, 1.0);
+        (temp1_channel_name, temp2_channel_name)
+    }
+
+    fn create_graph_profile_with_temp_source(
+        config: &Config,
+        speed_profile: Vec<(Temp, Duty)>,
+        temp_source: TempSource,
+    ) -> ProfileUID {
+        let profile_uid = Uuid::new_v4().to_string();
+        let profile = Profile {
+            uid: profile_uid.clone(),
+            name: "Test Profile".to_string(),
+            p_type: ProfileType::Graph,
+            speed_profile: Some(speed_profile),
+            temp_source: Some(temp_source),
+            ..Default::default()
+        };
+        config.set_profile(profile).unwrap();
+        profile_uid
+    }
+
+    fn create_graph_profile_with_temp_source_and_function(
+        config: &Config,
+        speed_profile: Vec<(Temp, Duty)>,
+        temp_source: TempSource,
+        function_uid: &FunctionUID,
+    ) -> ProfileUID {
+        let profile_uid = Uuid::new_v4().to_string();
+        let profile = Profile {
+            uid: profile_uid.clone(),
+            name: "Test Profile".to_string(),
+            p_type: ProfileType::Graph,
+            speed_profile: Some(speed_profile),
+            temp_source: Some(temp_source),
+            function_uid: function_uid.clone(),
+            ..Default::default()
+        };
+        config.set_profile(profile).unwrap();
+        profile_uid
+    }
+
+    fn create_identity_function(
+        config: &Config,
+        duty_minimum: u8,
+        duty_maximum: u8,
+    ) -> FunctionUID {
+        let function_uid = Uuid::new_v4().to_string();
+        let function = Function {
+            uid: function_uid.clone(),
+            name: "Function1".to_string(),
+            f_type: FunctionType::Identity,
+            duty_minimum,
+            duty_maximum,
+            ..Default::default()
+        };
+        config.set_function(function).unwrap();
+        function_uid
+    }
+
+    fn set_temp_status(device: &DeviceLock, temp_name: &TempName, temp: Temp) {
+        let mut status = Status::default();
+        status.temps.push(TempStatus {
+            name: temp_name.clone(),
+            temp,
+        });
+        device.borrow_mut().set_status(status);
+    }
+
+    fn set_two_temp_status(
+        device: &DeviceLock,
+        temp1_name: &TempName,
+        temp1: Temp,
+        temp2_name: &TempName,
+        temp2: Temp,
+    ) {
+        let mut status = Status::default();
+        status.temps.push(TempStatus {
+            name: temp1_name.clone(),
+            temp: temp1,
+        });
+        status.temps.push(TempStatus {
+            name: temp2_name.clone(),
+            temp: temp2,
+        });
+        device.borrow_mut().set_status(status);
+    }
+
     #[test]
     #[serial]
     fn test_no_application_without_settings() {
@@ -209,43 +346,19 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 100.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+            );
 
             // Schedule the profile
             engine
@@ -258,12 +371,7 @@ mod engine_tests {
                 let mut temp = 30.;
                 // Process speeds multiple times
                 for _ in 0..3 {
-                    let mut status = Status::default();
-                    status.temps.push(TempStatus {
-                        name: temp_channel_name.clone(),
-                        temp,
-                    });
-                    device.borrow_mut().set_status(status);
+                    set_temp_status(&device, &temp_channel_name, temp);
                     engine.process_scheduled_speeds(scope);
                     temp += 20.;
                 }
@@ -286,43 +394,19 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+            );
 
             // Schedule the profile
             engine
@@ -332,6 +416,7 @@ mod engine_tests {
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
+                set_temp_status(&device, &temp_channel_name, 50.);
                 engine.process_scheduled_speeds(scope);
                 Ok(())
             })
@@ -352,43 +437,19 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+            );
 
             // Schedule the profile
             engine
@@ -401,12 +462,7 @@ mod engine_tests {
                 // Process speeds many times
                 for _ in 0..32 {
                     // Safety Latch fires after 30 secs (incl. poll-rate) have passed with no duty
-                    let mut status = Status::default();
-                    status.temps.push(TempStatus {
-                        name: temp_channel_name.clone(),
-                        temp: 50.,
-                    });
-                    device.borrow_mut().set_status(status);
+                    set_temp_status(&device, &temp_channel_name, 50.);
                     engine.process_scheduled_speeds(scope);
                 }
                 Ok(())
@@ -428,56 +484,23 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Setup Function with duty thresholds
-            let function_uid = "function123".to_string();
-            let function = Function {
-                uid: function_uid.clone(),
-                name: "Function1".to_string(),
-                f_type: FunctionType::Identity,
-                duty_minimum: 5,
-                duty_maximum: 10,
-                ..Default::default()
-            };
-            config.set_function(function).unwrap();
+            let function_uid = create_identity_function(&config, 5, 10);
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (100.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (100.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                function_uid,
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+                &function_uid,
+            );
 
             // Schedule the profile
             engine
@@ -492,12 +515,7 @@ mod engine_tests {
                 // takes 5 iterations to hit 35 degrees,
                 // which then breaks the minimum duty threshold of 5%.
                 for _ in 0..5 {
-                    let mut status = Status::default();
-                    status.temps.push(TempStatus {
-                        name: temp_channel_name.clone(),
-                        temp,
-                    });
-                    device.borrow_mut().set_status(status);
+                    set_temp_status(&device, &temp_channel_name, temp);
                     engine.process_scheduled_speeds(scope);
                     temp += 1.;
                 }
@@ -507,12 +525,7 @@ mod engine_tests {
                 // to hit the target duty of 95%. The rest of the iterations are just to confirm
                 // that the duty stays there.
                 for i in 0..20 {
-                    let mut status = Status::default();
-                    status.temps.push(TempStatus {
-                        name: temp_channel_name.clone(),
-                        temp,
-                    });
-                    device.borrow_mut().set_status(status);
+                    set_temp_status(&device, &temp_channel_name, temp);
                     engine.process_scheduled_speeds(scope);
                     if i < 3 {
                         temp += 15.;
@@ -540,56 +553,23 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Setup Function with duty thresholds
-            let function_uid = "function123".to_string();
-            let function = Function {
-                uid: function_uid.clone(),
-                name: "Function1".to_string(),
-                f_type: FunctionType::Identity,
-                duty_minimum: 5,
-                duty_maximum: 10,
-                ..Default::default()
-            };
-            config.set_function(function).unwrap();
+            let function_uid = create_identity_function(&config, 5, 10);
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (100.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (100.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                function_uid,
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+                &function_uid,
+            );
 
             // Schedule the profile
             engine
@@ -603,12 +583,7 @@ mod engine_tests {
                 // A small temp change brings the duty to just under the 5% min threshold.
                 // When the safety latch fires, it should be for a <5% duty change.
                 for i in 0..32 {
-                    let mut status = Status::default();
-                    status.temps.push(TempStatus {
-                        name: temp_channel_name.clone(),
-                        temp,
-                    });
-                    device.borrow_mut().set_status(status);
+                    set_temp_status(&device, &temp_channel_name, temp);
                     engine.process_scheduled_speeds(scope);
                     if i == 0 {
                         temp += 2.;
@@ -633,75 +608,30 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _) = setup_single_device();
 
             // Create a test device with multiple temperature sensors & fans
-            let fan1_channel = "fan1".to_string();
-            let fan2_channel = "fan2".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan1_channel.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            device.borrow_mut().info.channels.insert(
-                fan2_channel.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
+            let fan1_channel = create_controllable_fan(&device, "fan1");
+            let fan2_channel = create_controllable_fan(&device, "fan2");
 
-            let temp1_channel = "temp1".to_string();
-            let temp2_channel = "temp2".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp1_channel.clone(),
-                temp: 50.0,
-            });
-            status.temps.push(TempStatus {
-                name: temp2_channel.clone(),
-                temp: 60.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let (temp1_channel, temp2_channel) = create_two_temps(&device, "temp1", "temp2");
             let device_uid = device.borrow().uid.clone();
 
             // Set up two different profiles
-            let profile1_uid = "profile1".to_string();
-            let profile1 = Profile {
-                uid: profile1_uid.clone(),
-                name: "Profile 1".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile1_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp1_channel.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile1).unwrap();
+                },
+            );
 
-            let profile2_uid = "profile2".to_string();
-            let profile2 = Profile {
-                uid: profile2_uid.clone(),
-                name: "Profile 2".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(40.0, 60), (60.0, 80), (80.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile2_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(40.0, 60), (60.0, 80), (80.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp2_channel.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile2).unwrap();
+                },
+            );
 
             // Schedule both profiles
             engine
@@ -715,6 +645,7 @@ mod engine_tests {
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
+                set_two_temp_status(&device, &temp1_channel, 50., &temp2_channel, 60.);
                 engine.process_scheduled_speeds(scope);
                 Ok(())
             })
@@ -739,60 +670,31 @@ mod engine_tests {
             let (device, engine, config, set_speeds, _) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Set up two profiles
-            let profile1_uid = "profile1".to_string();
-            let profile1 = Profile {
-                uid: profile1_uid.clone(),
-                name: "Profile 1".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile1_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile1).unwrap();
-
-            let profile2_uid = "profile2".to_string();
-            let profile2 = Profile {
-                uid: profile2_uid.clone(),
-                name: "Profile 2".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 30), (50.0, 50), (70.0, 70)]),
-                temp_source: Some(TempSource {
+                },
+            );
+            let profile2_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 30), (50.0, 50), (70.0, 70)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile2).unwrap();
+                },
+            );
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
+                set_temp_status(&device, &temp_channel_name, 50.);
                 // Start with profile 1
                 engine
                     .set_profile(&device_uid, &fan_channel_name, &profile1_uid)
@@ -823,20 +725,7 @@ mod engine_tests {
         cc_fs::test_runtime(async {
             // Given
             let (device, engine, _config, set_speeds, _) = setup_single_device();
-
-            // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
             let device_uid = device.borrow().uid.clone();
 
             // When
@@ -864,43 +753,19 @@ mod engine_tests {
             let (device, engine, config, set_speeds, should_fail) = setup_single_device();
 
             // Create a test device with temperature sensor & fan
-            let fan_channel_name = "fan1".to_string();
-            device.borrow_mut().info.channels.insert(
-                fan_channel_name.clone(),
-                ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        manual_profiles_enabled: true,
-                        fixed_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            );
-            let temp_channel_name = "temp1".to_string();
-            let mut status = Status::default();
-            status.temps.push(TempStatus {
-                name: temp_channel_name.clone(),
-                temp: 50.0,
-            });
-            device
-                .borrow_mut()
-                .initialize_status_history_with(status, 1.0);
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
             // Set up a profile
-            let profile_uid = "profile123".to_string();
-            let profile = Profile {
-                uid: profile_uid.clone(),
-                name: "Test Profile".to_string(),
-                p_type: ProfileType::Graph,
-                speed_profile: Some(vec![(30.0, 50), (50.0, 75), (70.0, 100)]),
-                temp_source: Some(TempSource {
+            let profile_uid = create_graph_profile_with_temp_source(
+                &config,
+                vec![(30.0, 50), (50.0, 75), (70.0, 100)],
+                TempSource {
                     device_uid: device_uid.clone(),
                     temp_name: temp_channel_name.clone(),
-                }),
-                ..Default::default()
-            };
-            config.set_profile(profile).unwrap();
+                },
+            );
 
             // Schedule the profile
             engine
@@ -910,16 +775,12 @@ mod engine_tests {
 
             // When
             let scope_result = moro_local::async_scope!(|scope| {
+                set_temp_status(&device, &temp_channel_name, 50.);
                 // First run - should succeed
                 engine.process_scheduled_speeds(scope);
 
                 // Simulate device failure & a new duty to set
-                let mut status = Status::default();
-                status.temps.push(TempStatus {
-                    name: temp_channel_name.clone(),
-                    temp: 30.,
-                });
-                device.borrow_mut().set_status(status);
+                set_temp_status(&device, &temp_channel_name, 30.);
                 should_fail.set(true);
                 engine.process_scheduled_speeds(scope);
 
