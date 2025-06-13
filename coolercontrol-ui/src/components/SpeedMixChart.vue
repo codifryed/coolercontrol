@@ -171,7 +171,8 @@ const profileTitle = (): string => {
 }
 const option = {
     title: {
-        show: true,
+        // probably no longer needed due to the control wizard:
+        show: false,
         text: profileTitle(),
         link: props.profile.uid !== '0' ? '' : undefined,
         target: 'self',
