@@ -37,10 +37,7 @@ impl CoolitSupport {
 
 impl DeviceSupport for CoolitSupport {
     fn supported_driver(&self) -> BaseDriver {
-        // BaseDriver::AsusRyujin
-        // Support for this driver has issues and the hwmon driver is currently preferred.
-        // see: https://gitlab.com/coolercontrol/coolercontrol/-/issues/457
-        BaseDriver::NotSupported
+        BaseDriver::Coolit
     }
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
