@@ -96,15 +96,22 @@ fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
         .unwrap()
         .chain(glob(&glob_paths.temp_centos, Uninterruptible).unwrap())
         .collect::<Vec<GlobResult>>();
-    base_paths.append(
-        &mut temp_glob_results
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|path| path.is_absolute())
-            .map(|path| path.parent().unwrap().to_path_buf())
-            .collect::<Vec<PathBuf>>(),
-    );
+    let fan_glob_results = glob(&glob_paths.fan, Uninterruptible)
+        .unwrap()
+        .chain(glob(&glob_paths.fan_centos, Uninterruptible).unwrap())
+        .collect::<Vec<GlobResult>>();
+    base_paths.append(&mut convert_glob_results_to_valid_paths(temp_glob_results));
+    base_paths.append(&mut convert_glob_results_to_valid_paths(fan_glob_results));
     deduplicate_and_sort_paths(base_paths)
+}
+
+fn convert_glob_results_to_valid_paths(glob_results: Vec<GlobResult>) -> Vec<PathBuf> {
+    glob_results
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|path| path.is_absolute())
+        .map(|path| path.parent().unwrap().to_path_buf())
+        .collect()
 }
 
 fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
