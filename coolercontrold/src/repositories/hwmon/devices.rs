@@ -420,7 +420,7 @@ mod tests {
             .unwrap()
             .to_owned()
             .replace("hwmon1", "hwmon*")
-            + "temp*";
+            + "temp*_input";
         let glob_pwm_centos = hwmon_path_centos
             .to_str()
             .unwrap()
@@ -432,7 +432,7 @@ mod tests {
             .unwrap()
             .to_owned()
             .replace("hwmon2", "hwmon*")
-            + "temp*";
+            + "temp*_input";
         HwmonDeviceContext {
             test_dir,
             hwmon_path,
@@ -517,7 +517,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
-                &ctx.hwmon_path.join("temp1"),
+                &ctx.hwmon_path.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -540,7 +540,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
-                ctx.hwmon_path_centos.join("temp1"),
+                ctx.hwmon_path_centos.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -569,7 +569,7 @@ mod tests {
             .await
             .unwrap();
             cc_fs::write(
-                ctx.hwmon_path.join("temp1"),
+                ctx.hwmon_path.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -599,7 +599,7 @@ mod tests {
             .await
             .unwrap();
             cc_fs::write(
-                ctx.hwmon_path_centos.join("temp1"),
+                ctx.hwmon_path_centos.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -651,11 +651,11 @@ mod tests {
         let ctx = setup();
         cc_fs::test_runtime(async {
             // given:
-            cc_fs::write(ctx.hwmon_path.join("temp1"), b"70000".to_vec())
+            cc_fs::write(ctx.hwmon_path.join("temp1_input"), b"70000".to_vec())
                 .await
                 .unwrap();
 
-            cc_fs::write(ctx.hwmon_path_centos.join("temp1"), b"70000".to_vec())
+            cc_fs::write(ctx.hwmon_path_centos.join("temp1_input"), b"70000".to_vec())
                 .await
                 .unwrap();
 
