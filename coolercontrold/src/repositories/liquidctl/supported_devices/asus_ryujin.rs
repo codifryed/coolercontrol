@@ -28,7 +28,12 @@ use std::collections::HashMap;
 pub struct AsusRyujinSupport;
 // asus_ryujin.py
 
+#[deprecated(
+    since = "2.2.1",
+    note = "HWMon driver is preferred. Will likely be removed in the future."
+)]
 impl AsusRyujinSupport {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {}
     }
@@ -36,7 +41,13 @@ impl AsusRyujinSupport {
 
 impl DeviceSupport for AsusRyujinSupport {
     fn supported_driver(&self) -> BaseDriver {
-        BaseDriver::AsusRyujin
+        // BaseDriver::AsusRyujin
+        // This liquidctl driver currently doesn't support reading from the hwmon driver,
+        // and so has problems when used in conjunction with that driver. The hwmon driver also
+        // offers feature-parity, and the workarounds needed in CC for control are non-intuitive.
+        // For these reasons, the hwmon driver is preferred.
+        // see: https://gitlab.com/coolercontrol/coolercontrol/-/issues/457
+        BaseDriver::NotSupported
     }
 
     #[allow(clippy::too_many_lines)]
