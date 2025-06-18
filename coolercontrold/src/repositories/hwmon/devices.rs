@@ -28,11 +28,16 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 
+// controllable fans:
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
+// temps:
 const GLOB_TEMP_PATH: &str = "/sys/class/hwmon/hwmon*/temp*_input";
+// rpm-read-only fans:
+const GLOB_FAN_PATH: &str = "/sys/class/hwmon/hwmon*/fan*_input";
 // CentOS has an intermediate /device directory:
 const GLOB_PWM_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/pwm*";
 const GLOB_TEMP_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/temp*_input";
+const GLOB_FAN_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/fan*_input";
 const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
@@ -48,6 +53,8 @@ struct GlobPaths {
     pwm_centos: String,
     temp: String,
     temp_centos: String,
+    fan: String,
+    fan_centos: String,
 }
 
 impl Default for GlobPaths {
@@ -57,6 +64,8 @@ impl Default for GlobPaths {
             pwm_centos: GLOB_PWM_PATH_CENTOS.to_string(),
             temp: GLOB_TEMP_PATH.to_string(),
             temp_centos: GLOB_TEMP_PATH_CENTOS.to_string(),
+            fan: GLOB_FAN_PATH.to_string(),
+            fan_centos: GLOB_FAN_PATH_CENTOS.to_string(),
         }
     }
 }
@@ -87,15 +96,22 @@ fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
         .unwrap()
         .chain(glob(&glob_paths.temp_centos, Uninterruptible).unwrap())
         .collect::<Vec<GlobResult>>();
-    base_paths.append(
-        &mut temp_glob_results
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|path| path.is_absolute())
-            .map(|path| path.parent().unwrap().to_path_buf())
-            .collect::<Vec<PathBuf>>(),
-    );
+    let fan_glob_results = glob(&glob_paths.fan, Uninterruptible)
+        .unwrap()
+        .chain(glob(&glob_paths.fan_centos, Uninterruptible).unwrap())
+        .collect::<Vec<GlobResult>>();
+    base_paths.append(&mut convert_glob_results_to_valid_paths(temp_glob_results));
+    base_paths.append(&mut convert_glob_results_to_valid_paths(fan_glob_results));
     deduplicate_and_sort_paths(base_paths)
+}
+
+fn convert_glob_results_to_valid_paths(glob_results: Vec<GlobResult>) -> Vec<PathBuf> {
+    glob_results
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|path| path.is_absolute())
+        .map(|path| path.parent().unwrap().to_path_buf())
+        .collect()
 }
 
 fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -420,7 +436,13 @@ mod tests {
             .unwrap()
             .to_owned()
             .replace("hwmon1", "hwmon*")
-            + "temp*";
+            + "temp*_input";
+        let glob_fan = hwmon_path
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon1", "hwmon*")
+            + "fan*_input";
         let glob_pwm_centos = hwmon_path_centos
             .to_str()
             .unwrap()
@@ -432,7 +454,13 @@ mod tests {
             .unwrap()
             .to_owned()
             .replace("hwmon2", "hwmon*")
-            + "temp*";
+            + "temp*_input";
+        let glob_fan_centos = hwmon_path_centos
+            .to_str()
+            .unwrap()
+            .to_owned()
+            .replace("hwmon2", "hwmon*")
+            + "fan*_input";
         HwmonDeviceContext {
             test_dir,
             hwmon_path,
@@ -442,6 +470,8 @@ mod tests {
                 pwm_centos: glob_pwm_centos,
                 temp: glob_temp,
                 temp_centos: glob_temp_centos,
+                fan: glob_fan,
+                fan_centos: glob_fan_centos,
             },
         }
     }
@@ -517,7 +547,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
-                &ctx.hwmon_path.join("temp1"),
+                &ctx.hwmon_path.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -540,8 +570,54 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             cc_fs::write(
-                ctx.hwmon_path_centos.join("temp1"),
+                ctx.hwmon_path_centos.join("temp1_input"),
                 b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_fan_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                &ctx.hwmon_path.join("fan1_input"),
+                b"1200".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn find_fan_device_centos() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("fan1_input"),
+                b"1200".to_vec(), // temp
             )
             .await
             .unwrap();
@@ -569,7 +645,7 @@ mod tests {
             .await
             .unwrap();
             cc_fs::write(
-                ctx.hwmon_path.join("temp1"),
+                ctx.hwmon_path.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -585,7 +661,35 @@ mod tests {
         });
     }
 
-    // #[test_context(HwmonDeviceContext)]
+    #[test]
+    #[serial]
+    fn find_fan_centos_and_temp_device() {
+        let ctx = setup();
+        cc_fs::test_runtime(async {
+            // given:
+            cc_fs::write(
+                ctx.hwmon_path_centos.join("fan1_input"),
+                b"1200".to_vec(), // duty
+            )
+            .await
+            .unwrap();
+            cc_fs::write(
+                ctx.hwmon_path.join("temp1_input"),
+                b"70000".to_vec(), // temp
+            )
+            .await
+            .unwrap();
+
+            // when:
+            let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+            // then:
+            teardown(&ctx);
+            assert!(!hwmon_paths.is_empty());
+            assert_eq!(hwmon_paths.len(), 2);
+        });
+    }
+
     #[test]
     #[serial]
     fn find_pwm_and_temp_centos_device() {
@@ -599,7 +703,7 @@ mod tests {
             .await
             .unwrap();
             cc_fs::write(
-                ctx.hwmon_path_centos.join("temp1"),
+                ctx.hwmon_path_centos.join("temp1_input"),
                 b"70000".to_vec(), // temp
             )
             .await
@@ -651,11 +755,11 @@ mod tests {
         let ctx = setup();
         cc_fs::test_runtime(async {
             // given:
-            cc_fs::write(ctx.hwmon_path.join("temp1"), b"70000".to_vec())
+            cc_fs::write(ctx.hwmon_path.join("temp1_input"), b"70000".to_vec())
                 .await
                 .unwrap();
 
-            cc_fs::write(ctx.hwmon_path_centos.join("temp1"), b"70000".to_vec())
+            cc_fs::write(ctx.hwmon_path_centos.join("temp1_input"), b"70000".to_vec())
                 .await
                 .unwrap();
 
