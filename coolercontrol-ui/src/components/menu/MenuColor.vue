@@ -22,6 +22,7 @@ import 'element-plus/es/components/color-picker/style/css'
 import { Color, UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { onMounted, ref, Ref } from 'vue'
+import { v4 as uuidV4 } from 'uuid'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
@@ -41,6 +42,7 @@ const settingsStore = useSettingsStore()
 const currentColor: Ref<Color> = ref(props.color)
 const { t } = useI18n()
 
+const wrapperId: string = `cw-${uuidV4()}`
 const setNewColor = (newColor: Color | null): void => {
     if (newColor == null) {
         settingsStore.allUIDeviceSettings
@@ -73,6 +75,20 @@ onMounted(async () => {
     for (const el of picker_ok_elements) {
         el.textContent = t('common.ok')
     }
+
+    // This handles an edge case where clicking the color button to close the color-picker
+    // dropdown will get the hover menu pop-up stuck.
+    const pickerElement = document.querySelector(`#${wrapperId} .el-color-dropdown`)
+    if (pickerElement) {
+        const observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (_mutationRecord) {
+                if (!pickerElement.checkVisibility()) {
+                    emit('open', false)
+                }
+            })
+        })
+        observer.observe(pickerElement, { attributes: true, attributeFilter: ['style'] })
+    }
 })
 </script>
 
@@ -81,7 +97,7 @@ onMounted(async () => {
         class="rounded-lg w-8 h-8 p-2 !ml-[-1px] text-center justify-center items-center flex"
         v-tooltip.top="{ value: t('layout.menu.tooltips.chooseColor') }"
     >
-        <div class="color-wrapper">
+        <div class="color-wrapper" :id="wrapperId">
             <el-color-picker
                 :teleported="false"
                 v-model="currentColor"
