@@ -60,7 +60,8 @@ make dev
 - `"tailwindcss-primeui": "^0.4.0"` breaks our original Primevue tailwind implementation
 - `"@types/node": "^20.17.51"` for max compat with older distros
 - `"tailwindcss": "^3.4.17",` the upgrade to 4.x looks to be significant work
-- `"vue-tsc": "2.2.4"` breaks some tests.
+- `"vue-tsc": "2.2.4"` > breaks some tests.
+- `"element-plus": "2.9.11",` > breaks the behavior and position of the hover color buttons
 
 ## Formatting
 
