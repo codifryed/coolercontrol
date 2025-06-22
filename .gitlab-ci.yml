@@ -99,6 +99,8 @@ gemnasium-python-dependency_scanning:
 
 test_all:
   stage: test
+  tags:
+    - saas-linux-large-amd64
   <<: [*cache_template, *main_image_template]
   rules:
     # This allows us to run a single job for MR branches that are pushed to, and allow these tests
@@ -156,6 +158,8 @@ build_appimages:
   image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
   # This merge request rule looks ridiculous, but is needed
@@ -192,6 +196,8 @@ build_deb_bookworm:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
   rules:
@@ -242,6 +248,8 @@ build_ubuntu:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
   rules:
@@ -308,6 +316,8 @@ test_appimages:
 
 test_deb_bookworm:
   stage: test_packages
+  tags:
+    - saas-linux-large-amd64
   image: amd64/debian:bookworm
   dependencies:
     - build_deb_bookworm
@@ -327,6 +337,8 @@ test_deb_bookworm:
 
 test_ubuntu_22.04:
   stage: test_packages
+  tags:
+    - saas-linux-large-amd64
   image: ubuntu:jammy
   dependencies:
     - build_ubuntu
@@ -346,6 +358,8 @@ test_ubuntu_22.04:
 
 test_ubuntu_latest:
   stage: test_packages
+  tags:
+    - saas-linux-large-amd64
   image: ubuntu:rolling
   dependencies:
     - build_ubuntu
