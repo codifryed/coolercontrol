@@ -589,7 +589,10 @@ pub async fn set_pwm_duty(
     cc_fs::write_string(&pwm_path, pwm_value.to_string())
         .await
         .map_err(|err| {
-            anyhow!("Unable to set PWM value {pwm_value} for {pwm_path:?} Reason: {err}")
+            anyhow!(
+                "Unable to set PWM value {pwm_value} for {} Reason: {err}",
+                pwm_path.display()
+            )
         })
 }
 
