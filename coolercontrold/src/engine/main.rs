@@ -209,7 +209,7 @@ impl Engine {
         }
         .inspect(|()| {
             info!(
-                "Successfully applied:: {} | {channel_name} |  Profile: {}",
+                "Successfully applied:: {} | {channel_name} | Profile: {}",
                 self.all_devices.get(device_uid).unwrap().borrow().name,
                 profile.name
             );
