@@ -608,7 +608,6 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        debug!("Applying HWMON device: {device_uid} channel: {channel_name}; Manual Control: 1");
         fans::set_pwm_enable(
             fans::PWM_ENABLE_MANUAL_VALUE,
             &hwmon_driver.path,
@@ -640,21 +639,23 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        if speed_fixed == 100
-            && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
-            && self.config.get_settings()?.thinkpad_full_speed
-        {
-            fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
-        } else {
-            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
-                        hwmon_driver.name
-                    )
-                })
+        if hwmon_driver.name == devices::THINKPAD_DEVICE_NAME {
+            return fans::thinkpad::apply_speed_fixed(
+                &self.config,
+                hwmon_driver,
+                channel_info,
+                speed_fixed,
+            )
+            .await;
         }
+        fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                    hwmon_driver.name
+                )
+            })
     }
 
     async fn apply_setting_speed_profile(

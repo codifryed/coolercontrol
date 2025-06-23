@@ -151,7 +151,7 @@ impl Default for LcdCarouselSettings {
 
 /// General Settings for `CoolerControl`
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
     pub no_init: bool,
