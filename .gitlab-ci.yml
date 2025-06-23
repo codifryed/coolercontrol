@@ -190,7 +190,7 @@ build_appimages:
     expire_in: 5 days
 
 ####################################### aarch64 build assets (Ubuntu 22.04)
-build_appimages:
+build_arm:
   image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
