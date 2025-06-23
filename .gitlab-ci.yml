@@ -162,8 +162,6 @@ build_appimages:
     - saas-linux-large-amd64
   needs:
     - compile_artifacts
-  # This merge request rule looks ridiculous, but is needed
-  #  as merge_request triggers for pipelines are disabled by default
   rules:
     - if: $CI_PIPELINE_SOURCE
   before_script:
