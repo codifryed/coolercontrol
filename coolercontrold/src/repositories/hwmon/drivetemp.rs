@@ -149,10 +149,10 @@ async fn drive_power_state(dev_path: &Path) -> Result<PowerState> {
     // low level kernel ioctl
     unsafe {
         query[0] = ATA_CHECKPOWERMODE;
-        if libc::ioctl(fd, IOCTL_DRIVE_CMD, query.as_mut_ptr()) != 0 {
+        if libc::ioctl(fd, IOCTL_DRIVE_CMD.try_into().unwrap(), query.as_mut_ptr()) != 0 {
             // Try the retired command if the current one failed
             query[0] = ATA_CHECKPOWERMODE_RETIRED;
-            if libc::ioctl(fd, IOCTL_DRIVE_CMD, query.as_mut_ptr()) != 0 {
+            if libc::ioctl(fd, IOCTL_DRIVE_CMD.try_into().unwrap(), query.as_mut_ptr()) != 0 {
                 return Err(anyhow!("Not a Block Device File"));
             }
         }
