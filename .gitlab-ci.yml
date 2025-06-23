@@ -189,6 +189,44 @@ build_appimages:
       - assets-built/coolercontrol-ui-vendor.tzst
     expire_in: 5 days
 
+####################################### aarch64 build assets (Ubuntu 22.04)
+build_appimages:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  needs:
+    - test_all
+    #- compile_artifacts
+  rules:
+    #- if: $CI_PIPELINE_SOURCE
+    # testing on push:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  before_script:
+    #- cat $GPG_KEY | gpg --batch --import
+    # makes it non-interactive
+    #- echo $GPG_PHRASE | gpg --batch --always-trust --yes --passphrase-fd 0 --pinentry-mode=loopback -s $(mktemp)
+    #- python3 --version
+    - cargo --version
+    - rustc --version
+    - npm --version
+    - node --version
+    #- cmake --version
+  script:
+    - make build-daemon
+    - make assets-daemon
+    - make assets-ui
+  artifacts:
+    paths:
+      - assets-built/coolercontrold
+      - assets-built/coolercontrold-vendor.tzst
+      - assets-built/coolercontrol-ui-vendor.tzst
+    expire_in: 5 days
+
+
 ####################################### Debian >=BookWorm Base Package
 build_deb_bookworm:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
