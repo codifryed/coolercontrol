@@ -412,70 +412,6 @@ fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
-// deprecated:
-// We need to verify that setting this option is indeed supported (per pwm channel)
-//  0 = DC mode, 1 = PWM Mode. Not every device may have this option.
-// async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) -> bool {
-//     let current_pwm_mode = cc_fs::read_sysfs(base_path.join(format_pwm_mode!(channel_number)))
-//         .await
-//         .inspect_err(|_| debug!("PWM Mode not found for fan #{channel_number} from {base_path:?}"))
-//         .ok()
-//         .and_then(|mode_str| {
-//             mode_str
-//                 .trim()
-//                 .parse::<u8>()
-//                 .inspect_err(|_| error!("PWM Mode is not an integer"))
-//                 .ok()
-//         });
-//     if let Some(pwm_mode) = current_pwm_mode {
-//         let dc_mode_supported = cc_fs::write(
-//             base_path.join(format_pwm_mode!(channel_number)),
-//             b"0".to_vec(),
-//         )
-//         .await
-//         .is_ok();
-//         let pwm_mode_supported = cc_fs::write(
-//             base_path.join(format_pwm_mode!(channel_number)),
-//             b"1".to_vec(),
-//         )
-//         .await
-//         .is_ok();
-//         if let Err(err) = cc_fs::write_string(
-//             base_path.join(format_pwm_mode!(channel_number)),
-//             pwm_mode.to_string(),
-//         )
-//         .await
-//         {
-//             info!(
-//                 "PWM Modes are not writable: original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
-//                 &pwm_mode, base_path, channel_number, err
-//             );
-//         }
-//         if dc_mode_supported && pwm_mode_supported {
-//             return true;
-//         }
-//     }
-//     false
-// }
-
-// deprecated:
-// pub async fn set_pwm_mode(
-//     base_path: &Path,
-//     channel_info: &HwmonChannelInfo,
-//     pwm_mode: Option<u8>,
-// ) -> Result<()> {
-//     if channel_info.pwm_mode_supported {
-//         if let Some(pwm_mode) = pwm_mode {
-//             cc_fs::write_string(
-//                 base_path.join(format_pwm_mode!(channel_info.number)),
-//                 pwm_mode.to_string(),
-//             )
-//             .await?;
-//         }
-//     }
-//     Ok(())
-// }
-
 pub async fn set_pwm_enable_to_default(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
@@ -812,68 +748,6 @@ mod tests {
         });
     }
 
-    // #[test]
-    // #[serial]
-    // fn test_set_pwm_mode() {
-    //     cc_fs::test_runtime(async {
-    //         let ctx = setup();
-    //         // given:
-    //         let test_base_path = &ctx.test_base_path;
-    //         cc_fs::write(
-    //             test_base_path.join("pwm1_mode"),
-    //             b"1".to_vec(), // duty
-    //         )
-    //         .await
-    //         .unwrap();
-    //         let channel_info = HwmonChannelInfo {
-    //             hwmon_type: HwmonChannelType::Fan,
-    //             number: 1,
-    //             pwm_enable_default: None,
-    //             name: String::new(),
-    //             label: None,
-    //             pwm_mode_supported: true,
-    //             pwm_writable: true,
-    //         };
-    //
-    //         // when:
-    //         let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, Some(2)).await;
-    //
-    //         // then:
-    //         let current_pwm_mode = cc_fs::read_sysfs(&test_base_path.join("pwm1_mode"))
-    //             .await
-    //             .unwrap();
-    //         teardown(&ctx);
-    //         assert!(pwm_mode_result.is_ok());
-    //         assert_eq!(current_pwm_mode, "2");
-    //     });
-    // }
-
-    // #[test]
-    // #[serial]
-    // fn test_set_pwm_mode_not_enabled() {
-    //     cc_fs::test_runtime(async {
-    //         let ctx = setup();
-    //         // given:
-    //         let test_base_path = &ctx.test_base_path;
-    //         let channel_info = HwmonChannelInfo {
-    //             hwmon_type: HwmonChannelType::Fan,
-    //             number: 1,
-    //             pwm_enable_default: None,
-    //             name: String::new(),
-    //             label: None,
-    //             pwm_mode_supported: false,
-    //             pwm_writable: true,
-    //         };
-    //
-    //         // when:
-    //         let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, None).await;
-    //
-    //         // then:
-    //         teardown(&ctx);
-    //         assert!(pwm_mode_result.is_ok());
-    //     });
-    // }
-
     #[test]
     #[serial]
     fn test_set_pwm_enable_to_default() {
@@ -890,7 +764,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: true,
+                pwm_mode_supported: false,
                 pwm_writable: true,
             };
 
@@ -920,7 +794,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: true,
+                pwm_mode_supported: false,
                 pwm_writable: true,
             };
 
