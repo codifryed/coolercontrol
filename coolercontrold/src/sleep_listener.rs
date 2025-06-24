@@ -17,7 +17,7 @@
  */
 
 use anyhow::Result;
-use log::{error, info};
+use log::{info, warn};
 use moro_local::Scope;
 use std::cell::Cell;
 use std::ops::Not;
@@ -40,7 +40,7 @@ impl<'s> SleepListener {
         if conn_result.is_err() {
             // See issue:
             // https://gitlab.com/coolercontrol/coolercontrol/-/issues/264
-            error!("Could not connect to DBUS, sleeping listener will not work!");
+            warn!("Could not connect to DBUS, sleeping listener will not work!");
             let deaf_listener = Self {
                 preparing_to_sleep: Rc::new(Cell::new(false)),
                 resuming: Rc::new(Cell::new(false)),
