@@ -55,8 +55,9 @@ mod repositories;
 mod setting;
 mod sleep_listener;
 
-const LOG_ENV: &str = "COOLERCONTROL_LOG";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+const ENV_LOG: &str = "COOLERCONTROL_LOG";
+const ENV_CC_LOG: &str = "CC_LOG";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;

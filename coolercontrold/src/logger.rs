@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{cc_fs, exit_successfully, Args, LOG_ENV, VERSION};
+use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::Logger;
@@ -38,7 +38,7 @@ const NEW_LOG_CHANNEL_CAP: usize = 2;
 pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
-    } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
+    } else if let Ok(log_lvl) = std::env::var(ENV_CC_LOG).or_else(|_| std::env::var(ENV_LOG)) {
         LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
     } else {
         LevelFilter::Info
@@ -161,7 +161,12 @@ impl CCLogger {
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
-        let log_filter = env_logger::Builder::from_env(LOG_ENV)
+        let env_log_name = if std::env::var(ENV_CC_LOG).is_ok() {
+            ENV_CC_LOG
+        } else {
+            ENV_LOG
+        };
+        let log_filter = env_logger::Builder::from_env(env_log_name)
             .filter_level(max_level)
             .filter_module("zbus", lib_log_level)
             .filter_module("tracing", lib_disabled_level)
