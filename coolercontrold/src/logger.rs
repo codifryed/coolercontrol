@@ -53,6 +53,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         OS:\t\t{}\n\
         Host:\t{}\n\
         Kernel:\t{}\n\
+        Arch:\t{}\n\
         Board Manufacturer:\t{}\n\
         Board Name:\t\t{}\n\
         Board Version:\t{}\n\
@@ -63,6 +64,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         sysinfo::System::long_os_version().unwrap_or_default(),
         sysinfo::System::host_name().unwrap_or_default(),
         sysinfo::System::kernel_version().unwrap_or_default(),
+        sysinfo::System::cpu_arch(),
         get_dmi_system_info("board_vendor").await,
         get_dmi_system_info("board_name").await,
         get_dmi_system_info("board_version").await,
