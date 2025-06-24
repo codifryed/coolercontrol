@@ -522,7 +522,7 @@ impl Repository for CustomSensorsRepo {
                 driver_info: DriverInfo {
                     drv_type: DriverType::CoolerControl,
                     name: Some("CustomSensors".to_string()),
-                    version: Some(VERSION.unwrap_or("unknown").to_owned()),
+                    version: Some(VERSION.to_string()),
                     locations: Vec::new(),
                 },
                 ..Default::default()

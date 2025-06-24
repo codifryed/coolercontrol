@@ -86,7 +86,7 @@ impl ApiActor<HealthMessage> for HealthActor {
                         // bytes to MB rounded to double precision.
                         ((p.memory() as f64 / 1024. / 1024.) * 100.).round() / 100.
                     });
-                    let version = VERSION.unwrap_or_default().to_string();
+                    let version = VERSION.to_string();
                     let liquidctl_connected = self.repos.liquidctl.is_some();
                     let system_name = sysinfo::System::host_name().unwrap_or_default();
                     HealthCheck {

@@ -207,7 +207,6 @@ async fn create_api_server(
     Ok(())
 }
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
-    let version = VERSION.unwrap_or("unknown");
     api.title("CoolerControl Daemon API")
         .summary("CoolerControl Rest Endpoints")
         .description("Basic OpenAPI documentation for the CoolerControl Daemon API")
@@ -221,7 +220,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             identifier: Some("GPL3+".to_string()),
             ..License::default()
         })
-        .version(version)
+        .version(VERSION)
         .security_scheme(
             "CookieAuth",
             SecurityScheme::ApiKey {

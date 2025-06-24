@@ -36,7 +36,6 @@ const LOG_BUFFER_LINE_SIZE: usize = 500;
 const NEW_LOG_CHANNEL_CAP: usize = 2;
 
 pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
-    let version = VERSION.unwrap_or("unknown");
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
@@ -44,12 +43,12 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     } else {
         LevelFilter::Info
     };
-    let (logger, log_buf_handle) = CCLogger::new(log_level, version, run_token)?;
+    let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
     info!("Logging Level: {}", log::max_level());
     info!(
         "System Info:\n\
-        CoolerControlD {version}\n\
+        CoolerControlD {VERSION}\n\
         Name:\t{}\n\
         OS:\t\t{}\n\
         Host:\t{}\n\
