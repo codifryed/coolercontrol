@@ -21,6 +21,7 @@ import { Type } from 'class-transformer'
 import { ChannelSource } from '@/models/ChannelSource.ts'
 import { v4 as uuidV4 } from 'uuid'
 import i18n from '@/i18n'
+import { mdiAlertCircle, mdiBellOutline, mdiBellRingOutline, mdiFire, mdiHelp } from '@mdi/js'
 
 export class Alert {
     uid: UID = uuidV4()
@@ -28,19 +29,29 @@ export class Alert {
     channel_source: ChannelSource
     min: number
     max: number
+    warmup_duration: number
     state?: AlertState
 
-    constructor(name: string, channel_source: ChannelSource, min: number, max: number) {
+    constructor(
+        name: string,
+        channel_source: ChannelSource,
+        min: number,
+        max: number,
+        warmup_duration: number = 1,
+    ) {
         this.name = name
         this.channel_source = channel_source
         this.min = min
         this.max = max
+        this.warmup_duration = warmup_duration
     }
 }
 
 export enum AlertState {
     Active = 'Active',
+    WarmUp = 'WarmUp',
     Inactive = 'Inactive',
+    Error = 'Error',
 }
 
 /**
@@ -55,8 +66,27 @@ export function getAlertStateDisplayName(state: AlertState): string {
             return t('models.alertState.active')
         case AlertState.Inactive:
             return t('models.alertState.inactive')
+        case AlertState.WarmUp:
+            return t('models.alertState.warmup')
+        case AlertState.Error:
+            return t('models.alertState.error')
         default:
             return String(state)
+    }
+}
+
+export function getAlertStateIcon(state: AlertState): string {
+    switch (state) {
+        case AlertState.Active:
+            return mdiBellRingOutline
+        case AlertState.Inactive:
+            return mdiBellOutline
+        case AlertState.WarmUp:
+            return mdiFire
+        case AlertState.Error:
+            return mdiAlertCircle
+        default:
+            return mdiHelp
     }
 }
 

@@ -458,9 +458,12 @@ export default {
             triggerConditions: 'Trigger Conditions',
             maxValueTooltip: 'Values above this will trigger the alert.',
             minValueTooltip: 'Values below this will trigger the alert.',
+            warmupDurationTooltip:
+                'The values must stay in trigger range for this duration in seconds before the alert is triggered.',
             greaterThan: 'greater than',
             lessThan: 'less than',
             newAlert: 'New Alert',
+            seconds: 'Seconds',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
         },
@@ -884,6 +887,7 @@ export default {
             rpm: 'RPM',
             freq: 'Freq',
             watts: 'Watts',
+            seconds: 'Seconds',
         },
         profile: {
             profileType: {
@@ -931,6 +935,8 @@ export default {
         alertState: {
             active: 'Active',
             inactive: 'Inactive',
+            warmup: 'Warm Up',
+            error: 'Error',
         },
         deviceType: {
             customSensors: 'Custom Sensors',

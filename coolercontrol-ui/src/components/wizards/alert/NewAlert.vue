@@ -77,6 +77,7 @@ const chosenChannelSource: Ref<AvailableChannel | undefined> = ref()
 const chosenMin: Ref<number> = ref(alert.min)
 const chosenMax: Ref<number> = ref(alert.max)
 const chosenName: Ref<string> = ref(alert.name)
+const chosenWarmupDuration: Ref<number> = ref(alert.warmup_duration)
 
 const channelSources: Ref<Array<AvailableChannelSources>> = ref([])
 const fillChannelSources = (): void => {
@@ -141,6 +142,7 @@ const nextStep = async (): Promise<void> => {
     alert.max = chosenMax.value
     alert.min = chosenMin.value
     alert.name = chosenName.value
+    alert.warmup_duration = chosenWarmupDuration.value
     alert.channel_source.device_uid = chosenChannelSource.value?.deviceUID!
     alert.channel_source.channel_name = chosenChannelSource.value?.channelName!
     alert.channel_source.channel_metric = chosenChannelSource.value?.metric!
@@ -454,6 +456,50 @@ onMounted(async () => {
                                                     ? 1
                                                     : 100)
                                             "
+                                            :disabled="chosenChannelSource == null"
+                                        />
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-tooltip.right="t('views.alerts.warmupDurationTooltip')">
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                >
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.seconds') }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
+                                >
+                                    <InputNumber
+                                        id="warmup-duration"
+                                        class="w-full"
+                                        v-model="chosenWarmupDuration"
+                                        show-buttons
+                                        :min="0"
+                                        :max="10"
+                                        :step="0.1"
+                                        :min-fraction-digits="1"
+                                        :suffix="'s'"
+                                        button-layout="horizontal"
+                                        :input-style="{ width: '8rem' }"
+                                        :disabled="chosenChannelSource == null"
+                                    >
+                                        <template #incrementicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                    <div class="mx-1.5 mt-3">
+                                        <Slider
+                                            v-model="chosenWarmupDuration"
+                                            class="!w-full"
+                                            :step="0.1"
+                                            :min="0"
+                                            :max="10"
                                             :disabled="chosenChannelSource == null"
                                         />
                                     </div>
