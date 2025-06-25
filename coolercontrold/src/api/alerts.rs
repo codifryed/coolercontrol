@@ -120,6 +120,11 @@ fn validate_alert(alert: &AlertDto) -> Result<(), CCError> {
             msg: "uid cannot be empty".to_string(),
         });
     }
+    if alert.warmup_duration.is_sign_negative() {
+        return Err(CCError::UserError {
+            msg: "warmup_threshold cannot be negative".to_string(),
+        });
+    }
     Ok(())
 }
 
@@ -143,6 +148,9 @@ pub struct AlertDto {
     pub max: f64,
     // We send the current state, but we don't receive it when creating or updating:
     pub state: Option<AlertState>,
+    /// Time in seconds throughout which the alert conditidon must hold before the alert is
+    /// activated
+    pub warmup_duration: f64,
 }
 
 impl From<Alert> for AlertDto {
@@ -154,6 +162,7 @@ impl From<Alert> for AlertDto {
             min: alert.min,
             max: alert.max,
             state: Some(alert.state),
+            warmup_duration: alert.warmup_duration,
         }
     }
 }
@@ -167,6 +176,7 @@ impl From<AlertDto> for Alert {
             min: alert_dto.min,
             max: alert_dto.max,
             state: AlertState::Inactive,
+            warmup_duration: alert_dto.warmup_duration,
         }
     }
 }
