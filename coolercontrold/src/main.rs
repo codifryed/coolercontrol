@@ -56,8 +56,51 @@ mod setting;
 mod sleep_listener;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+///
+/// Environment Variable: log level
+///
+/// # Example
+/// ```
+/// COOLERCONTROL_LOG=DEBUG coolercontrold
+/// ```
+
 const ENV_LOG: &str = "COOLERCONTROL_LOG";
+/// Environment Variable: log level (short form)
+/// Takes a valid upper-case log level
+///
+/// # Example
+/// ```
+/// CC_LOG=DEBUG coolercontrold
+/// ```
 const ENV_CC_LOG: &str = "CC_LOG";
+
+/// Environment Variable: API Port to listen on
+/// Takes a valid port string
+///
+/// # Example
+/// ```
+/// CC_PORT=11987 coolercontrold
+/// ```
+const ENV_PORT: &str = "CC_PORT";
+
+/// Environment Variable: API IPv4 to listen on
+/// Takes a valid IPv4 String
+///
+/// # Example
+/// ```
+/// CC_HOST_IP4=127.0.0.1 coolercontrold
+/// ```
+const ENV_HOST_IP4: &str = "CC_HOST_IP4";
+
+/// Environment Variable: API IPv6 to listen on
+/// Takes a valid IPv6 String
+///
+/// # Example
+/// ```
+/// CC_HOST_IP6=::1 coolercontrold
+/// ```
+const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;

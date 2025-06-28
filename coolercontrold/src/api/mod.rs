@@ -40,7 +40,7 @@ use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::{AllDevices, Repos, VERSION};
+use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -76,9 +76,6 @@ use tower_sessions::service::PrivateCookie;
 use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
-const ENV_PORT: &str = "CC_PORT";
-const ENV_HOST_IP4: &str = "CC_HOST_IP4";
-const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_RATE_BURST: u32 = 50;
 const API_RATE_REQ_PER_SEC: u64 = 10;
