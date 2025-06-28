@@ -362,7 +362,7 @@ test_arm64:
     - if: $CI_COMMIT_TAG == null
   script:
     - ls -lah ./
-    - ./coolercontrold --version
+    - ./assets-built/coolercontrold --version
 
 test_deb_bookworm:
   stage: test_packages
