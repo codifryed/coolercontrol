@@ -191,7 +191,7 @@ build_appimages:
 
 ####################################### aarch64 build assets (Ubuntu 22.04)
 build_arm64:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:

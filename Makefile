@@ -218,6 +218,10 @@ docker-login:
 	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
 	@docker login registry.gitlab.com
 
+docker-arm64:
+	# This is a special build from arm64 where your system needs to be setup to be able to build aarch64 images
+	@docker buildx build --platform linux/arm64 -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:$(docker_image_tag) -f .gitlab/images/ubuntu-arm64/Dockerfile --push ./
+
 docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
