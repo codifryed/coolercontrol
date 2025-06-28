@@ -336,9 +336,11 @@ build_dh-debian_arm64:
     - docker:dind
   variables:
     DOCKER_DRIVER: overlay2
+  needs:
   rules:
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    - if: $CI_COMMIT_TAG == null
   script:
     - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG='alpine-{$CI_COMMIT_TAG}'; else IMAGE_TAG='apline-beta_${CI_COMMIT_SHORT_SHA}'; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
@@ -363,9 +365,11 @@ build_dh-debian:
     - docker:dind
   variables:
     DOCKER_DRIVER: overlay2
+  needs:
   rules:
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    - if: $CI_COMMIT_TAG == null
   script:
     - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG='beta_${CI_COMMIT_SHORT_SHA}'; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
