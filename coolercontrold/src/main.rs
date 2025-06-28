@@ -102,6 +102,15 @@ const ENV_HOST_IP4: &str = "CC_HOST_IP4";
 /// ```
 const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
+/// Environment Variable: To disable dbus integration (sleep listener)
+/// Takes one of: ["1", "0", "ON", "on", "OFF", "off"]
+///
+/// # Example
+/// ```
+/// CC_DBUS=ON coolercontrold
+/// ```
+const ENV_DBUS: &str = "CC_DBUS";
+
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 

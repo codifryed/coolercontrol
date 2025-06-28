@@ -16,10 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::ENV_DBUS;
 use anyhow::Result;
 use log::{info, warn};
 use moro_local::Scope;
 use std::cell::Cell;
+use std::env;
 use std::ops::Not;
 use std::rc::Rc;
 use tokio_util::sync::CancellationToken;
@@ -36,16 +38,26 @@ impl<'s> SleepListener {
         run_token: CancellationToken,
         scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Result<Self> {
+        let listener_enabled = env::var(ENV_DBUS)
+            .ok()
+            .and_then(|env_dbus| {
+                env_dbus
+                    .parse::<u8>()
+                    .ok()
+                    .map(|bb| bb != 0)
+                    .or_else(|| Some(env_dbus.trim().to_lowercase() != "off"))
+            })
+            .unwrap_or(true);
+        if listener_enabled.not() {
+            info!("DBUS sleep listener disabled.");
+            return Ok(Self::create_deaf_listener());
+        }
         let conn_result = Connection::system().await;
         if conn_result.is_err() {
             // See issue:
             // https://gitlab.com/coolercontrol/coolercontrol/-/issues/264
-            warn!("Could not connect to DBUS, sleeping listener will not work!");
-            let deaf_listener = Self {
-                preparing_to_sleep: Rc::new(Cell::new(false)),
-                resuming: Rc::new(Cell::new(false)),
-            };
-            return Ok(deaf_listener);
+            warn!("Could not connect to DBUS, sleep listener will not work!");
+            return Ok(Self::create_deaf_listener());
         }
         let conn = conn_result?;
         let proxy = Proxy::new(
@@ -86,6 +98,13 @@ impl<'s> SleepListener {
         });
 
         Ok(listener)
+    }
+
+    fn create_deaf_listener() -> Self {
+        Self {
+            preparing_to_sleep: Rc::new(Cell::new(false)),
+            resuming: Rc::new(Cell::new(false)),
+        }
     }
 
     pub fn is_resuming(&self) -> bool {
