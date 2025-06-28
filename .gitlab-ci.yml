@@ -325,9 +325,13 @@ build_ubuntu:
       - coolercontrol*.deb
     expire_in: 5 days
 
+############################################################################################
+# Docker
+############################################################################################
+
 ####################################### debian Docker Images
 
-build_dh-debian:
+push_dh-debian:
   image: docker
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -338,22 +342,20 @@ build_dh-debian:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
+    - compile_artifacts
   rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_TAG == null
+    - if: $CI_PIPELINE_SOURCE
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-    - docker info
-    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
     - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/debian/Dockerfile ./
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:latest; fi;
+    - docker run --name cc-dh-debian-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
     - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
     - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
-    - echo "Successful. x86_64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - echo "Successful. x86_64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-build_dh-debian_arm64:
+push_dh-debian_arm64:
   image: docker
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -364,25 +366,23 @@ build_dh-debian_arm64:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
+    - compile_artifacts
   rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_TAG == null
+    - if: $CI_PIPELINE_SOURCE
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-    - docker info
-    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
     - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/debian/Dockerfile ./
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:latest; fi;
+    - docker run --name cc-dh-debian-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
     - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
     - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
-    - echo "Successful. aarch64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
 
 ####################################### alpine Docker Images
 
-build_dh-alpine:
+push_dh-alpine:
   image: docker
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -393,24 +393,22 @@ build_dh-alpine:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
+    - compile_artifacts
   rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_TAG == null
+    - if: $CI_PIPELINE_SOURCE
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-    - docker info
-    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
     - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
+    - docker run --name cc-dh-alpine-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
     - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
-    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
     - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
-    - echo "Successful. x86_64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - echo "Successful. x86_64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-build_dh-alpine_arm64:
+push_dh-alpine_arm64:
   image: docker
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -421,22 +419,20 @@ build_dh-alpine_arm64:
   variables:
     DOCKER_DRIVER: overlay2
   needs:
+    - compile_artifacts
   rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_TAG == null
+    - if: $CI_PIPELINE_SOURCE
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-    - docker info
-    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
     - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
     - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
+    - docker run --name cc-dh-alpine-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
     - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
-    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
     - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
-    - echo "Successful. aarch64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
 
 
@@ -733,6 +729,10 @@ create_release:
     - upload_artifacts_arm64
     - upload_package_deb_bookworm
     - upload_package_ubuntu
+    - push_dh-debian
+    - push_dh-debian_arm64
+    - push_dh-alpine
+    - push_dh-alpine_arm64
   before_script:
     - echo 'Starting release job'
   rules:
