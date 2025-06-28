@@ -342,7 +342,7 @@ build_dh-debian_arm64:
       when: never
     - if: $CI_COMMIT_TAG == null
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG='alpine-{$CI_COMMIT_TAG}'; else IMAGE_TAG='apline-beta_${CI_COMMIT_SHORT_SHA}'; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="apline-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
     - docker info
     - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
@@ -371,7 +371,7 @@ build_dh-debian:
       when: never
     - if: $CI_COMMIT_TAG == null
   script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG='beta_${CI_COMMIT_SHORT_SHA}'; fi; export IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
     - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
     - docker info
     - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
