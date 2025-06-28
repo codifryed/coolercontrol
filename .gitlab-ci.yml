@@ -351,7 +351,7 @@ test_arm64:
   stage: build
   image: ubuntu:jammy
   tags:
-    - saas-linux-small-amd64
+    - saas-linux-small-arm64
   dependencies:
     - build_arm64
   needs:
