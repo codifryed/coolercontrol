@@ -622,7 +622,7 @@ create_release:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - upload_package_appimage
-    - upload_package_arm64
+    - upload_artifacts_arm64
     - upload_package_deb_bookworm
     - upload_package_ubuntu
   before_script:
