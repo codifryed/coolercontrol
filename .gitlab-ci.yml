@@ -197,7 +197,7 @@ build_arm64:
   tags:
     - saas-linux-large-arm64
   needs:
-    - test_all
+    #- test_all
     #- compile_artifacts
   rules:
     #- if: $CI_PIPELINE_SOURCE
