@@ -325,36 +325,8 @@ build_ubuntu:
       - coolercontrol*.deb
     expire_in: 5 days
 
-####################################### debian-aarch64 Docker Images
-build_dh-debian_arm64:
-  image: docker
-  <<: [*cache_template, *main_image_template]
-  stage: build
-  tags:
-    - saas-linux-large-arm64
-  services:
-    - docker:dind
-  variables:
-    DOCKER_DRIVER: overlay2
-  needs:
-  rules:
-    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
-      when: never
-    - if: $CI_COMMIT_TAG == null
-  script:
-    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="apline-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
-    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-    - docker info
-    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
-    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
-    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
-    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
-    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
-    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
-    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
-    - echo "Successful. aarch64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+####################################### debian Docker Images
 
-####################################### debian-x86_64 Docker Images
 build_dh-debian:
   image: docker
   <<: [*cache_template, *main_image_template]
@@ -380,6 +352,92 @@ build_dh-debian:
     - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
     - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
     - echo "Successful. x86_64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+build_dh-debian_arm64:
+  image: docker
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  needs:
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  script:
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
+    - docker info
+    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
+    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/debian/Dockerfile ./
+    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:latest; fi;
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - echo "Successful. aarch64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+
+####################################### alpine Docker Images
+
+build_dh-alpine:
+  image: docker
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-amd64
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  needs:
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  script:
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
+    - docker info
+    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
+    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
+    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
+    - echo "Successful. x86_64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+build_dh-alpine_arm64:
+  image: docker
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  needs:
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  script:
+    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta_$CI_COMMIT_SHORT_SHA"; fi; export IMAGE_TAG
+    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
+    - docker info
+    - if [ "$CI_COMMIT_TAG" ]; then docker pull $DH_REGISTRY_IMAGE:$IMAGE_TAG || true; fi;
+    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
+    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
+    - echo "Successful. aarch64 Image tagged as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
 
 
 ############################################################################################
