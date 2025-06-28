@@ -347,6 +347,23 @@ test_appimages:
     - ./CoolerControlD-x86_64.AppImage --version
     #- ./CoolerControl-x86_64.AppImage --version
 
+test_arm64:
+  stage: build
+  image: ubuntu:jammy
+  tags:
+    - saas-linux-small-amd64
+  dependencies:
+    - build_arm64
+  needs:
+    - build_arm64
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  script:
+    - ls -lah ./
+    - ./coolercontrold --version
+
 test_deb_bookworm:
   stage: test_packages
   tags:
@@ -449,6 +466,40 @@ upload_package_appimage_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
+
+upload_artifacts_arm64:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_arm64
+  needs:
+    - build_arm64
+    - test_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst"
+
+upload_artifacts_arm64_beta:
+  stage: build
+  image: curlimages/curl:latest
+  dependencies:
+    - build_arm64
+  needs:
+    - build_arm64
+    - test_arm64
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_TAG == null
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol_aarch64-ui-vendor.tzst"
 
 upload_package_deb_bookworm:
   stage: upload_packages
@@ -571,6 +622,7 @@ create_release:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - upload_package_appimage
+    - upload_package_arm64
     - upload_package_deb_bookworm
     - upload_package_ubuntu
   before_script:
@@ -620,19 +672,31 @@ create_release:
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
           link_type: other
         # Assets:
-        - name: Daemon Binary
+        - name: Daemon Binary x86_64
           filepath: '/packages/coolercontrold_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}'
           link_type: other
-        - name: Desktop Application Binary
+        - name: Desktop Application Binary x86_64
           filepath: '/packages/coolercontrol_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}'
           link_type: other
-        - name: Daemon Vendored Dependencies
+        - name: Daemon Vendored Dependencies x86_64
           filepath: '/packages/coolercontrold-vendor.tzst'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
           link_type: other
-        - name: UI Build Assets
+        - name: UI Build Assets x86_64
           filepath: '/packages/coolercontrol-ui.tzst'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst'
+          link_type: other
+        - name: Daemon Binary aarch64
+          filepath: '/packages/coolercontrold_aarch64_${CI_COMMIT_TAG}'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}'
+          link_type: other
+        - name: Daemon Vendored Dependencies aarch64
+          filepath: '/packages/coolercontrold_aarch64-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst'
+          link_type: other
+        - name: UI Build Assets aarch64
+          filepath: '/packages/coolercontrol_aarch64-ui.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst'
           link_type: other
