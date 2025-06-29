@@ -529,7 +529,7 @@ test_arm64:
 test_deb_bookworm_amd64:
   stage: test_packages
   tags:
-    - saas-linux-medium-amd64
+    - saas-linux-small-amd64
   image: debian:bookworm
   dependencies:
     - build_deb_bookworm_amd64
@@ -550,7 +550,7 @@ test_deb_bookworm_amd64:
 test_deb_bookworm_arm64:
   stage: test_packages
   tags:
-    - saas-linux-medium-arm64
+    - saas-linux-small-arm64
   image: debian:bookworm
   dependencies:
     - build_deb_bookworm_arm64
@@ -571,7 +571,7 @@ test_deb_bookworm_arm64:
 test_ubuntu_22.04:
   stage: test_packages
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-small-amd64
   image: ubuntu:jammy
   dependencies:
     - build_ubuntu
@@ -592,7 +592,7 @@ test_ubuntu_22.04:
 test_ubuntu_latest:
   stage: test_packages
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-small-amd64
   image: ubuntu:rolling
   dependencies:
     - build_ubuntu
