@@ -232,7 +232,7 @@ build_deb_bookworm_amd64:
   tags:
     - saas-linux-large-amd64
   needs:
-    #- compile_artifacts
+    - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -283,7 +283,7 @@ build_deb_bookworm_arm64:
   tags:
     - saas-linux-large-arm64
   needs:
-    #- compile_artifacts
+    - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
