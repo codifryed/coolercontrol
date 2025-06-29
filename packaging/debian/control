@@ -33,7 +33,7 @@ Homepage: https://gitlab.com/coolercontrol/coolercontrol
 X-Python3-Version: >= 3.9
 
 Package: coolercontrol-liqctld
-Architecture: amd64
+Architecture: amd64,arm64
 Depends:
  ${misc:Depends},
  ${python3:Depends},
@@ -41,7 +41,7 @@ Description: Monitor and control your cooling devices.
  This is a systemd service daemon for handling liquidctl supported devices.
 
 Package: coolercontrold
-Architecture: amd64
+Architecture: amd64,arm64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
@@ -51,7 +51,7 @@ Description: Monitor and control your cooling devices.
  This is the main systemd daemon for CoolerControl.
 
 Package: coolercontrol
-Architecture: amd64
+Architecture: amd64,arm64
 Depends:
  coolercontrold (= ${binary:Version}),
  qt6-qpa-plugins,

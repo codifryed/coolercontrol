@@ -1,4 +1,4 @@
-FROM amd64/debian:bookworm
+FROM debian:bookworm
 
 LABEL maintainer=codifryed
 # Image for building non-Ubuntu debian packages (debian has different dependency versions)
