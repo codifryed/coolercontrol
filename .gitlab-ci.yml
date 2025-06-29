@@ -856,7 +856,8 @@ create_release:
   needs:
     - upload_package_appimage
     - upload_artifacts_arm64
-    - upload_package_deb_bookworm
+    - upload_package_deb_bookworm_amd64
+    - upload_package_deb_bookworm_arm64
     - upload_package_ubuntu
     - push_dh-debian
     - push_dh-debian_arm64
