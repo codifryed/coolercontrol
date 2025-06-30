@@ -13,8 +13,8 @@ COPY ../../../../. .
 
 RUN apt update && apt install -y --no-install-recommends \
     # ui
-    nodejs \
-    npm \
+    #nodejs \
+    #npm \
     # coolercontrold
     build-essential \
     libdrm-dev \
@@ -39,7 +39,7 @@ ENV CC_DBUS=OFF
 
 COPY --from=builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY ../../../../coolercontrol-liqctld /usr/src/coolercontrol-liqctld/
-COPY entrypoint.sh ./
+COPY .gitlab/images/dockerhub/resources/entrypoint.sh /
 
 RUN apt update && apt install -y --no-install-recommends \
     # liquidctl

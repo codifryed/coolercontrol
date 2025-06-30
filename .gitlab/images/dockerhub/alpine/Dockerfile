@@ -17,7 +17,7 @@ ENV CC_DBUS=OFF
 
 COPY --from=builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY ../../../../coolercontrol-liqctld/. /usr/src/coolercontrol-liqctld
-COPY entrypoint.sh /
+COPY .gitlab/images/dockerhub/resources/entrypoint.sh /
 
 RUN apk add --update make gcc liquidctl python3-dev py3-pip libusb
 
