@@ -64,6 +64,8 @@ RUN apt remove --purge -y make gcc python3-dev python3-pip && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /usr/src
 
+RUN /entrypoint.sh --version
+
 EXPOSE 11987
 
 ENTRYPOINT ["/entrypoint.sh"]

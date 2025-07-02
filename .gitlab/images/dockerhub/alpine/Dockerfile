@@ -27,6 +27,8 @@ RUN python3 -m pip config set global.break-system-packages true && \
 RUN apk del make gcc python3-dev py3-pip && \
     rm -rf /usr/src
 
+RUN /entrypoint.sh --version
+
 EXPOSE 11987
 
 ENTRYPOINT ["/entrypoint.sh"]
