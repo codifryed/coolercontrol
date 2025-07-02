@@ -900,9 +900,9 @@ create_release:
     - upload_package_deb_bookworm_arm64
     - upload_package_ubuntu
     - push_dh-debian
-    - push_dh-debian_arm64
+    #- push_dh-debian_arm64
     - push_dh-alpine
-    - push_dh-alpine_arm64
+    #- push_dh-alpine_arm64
   before_script:
     - echo 'Starting release job'
   rules:
