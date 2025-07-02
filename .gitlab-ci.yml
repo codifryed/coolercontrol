@@ -30,6 +30,8 @@ variables:
   CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
   DH_URI: docker.io
   DH_REGISTRY_IMAGE: '${DH_URI}/coolercontrol/coolercontrold'
+  DH_CLOUD_BUILDER_NAME: "cc-builder-1"
+  DH_ORG: "coolercontrol"
   SECRET_DETECTION_ENABLED: 'true'
 
 stages:
@@ -393,9 +395,6 @@ push_dh-debian:
   stage: test
   services:
     - docker:dind
-  variables:
-    CLOUD_BUILDER_NAME: "cc-builder-1"
-    DOCKER_ACCOUNT: "coolercontrol"
   needs:
     #- compile_artifacts
   rules:
@@ -410,7 +409,7 @@ push_dh-debian:
       mkdir -vp ~/.docker/cli-plugins/
       curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
       chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker buildx create --use --driver cloud ${DOCKER_ACCOUNT}/${CLOUD_BUILDER_NAME}
+    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
     - |
       if [ "$CI_COMMIT_TAG" ]; then
         TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
