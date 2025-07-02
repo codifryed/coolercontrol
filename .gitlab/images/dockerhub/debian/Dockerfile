@@ -44,6 +44,7 @@ ENV CC_DBUS=OFF
 RUN apt update && apt install -y --no-install-recommends \
     # liqctld
     gcc \
+    python3 \
     python3-setuptools \
     make \
     python3-dev \

@@ -19,7 +19,7 @@ ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
 
-RUN apk add --update make gcc python3-dev py3-pip libusb musl-dev linux-headers
+RUN apk add --update make gcc python3 python3-dev py3-pip libusb musl-dev linux-headers
 
 COPY --from=builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY ../../../../coolercontrol-liqctld/. /usr/src/coolercontrol-liqctld
