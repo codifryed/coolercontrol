@@ -1,4 +1,4 @@
-FROM rust:alpine AS builder
+FROM rust:alpine AS daemon-builder
 
 WORKDIR /usr/src/coolercontrol
 
@@ -12,24 +12,32 @@ COPY ../../../../Makefile .
 RUN make build-daemon
 
 
-FROM alpine
+FROM python:alpine AS liqctld-builder
 
+WORKDIR /usr/src/coolercontrol-liqctld
+
+RUN apk add --update build-base gcc python3-dev py3-pip libusb musl-dev linux-headers
+
+COPY ../../../../coolercontrol-liqctld ./
+
+RUN pip install --upgrade --user -r requirements.txt
+
+RUN pip install --user .
+
+
+FROM python:alpine
+
+ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/usr/local/bin:$PATH
 ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
 
-RUN apk add --update make gcc python3 python3-dev py3-pip libusb musl-dev linux-headers
-
-COPY --from=builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
-COPY ../../../../coolercontrol-liqctld/. /usr/src/coolercontrol-liqctld
+COPY --from=daemon-builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
+COPY --from=liqctld-builder /root/.local /root/.local
 COPY .gitlab/images/dockerhub/resources/entrypoint.sh /
 
-RUN python3 -m pip config set global.break-system-packages true && \
-    pip3 install --upgrade pip && \
-    make -C /usr/src/coolercontrol-liqctld install-source
-RUN apk del make gcc python3-dev py3-pip linux-headers && \
-    rm -rf /usr/src
 
 RUN /entrypoint.sh --version
 
