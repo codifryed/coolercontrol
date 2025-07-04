@@ -392,11 +392,11 @@ build_ubuntu:
 push_dh-debian:
   image: docker:dind
   <<: [*main_image_template]
-  stage: test
+  stage: build
   services:
     - docker:dind
   needs:
-    #- compile_artifacts
+    - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -463,11 +463,11 @@ push_dh-debian:
 push_dh-alpine:
   image: docker:dind
   <<: [*main_image_template]
-  stage: test
+  stage: build
   services:
     - docker:dind
   needs:
-    #- compile_artifacts
+    - compile_artifacts
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
