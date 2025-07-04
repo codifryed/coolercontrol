@@ -43,7 +43,6 @@ COPY --from=daemon-builder /usr/src/coolercontrol/coolercontrold/target/release/
 COPY --from=liqctld-builder /root/.local /root/.local
 COPY .gitlab/images/dockerhub/resources/entrypoint.sh /
 
-
 RUN /entrypoint.sh --version
 
 EXPOSE 11987
