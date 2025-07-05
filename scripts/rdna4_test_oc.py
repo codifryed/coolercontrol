@@ -290,7 +290,7 @@ class RDNA4Test:
             self.saved_pp_od_clk_voltage = (
                 self.pp_od_clk_voltage_path.read_text().strip()
             )
-            log.info(f"Saved current pp_od_clk_voltage")
+            log.info("Saved current pp_od_clk_voltage")
         except Exception as e:
             log.warning(f"pp_od_clk_voltage content ERROR: {e}")
 
