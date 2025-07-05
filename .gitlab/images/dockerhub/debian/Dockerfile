@@ -1,7 +1,6 @@
 FROM rust AS daemon-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-# Use C.UTF-8 locale to avoid issues with ASCII encoding
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
@@ -11,9 +10,6 @@ ENV NODE_MAJOR=18
 WORKDIR /usr/src/coolercontrol
 
 RUN apt update && apt install -y --no-install-recommends \
-    # ui
-    #nodejs \
-    #npm \
     # coolercontrold
     build-essential \
     libdrm-dev \
@@ -37,7 +33,6 @@ RUN make build-daemon
 FROM python AS liqctld-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-# Use C.UTF-8 locale to avoid issues with ASCII encoding
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
@@ -45,7 +40,6 @@ ENV CI=true
 WORKDIR /usr/src/coolercontrol-liqctld
 
 RUN apt update && apt install -y --no-install-recommends \
-    # liqctld
     build-essential \
     gcc \
     python3-dev \
@@ -67,9 +61,7 @@ ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
 
-RUN apt update && \
-    apt install -y --no-install-recommends \
-    # liqctld
+RUN apt update && apt install -y --no-install-recommends \
     libusb-1.0-0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
