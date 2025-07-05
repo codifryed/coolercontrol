@@ -391,21 +391,24 @@ impl AlertController {
                 continue;
             }
 
-            // round up to clearly display greater than.
-            let channel_value_rounded = (channel_value * 10.).round() / 10.;
             let channel_name = alert.channel_source.channel_name.clone();
             let min = alert.min;
             let max = alert.max;
 
             let message = if channel_value > alert.max {
+                // round up to clearly display greater than.
+                let channel_value_rounded = (channel_value * 10.).ceil() / 10.;
                 format!(
                         "{channel_name}: {channel_value_rounded} is greater than allowed maximum: {max}"
                     )
             } else if channel_value < alert.min {
+                // round down to clearly display less than.
+                let channel_value_rounded = (channel_value * 10.).floor() / 10.;
                 format!(
                     "{channel_name}: {channel_value_rounded} is less than allowed minimum: {min}"
                 )
             } else {
+                let channel_value_rounded = (channel_value * 10.).round() / 10.;
                 format!(
                     "{channel_name}: {channel_value_rounded} is again within allowed range: {min} - {max}"
                 )
