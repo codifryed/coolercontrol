@@ -590,9 +590,7 @@ def main():
     ###
     reset_all(test)
     log_line_filler()
-    log.info(
-        "Enabling Zero RPM with 50% Static Curve present and separate commits"
-    )
+    log.info("Enabling Zero RPM with 50% Static Curve present and separate commits")
     log_line_filler()
     log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
     input("Once that's done, press Enter to continue...")
