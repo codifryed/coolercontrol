@@ -77,7 +77,7 @@ static POOL: BufferPool = BufferPool::create();
 /// `io_uring` requires at least Kernel 5.11, and our optimization flags require 5.19.
 #[cfg(feature = "io_uring")]
 pub fn runtime<F: Future>(future: F) -> F::Output {
-    tokio_uring::builder()
+    let _ = tokio_uring::builder()
         // This will limit the number of io-wkr threads, as when the queue is full they will wait:
         .entries(4)
         .uring_builder(
@@ -86,13 +86,16 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
                 .setup_taskrun_flag()
                 .dontfork(),
         )
-        .start(future)
+        .start(future);
+    // tokio_uring doesn't currently have shutdown_timeout() to be able to force running threads
+    // to close, so we exit the process. (possibility: use our own io_uring lib)
+    std::process::exit(0);
 }
 
 /// Initialize and run the Tokio runtime.
 #[cfg(not(feature = "io_uring"))]
 pub fn runtime<F: Future>(future: F) -> F::Output {
-    let rt = Builder::new_current_thread()
+    let rt_builder = Builder::new_current_thread()
         .enable_io()
         .enable_time()
         // By default, this pool can grow large and fluctuate over time.
@@ -105,7 +108,11 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
     // requires tokio unstable: (but would make all our spawns !Send by default)
     // .build_local(&Default::default());
     // ^ until then, this allows us to use spawn_local:
-    rt.unwrap().block_on(LocalSet::new().run_until(future))
+    let rt = rt_builder.unwrap();
+    let output = rt.block_on(LocalSet::new().run_until(future));
+    // should a background thread still be running, this will force the runtime process to stop:
+    rt.shutdown_timeout(Duration::from_secs(3));
+    output
 }
 
 /// A variant of `uring_runtime` that also registers the fixed buffers with the
