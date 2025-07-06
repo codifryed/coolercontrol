@@ -158,6 +158,8 @@ gifski = { version = "1.33.0", default-features = false, features = [
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.50" # for gif processing
 uuid = { version = "1.17.0", features = ["v4"] }
+pyo3 = { version = "0.25.1", default-features = false}
+pyo3-pylogger = "0.5.0"
 
 [dev-dependencies]
 serial_test = "3.2.0"
