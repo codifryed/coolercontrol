@@ -64,8 +64,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ```
 /// COOLERCONTROL_LOG=DEBUG coolercontrold
 /// ```
-
 const ENV_LOG: &str = "COOLERCONTROL_LOG";
+
 /// Environment Variable: log level (short form)
 /// Takes a valid upper-case log level
 ///
@@ -103,7 +103,7 @@ const ENV_HOST_IP4: &str = "CC_HOST_IP4";
 const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
 /// Environment Variable: To disable dbus integration (sleep listener)
-/// Takes one of: ["1", "0", "ON", "on", "OFF", "off"]
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///
 /// # Example
 /// ```
