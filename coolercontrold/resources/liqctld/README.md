@@ -11,8 +11,8 @@ device delay handling are also taken into account.
 
 ## Testing
 
-Changes to these files are embedded in the `coolercontrold` daemon at build time, and are
-largely tested as part of that process.
+Changes to these files are embedded in the `coolercontrold` daemon at build time, and are largely
+tested as part of that process.
 
 ## Requirements
 

@@ -17,25 +17,25 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import http
 import importlib.metadata
 import json
 import logging
 import logging as log
 import os
+import queue
 import socket
-import http
 import subprocess
 import sys
 import threading
 import time
-import queue
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
-from http.server import HTTPServer
 from http import HTTPStatus
+from http.server import HTTPServer
 from multiprocessing.queues import SimpleQueue
-from typing import Callable, Dict, Optional
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import liquidctl
 
 # these imports need to be dynamic for older liquidctl versions:
@@ -69,6 +69,7 @@ DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 #####################################################################
 ## Basic Setup
 #####################################################################
+
 
 def add_log_level() -> None:
     debug_lc_lvl: int = 15
@@ -173,7 +174,7 @@ class DeviceProperties(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'DeviceProperties':
+    def from_dict(cls, data: Dict[str, Any]) -> "DeviceProperties":
         return cls(
             speed_channels=data.get("speed_channels", []),
             color_channels=data.get("color_channels", []),
@@ -219,7 +220,7 @@ class Device(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Device':
+    def from_dict(cls, data: Dict[str, Any]) -> "Device":
         return cls(
             id=data["id"],
             description=data["description"],
@@ -242,7 +243,7 @@ class Handshake(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Handshake':
+    def from_dict(cls, data: Dict[str, Any]) -> "Handshake":
         return cls(
             shake=data.get("shake", False),
         )
@@ -258,7 +259,7 @@ class InitRequest(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'InitRequest':
+    def from_dict(cls, data: Dict[str, Any]) -> "InitRequest":
         return cls(
             pump_mode=data.get("pump_mode", None),
         )
@@ -276,7 +277,7 @@ class FixedSpeedRequest(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'FixedSpeedRequest':
+    def from_dict(cls, data: Dict[str, Any]) -> "FixedSpeedRequest":
         return cls(
             channel=data["channel"],
             duty=data["duty"],
@@ -285,10 +286,7 @@ class FixedSpeedRequest(BaseModel):
 
 class SpeedProfileRequest(BaseModel):
     def __init__(
-        self,
-        channel: str,
-        profile=None,
-        temperature_sensor: Optional[int] = None
+        self, channel: str, profile=None, temperature_sensor: Optional[int] = None
     ):
         if profile is None:
             profile = []
@@ -304,7 +302,7 @@ class SpeedProfileRequest(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SpeedProfileRequest':
+    def from_dict(cls, data: Dict[str, Any]) -> "SpeedProfileRequest":
         return cls(
             channel=data["channel"],
             profile=data.get("profile", []),
@@ -320,7 +318,7 @@ class ColorRequest(BaseModel):
         colors: List[List[int]],
         time_per_color: Optional[int] = None,
         speed: Optional[str] = None,
-        direction: Optional[str] = None
+        direction: Optional[str] = None,
     ):
         self.channel: str = channel
         self.mode: str = mode
@@ -340,7 +338,7 @@ class ColorRequest(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ColorRequest':
+    def from_dict(cls, data: Dict[str, Any]) -> "ColorRequest":
         return cls(
             channel=data["channel"],
             mode=data["mode"],
@@ -374,7 +372,7 @@ class ScreenRequest(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ScreenRequest':
+    def from_dict(cls, data: Dict[str, Any]) -> "ScreenRequest":
         return cls(
             channel=data["channel"],
             mode=data["mode"],
@@ -394,7 +392,7 @@ class LiqctldError(BaseModel):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LiqctldError':
+    def from_dict(cls, data: Dict[str, Any]) -> "LiqctldError":
         return cls(
             code=data["code"],
             message=data["message"],
@@ -404,6 +402,7 @@ class LiqctldError(BaseModel):
 #####################################################################
 ## Executor
 #####################################################################
+
 
 class _DeviceJob:
     def __init__(self, future: Future, fn: Callable, **kwargs) -> None:
@@ -478,6 +477,7 @@ class DeviceExecutor:
 #####################################################################
 ## Service
 #####################################################################
+
 
 def get_liquidctl_version() -> str:
     try:
@@ -653,7 +653,9 @@ class DeviceService:
         self.devices.clear()
 
     def _disconnect_device(self, device_id: int, lc_device: BaseDriver) -> None:
-        self.log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
+        self.log.debug_lc(
+            f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() "
+        )
         disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
         disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
 
@@ -685,6 +687,7 @@ class DeviceService:
 ## HTTP UDS Server
 #####################################################################
 
+
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
         self.log = server.log
@@ -692,13 +695,13 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def send(self, status: HTTPStatus, reply: str) -> None:
         # avoid exception in server.py address_string()
-        self.client_address = ('',)
+        self.client_address = ("",)
         self.send_response(status.value)
         self.end_headers()
-        self.wfile.write(reply.encode('utf-8'))
+        self.wfile.write(reply.encode("utf-8"))
 
     def parse_path(self) -> List[str]:
-        return [x for x in self.path.strip().split('/') if x]
+        return [x for x in self.path.strip().split("/") if x]
 
     def log_message(self, format, *args):
         # server logs disabled by default
@@ -712,7 +715,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             self.send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
     def do_POST(self):
-        size = int(self.headers.get('Content-Length', 0))
+        size = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(size)
         request_body: dict = json.loads(raw_body) if raw_body else {}
         try:
@@ -721,7 +724,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             self.send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
     def do_PUT(self):
-        size = int(self.headers.get('Content-Length', 0))
+        size = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(size)
         request_body: dict = json.loads(raw_body) if raw_body else {}
         try:
@@ -733,35 +736,41 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         if not path:
             self.send(
                 HTTPStatus.BAD_REQUEST,
-                json.dumps(LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict())
+                json.dumps(
+                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
+                ),
             )
-        if path[0] == 'handshake':
+        if path[0] == "handshake":
             self.handshake()
         else:
             self.send(
                 HTTPStatus.NOT_FOUND,
-                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict())
+                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict()),
             )
 
     def route_post_requests(self, path: List[str], request_body: dict):
         if not path:
             self.send(
                 HTTPStatus.BAD_REQUEST,
-                json.dumps(LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict())
+                json.dumps(
+                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
+                ),
             )
-        if path[0] == 'quit':
+        if path[0] == "quit":
             self.quit_server()
         else:
             self.send(
                 HTTPStatus.NOT_FOUND,
-                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict())
+                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict()),
             )
 
     def route_put_requests(self, path: List[str], request_body: dict):
         if not path:
             self.send(
                 HTTPStatus.BAD_REQUEST,
-                json.dumps(LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict())
+                json.dumps(
+                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
+                ),
             )
 
     def handshake(self):
@@ -809,10 +818,13 @@ def server_run(message_queue: SimpleQueue, device_count: int = 0) -> None:
 ## Main
 #####################################################################
 
+
 def setup_logging() -> None:
-    env_log_level: Optional[str] = os.getenv("CC_LOG") \
-        if os.getenv("CC_LOG") is not None \
+    env_log_level: Optional[str] = (
+        os.getenv("CC_LOG")
+        if os.getenv("CC_LOG") is not None
         else os.getenv("COOLERCONTROL_LOG")
+    )
     # default & "INFO" levels:
     log_level = logging.INFO
     liquidctl_level = logging.WARNING
@@ -846,8 +858,7 @@ def main() -> None:
     device_service.get_devices()
 
     server_thread = threading.Thread(
-        target=server_run,
-        args=(message_queue, len(device_service.devices))
+        target=server_run, args=(message_queue, len(device_service.devices))
     )
     server_thread.start()
 

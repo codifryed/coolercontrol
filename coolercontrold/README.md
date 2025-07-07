@@ -51,8 +51,8 @@ currently, and is something we might take advantage of in the future.
 - libdrm-dev
 - python3-dev >= 3.8
 - To build the web assets:
-    - nodejs >= 18.0.0
-    - npm
+  - nodejs >= 18.0.0
+  - npm
 
 ### Runtime
 

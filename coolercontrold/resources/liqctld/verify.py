@@ -30,6 +30,7 @@ def get_liquidctl_version() -> str:
         return importlib.metadata.version("liquidctl")
     except importlib.metadata.PackageNotFoundError:
         import liquidctl
+
         return getattr(liquidctl, "__version__", "unknown")
 
 
@@ -42,6 +43,7 @@ def main():
     log.info(f"Python Version detected: {sys.version}")
     try:
         import liquidctl
+
         liquidctl_version = get_liquidctl_version()
         log.info(f"liquidctl version detected: {liquidctl_version}")
     except ImportError as ie:
