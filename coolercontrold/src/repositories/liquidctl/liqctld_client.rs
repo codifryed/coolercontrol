@@ -519,7 +519,7 @@ impl LiqctldClient {
         Ok(())
     }
 
-    /// Asynchronously shuts down all connections in a connection pool and clears the pool.
+    /// Shuts down all connections in a connection pool and clears the pool.
     pub fn shutdown(&self) {
         for socket_connect in self.connection_pool.borrow_mut().drain(..) {
             socket_connect.connection_handle.abort();
