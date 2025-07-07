@@ -45,7 +45,6 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
-    info!("Logging Level: {}", log::max_level());
     info!(
         "System Info:\n\
         CoolerControlD {VERSION}\n\
