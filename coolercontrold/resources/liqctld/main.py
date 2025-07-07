@@ -25,10 +25,8 @@ import logging as log
 import os
 import queue
 import socket
-import subprocess
 import sys
 import threading
-import time
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
@@ -130,6 +128,27 @@ class LiquidctlException(Exception):
     pass
 
 
+class LiqctldException(Exception):
+    def __init__(self, code: HTTPStatus, message: str) -> None:
+        json_message: str = json.dumps(self._to_dict(code, message))
+        super().__init__(json_message)
+        self.message = json_message
+        self.code = code
+
+    def to_error(self) -> "LiqctldError":
+        return LiqctldError(code=self.code, message=self.message)
+
+    @staticmethod
+    def _to_dict(code: HTTPStatus, message: str) -> Dict[str, Any]:
+        return {
+            "code": code.value,
+            "message": message,
+        }
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class BaseModel:
     def to_dict(self) -> Dict[str, Any]:
         return self.__dict__
@@ -137,6 +156,28 @@ class BaseModel:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Any:
         cls.__dict__.update(data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
+
+class LiqctldError(BaseModel):
+    def __init__(self, code: HTTPStatus, message: str):
+        self.code: int = code.value
+        self.message: str = message
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LiqctldError":
+        return cls(
+            code=data["code"],
+            message=data["message"],
+        )
 
 
 class DeviceProperties(BaseModel):
@@ -380,25 +421,6 @@ class ScreenRequest(BaseModel):
         )
 
 
-class LiqctldError(BaseModel):
-    def __init__(self, code: HTTPStatus, message: str):
-        self.code: int = code.value
-        self.message: str = message
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "code": self.code,
-            "message": self.message,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LiqctldError":
-        return cls(
-            code=data["code"],
-            message=data["message"],
-        )
-
-
 #####################################################################
 ## Executor
 #####################################################################
@@ -503,6 +525,9 @@ class DeviceService:
         self.device_status_cache: Dict[int, Statuses] = {}
         self.liquidctl_version: str = get_liquidctl_version()
         self.log = MainLogger(message_queue)
+
+    ###########################################################################
+    ### Device Startup
 
     def get_devices(self) -> List[Device]:
         self.log.debug("Getting device list")
@@ -647,6 +672,100 @@ class DeviceService:
                     "Unexpected Device Communication Error"
                 ) from err
 
+    ###########################################################################
+    ### Device Management
+
+    def set_device_as_legacy690(self, device_id: int) -> Device:
+        """
+        Modern and Legacy Asetek 690Lc devices have the same device ID.
+        We ask the user to verify which device is connected
+        so that we can correctly communicate with the device.
+        """
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        lc_device = self.devices[device_id]
+        if isinstance(lc_device, Legacy690Lc):
+            self.log.warn(f"Device #{device_id} is already set as a Legacy690Lc device")
+            return Device(
+                id=device_id,
+                description=lc_device.description,
+                device_type=type(lc_device).__name__,
+                serial_number=lc_device.serial_number,
+                properties=DeviceProperties(),
+                liquidctl_version=self.liquidctl_version,
+                hid_address=(str(lc_device.address) if lc_device.address else None),
+                hwmon_address=None,
+            )
+        elif not isinstance(lc_device, Modern690Lc):
+            message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
+            self.log.warn(message)
+            raise LiqctldException(HTTPStatus.EXPECTATION_FAILED, message)
+        self.log.info(f"Setting device #{device_id} as legacy690")
+        self._disconnect_device(device_id, lc_device)
+        self.log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
+        legacy_job = self.device_executor.submit(
+            device_id, Legacy690Lc.find_supported_devices
+        )
+        asetek690s = list(legacy_job.result(timeout=DEVICE_TIMEOUT_SECS))
+        if not asetek690s:
+            self.log.error(
+                "Could not find any Legacy690Lc devices. This shouldn't happen"
+            )
+            raise LiquidctlException("Could not find any Legacy690Lc devices.")
+        elif len(asetek690s) > 1:
+            # if there are multiple options, we need to find the correlating device
+            current_asetek690_ids = [
+                asetek690_id
+                for asetek690_id, device in self.devices.items()
+                if isinstance(device, (Modern690Lc, Legacy690Lc))
+            ]
+            device_index: int = 0
+            for asetek690_id in current_asetek690_ids:
+                if asetek690_id == device_id:
+                    break
+                else:
+                    device_index += 1
+            self.devices[device_id] = asetek690s[device_index]
+            lc_device = self.devices[device_id]
+        else:
+            self.devices[device_id] = asetek690s[0]
+            lc_device = self.devices[device_id]
+
+        self._connect_device(device_id, lc_device)
+        description: str = getattr(lc_device, "description", "")
+        serial_number: Optional[str] = None
+        try:
+            serial_number = getattr(lc_device, "serial_number", None)
+        except ValueError:
+            self.log.warn(
+                f"No serial number info found for LC #{device_id} {description}"
+            )
+        return Device(
+            id=device_id,
+            description=description,
+            device_type=type(lc_device).__name__,
+            serial_number=serial_number,
+            properties=DeviceProperties(),
+            liquidctl_version=self.liquidctl_version,
+            hid_address=(str(lc_device.address) if lc_device.address else None),
+            hwmon_address=None,
+        )
+
+    @staticmethod
+    def _stringify_status(
+        statuses: Union[List[Tuple[str, Union[str, int, float], str]], None],
+    ) -> Statuses:
+        return (
+            [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]
+            if statuses is not None
+            else []
+        )
+
+    ###########################################################################
+    ### Device Shutdown
+
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
             self._disconnect_device(device_id, lc_device)
@@ -672,16 +791,6 @@ class DeviceService:
         self.disconnect_all()
         self.device_executor.shutdown()
 
-    @staticmethod
-    def _stringify_status(
-        statuses: Union[List[Tuple[str, Union[str, int, float], str]], None],
-    ) -> Statuses:
-        return (
-            [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]
-            if statuses is not None
-            else []
-        )
-
 
 #####################################################################
 ## HTTP UDS Server
@@ -690,18 +799,80 @@ class DeviceService:
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
-        self.log = server.log
+        self.log: MainLogger = server.log
+        self.device_service: DeviceService = server.device_service
         super().__init__(request, client_address, server)
 
-    def send(self, status: HTTPStatus, reply: str) -> None:
+    # get("/handshake")
+    def handshake(self):
+        self.log.info("Exchanging handshake")
+        self._send(HTTPStatus.OK, Handshake(shake=True).to_json())
+
+    # post("/quit")
+    def quit_server(self):
+        self.log.info("Quit command received. Shutting down.")
+        self._send(HTTPStatus.OK, json.dumps({}))
+        self.log.shutdown()
+        self.server.shutdown()
+        # this also handles socket close:
+        self.server.server_close()
+        self.device_service.shutdown()
+
+    # get("/devices")
+    def get_devices(self):
+        devices: List[Device] = self.device_service.get_devices()
+        self._send(
+            HTTPStatus.OK, json.dumps({"devices": [d.to_dict() for d in devices]})
+        )
+
+    # put("/devices/{device_id}/legacy690")
+    def set_device_as_legacy690(self, device_id: int):
+        device: Device = self.device_service.set_device_as_legacy690(device_id)
+        return device
+
+    def _route_get_requests(self, path: List[str]):
+        if not path:
+            raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
+        elif path[0] == "handshake":
+            self.handshake()
+        else:
+            raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
+
+    def _route_post_requests(self, path: List[str], request_body: dict):
+        if not path:
+            raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
+        elif path[0] == "quit":
+            self.quit_server()
+        else:
+            raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
+
+    def _route_put_requests(self, path: List[str], request_body: dict):
+        if not path:
+            raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "legacy690":
+            device_id = self._try_cast_int(path[1])
+            self.set_device_as_legacy690(device_id)
+        else:
+            raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
+
+    def _send(self, status: HTTPStatus, reply: str) -> None:
         # avoid exception in server.py address_string()
         self.client_address = ("",)
         self.send_response(status.value)
         self.end_headers()
         self.wfile.write(reply.encode("utf-8"))
 
-    def parse_path(self) -> List[str]:
+    def _parse_path(self) -> List[str]:
         return [x for x in self.path.strip().split("/") if x]
+
+    @staticmethod
+    def _try_cast_int(value: str) -> int:
+        try:
+            return int(value)
+        except ValueError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST, f"Invalid path. Expected Integer: {value}"
+            )
 
     def log_message(self, format, *args):
         # server logs disabled by default
@@ -710,106 +881,56 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            self.route_get_requests(self.parse_path())
+            self._route_get_requests(self._parse_path())
+        except LiquidctlException as e:
+            self._send(HTTPStatus.BAD_GATEWAY, str(e))
+        except LiqctldException as e:
+            self._send(e.code, e.message)
         except Exception:
-            self.send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
+            self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
     def do_POST(self):
         size = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(size)
         request_body: dict = json.loads(raw_body) if raw_body else {}
         try:
-            self.route_post_requests(self.parse_path(), request_body)
+            self._route_post_requests(self._parse_path(), request_body)
+        except LiquidctlException as e:
+            self._send(HTTPStatus.BAD_GATEWAY, str(e))
+        except LiqctldException as e:
+            self._send(e.code, e.message)
         except Exception:
-            self.send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
+            self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
     def do_PUT(self):
         size = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(size)
         request_body: dict = json.loads(raw_body) if raw_body else {}
         try:
-            self.route_put_requests(self.parse_path(), request_body)
+            self._route_put_requests(self._parse_path(), request_body)
+        except LiquidctlException as e:
+            self._send(HTTPStatus.BAD_GATEWAY, str(e))
+        except LiqctldException as e:
+            self._send(e.code, e.message)
         except Exception:
-            self.send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
-
-    def route_get_requests(self, path: List[str]):
-        if not path:
-            self.send(
-                HTTPStatus.BAD_REQUEST,
-                json.dumps(
-                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
-                ),
-            )
-        if path[0] == "handshake":
-            self.handshake()
-        else:
-            self.send(
-                HTTPStatus.NOT_FOUND,
-                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict()),
-            )
-
-    def route_post_requests(self, path: List[str], request_body: dict):
-        if not path:
-            self.send(
-                HTTPStatus.BAD_REQUEST,
-                json.dumps(
-                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
-                ),
-            )
-        if path[0] == "quit":
-            self.quit_server()
-        else:
-            self.send(
-                HTTPStatus.NOT_FOUND,
-                json.dumps(LiqctldError(HTTPStatus.NOT_FOUND, "Not found").to_dict()),
-            )
-
-    def route_put_requests(self, path: List[str], request_body: dict):
-        if not path:
-            self.send(
-                HTTPStatus.BAD_REQUEST,
-                json.dumps(
-                    LiqctldError(HTTPStatus.BAD_REQUEST, "Invalid path").to_dict()
-                ),
-            )
-
-    def handshake(self):
-        self.log.info("Exchanging handshake")
-        self.send(HTTPStatus.OK, json.dumps(Handshake(shake=True).to_dict()))
-
-    def quit_server(self):
-        self.log.info("Quit command received. Shutting down.")
-        self.send(HTTPStatus.OK, json.dumps({}))
-        self.log.shutdown()
-        self.server.shutdown()
-        # this also handles socket close:
-        self.server.server_close()
+            self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
 
-def server_run(message_queue: SimpleQueue, device_count: int = 0) -> None:
+def server_run(message_queue: SimpleQueue, device_service: DeviceService) -> None:
     try:
         os.remove(SOCKET_ADDRESS)
     except OSError:
         pass
-    # Restricts socket permissions further after http.server creates it.
-    # We use a thread here to avoid left-over processes.
-    # todo: might not be necessary and we should do this from rust now (causes panic)
-    # chmod = f"sleep 2 && chmod 660 {SOCKET_ADDRESS}"
-    # process_kwargs = {
-    #     "stdout": subprocess.DEVNULL,
-    #     "stderr": subprocess.DEVNULL,
-    #     "check": True,
-    #     "shell": True,
-    # }
-    # threading.Thread(
-    #     target=subprocess.run, args=(chmod,), kwargs=process_kwargs
-    # ).start()
     server = http.server.ThreadingHTTPServer(SOCKET_ADDRESS, HTTPHandler, False)
     server.log = MainLogger(message_queue)
     server.log_level = logging.getLogger().getEffectiveLevel()
+    server.device_service = device_service
     server.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.socket.bind(SOCKET_ADDRESS)
-    queue_size = max(1, device_count)  # creates a listener thread for each connection
+    # restrict access to the socket
+    os.chmod(SOCKET_ADDRESS, 0o600)
+    # creates a listener thread for each connection:
+    queue_size = max(1, len(device_service.devices))
     server.socket.listen(queue_size)
     server.serve_forever()
 
@@ -858,7 +979,7 @@ def main() -> None:
     device_service.get_devices()
 
     server_thread = threading.Thread(
-        target=server_run, args=(message_queue, len(device_service.devices))
+        target=server_run, args=(message_queue, device_service)
     )
     server_thread.start()
 
@@ -871,7 +992,6 @@ def main() -> None:
         log.log(message[0], message[1])
 
     server_thread.join()
-    device_service.shutdown()
     log.info("Liqctld service shutdown complete.")
 
 
