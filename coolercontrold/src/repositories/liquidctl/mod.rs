@@ -21,3 +21,4 @@ mod device_mapper;
 mod liqctld_client;
 pub mod liquidctl_repo;
 mod supported_devices;
+mod liqctld_service;
