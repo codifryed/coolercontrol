@@ -268,9 +268,9 @@ class SpeedProfileRequest(BaseModel):
     def __init__(
         self, channel: str, profile=None, temperature_sensor: Optional[int] = None
     ):
+        self.channel: str = channel
         if profile is None:
             profile = []
-        self.channel: str = channel
         self.profile: List[Tuple[float, int]] = profile
         self.temperature_sensor: Optional[int] = temperature_sensor
 
@@ -284,11 +284,21 @@ class SpeedProfileRequest(BaseModel):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SpeedProfileRequest":
         try:
-            return cls(
+            model = cls(
                 channel=data["channel"],
                 profile=data.get("profile", []),
                 temperature_sensor=data.get("temperature_sensor", None),
             )
+            # Pydantic used to auto cast floats sent by the daemon to int.
+            # This is still wanted because several liquidctl drivers require int as temps.
+            # Also, the default liquidctl CLI operation uses int for temps,
+            #  so it is consistent with the daemon and the UI doesn't allow <1C intervals.
+            # If one wants more precise control, the user should use a Standard Function to avoid
+            # use of the in-built speed profiles.
+            model.profile = [
+                (int(temp_duty[0]), temp_duty[1]) for temp_duty in list(model.profile)
+            ]
+            return model
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid SpeedProfileRequest Body: {data}"
@@ -854,6 +864,27 @@ class DeviceService:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
+    def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(
+            f"Setting speed profile for device: {device_id} with args: {speed_kwargs}"
+        )
+        try:
+            lc_device = self.devices[device_id]
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_speed_profile({speed_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_speed_profile, **speed_kwargs
+            )
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+        except BaseException as err:
+            log.error("Error setting speed profile:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     ###########################################################################
     ### Device Shutdown
 
@@ -942,6 +973,12 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         # empty success response needed for systemd socket service to not error on 0 byte content
         self._send(HTTPStatus.OK, json.dumps({}))
 
+    # put("/devices/{device_id}/speed/profile")
+    def set_speed_profile(self, device_id: int, speed_request: dict):
+        speed_kwargs = SpeedProfileRequest.from_dict(speed_request).to_dict_no_none()
+        self.device_service.set_speed_profile(device_id, speed_kwargs)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
@@ -984,6 +1021,15 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             # put("/devices/{device_id}/speed/fixed")
             device_id = self._try_cast_int(path[1])
             self.set_fixed_speed(device_id, request_body)
+        elif (
+            len(path) == 4
+            and path[0] == "devices"
+            and path[2] == "speed"
+            and path[3] == "profile"
+        ):
+            # put("/devices/{device_id}/speed/profile")
+            device_id = self._try_cast_int(path[1])
+            self.set_speed_profile(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
