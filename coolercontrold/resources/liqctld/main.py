@@ -915,8 +915,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
         elif path[0] == "handshake":
+            # get("/handshake")
             self.handshake()
         elif len(path) == 3 and path[0] == "devices" and path[2] == "status":
+            # get("/devices/{device_id}/status")
             device_id = self._try_cast_int(path[1])
             self.get_status(device_id)
         else:
@@ -926,8 +928,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
         elif path[0] == "quit":
+            # post("/quit")
             self.quit_server()
         elif len(path) == 3 and path[0] == "devices" and path[2] == "initialize":
+            # post("/devices/{device_id}/initialize")
             device_id = self._try_cast_int(path[1])
             self.init_device(device_id, request_body)
         else:
@@ -937,6 +941,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
         elif len(path) == 3 and path[0] == "devices" and path[2] == "legacy690":
+            # put("/devices/{device_id}/legacy690")
             device_id = self._try_cast_int(path[1])
             self.set_device_as_legacy690(device_id)
         else:
