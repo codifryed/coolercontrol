@@ -763,6 +763,11 @@ class DeviceService:
         disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
 
     def shutdown(self) -> None:
+        """
+        Shutdown all devices and their workers.
+        This includes calling initialize() to attempt to reset devices to their default state,
+        then calling disconnect() to disconnect all devices.
+        """
         for device_id, lc_device in self.devices.items():
             if isinstance(
                 lc_device, CorsairHidPsu
