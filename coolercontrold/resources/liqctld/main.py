@@ -57,13 +57,13 @@ from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 
-SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
-DEVICE_TIMEOUT_SECS: float = 9.5
-DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
-
 #####################################################################
 ## Basic Setup
 #####################################################################
+
+SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
+DEVICE_TIMEOUT_SECS: float = 9.5
+DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
 #####################################################################
 ## Models
