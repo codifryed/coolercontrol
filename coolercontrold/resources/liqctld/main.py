@@ -101,6 +101,10 @@ class BaseModel:
     def to_dict(self) -> Dict[str, Any]:
         return self.__dict__
 
+    def to_dict_no_none(self) -> Dict[str, Any]:
+        """Returns a dictionary without any None values"""
+        return {k: v for k, v in self.to_dict().items() if v is not None}
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Any:
         cls.__dict__.update(data)
