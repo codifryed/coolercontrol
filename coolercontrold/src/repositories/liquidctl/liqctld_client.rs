@@ -86,7 +86,7 @@ impl LiqctldClient {
     // private
 
     /// Attempts to establish a socket connection to a server and
-    /// returns a `SocketConnection` if successful, otherwise it retries a specified number of times
+    /// returns a `SocketConnection` if successful; otherwise it retries a specified number of times
     /// before returning an error.
     ///
     /// Returns:
