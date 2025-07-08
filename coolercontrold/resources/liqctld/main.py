@@ -82,9 +82,6 @@ class LiqctldException(Exception):
         self.message = json_message
         self.code = code
 
-    def to_error(self) -> "LiqctldError":
-        return LiqctldError(code=self.code, message=self.message)
-
     @staticmethod
     def _to_dict(code: HTTPStatus, message: str) -> Dict[str, Any]:
         return {
@@ -110,25 +107,6 @@ class BaseModel:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict())
-
-
-class LiqctldError(BaseModel):
-    def __init__(self, code: HTTPStatus, message: str):
-        self.code: int = code.value
-        self.message: str = message
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "code": self.code,
-            "message": self.message,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LiqctldError":
-        return cls(
-            code=data["code"],
-            message=data["message"],
-        )
 
 
 class DeviceProperties(BaseModel):
