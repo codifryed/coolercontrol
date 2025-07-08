@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use anyhow::{anyhow, Result};
-use log::{error, info};
+use log::{debug, error, info};
 use pyo3::Python;
 use std::ffi::CString;
 
@@ -34,6 +34,7 @@ const PY_SERVICE: &[u8] = include_bytes!(concat!(
 /// This functions should be called with `tokio::task::spawn_blocking` to ensure the Python logger
 /// integrates with the Rust logger.
 pub fn verify_env() -> Result<()> {
+    debug!("Verifying Python environment for liqctld service...");
     // needed only once
     pyo3::prepare_freethreaded_python();
     Python::with_gil(|py| {
@@ -48,6 +49,7 @@ pub fn verify_env() -> Result<()> {
 /// This functions should be called with `tokio::task::spawn_blocking` to ensure the Python logger
 /// integrates with the Rust logger.
 pub fn run() -> Result<()> {
+    debug!("Starting liqctld Service...");
     Python::with_gil(|py| py.run(CString::new(PY_SERVICE)?.as_c_str(), None, None))
         .inspect(|()| info!("Liqctld service exited successfully."))
         .map_err(|err| {

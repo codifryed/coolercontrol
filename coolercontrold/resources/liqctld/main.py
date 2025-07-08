@@ -26,7 +26,6 @@ import os
 import queue
 import socket
 import sys
-import threading
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
@@ -924,9 +923,7 @@ def main() -> None:
     #  for parallel device communication.
     device_service.get_devices()
 
-    server_thread = threading.Thread(target=server_run, args=(device_service,))
-    server_thread.start()
-    server_thread.join()
+    server_run(device_service)
     log.info("Liqctld service shutdown complete.")
 
 

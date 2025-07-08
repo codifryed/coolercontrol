@@ -74,7 +74,6 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::Disabled.into());
         }
-        info!("Starting liqctld Service...");
         if let Err(err) = tokio::task::spawn_blocking(liqctld_service::verify_env).await? {
             let msg = format!(
                 "Python liquidctl system package not detected. If you want liquidctl device \
