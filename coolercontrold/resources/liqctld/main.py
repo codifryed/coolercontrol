@@ -633,9 +633,7 @@ class DeviceService:
             if "already open" in str(err):
                 log.warning(f"{lc_device.description} already connected")
             else:
-                raise LiquidctlException(
-                    "Unexpected Device Communication Error"
-                ) from err
+                raise LiquidctlException("Unexpected Device Communication Error")
 
     ###########################################################################
     ### Device Management
@@ -745,13 +743,12 @@ class DeviceService:
                 f"RESPONSE: {lc_init_status}"
             )
             return self._stringify_status(lc_init_status)
-        except (
-            OSError
-        ) as os_exc:  # OSError, when a device was found and there's a permissions error
-            log.error("Device Communication Error", exc_info=os_exc)
+        except OSError as os_exc:
+            # OSError, when a device was found and there's a permissions error
+            log.error(f"Device Initialization Error - {traceback.format_exc()}")
             raise LiquidctlException(
-                "Unexpected Device Communication Error"
-            ) from os_exc
+                f"Unexpected Device Communication Error - {os_exc}"
+            )
 
     @staticmethod
     def _stringify_status(
@@ -772,8 +769,11 @@ class DeviceService:
         try:
             return self._get_current_or_cached_device_status(device_id)
         except BaseException as err:
-            log.error("Error getting status:", exc_info=err)
-            raise LiquidctlException("Unexpected Device communication error") from err
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error getting status for device #{device_id} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(f"Unexpected Device communication error: {err}")
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
@@ -862,8 +862,11 @@ class DeviceService:
             # maximum timeout for setting data on the device:
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
-            log.error("Error setting fixed speed:", exc_info=err)
-            raise LiquidctlException("Unexpected Device communication error") from err
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error setting fixed speed: {speed_kwargs} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(f"Unexpected Device communication error: {err}")
 
     def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
@@ -883,8 +886,11 @@ class DeviceService:
             )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
-            log.error("Error setting speed profile:", exc_info=err)
-            raise LiquidctlException("Unexpected Device communication error") from err
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error setting color with {speed_kwargs} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(f"Unexpected Device communication error: {err}")
 
     def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
@@ -902,8 +908,12 @@ class DeviceService:
             )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
-            log.error("Error setting color:", exc_info=err)
-            raise LiquidctlException("Unexpected Device communication error") from err
+            # color changes are considered non-critical
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.warning(
+                    f"Liquidctl Error setting color with {color_kwargs} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(f"Unexpected Device communication error: {err}")
 
     def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
         if self.devices.get(device_id) is None:
@@ -930,8 +940,12 @@ class DeviceService:
                 f"including waiting on other commands: {time.time() - start_screen_update}"
             )
         except BaseException as err:
-            log.error("Error setting screen:", exc_info=err)
-            raise LiquidctlException("Unexpected Device communication error") from err
+            # screen changes are considered non-critical
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.warning(
+                    f"Liquidctl Error setting screen with {screen_kwargs} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(f"Unexpected Device communication error: {err}")
 
     ###########################################################################
     ### Device Shutdown

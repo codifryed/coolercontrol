@@ -106,7 +106,6 @@ impl LiquidctlRepo {
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),
             })?;
-        info!("Communication established with liqctld.");
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
@@ -534,10 +533,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen brightness {brightness} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen brightness {brightness} | {err}.");
             }
         }
         if let Some(orientation) = lcd_settings.orientation {
@@ -552,10 +548,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen orientation {orientation} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen orientation {orientation} | {err}.");
             }
         }
         if lcd_settings.mode == "image" {
@@ -573,10 +566,8 @@ impl LiquidctlRepo {
                     &mode,
                     Some(image_file.clone()),
                 )
-                    .await
-                    .map_err(|err| {
-                        anyhow!("Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details. - {err}")
-                    })?;
+                .await
+                .map_err(|err| anyhow!("Setting lcd/screen 'image/gif' - {err}"))?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -586,10 +577,8 @@ impl LiquidctlRepo {
                 &lcd_settings.mode,
                 None,
             )
-                .await
-                .map_err(|err| {
-                    anyhow!("Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details. - {err}")
-                })?;
+            .await
+            .map_err(|err| anyhow!("Setting lcd/screen 'liquid' mode - {err}"))?;
         }
         Ok(())
     }

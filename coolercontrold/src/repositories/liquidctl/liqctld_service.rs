@@ -34,7 +34,7 @@ const PY_SERVICE: &[u8] = include_bytes!(concat!(
 /// This functions should be called with `tokio::task::spawn_blocking` to ensure the Python logger
 /// integrates with the Rust logger.
 pub fn verify_env() -> Result<()> {
-    debug!("Verifying Python environment for liqctld service...");
+    debug!("Verifying Python environment...");
     // needed only once
     pyo3::prepare_freethreaded_python();
     Python::with_gil(|py| {
@@ -49,12 +49,12 @@ pub fn verify_env() -> Result<()> {
 /// This functions should be called with `tokio::task::spawn_blocking` to ensure the Python logger
 /// integrates with the Rust logger.
 pub fn run() -> Result<()> {
-    debug!("Starting liqctld Service...");
+    debug!("Starting...");
     Python::with_gil(|py| py.run(CString::new(PY_SERVICE)?.as_c_str(), None, None))
-        .inspect(|()| info!("Liqctld service exited successfully."))
+        .inspect(|()| info!("Exited successfully"))
         .map_err(|err| {
-            error!("Liqctld service exited with an error: {err}");
-            anyhow!("Liqctld service exited with error: {err}")
+            error!("Exited with an error: {err}");
+            anyhow!("Exited with an error: {err}")
         })
 }
 
