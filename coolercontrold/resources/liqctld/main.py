@@ -26,6 +26,7 @@ import os
 import queue
 import socket
 import sys
+import time
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
@@ -904,6 +905,34 @@ class DeviceService:
             log.error("Error setting color:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
+    def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(f"Setting screen for device: {device_id} with args: {screen_kwargs}")
+        try:
+            lc_device = self.devices[device_id]
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) "
+            )
+            start_screen_update = time.time()
+            screen_job = self.device_executor.submit(
+                device_id, lc_device.set_screen, **screen_kwargs
+            )
+            # after setting the screen, sometimes an immediate status request comes back with 0,
+            #  so we wait a small amount
+            wait_job = self.device_executor.submit(device_id, lambda: time.sleep(0.01))
+            screen_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            wait_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            log.debug(
+                f"Time taken to update the screen for device: {device_id}, "
+                f"including waiting on other commands: {time.time() - start_screen_update}"
+            )
+        except BaseException as err:
+            log.error("Error setting screen:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     ###########################################################################
     ### Device Shutdown
 
@@ -1004,6 +1033,13 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         self.device_service.set_color(device_id, color_kwargs)
         self._send(HTTPStatus.OK, json.dumps({}))
 
+    # put("/devices/{device_id}/screen")
+    def set_screen(self, device_id: int, screen_request: dict):
+        # need None value for liquid mode
+        screen_kwargs = ScreenRequest.from_dict(screen_request).to_dict()
+        self.device_service.set_screen(device_id, screen_kwargs)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
@@ -1059,6 +1095,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             # put("/devices/{device_id}/color")
             device_id = self._try_cast_int(path[1])
             self.set_color(device_id, request_body)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "screen":
+            # put("/devices/{device_id}/screen")
+            device_id = self._try_cast_int(path[1])
+            self.set_screen(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
