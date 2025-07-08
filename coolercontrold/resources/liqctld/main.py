@@ -191,16 +191,22 @@ class Device(BaseModel):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Device":
-        return cls(
-            id=data["id"],
-            description=data["description"],
-            device_type=data["device_type"],
-            properties=DeviceProperties.from_dict(data["properties"]),
-            liquidctl_version=data["liquidctl_version"],
-            serial_number=data.get("serial_number", None),
-            hid_address=data.get("hid_address", None),
-            hwmon_address=data.get("hwmon_address", None),
-        )
+        try:
+            return cls(
+                id=data["id"],
+                description=data["description"],
+                device_type=data["device_type"],
+                properties=DeviceProperties.from_dict(data["properties"]),
+                liquidctl_version=data["liquidctl_version"],
+                serial_number=data.get("serial_number", None),
+                hid_address=data.get("hid_address", None),
+                hwmon_address=data.get("hwmon_address", None),
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST,
+                f"Invalid Device Body: {data}"
+            )
 
 
 class Handshake(BaseModel):
@@ -248,10 +254,16 @@ class FixedSpeedRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FixedSpeedRequest":
-        return cls(
-            channel=data["channel"],
-            duty=data["duty"],
-        )
+        try:
+            return cls(
+                channel=data["channel"],
+                duty=data["duty"],
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST,
+                f"Invalid FixedSpeedRequest Body: {data}"
+            )
 
 
 class SpeedProfileRequest(BaseModel):
@@ -273,11 +285,17 @@ class SpeedProfileRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SpeedProfileRequest":
-        return cls(
-            channel=data["channel"],
-            profile=data.get("profile", []),
-            temperature_sensor=data.get("temperature_sensor", None),
-        )
+        try:
+            return cls(
+                channel=data["channel"],
+                profile=data.get("profile", []),
+                temperature_sensor=data.get("temperature_sensor", None),
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST,
+                f"Invalid SpeedProfileRequest Body: {data}"
+            )
 
 
 class ColorRequest(BaseModel):
@@ -309,14 +327,20 @@ class ColorRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ColorRequest":
-        return cls(
-            channel=data["channel"],
-            mode=data["mode"],
-            colors=data["colors"],
-            time_per_color=data.get("time_per_color", None),
-            speed=data.get("speed", None),
-            direction=data.get("direction", None),
-        )
+        try:
+            return cls(
+                channel=data["channel"],
+                mode=data["mode"],
+                colors=data["colors"],
+                time_per_color=data.get("time_per_color", None),
+                speed=data.get("speed", None),
+                direction=data.get("direction", None),
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST,
+                f"Invalid ColorRequest Body: {data}"
+            )
 
 
 class ScreenRequest(BaseModel):
@@ -343,11 +367,17 @@ class ScreenRequest(BaseModel):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ScreenRequest":
-        return cls(
-            channel=data["channel"],
-            mode=data["mode"],
-            value=data.get("value", None),
-        )
+        try:
+            return cls(
+                channel=data["channel"],
+                mode=data["mode"],
+                value=data.get("value", None),
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST,
+                f"Invalid ScreenRequest Body: {data}"
+            )
 
 
 #####################################################################
