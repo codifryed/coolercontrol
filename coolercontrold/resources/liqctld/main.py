@@ -830,6 +830,30 @@ class DeviceService:
         self.device_status_cache[dev_id] = serialized_status
         return serialized_status
 
+    def set_fixed_speed(
+        self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]
+    ) -> None:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(
+            f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}"
+        )
+        try:
+            lc_device = self.devices[device_id]
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_fixed_speed, **speed_kwargs
+            )
+            # maximum timeout for setting data on the device:
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+        except BaseException as err:
+            log.error("Error setting fixed speed:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     ###########################################################################
     ### Device Shutdown
 
@@ -911,6 +935,13 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         status_response: Statuses = self.device_service.get_status(device_id)
         self._send(HTTPStatus.OK, json.dumps({"status": status_response}))
 
+    # put("/devices/{device_id}/speed/fixed")
+    def set_fixed_speed(self, device_id: int, speed_request: dict):
+        speed_kwargs = FixedSpeedRequest.from_dict(speed_request).to_dict_no_none()
+        self.device_service.set_fixed_speed(device_id, speed_kwargs)
+        # empty success response needed for systemd socket service to not error on 0 byte content
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
@@ -944,6 +975,15 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             # put("/devices/{device_id}/legacy690")
             device_id = self._try_cast_int(path[1])
             self.set_device_as_legacy690(device_id)
+        elif (
+            len(path) == 4
+            and path[0] == "devices"
+            and path[2] == "speed"
+            and path[3] == "fixed"
+        ):
+            # put("/devices/{device_id}/speed/fixed")
+            device_id = self._try_cast_int(path[1])
+            self.set_fixed_speed(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
