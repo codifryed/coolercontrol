@@ -1046,6 +1046,9 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         elif path[0] == "handshake":
             # get("/handshake")
             self.handshake()
+        elif path[0] == "devices":
+            # get("/devices")
+            self.get_devices()
         elif len(path) == 3 and path[0] == "devices" and path[2] == "status":
             # get("/devices/{device_id}/status")
             device_id = self._try_cast_int(path[1])
