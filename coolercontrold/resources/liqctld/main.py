@@ -1043,10 +1043,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
-        elif path[0] == "handshake":
+        elif len(path) == 1 and path[0] == "handshake":
             # get("/handshake")
             self.handshake()
-        elif path[0] == "devices":
+        elif len(path) == 1 and path[0] == "devices":
             # get("/devices")
             self.get_devices()
         elif len(path) == 3 and path[0] == "devices" and path[2] == "status":
@@ -1059,7 +1059,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
     def _route_post_requests(self, path: List[str], request_body: dict):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
-        elif path[0] == "quit":
+        elif len(path) == 1 and path[0] == "quit":
             # post("/quit")
             self.quit_server()
         elif len(path) == 3 and path[0] == "devices" and path[2] == "initialize":
@@ -1209,7 +1209,7 @@ def setup_logging() -> None:
     log_level = logging.INFO
     liquidctl_level = logging.WARNING
     if env_log_level:
-        if env_log_level.lower() == "debug":
+        if env_log_level.lower() == "debug" or env_log_level.lower() == "trace":
             log_level = logging.DEBUG
             liquidctl_level = logging.DEBUG
         elif env_log_level.lower() == "warn":
