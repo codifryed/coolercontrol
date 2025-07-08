@@ -27,8 +27,8 @@ use anyhow::Result;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::client::conn::http1::SendRequest;
-use hyper::Request;
 use hyper::Response;
+use hyper::{Request, Version};
 use hyper_util::rt::TokioIo;
 use log::error;
 use log::trace;
@@ -180,12 +180,15 @@ impl LiqctldClient {
         for _ in 0..LIQCTLD_EXPIRED_CONNECTION_RETRIES {
             // If we run out of connections or timeout, this will return Err:
             let mut socket_connection = self.get_socket_connection().await?;
-            let Ok(response) = socket_connection.sender.send_request(request.clone()).await else {
-                // this can happen semi-regularly (if a connection isn't used for a while)
-                debug!("Socket Connection no longer valid. Closing.");
-                socket_connection.connection_handle.abort();
-                drop(socket_connection);
-                continue; // retry with a different connection
+            let response = match socket_connection.sender.send_request(request.clone()).await {
+                Ok(response) => response,
+                Err(err) => {
+                    // this can happen semi-regularly (if a connection isn't used for a while)
+                    debug!("Socket Connection no longer valid or closed. Aborting. {err:?}");
+                    socket_connection.connection_handle.abort();
+                    drop(socket_connection);
+                    continue; // retry with a different connection
+                }
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
             if self.connection_pool.borrow().len() < LIQCTLD_MAX_POOL_SIZE {
@@ -227,6 +230,15 @@ impl LiqctldClient {
         Ok(LiqctldResponse { body })
     }
 
+    /// Creates a new request builder for the `liqctld` service,
+    /// with standard headers already set.
+    fn request_builder() -> hyper::http::request::Builder {
+        Request::builder()
+            .header("Host", LIQCTLD_HOST)
+            .header("Connection", "keep-alive")
+            .version(Version::HTTP_11)
+    }
+
     // public
 
     /// Sends a GET Handshake request to the liqctld service to verify requests are
@@ -236,8 +248,7 @@ impl LiqctldClient {
     ///
     /// a `Result<()>`.
     pub async fn handshake(&self) -> Result<()> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_HANDSHAKE)
             .method("GET")
             .body(String::new())?;
@@ -251,8 +262,7 @@ impl LiqctldClient {
     ///
     /// a Result object with a `DevicesResponse` as the Ok variant.
     pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_DEVICES)
             .method("GET")
             .body(String::new())?;
@@ -270,8 +280,7 @@ impl LiqctldClient {
     ///
     /// a `Result` with a `StatusResponse` object.
     pub async fn get_status(&self, device_index: &u8) -> Result<StatusResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_STATUS.replace("{}", &device_index.to_string()))
             .method("GET")
             .body(String::new())?;
@@ -297,8 +306,7 @@ impl LiqctldClient {
         pump_mode: Option<String>,
     ) -> Result<StatusResponse> {
         let request_body = serde_json::to_string(&InitializeRequest { pump_mode })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_INITIALIZE.replace("{}", &device_index.to_string()))
             .method("POST")
             .body(request_body)?;
@@ -328,8 +336,7 @@ impl LiqctldClient {
     ///
     /// a Result object with a value of `DeviceResponse`.
     pub async fn put_legacy690(&self, device_index: &u8) -> Result<DeviceResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_LEGACY690.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(String::new())?;
@@ -360,8 +367,7 @@ impl LiqctldClient {
             channel: channel_name.to_string(),
             duty: fixed_speed,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_FIXED_SPEED.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -400,8 +406,7 @@ impl LiqctldClient {
             profile: profile.to_vec(),
             temperature_sensor,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_SPEED_PROFILE.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -455,8 +460,7 @@ impl LiqctldClient {
             speed,
             direction,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_COLOR.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -494,8 +498,7 @@ impl LiqctldClient {
             mode: mode.to_string(),
             value,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_SCREEN.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;

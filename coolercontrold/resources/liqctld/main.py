@@ -985,6 +985,9 @@ class DeviceService:
 
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
+    server_version = "BasicHTTP/1.0"
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, request, client_address, server):
         self.device_service: DeviceService = server.device_service
         super().__init__(request, client_address, server)
@@ -1123,8 +1126,12 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         # avoid exception in server.py address_string()
         self.client_address = ("",)
         self.send_response(status.value)
+        reply_bytes = reply.encode("utf-8")
+        self.send_header("Content-type", "application/json")
+        self.send_header("Content-Length", str(len(reply_bytes)))
+        self.send_header("Connection", "keep-alive")
         self.end_headers()
-        self.wfile.write(reply.encode("utf-8"))
+        self.wfile.write(reply_bytes)
 
     def _parse_path(self) -> List[str]:
         return [x for x in self.path.strip().split("/") if x]
