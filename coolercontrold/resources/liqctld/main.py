@@ -69,25 +69,6 @@ DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 #####################################################################
 
 
-def add_log_level() -> None:
-    debug_lc_lvl: int = 15
-
-    def log_for_level(self, message, *args, **kwargs) -> None:
-        if self.isEnabledFor(debug_lc_lvl):
-            self._log(debug_lc_lvl, message, args, **kwargs)
-
-    def log_to_root(message, *args, **kwargs) -> None:
-        logging.log(debug_lc_lvl, message, *args, **kwargs)
-
-    logging.addLevelName(debug_lc_lvl, "DEBUG_LC")
-    setattr(logging, "DEBUG_LC", debug_lc_lvl)
-    setattr(logging, "debug_lc", log_to_root)
-    setattr(logging.getLoggerClass(), "debug_lc", log_for_level)
-
-
-add_log_level()
-
-
 class MainLogger:
     """
     A logger class that will take log messages from other threads and send them
@@ -106,9 +87,6 @@ class MainLogger:
 
     def warn(self, msg: str) -> None:
         self.message_queue.put((logging.WARNING, msg))
-
-    def debug_lc(self, msg: str) -> None:
-        self.message_queue.put((logging.DEBUG_LC, msg))
 
     def debug(self, msg: str) -> None:
         self.message_queue.put((logging.DEBUG, msg))
@@ -550,7 +528,7 @@ class DeviceService:
             ]
             return devices
         try:  # otherwise find devices
-            self.log.debug_lc("liquidctl.find_liquidctl_devices()")
+            self.log.debug("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
             self.device_executor.set_number_of_devices(len(found_devices))
@@ -659,7 +637,7 @@ class DeviceService:
         )
 
     def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
-        self.log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
+        self.log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
         # currently only smbus devices have options for connect()
         connect_job = self.device_executor.submit(device_id, lc_device.connect)
         try:
@@ -704,7 +682,7 @@ class DeviceService:
             raise LiqctldException(HTTPStatus.EXPECTATION_FAILED, message)
         self.log.info(f"Setting device #{device_id} as legacy690")
         self._disconnect_device(device_id, lc_device)
-        self.log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
+        self.log.debug("Legacy690Lc.find_liquidctl_devices()")
         legacy_job = self.device_executor.submit(
             device_id, Legacy690Lc.find_supported_devices
         )
@@ -772,9 +750,7 @@ class DeviceService:
         self.devices.clear()
 
     def _disconnect_device(self, device_id: int, lc_device: BaseDriver) -> None:
-        self.log.debug_lc(
-            f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() "
-        )
+        self.log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
         disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
         disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
 
@@ -783,7 +759,7 @@ class DeviceService:
             if isinstance(
                 lc_device, CorsairHidPsu
             ):  # attempt to reset fan control back to hardware
-                self.log.debug_lc(
+                self.log.debug(
                     f"LC #{device_id} {lc_device.__class__.__name__}.initialize() "
                 )
                 init_job = self.device_executor.submit(device_id, lc_device.initialize)
@@ -952,9 +928,6 @@ def setup_logging() -> None:
     if env_log_level:
         if env_log_level.lower() == "debug":
             log_level = logging.DEBUG
-            liquidctl_level = logging.DEBUG
-        elif env_log_level.lower() == "debug_liquidctl":
-            log_level = logging.DEBUG_LC
             liquidctl_level = logging.DEBUG
         elif env_log_level.lower() == "warn":
             log_level = logging.WARNING
