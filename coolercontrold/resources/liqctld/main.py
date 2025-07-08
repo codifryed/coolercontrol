@@ -31,7 +31,6 @@ import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import HTTPServer
-from multiprocessing.queues import SimpleQueue
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import liquidctl
@@ -63,37 +62,9 @@ SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
 DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
-
 #####################################################################
 ## Basic Setup
 #####################################################################
-
-
-class MainLogger:
-    """
-    A logger class that will take log messages from other threads and send them
-    to the main thread for injection into the rust logger.
-    This is needed because only the main thread can write to the rust logger properly.
-    """
-
-    def __init__(self, message_queue: SimpleQueue) -> None:
-        self.message_queue: SimpleQueue = message_queue
-
-    def error(self, msg: str) -> None:
-        self.message_queue.put((logging.ERROR, msg))
-
-    def info(self, msg: str) -> None:
-        self.message_queue.put((logging.INFO, msg))
-
-    def warn(self, msg: str) -> None:
-        self.message_queue.put((logging.WARNING, msg))
-
-    def debug(self, msg: str) -> None:
-        self.message_queue.put((logging.DEBUG, msg))
-
-    def shutdown(self) -> None:
-        self.message_queue.put(None)
-
 
 #####################################################################
 ## Models
@@ -491,7 +462,7 @@ class DeviceService:
     The Service which keeps track of devices and handles all communication
     """
 
-    def __init__(self, message_queue: SimpleQueue) -> None:
+    def __init__(self) -> None:
         """
         To enable synchronous & parallel device communication, we use our own DeviceExecutor
         """
@@ -502,13 +473,12 @@ class DeviceService:
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
         self.liquidctl_version: str = get_liquidctl_version()
-        self.log = MainLogger(message_queue)
 
     ###########################################################################
     ### Device Startup
 
     def get_devices(self) -> List[Device]:
-        self.log.debug("Getting device list")
+        log.debug("Getting device list")
         # if we've already searched for devices, don't do so again, just retrieve device info
         if self.devices:
             devices = [
@@ -528,9 +498,10 @@ class DeviceService:
             ]
             return devices
         try:  # otherwise find devices
-            self.log.debug("liquidctl.find_liquidctl_devices()")
+            log.debug("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
+            # sets the number of threads to be used per device:
             self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
@@ -544,7 +515,7 @@ class DeviceService:
                     try:
                         serial_number = getattr(lc_device, "serial_number", None)
                     except ValueError:
-                        self.log.warn(
+                        log.warning(
                             f"No serial number info found for LC #{index_id} {description}"
                         )
                 hwmon = getattr(lc_device, "_hwmon", None)
@@ -563,11 +534,11 @@ class DeviceService:
                     )
                 )
             device_names = [device.description for device in devices]
-            self.log.info(f"Devices found: {device_names}")
+            log.info(f"Devices found: {device_names}")
             return devices
         except ValueError as ve:  # ValueError can happen when no devices were found
-            self.log.debug(f"ValueError when trying to find all devices: {ve}")
-            self.log.info("No Liquidctl devices detected")
+            log.debug(f"ValueError when trying to find all devices: {ve}")
+            log.info("No Liquidctl devices detected")
             return []
 
     @staticmethod
@@ -637,14 +608,14 @@ class DeviceService:
         )
 
     def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
-        self.log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
+        log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
         # currently only smbus devices have options for connect()
         connect_job = self.device_executor.submit(device_id, lc_device.connect)
         try:
             connect_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except RuntimeError as err:
             if "already open" in str(err):
-                self.log.warn(f"{lc_device.description} already connected")
+                log.warning(f"{lc_device.description} already connected")
             else:
                 raise LiquidctlException(
                     "Unexpected Device Communication Error"
@@ -665,7 +636,7 @@ class DeviceService:
             )
         lc_device = self.devices[device_id]
         if isinstance(lc_device, Legacy690Lc):
-            self.log.warn(f"Device #{device_id} is already set as a Legacy690Lc device")
+            log.warning(f"Device #{device_id} is already set as a Legacy690Lc device")
             return Device(
                 id=device_id,
                 description=lc_device.description,
@@ -678,19 +649,17 @@ class DeviceService:
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
-            self.log.warn(message)
+            log.warning(message)
             raise LiqctldException(HTTPStatus.EXPECTATION_FAILED, message)
-        self.log.info(f"Setting device #{device_id} as legacy690")
+        log.info(f"Setting device #{device_id} as legacy690")
         self._disconnect_device(device_id, lc_device)
-        self.log.debug("Legacy690Lc.find_liquidctl_devices()")
+        log.debug("Legacy690Lc.find_liquidctl_devices()")
         legacy_job = self.device_executor.submit(
             device_id, Legacy690Lc.find_supported_devices
         )
         asetek690s = list(legacy_job.result(timeout=DEVICE_TIMEOUT_SECS))
         if not asetek690s:
-            self.log.error(
-                "Could not find any Legacy690Lc devices. This shouldn't happen"
-            )
+            log.error("Could not find any Legacy690Lc devices. This shouldn't happen")
             raise LiquidctlException("Could not find any Legacy690Lc devices.")
         elif len(asetek690s) > 1:
             # if there are multiple options, we need to find the correlating device
@@ -717,7 +686,7 @@ class DeviceService:
         try:
             serial_number = getattr(lc_device, "serial_number", None)
         except ValueError:
-            self.log.warn(
+            log.warning(
                 f"No serial number info found for LC #{device_id} {description}"
             )
         return Device(
@@ -750,7 +719,7 @@ class DeviceService:
         self.devices.clear()
 
     def _disconnect_device(self, device_id: int, lc_device: BaseDriver) -> None:
-        self.log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
+        log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
         disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
         disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
 
@@ -759,7 +728,7 @@ class DeviceService:
             if isinstance(
                 lc_device, CorsairHidPsu
             ):  # attempt to reset fan control back to hardware
-                self.log.debug(
+                log.debug(
                     f"LC #{device_id} {lc_device.__class__.__name__}.initialize() "
                 )
                 init_job = self.device_executor.submit(device_id, lc_device.initialize)
@@ -775,20 +744,18 @@ class DeviceService:
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server):
-        self.log: MainLogger = server.log
         self.device_service: DeviceService = server.device_service
         super().__init__(request, client_address, server)
 
     # get("/handshake")
     def handshake(self):
-        self.log.info("Exchanging handshake")
+        log.info("Exchanging handshake")
         self._send(HTTPStatus.OK, Handshake(shake=True).to_json())
 
     # post("/quit")
     def quit_server(self):
-        self.log.info("Quit command received. Shutting down.")
+        log.info("Quit command received. Shutting down.")
         self._send(HTTPStatus.OK, json.dumps({}))
-        self.log.shutdown()
         self.server.shutdown()
         # this also handles socket close:
         self.server.server_close()
@@ -851,9 +818,18 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             )
 
     def log_message(self, format, *args):
-        # server logs disabled by default
-        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
-            super().log_message(format, *args)
+        # server request logs are disabled by default and will use our logger
+        if self.server.log_level <= logging.DEBUG:
+            # super().log_message(format, *args)
+            message = format % args
+            log.debug(
+                "%s - - [%s] %s\n"
+                % (
+                    self.address_string(),
+                    self.log_date_time_string(),
+                    message.translate(self._control_char_table),
+                )
+            )
 
     def do_GET(self):
         try:
@@ -892,14 +868,13 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(traceback.format_exc()))
 
 
-def server_run(message_queue: SimpleQueue, device_service: DeviceService) -> None:
+def server_run(device_service: DeviceService) -> None:
     try:
         os.remove(SOCKET_ADDRESS)
     except OSError:
         pass
     server = http.server.ThreadingHTTPServer(SOCKET_ADDRESS, HTTPHandler, False)
-    server.log = MainLogger(message_queue)
-    server.log_level = logging.getLogger().getEffectiveLevel()
+    server.log_level = log.getLogger().getEffectiveLevel()
     server.device_service = device_service
     server.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.socket.bind(SOCKET_ADDRESS)
@@ -944,26 +919,13 @@ def setup_logging() -> None:
 def main() -> None:
     setup_logging()
     log.info("Initializing liquidctl service...")
-
-    message_queue = queue.SimpleQueue()
-    device_service = DeviceService(message_queue)
+    device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.
     device_service.get_devices()
 
-    server_thread = threading.Thread(
-        target=server_run, args=(message_queue, device_service)
-    )
+    server_thread = threading.Thread(target=server_run, args=(device_service,))
     server_thread.start()
-
-    # Wait for messages to come into the queue and print them
-    # This is needed because only the main thread can write to the rust logger properly
-    while True:
-        message: Optional[Tuple[int, str]] = message_queue.get()
-        if message is None:  # server is shutting down
-            break
-        log.log(message[0], message[1])
-
     server_thread.join()
     log.info("Liqctld service shutdown complete.")
 
