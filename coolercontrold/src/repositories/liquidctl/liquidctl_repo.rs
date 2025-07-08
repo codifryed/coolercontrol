@@ -64,14 +64,6 @@ impl LiquidctlRepo {
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
         {
-            let _: Result<()> = async {
-                // attempt to quickly shut down the liqctld service if it happens to be running.
-                let liqctld_client = LiqctldClient::new(1).await?;
-                liqctld_client.post_quit().await?;
-                liqctld_client.shutdown();
-                Ok(())
-            }
-            .await;
             return Err(InitError::Disabled.into());
         }
         if let Err(err) = tokio::task::spawn_blocking(liqctld_service::verify_env).await? {
@@ -84,15 +76,19 @@ impl LiquidctlRepo {
             return Err(InitError::Env { msg }.into());
         }
         let service_handle = tokio::task::spawn_blocking(liqctld_service::run);
-        sleep(Duration::from_millis(300)).await; // give the service a moment to come up
+        // give the service a moment to come up and detect devices
+        sleep(Duration::from_millis(300)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
             Ok(client) => client,
             Err(err) => {
                 let err_msg = if service_handle.is_finished() {
                     match service_handle.await {
-                        Ok(_) =>
-                            format!("liqctld service exited without error. Client error: {err}"),
-                        Err(service_err) => format!("liqctld service exited with error: {service_err} ; Client error: {err}"),
+                        Ok(_) => {
+                            format!("liqctld service exited without error. Client error: {err}")
+                        }
+                        Err(service_err) => format!(
+                            "liqctld service exited with error: {service_err} ; Client error: {err}"
+                        ),
                     }
                 } else {
                     err.to_string()
