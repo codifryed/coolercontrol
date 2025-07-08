@@ -702,6 +702,43 @@ class DeviceService:
             hwmon_address=None,
         )
 
+    def initialize_device(self, device_id: int, init_args: Dict[str, str]) -> Statuses:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.info(
+            f"Initializing Liquidctl device #{device_id} with arguments: {init_args}"
+        )
+        try:
+            lc_device = self.devices[device_id]
+            if AuraLed is not None and isinstance(lc_device, AuraLed):
+                log.info("Skipping AuraLed device initialization, not needed.")
+                # also has negative side effects of clearing previously set lighting settings
+                return []
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) "
+            )
+            init_job = self.device_executor.submit(
+                device_id, lc_device.initialize, **init_args
+            )
+            lc_init_status: Union[
+                List[Tuple[str, Union[str, int, float], str]],
+                None,  # a few devices can return None on initialization like the Legacy690Lc
+            ] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}initialize() "
+                f"RESPONSE: {lc_init_status}"
+            )
+            return self._stringify_status(lc_init_status)
+        except (
+            OSError
+        ) as os_exc:  # OSError, when a device was found and there's a permissions error
+            log.error("Device Communication Error", exc_info=os_exc)
+            raise LiquidctlException(
+                "Unexpected Device Communication Error"
+            ) from os_exc
+
     @staticmethod
     def _stringify_status(
         statuses: Union[List[Tuple[str, Union[str, int, float], str]], None],
@@ -775,6 +812,14 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
         return device
 
+    # post("/devices/{device_id}/initialize")
+    def init_device(self, device_id: int, init_request: dict):
+        init_args: dict = InitRequest.from_dict(init_request).to_dict_no_none()
+        status_response: Statuses = self.device_service.initialize_device(
+            device_id, init_args
+        )
+        self._send(HTTPStatus.OK, json.dumps({"status": status_response}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
@@ -788,6 +833,9 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
         elif path[0] == "quit":
             self.quit_server()
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "initialize":
+            device_id = self._try_cast_int(path[1])
+            self.init_device(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
