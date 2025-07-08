@@ -885,6 +885,25 @@ class DeviceService:
             log.error("Error setting speed profile:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
+    def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(f"Setting color for device: {device_id} with args: {color_kwargs}")
+        try:
+            lc_device = self.devices[device_id]
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_color({color_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_color, **color_kwargs
+            )
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+        except BaseException as err:
+            log.error("Error setting color:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     ###########################################################################
     ### Device Shutdown
 
@@ -979,6 +998,12 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         self.device_service.set_speed_profile(device_id, speed_kwargs)
         self._send(HTTPStatus.OK, json.dumps({}))
 
+    # put("/devices/{device_id}/color")
+    def set_color(self, device_id: int, color_request: dict):
+        color_kwargs = ColorRequest.from_dict(color_request).to_dict_no_none()
+        self.device_service.set_color(device_id, color_kwargs)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
@@ -1030,6 +1055,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             # put("/devices/{device_id}/speed/profile")
             device_id = self._try_cast_int(path[1])
             self.set_speed_profile(device_id, request_body)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "color":
+            # put("/devices/{device_id}/color")
+            device_id = self._try_cast_int(path[1])
+            self.set_color(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
