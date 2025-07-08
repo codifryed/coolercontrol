@@ -204,8 +204,7 @@ class Device(BaseModel):
             )
         except KeyError:
             raise LiqctldException(
-                HTTPStatus.BAD_REQUEST,
-                f"Invalid Device Body: {data}"
+                HTTPStatus.BAD_REQUEST, f"Invalid Device Body: {data}"
             )
 
 
@@ -261,8 +260,7 @@ class FixedSpeedRequest(BaseModel):
             )
         except KeyError:
             raise LiqctldException(
-                HTTPStatus.BAD_REQUEST,
-                f"Invalid FixedSpeedRequest Body: {data}"
+                HTTPStatus.BAD_REQUEST, f"Invalid FixedSpeedRequest Body: {data}"
             )
 
 
@@ -293,8 +291,7 @@ class SpeedProfileRequest(BaseModel):
             )
         except KeyError:
             raise LiqctldException(
-                HTTPStatus.BAD_REQUEST,
-                f"Invalid SpeedProfileRequest Body: {data}"
+                HTTPStatus.BAD_REQUEST, f"Invalid SpeedProfileRequest Body: {data}"
             )
 
 
@@ -338,8 +335,7 @@ class ColorRequest(BaseModel):
             )
         except KeyError:
             raise LiqctldException(
-                HTTPStatus.BAD_REQUEST,
-                f"Invalid ColorRequest Body: {data}"
+                HTTPStatus.BAD_REQUEST, f"Invalid ColorRequest Body: {data}"
             )
 
 
@@ -375,8 +371,7 @@ class ScreenRequest(BaseModel):
             )
         except KeyError:
             raise LiqctldException(
-                HTTPStatus.BAD_REQUEST,
-                f"Invalid ScreenRequest Body: {data}"
+                HTTPStatus.BAD_REQUEST, f"Invalid ScreenRequest Body: {data}"
             )
 
 
