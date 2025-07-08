@@ -1083,17 +1083,18 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         # server request logs are disabled by default and will use our logger
-        if self.server.log_level <= logging.DEBUG:
-            # super().log_message(format, *args)
-            message = format % args
-            log.debug(
-                "%s - - [%s] %s\n"
-                % (
-                    self.address_string(),
-                    self.log_date_time_string(),
-                    message.translate(self._control_char_table),
-                )
+        if self.server.log_level > logging.DEBUG:
+            return
+        # super().log_message(format, *args)
+        message = format % args
+        log.debug(
+            "%s - - [%s] %s\n"
+            % (
+                self.address_string(),
+                self.log_date_time_string(),
+                message.translate(self._control_char_table),
             )
+        )
 
     def do_GET(self):
         try:
