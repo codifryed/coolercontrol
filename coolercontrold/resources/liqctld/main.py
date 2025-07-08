@@ -16,7 +16,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
+import concurrent
 import http
 import importlib.metadata
 import json
@@ -749,6 +749,84 @@ class DeviceService:
             else []
         )
 
+    def get_status(self, device_id: int) -> Statuses:
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(f"Getting status for device: {device_id}")
+        try:
+            return self._get_current_or_cached_device_status(device_id)
+        except BaseException as err:
+            log.error("Error getting status:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
+    def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
+        lc_device = self.devices[device_id]
+        log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
+        status_job = self.device_executor.submit(device_id, lc_device.get_status)
+        try:
+            status: List[Tuple[str, Union[str, int, float], str]] = status_job.result(
+                timeout=DEVICE_READ_STATUS_TIMEOUT_SECS
+            )
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
+            )
+            serialized_status = self._stringify_status(status)
+            self.device_status_cache[device_id] = serialized_status
+            return serialized_status
+        except concurrent.futures.TimeoutError as te:
+            log.debug(
+                f"Timeout occurred while trying to get device status for LC #{device_id}. "
+                f"Reusing last status if possible."
+            )
+            cached_status = self.device_status_cache.get(device_id)
+            if self.device_executor.device_queue_empty(
+                device_id
+            ):  # if emtpy this was likely a device timeout with a single job
+                log.debug("Running long-lasting async get_status() call")
+                async_status_job = self.device_executor.submit(
+                    device_id, self._long_async_status_request, dev_id=device_id
+                )
+                if cached_status is not None:
+                    # return the currently cached status immediately and
+                    #  let the async request above refresh the cache in the background
+                    return cached_status
+                # else rerun the status request with a very long timeout
+                #  and wait for the output so that the cache fills up at least once
+                try:
+                    return async_status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+                except concurrent.futures.TimeoutError as te:
+                    log.error(
+                        f"Unknown issue with device communication "
+                        f"and no Status Cache yet filled for device LC #{device_id}"
+                    )
+                    raise te
+                finally:
+                    async_status_job.cancel()
+            # otherwise, this was a future timeout with a job still running in the queue
+            if cached_status is None:
+                log.error(f"No Status Cache yet filled for device LC #{device_id}")
+                raise te
+            return cached_status
+        finally:
+            status_job.cancel()
+
+    def _long_async_status_request(self, dev_id: int) -> Statuses:
+        """
+        This function is used to get the status in a non-blocking way for devices
+        that have extreme latency.
+        """
+        lc_device = self.devices[dev_id]
+        log.debug(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() ")
+        status = lc_device.get_status()
+        log.debug(
+            f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
+        )
+        serialized_status = self._stringify_status(status)
+        self.device_status_cache[dev_id] = serialized_status
+        return serialized_status
+
     ###########################################################################
     ### Device Shutdown
 
@@ -825,11 +903,19 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         )
         self._send(HTTPStatus.OK, json.dumps({"status": status_response}))
 
+    # get("/devices/{device_id}/status")
+    def get_status(self, device_id: int):
+        status_response: Statuses = self.device_service.get_status(device_id)
+        self._send(HTTPStatus.OK, json.dumps({"status": status_response}))
+
     def _route_get_requests(self, path: List[str]):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
         elif path[0] == "handshake":
             self.handshake()
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "status":
+            device_id = self._try_cast_int(path[1])
+            self.get_status(device_id)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
