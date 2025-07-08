@@ -40,7 +40,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("CoolerControl-RDNA3/4-OC")
 
-__VERSION__ = "0.0.2"
+__VERSION__ = "0.0.3"
 
 
 class RDNA4Test:
@@ -92,7 +92,6 @@ class RDNA4Test:
             )
 
         self.pp_od_clk_voltage_path: Path = self.get_pp_od_clk_voltage_path()
-        self.saved_pp_od_clk_voltage: str = ""
         if self.pp_od_clk_voltage_path.exists():
             log.info("pp_od_clk_voltage file exists")
         else:
@@ -157,6 +156,7 @@ class RDNA4Test:
         self._print_pwm_fan_speed()
         self._print_fan_rpm()
         self._print_temps()
+        self._print_freqs()
         self._print_zero_rpm_enable()
         self._print_zero_rpm_stop_temp()
 
@@ -202,6 +202,11 @@ class RDNA4Test:
         for temp_file in self.hwmon_path.glob("temp*_input"):
             temp = int(temp_file.read_text()) / 1000.0
             log.info(f"{temp_file.name}: {temp}C")
+
+    def _print_freqs(self):
+        for freq_file in self.hwmon_path.glob("freq*_input"):
+            freq = int(freq_file.read_text()) / 1_000_000.0
+            log.info(f"{freq_file.name}: {freq}Mhz")
 
     def get_fan_curve(self) -> list[tuple[int, int]]:
         fan_curve_points = []
@@ -282,28 +287,6 @@ class RDNA4Test:
             )
         except Exception as e:
             log.warning(f"pp_od_clk_voltage content ERROR: {e}")
-
-    def save_current_pp_od_clk_voltage(self):
-        if not self.pp_od_clk_voltage_path.exists():
-            return
-        try:
-            self.saved_pp_od_clk_voltage = (
-                self.pp_od_clk_voltage_path.read_text().strip()
-            )
-            log.info("Saved current pp_od_clk_voltage")
-        except Exception as e:
-            log.warning(f"pp_od_clk_voltage content ERROR: {e}")
-
-    def check_for_change_pp_od_clk_voltage(self) -> bool:
-        if not self.pp_od_clk_voltage_path.exists():
-            return False
-        new_pp_od_clk_voltage = self.pp_od_clk_voltage_path.read_text().strip()
-        changed = new_pp_od_clk_voltage != self.saved_pp_od_clk_voltage
-        if changed:
-            log.warning("Change in pp_od_clk_voltage detected")
-        else:
-            log.info("No change in pp_od_clk_voltage")
-        return changed
 
     def reset_fan_curve(self):
         if self.args.test:
@@ -543,6 +526,7 @@ def main():
     test.wait_for_fan_stabilization()
 
     ###
+    #  - separate commits - fan_curve, zero_rpm, zero_rpm_stop_temp
     reset_all(test)
     log_line_filler()
     log.info(
@@ -553,7 +537,6 @@ def main():
     input("Once that's done, press Enter to continue...")
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.save_current_pp_od_clk_voltage()
 
     test.apply_flat_simple_fan_curve(50)
     test.commit_fan_curve_changes()
@@ -563,9 +546,9 @@ def main():
     test.commit_zero_rpm_stop_temp_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.check_for_change_pp_od_clk_voltage()
 
     ###
+    #  - batched commits - fan_curve, zero_rpm, zero_rpm_stop_temp
     test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
@@ -574,8 +557,7 @@ def main():
     log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
     input("Once that's done, press Enter to continue...")
     test.wait_for_fan_stabilization()
-    test.print_pp_od_clk_voltage()
-    test.save_current_pp_od_clk_voltage()
+    test.read_sensors()
     # using "safe" batch-style commits
     test.apply_flat_simple_fan_curve(50)
     test.set_zero_rpm(False)
@@ -585,50 +567,40 @@ def main():
     test.commit_zero_rpm_stop_temp_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.check_for_change_pp_od_clk_voltage()
 
     ###
+    #  - only - fan_curve
+    test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
-    log.info("Enabling Zero RPM with 50% Static Curve present and separate commits")
+    log.info("Only 50% Static Curve")
     log_line_filler()
     log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
     input("Once that's done, press Enter to continue...")
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.save_current_pp_od_clk_voltage()
 
     test.apply_flat_simple_fan_curve(50)
     test.commit_fan_curve_changes()
-    test.set_zero_rpm(True)
-    test.commit_zero_rpm_changes()
-    test.set_zero_rpm_stop_temp_highest()
-    test.commit_zero_rpm_stop_temp_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.check_for_change_pp_od_clk_voltage()
 
     ###
+    #  - only - zero_rpm
     test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
-    log.info("Enabling Zero RPM with 50% Static Curve and batched commits")
+    log.info("Only Disabling Zero RPM")
     log_line_filler()
     log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
     input("Once that's done, press Enter to continue...")
     test.wait_for_fan_stabilization()
-    test.print_pp_od_clk_voltage()
-    test.save_current_pp_od_clk_voltage()
-    # using "safe" batch-style commits
-    test.apply_flat_simple_fan_curve(50)
-    test.set_zero_rpm(True)
-    test.set_zero_rpm_stop_temp_highest()
-    test.commit_fan_curve_changes()
+    test.read_sensors()
+
+    test.set_zero_rpm(False)
     test.commit_zero_rpm_changes()
-    test.commit_zero_rpm_stop_temp_changes()
     test.wait_for_fan_stabilization()
     test.read_sensors()
-    test.check_for_change_pp_od_clk_voltage()
 
     # Done
     test.wait_for_fan_stabilization()
