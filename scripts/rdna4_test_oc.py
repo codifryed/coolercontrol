@@ -98,6 +98,13 @@ class RDNA4Test:
             log.error(
                 f"pp_od_clk_voltage file not found in {self.pp_od_clk_voltage_path}"
             )
+
+        self.pp_dpm_mclk_path: Path = self.get_pp_dpm_mclk_path()
+        if self.pp_dpm_mclk_path.exists():
+            log.info("pp_dpm_mclk file exists")
+        else:
+            log.error(f"pp_dpm_mclk file not found in {self.pp_dpm_mclk_path}")
+
         self.find_freq_paths()
 
         self.temp_min: int = -1
@@ -158,6 +165,9 @@ class RDNA4Test:
     def get_pp_od_clk_voltage_path(self) -> Path:
         return self.device_path / "pp_od_clk_voltage"
 
+    def get_pp_dpm_mclk_path(self) -> Path:
+        return self.device_path / "pp_dpm_mclk"
+
     def find_freq_paths(self):
         for freq_file in self.hwmon_path.glob("freq*_input"):
             freq = int(freq_file.read_text()) / 1_000_000.0
@@ -189,6 +199,7 @@ class RDNA4Test:
             f"Duty({self.duty_min}-{self.duty_max})"
         )
         self.print_pp_od_clk_voltage()
+        self.print_pp_dpm_mclk()
         self._log_thin_line_filler()
         log.info(".")
 
@@ -305,6 +316,15 @@ class RDNA4Test:
             )
         except Exception as e:
             log.warning(f"pp_od_clk_voltage content ERROR: {e}")
+
+    def print_pp_dpm_mclk(self):
+        if not self.pp_dpm_mclk_path.exists():
+            log.warning("pp_dpm_mclk does not exist")
+            return
+        try:
+            log.info(f"pp_dpm_mclk content:\n{self.pp_dpm_mclk_path.read_text()}")
+        except Exception as e:
+            log.warning(f"pp_dpm_mclk content ERROR: {e}")
 
     def reset_fan_curve(self):
         if self.args.test:
