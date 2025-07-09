@@ -125,7 +125,8 @@ class RDNA4Test:
                 amd_gpu_count += 1
                 if amd_gpu_count > 1:
                     log.error(
-                        f"Multiple amdgpu hwmons detected. Will use ONLY the first one for testing. "
+                        f"Multiple amdgpu hwmons detected. "
+                        f"Will use ONLY the first one for testing. "
                         f"Additional location: {hwmon_name}"
                     )
                     continue
@@ -578,10 +579,12 @@ def main():
 
     log.info(".")
     log.info(
-        "This test will attempt to ascertain the driver behavior when applying a fan curve with a custom Max VRam speed set."
+        "This test will attempt to ascertain the driver behavior "
+        "when applying a fan curve with a custom Max VRam speed set."
     )
     log.info(
-        f"It will apply a Max VRam speed of {mclk_speed_max_mhz} Mhz and a fan speed of {fan_speed_duty}% at regular intervals,"
+        f"It will apply a Max VRam speed of {mclk_speed_max_mhz} Mhz and a "
+        f"fan speed of {fan_speed_duty}% at regular intervals,"
     )
     log.info("resetting everything to the default settings inbetween.")
     log.info(
@@ -603,7 +606,8 @@ def main():
     #  - separate commits - fan_curve, zero_rpm, zero_rpm_stop_temp
     log_line_filler()
     log.info(
-        f"Standard Case: Disabling Zero RPM with {fan_speed_duty}% Static Curve present and separate commits"
+        f"Standard Case: Disabling Zero RPM with {fan_speed_duty}% "
+        f"Static Curve present and separate commits"
     )
     log_line_filler()
     # apply clocks
