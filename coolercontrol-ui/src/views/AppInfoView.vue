@@ -25,6 +25,7 @@ import { computed, onMounted } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import { mdiCircle, mdiGit, mdiHelpCircleOutline, mdiToolboxOutline } from '@mdi/js'
 import Button from 'primevue/button'
+import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
@@ -54,6 +55,18 @@ const badgeColor = computed((): string => {
             return 'text-error'
     }
 })
+const getDaemonStatusTranslationKey = (daemonStatus: DaemonStatus) =>
+    $enum.visitValue(daemonStatus).with<string>({
+        [DaemonStatus.OK]: () => {
+            return 'ok'
+        },
+        [DaemonStatus.WARN]: () => {
+            return 'hasWarnings'
+        },
+        [DaemonStatus.ERROR]: () => {
+            return 'hasErrors'
+        },
+    })
 
 const downloadLogFileName = 'coolercontrold-current.log'
 const downloadLogHref = computed((): string => {
@@ -120,7 +133,7 @@ onMounted(() => {
                                             />
                                             {{
                                                 t(
-                                                    `daemon.status.${daemonState.status.replace(/\s+/g, '').toLowerCase()}`,
+                                                    `daemon.status.${getDaemonStatusTranslationKey(daemonState.status)}`,
                                                 )
                                             }}
                                         </div>
