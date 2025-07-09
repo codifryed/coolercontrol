@@ -32,7 +32,7 @@ from time import sleep, time
 #
 # ----------------------------------------------------------------------------------------------------------------------
 
-log_format = "%(asctime)-15s %(levelname)-8s %(name)s - %(message)s"
+log_format = "%(asctime)-15s %(levelname)-8s %(message)s"
 logging.basicConfig(
     level=logging.INFO,
     format=log_format,
@@ -40,7 +40,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("CoolerControl-RDNA3/4-OC")
 
-__VERSION__ = "0.0.3"
+__VERSION__ = "4"
 
 
 class RDNA4Test:
@@ -98,6 +98,7 @@ class RDNA4Test:
             log.error(
                 f"pp_od_clk_voltage file not found in {self.pp_od_clk_voltage_path}"
             )
+        self.find_freq_paths()
 
         self.temp_min: int = -1
         self.temp_max: int = -100
@@ -118,11 +119,18 @@ class RDNA4Test:
         if self.args.test:
             return Path("rdna4_data") / "rx9070xt" / "hwmon" / "hwmon5"
         hwmon_path: Path | None = None
+        amd_gpu_count = 0
         for hwmon_name in glob.glob("/sys/class/hwmon/hwmon*/name"):
             if "amdgpu" in Path(hwmon_name).read_text():
+                amd_gpu_count += 1
+                if amd_gpu_count > 1:
+                    log.error(
+                        f"Multiple amdgpu hwmons detected. Will use ONLY the first one for testing. "
+                        f"Additional location: {hwmon_name}"
+                    )
+                    continue
                 hwmon_path = Path(hwmon_name).parent
                 log.info(f"Found AMDGPU hwmon sysfs at {hwmon_path}")
-                break
         if hwmon_path is None:
             log.error("Could not find AMDGPU hwmon path. Exiting.")
             sys.exit(1)
@@ -148,6 +156,15 @@ class RDNA4Test:
 
     def get_pp_od_clk_voltage_path(self) -> Path:
         return self.device_path / "pp_od_clk_voltage"
+
+    def find_freq_paths(self):
+        for freq_file in self.hwmon_path.glob("freq*_input"):
+            freq = int(freq_file.read_text()) / 1_000_000.0
+            label = freq_file.name
+            label_file = freq_file.parent.joinpath(label.replace("input", "label"))
+            if label_file.exists():
+                label = label_file.read_text().strip()
+            log.info(f"Found Frequency file for {label}: {freq_file.name}:{freq}Mhz")
 
     def read_sensors(self) -> None:
         self._log_thin_line_filler()
@@ -365,10 +382,16 @@ class RDNA4Test:
         self._set_fan_curve(new_fan_curve)
 
     @staticmethod
-    def wait_for_fan_stabilization(seconds: int = 3) -> None:
+    def wait_for_fan_stabilization(seconds: int = 6) -> None:
         for _ in range(seconds):
             log.info(".")
             sleep(1)
+
+    def wait_for_freq_stabilization(self, seconds: int = 6) -> None:
+        for _ in range(seconds):
+            log.info(".")
+            sleep(1)
+            self._print_freqs()
 
     @staticmethod
     def _max_1_sec_wait(start_time: float) -> None:
@@ -428,19 +451,6 @@ class RDNA4Test:
         except Exception as e:
             log.error(f"Error resetting Zero RPM Stop Temp: {e}")
 
-    def reset_pp_od_clk_voltage(self):
-        if not self.pp_od_clk_voltage_path.exists():
-            log.info("pp_od_clk_voltage does not exist")
-            return
-        if self.args.test:
-            log.info("TEST Resetting pp_od_clk_voltage")
-            return
-        try:
-            log.info("Resetting pp_od_clk_voltage")
-            self.pp_od_clk_voltage_path.write_text("r\n")
-        except Exception as e:
-            log.error(f"Error resetting pp_od_clk_voltage: {e}")
-
     def set_zero_rpm_stop_temp_lowest(self):
         if not self.zer_rpm_stop_temp_path.exists():
             log.info("Zero RPM Stop Temp does not exist")
@@ -497,6 +507,45 @@ class RDNA4Test:
         except Exception as e:
             log.error(f"Error committing new Zero RPM Stop Temp Changes: {e}")
 
+    def set_pp_od_clk_voltage(self, mclk_speed_max_mhz: int = 1300):
+        if not self.pp_od_clk_voltage_path.exists():
+            log.info("pp_od_clk_voltage does not exist")
+            return
+        if self.args.test:
+            log.info(f"TEST Setting pp_od_clk_voltage: {mclk_speed_max_mhz}")
+            return
+        try:
+            # Should be careful. Stock is 1258 Mhz
+            self.pp_od_clk_voltage_path.write_text(f"m 1 {mclk_speed_max_mhz}\n")
+            log.info(f"Set pp_od_clk_voltage to mclk_speed_max:{mclk_speed_max_mhz}")
+        except Exception as e:
+            log.error(f"Error setting pp_od_clk_voltage: {e}")
+
+    def commit_pp_od_clk_voltage(self):
+        if not self.pp_od_clk_voltage_path.exists():
+            log.info("pp_od_clk_voltage does not exist")
+            return
+        if self.args.test:
+            log.info("TEST Committing pp_od_clk_voltage")
+            return
+        try:
+            self.pp_od_clk_voltage_path.write_text("c\n")
+        except Exception as e:
+            log.error(f"Error committing new pp_od_clk_voltage: {e}")
+
+    def reset_pp_od_clk_voltage(self):
+        if not self.pp_od_clk_voltage_path.exists():
+            log.info("pp_od_clk_voltage does not exist")
+            return
+        if self.args.test:
+            log.info("TEST Resetting pp_od_clk_voltage")
+            return
+        try:
+            log.info("Resetting pp_od_clk_voltage")
+            self.pp_od_clk_voltage_path.write_text("r\n")
+        except Exception as e:
+            log.error(f"Error resetting pp_od_clk_voltage: {e}")
+
 
 def log_line_filler():
     log.info(
@@ -521,89 +570,115 @@ def main():
     log.info(f"Starting RDNA3/4 OC test v{__VERSION__}")
     log.info(f"System: {platform.platform()}")
     log_line_filler()
-
+    log.info(".")
     test = RDNA4Test()
+
+    fan_speed_duty = 80
+    mclk_speed_max_mhz = 1300
+
+    log.info(".")
+    log.info(
+        "This test will attempt to ascertain the driver behavior when applying a fan curve with a custom Max VRam speed set."
+    )
+    log.info(
+        f"It will apply a Max VRam speed of {mclk_speed_max_mhz} Mhz and a fan speed of {fan_speed_duty}% at regular intervals,"
+    )
+    log.info("resetting everything to the default settings inbetween.")
+    log.info(
+        "Note: Max VRam speed is only reached when the GPU has enough load to scale up."
+    )
+    log.info(".")
+    log.info("INSTRUCTION: Please stop all GPU controlling applications.")
+    log.info(
+        "Press Enter to reset GPU to default settings and continue to the next step..."
+    )
+    input()
+    reset_all(test)
+    log.info("INSTRUCTION: Place load on the GPU, such as with a game.")
+    log.info("Press Enter to continue with the automated tests...")
+    input()
     test.wait_for_fan_stabilization()
 
     ###
     #  - separate commits - fan_curve, zero_rpm, zero_rpm_stop_temp
-    reset_all(test)
     log_line_filler()
     log.info(
-        "Standard Case: Disabling Zero RPM with 50% Static Curve present and separate commits"
+        f"Standard Case: Disabling Zero RPM with {fan_speed_duty}% Static Curve present and separate commits"
     )
     log_line_filler()
-    log.info("FIRST: (re)Apply custom clock settings with a program such as LACT.")
-    input("Once that's done, press Enter to continue...")
-    test.wait_for_fan_stabilization()
+    # apply clocks
+    test.set_pp_od_clk_voltage(mclk_speed_max_mhz)
+    test.commit_pp_od_clk_voltage()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
-
-    test.apply_flat_simple_fan_curve(50)
+    # standard case
+    test.apply_flat_simple_fan_curve(fan_speed_duty)
     test.commit_fan_curve_changes()
     test.set_zero_rpm(False)
     test.commit_zero_rpm_changes()
     test.set_zero_rpm_stop_temp_highest()
     test.commit_zero_rpm_stop_temp_changes()
-    test.wait_for_fan_stabilization()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
     ###
     #  - batched commits - fan_curve, zero_rpm, zero_rpm_stop_temp
-    test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
-    log.info("Disabling Zero RPM with 50% Static Curve and batched commits")
+    log.info(
+        f"Disabling Zero RPM with {fan_speed_duty}% Static Curve and batched commits"
+    )
     log_line_filler()
-    log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
-    input("Once that's done, press Enter to continue...")
-    test.wait_for_fan_stabilization()
+    # apply clocks
+    test.set_pp_od_clk_voltage(mclk_speed_max_mhz)
+    test.commit_pp_od_clk_voltage()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
     # using "safe" batch-style commits
-    test.apply_flat_simple_fan_curve(50)
+    test.apply_flat_simple_fan_curve(fan_speed_duty)
     test.set_zero_rpm(False)
     test.set_zero_rpm_stop_temp_highest()
     test.commit_fan_curve_changes()
     test.commit_zero_rpm_changes()
     test.commit_zero_rpm_stop_temp_changes()
-    test.wait_for_fan_stabilization()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
     ###
     #  - only - fan_curve
-    test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
-    log.info("Only 50% Static Curve")
+    log.info(f"Only {fan_speed_duty}% Static Curve")
     log_line_filler()
-    log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
-    input("Once that's done, press Enter to continue...")
-    test.wait_for_fan_stabilization()
+    # apply clocks
+    test.set_pp_od_clk_voltage(mclk_speed_max_mhz)
+    test.commit_pp_od_clk_voltage()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
-    test.apply_flat_simple_fan_curve(50)
+    test.apply_flat_simple_fan_curve(fan_speed_duty)
     test.commit_fan_curve_changes()
-    test.wait_for_fan_stabilization()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
     ###
     #  - only - zero_rpm
-    test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
     log.info("Only Disabling Zero RPM")
     log_line_filler()
-    log.info("NEXT: Re-apply custom clocks settings with a program such as LACT.")
-    input("Once that's done, press Enter to continue...")
-    test.wait_for_fan_stabilization()
+    # apply clocks
+    test.set_pp_od_clk_voltage(mclk_speed_max_mhz)
+    test.commit_pp_od_clk_voltage()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
     test.set_zero_rpm(False)
     test.commit_zero_rpm_changes()
-    test.wait_for_fan_stabilization()
+    test.wait_for_freq_stabilization()
     test.read_sensors()
 
     # Done
-    test.wait_for_fan_stabilization()
     reset_all(test)
     log_line_filler()
     log.info("Testing Complete")
