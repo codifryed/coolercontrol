@@ -330,8 +330,10 @@ async fn initialize_device_repos(
             lc_locations.append(&mut lc_locs);
             repos.liquidctl = Some(repo);
         }
-        Err(err) if err.downcast_ref() == Some(&InitError::Disabled) => info!("{err}"),
-        Err(err) => warn!("Error initializing LIQUIDCTL Repo: {err}"),
+        Err(err) => match err.downcast_ref() {
+            Some(&InitError::Disabled | &InitError::Env { .. }) => info!("{err}"),
+            _ => warn!("Error initializing LIQUIDCTL Repo: {err}"),
+        },
     }
     // init these concurrently:
     moro_local::async_scope!(|init_scope| {

@@ -47,8 +47,7 @@ def main():
         liquidctl_version = get_liquidctl_version()
         log.info(f"liquidctl version detected: {liquidctl_version}")
     except ImportError as ie:
-        log.warning(f"Could not import liquidctl: {ie}")
-        raise ImportError("liquidctl package not found")
+        raise ImportError(f"Could not import liquidctl: {ie}")
 
 
 if __name__ == "__main__":
