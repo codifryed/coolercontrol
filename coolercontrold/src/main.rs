@@ -331,7 +331,8 @@ async fn initialize_device_repos(
             repos.liquidctl = Some(repo);
         }
         Err(err) => match err.downcast_ref() {
-            Some(&InitError::Disabled | &InitError::Env { .. }) => info!("{err}"),
+            Some(&InitError::Disabled) => info!("{err}"),
+            Some(&InitError::Env { .. }) => warn!("{err}"),
             _ => warn!("Error initializing LIQUIDCTL Repo: {err}"),
         },
     }
