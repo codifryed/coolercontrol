@@ -30,7 +30,6 @@ import time
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
-from http.server import HTTPServer
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import liquidctl
@@ -58,7 +57,7 @@ from liquidctl.driver.kraken3 import KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 
 #####################################################################
-## Basic Setup
+# Basic Setup
 #####################################################################
 
 SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
@@ -66,7 +65,7 @@ DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
 #####################################################################
-## Models
+# Models
 #####################################################################
 
 Statuses = List[Tuple[str, str, str]]
@@ -206,7 +205,7 @@ class Device(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid Device Body: {data}"
-            )
+            ) from None
 
 
 class Handshake(BaseModel):
@@ -262,7 +261,7 @@ class FixedSpeedRequest(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid FixedSpeedRequest Body: {data}"
-            )
+            ) from None
 
 
 class SpeedProfileRequest(BaseModel):
@@ -303,7 +302,7 @@ class SpeedProfileRequest(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid SpeedProfileRequest Body: {data}"
-            )
+            ) from None
 
 
 class ColorRequest(BaseModel):
@@ -347,7 +346,7 @@ class ColorRequest(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid ColorRequest Body: {data}"
-            )
+            ) from None
 
 
 class ScreenRequest(BaseModel):
@@ -383,11 +382,11 @@ class ScreenRequest(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid ScreenRequest Body: {data}"
-            )
+            ) from None
 
 
 #####################################################################
-## Executor
+# Executor
 #####################################################################
 
 
@@ -424,9 +423,11 @@ def _queue_worker(dev_queue: queue.SimpleQueue) -> None:
 
 class DeviceExecutor:
     """
-    Simultaneous communications per device result in mangled data, so we keep each device to its own job queue.
+    Simultaneous communications per device result in mangled data,
+    so we keep each device to its own job queue.
     We simultaneously use a Thread Pool to handle communication with separate devices.
-    This enables us to talk in parallel to multiple devices, but keep communication for each device synchronous,
+    This enables us to talk in parallel to multiple devices,
+    but keep communication for each device synchronous,
     which results in a pretty big speedup for people who have multiple devices.
     """
 
@@ -444,7 +445,6 @@ class DeviceExecutor:
             self._thread_pool.submit(_queue_worker, dev_queue)
 
     def submit(self, device_id: int, fn: Callable, **kwargs) -> Future:
-        assert self._thread_pool is not None
         future = Future()
         device_job = _DeviceJob(future, fn, **kwargs)
         self._device_channels[device_id].put(device_job)
@@ -462,7 +462,7 @@ class DeviceExecutor:
 
 
 #####################################################################
-## Service
+# Service
 #####################################################################
 
 
@@ -491,7 +491,7 @@ class DeviceService:
         self.liquidctl_version: str = get_liquidctl_version()
 
     ###########################################################################
-    ### Device Startup
+    # Device Startup
 
     def get_devices(self) -> List[Device]:
         log.debug("Getting device list")
@@ -633,10 +633,12 @@ class DeviceService:
             if "already open" in str(err):
                 log.warning(f"{lc_device.description} already connected")
             else:
-                raise LiquidctlException("Unexpected Device Communication Error")
+                raise LiquidctlException(
+                    "Unexpected Device Communication Error"
+                ) from err
 
     ###########################################################################
-    ### Device Management
+    # Device Management
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
         """
@@ -748,7 +750,7 @@ class DeviceService:
             log.error(f"Device Initialization Error - {traceback.format_exc()}")
             raise LiquidctlException(
                 f"Unexpected Device Communication Error - {os_exc}"
-            )
+            ) from os_exc
 
     @staticmethod
     def _stringify_status(
@@ -771,9 +773,12 @@ class DeviceService:
         except BaseException as err:
             if log.getLogger().isEnabledFor(logging.DEBUG):
                 log.error(
-                    f"Liquidctl Error getting status for device #{device_id} - {traceback.format_exc()}"
+                    f"Liquidctl Error getting status for device "
+                    f"#{device_id} - {traceback.format_exc()}"
                 )
-            raise LiquidctlException(f"Unexpected Device communication error: {err}")
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
@@ -864,9 +869,12 @@ class DeviceService:
         except BaseException as err:
             if log.getLogger().isEnabledFor(logging.DEBUG):
                 log.error(
-                    f"Liquidctl Error setting fixed speed: {speed_kwargs} - {traceback.format_exc()}"
+                    f"Liquidctl Error setting fixed speed: "
+                    f"{speed_kwargs} - {traceback.format_exc()}"
                 )
-            raise LiquidctlException(f"Unexpected Device communication error: {err}")
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
@@ -890,7 +898,9 @@ class DeviceService:
                 log.error(
                     f"Liquidctl Error setting color with {speed_kwargs} - {traceback.format_exc()}"
                 )
-            raise LiquidctlException(f"Unexpected Device communication error: {err}")
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
@@ -913,7 +923,9 @@ class DeviceService:
                 log.warning(
                     f"Liquidctl Error setting color with {color_kwargs} - {traceback.format_exc()}"
                 )
-            raise LiquidctlException(f"Unexpected Device communication error: {err}")
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
         if self.devices.get(device_id) is None:
@@ -943,12 +955,15 @@ class DeviceService:
             # screen changes are considered non-critical
             if log.getLogger().isEnabledFor(logging.DEBUG):
                 log.warning(
-                    f"Liquidctl Error setting screen with {screen_kwargs} - {traceback.format_exc()}"
+                    f"Liquidctl Error setting screen with "
+                    f"{screen_kwargs} - {traceback.format_exc()}"
                 )
-            raise LiquidctlException(f"Unexpected Device communication error: {err}")
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     ###########################################################################
-    ### Device Shutdown
+    # Device Shutdown
 
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
@@ -980,7 +995,7 @@ class DeviceService:
 
 
 #####################################################################
-## HTTP UDS Server
+# HTTP UDS Server
 #####################################################################
 
 
@@ -1143,7 +1158,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         except ValueError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid path. Expected Integer: {value}"
-            )
+            ) from None
 
     def log_message(self, format, *args):
         # server request logs are disabled by default and will use our logger
@@ -1216,7 +1231,7 @@ def server_run(device_service: DeviceService) -> None:
 
 
 #####################################################################
-## Main
+# Main
 #####################################################################
 
 

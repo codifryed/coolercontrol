@@ -17,6 +17,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import importlib.metadata
+import importlib.util
 import logging as log
 import sys
 
@@ -41,13 +42,10 @@ def main():
     root_logger = log.getLogger("root")
     root_logger.setLevel(log.INFO)
     log.info(f"Python Version detected: {sys.version}")
-    try:
-        import liquidctl
+    importlib.util.find_spec("liquidctl")
 
-        liquidctl_version = get_liquidctl_version()
-        log.info(f"liquidctl version detected: {liquidctl_version}")
-    except ImportError as ie:
-        raise ImportError(f"Could not import liquidctl: {ie}")
+    liquidctl_version = get_liquidctl_version()
+    log.info(f"liquidctl version detected: {liquidctl_version}")
 
 
 if __name__ == "__main__":
