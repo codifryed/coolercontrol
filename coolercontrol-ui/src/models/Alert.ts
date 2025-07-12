@@ -21,7 +21,7 @@ import { Type } from 'class-transformer'
 import { ChannelSource } from '@/models/ChannelSource.ts'
 import { v4 as uuidV4 } from 'uuid'
 import i18n from '@/i18n'
-import { mdiAlertCircle, mdiBellOutline, mdiBellRingOutline, mdiFire, mdiHelp } from '@mdi/js'
+import { mdiAlertCircle, mdiBellOutline, mdiBellRingOutline, mdiHelp } from '@mdi/js'
 
 export class Alert {
     uid: UID = uuidV4()
