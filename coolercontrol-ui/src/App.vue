@@ -629,9 +629,10 @@ onMounted(async () => {
                                                 target="_blank"
                                                 class="text-accent outline-0 underline"
                                             >
-                                                {{ t('components.onboarding.settingUpDrivers') }}
-                                            </a>
-                                            .
+                                                {{
+                                                    t('components.onboarding.settingUpDrivers')
+                                                }} </a
+                                            >.
                                         </p>
                                         <br />
                                         <p>
