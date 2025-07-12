@@ -935,7 +935,6 @@ export default {
         alertState: {
             active: 'Active',
             inactive: 'Inactive',
-            warmup: 'Warm Up',
             error: 'Error',
         },
         deviceType: {

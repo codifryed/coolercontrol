@@ -49,7 +49,6 @@ export class Alert {
 
 export enum AlertState {
     Active = 'Active',
-    WarmUp = 'WarmUp',
     Inactive = 'Inactive',
     Error = 'Error',
 }
@@ -66,8 +65,6 @@ export function getAlertStateDisplayName(state: AlertState): string {
             return t('models.alertState.active')
         case AlertState.Inactive:
             return t('models.alertState.inactive')
-        case AlertState.WarmUp:
-            return t('models.alertState.warmup')
         case AlertState.Error:
             return t('models.alertState.error')
         default:
@@ -81,8 +78,6 @@ export function getAlertStateIcon(state: AlertState): string {
             return mdiBellRingOutline
         case AlertState.Inactive:
             return mdiBellOutline
-        case AlertState.WarmUp:
-            return mdiFire
         case AlertState.Error:
             return mdiAlertCircle
         default:
