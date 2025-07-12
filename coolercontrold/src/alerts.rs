@@ -105,6 +105,17 @@ pub enum AlertState {
     Error,
 }
 
+impl AlertState {
+    fn sends_message(&self) -> bool {
+        match self {
+            AlertState::Active => true,
+            AlertState::WarmUp(_) => false,
+            AlertState::Inactive => true,
+            AlertState::Error => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AlertLog {
     pub uid: UID,
@@ -375,8 +386,8 @@ impl AlertController {
                 }
             };
 
-            // No message if the state didn't change
-            if !alert.set_state(channel_value) {
+            // No message if the state didn't change or the current state does not send messages
+            if !alert.set_state(channel_value) || !alert.state.sends_message() {
                 continue;
             }
 
