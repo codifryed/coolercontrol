@@ -40,7 +40,7 @@ use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::{AllDevices, Repos, VERSION};
+use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -56,6 +56,7 @@ use log::{debug, info, warn};
 use moro_local::Scope;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -94,10 +95,16 @@ pub async fn start_server<'s>(
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
-    let port = config
-        .get_settings()?
-        .port
-        .unwrap_or(API_SERVER_PORT_DEFAULT);
+    let port = env::var(ENV_PORT)
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or_else(|| {
+            config
+                .get_settings()
+                .ok()
+                .and_then(|settings| settings.port)
+                .unwrap_or(API_SERVER_PORT_DEFAULT)
+        });
     let ipv4 = determine_ipv4_address(&config, port)
         .await
         .inspect_err(|err| warn!("IPv4 bind error: {err}"));
@@ -207,7 +214,6 @@ async fn create_api_server(
     Ok(())
 }
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
-    let version = VERSION.unwrap_or("unknown");
     api.title("CoolerControl Daemon API")
         .summary("CoolerControl Rest Endpoints")
         .description("Basic OpenAPI documentation for the CoolerControl Daemon API")
@@ -221,7 +227,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             identifier: Some("GPL3+".to_string()),
             ..License::default()
         })
-        .version(version)
+        .version(VERSION)
         .security_scheme(
             "CookieAuth",
             SecurityScheme::ApiKey {
@@ -504,28 +510,50 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
 }
 
 async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
-    match config.get_settings()?.ipv4_address {
-        Some(ipv4_str) => {
-            if ipv4_str.is_empty() {
-                Err(anyhow!("IPv4 address disabled"))
-            } else {
-                is_free_tcp_ipv4(Some(&ipv4_str), port).await
+    match env::var(ENV_HOST_IP4) {
+        Ok(env_ipv4) => {
+            if env_ipv4.trim().is_empty() {
+                return Err(anyhow!("IPv4 address disabled"));
+            }
+            is_free_tcp_ipv4(Some(&env_ipv4), port).await
+        }
+        Err(_) => {
+            // get from config
+            match config.get_settings()?.ipv4_address {
+                Some(ipv4_str) => {
+                    if ipv4_str.is_empty() {
+                        Err(anyhow!("IPv4 address disabled"))
+                    } else {
+                        is_free_tcp_ipv4(Some(&ipv4_str), port).await
+                    }
+                }
+                None => is_free_tcp_ipv4(None, port).await, // Defaults to loopback
             }
         }
-        None => is_free_tcp_ipv4(None, port).await, // Defaults to loopback
     }
 }
 
 async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
-    match config.get_settings()?.ipv6_address {
-        Some(ipv6_str) => {
-            if ipv6_str.is_empty() {
-                Err(anyhow!("IPv6 address disabled"))
-            } else {
-                is_free_tcp_ipv6(Some(&ipv6_str), port).await
+    match env::var(ENV_HOST_IP6) {
+        Ok(env_ipv6) => {
+            if env_ipv6.trim().is_empty() {
+                return Err(anyhow!("IPv6 address disabled"));
+            }
+            is_free_tcp_ipv6(Some(&env_ipv6), port).await
+        }
+        Err(_) => {
+            // get from config
+            match config.get_settings()?.ipv6_address {
+                Some(ipv6_str) => {
+                    if ipv6_str.is_empty() {
+                        Err(anyhow!("IPv6 address disabled"))
+                    } else {
+                        is_free_tcp_ipv6(Some(&ipv6_str), port).await
+                    }
+                }
+                None => is_free_tcp_ipv6(None, port).await, // Defaults to loopback
             }
         }
-        None => is_free_tcp_ipv6(None, port).await, // Defaults to loopback
     }
 }
 

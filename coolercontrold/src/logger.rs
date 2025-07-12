@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{cc_fs, exit_successfully, Args, LOG_ENV, VERSION};
+use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::Logger;
@@ -36,24 +36,24 @@ const LOG_BUFFER_LINE_SIZE: usize = 500;
 const NEW_LOG_CHANNEL_CAP: usize = 2;
 
 pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Result<LogBufHandle> {
-    let version = VERSION.unwrap_or("unknown");
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
-    } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
+    } else if let Ok(log_lvl) = std::env::var(ENV_CC_LOG).or_else(|_| std::env::var(ENV_LOG)) {
         LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
     } else {
         LevelFilter::Info
     };
-    let (logger, log_buf_handle) = CCLogger::new(log_level, version, run_token)?;
+    let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
     info!("Logging Level: {}", log::max_level());
     info!(
         "System Info:\n\
-        CoolerControlD {version}\n\
+        CoolerControlD {VERSION}\n\
         Name:\t{}\n\
         OS:\t\t{}\n\
         Host:\t{}\n\
         Kernel:\t{}\n\
+        Arch:\t{}\n\
         Board Manufacturer:\t{}\n\
         Board Name:\t\t{}\n\
         Board Version:\t{}\n\
@@ -64,6 +64,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         sysinfo::System::long_os_version().unwrap_or_default(),
         sysinfo::System::host_name().unwrap_or_default(),
         sysinfo::System::kernel_version().unwrap_or_default(),
+        sysinfo::System::cpu_arch(),
         get_dmi_system_info("board_vendor").await,
         get_dmi_system_info("board_name").await,
         get_dmi_system_info("board_version").await,
@@ -160,7 +161,12 @@ impl CCLogger {
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
-        let log_filter = env_logger::Builder::from_env(LOG_ENV)
+        let env_log_name = if std::env::var(ENV_CC_LOG).is_ok() {
+            ENV_CC_LOG
+        } else {
+            ENV_LOG
+        };
+        let log_filter = env_logger::Builder::from_env(env_log_name)
             .filter_level(max_level)
             .filter_module("zbus", lib_log_level)
             .filter_module("tracing", lib_disabled_level)

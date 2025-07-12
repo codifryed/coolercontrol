@@ -21,10 +21,17 @@ variables:
   ARTIFACT_NAME_DEB_BOOKWORM: 'coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb'
   ARTIFACT_NAME_DEB_BOOKWORM_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64_bookworm.deb'
   ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_bookworm.deb'
+  ARTIFACT_NAME_DEB_BOOKWORM_ARM64: 'coolercontrol_${CI_COMMIT_TAG}_arm64_bookworm.deb'
+  ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64: 'coolercontrold_${CI_COMMIT_TAG}_arm64_bookworm.deb'
+  ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_arm64_bookworm.deb'
   ARTIFACT_NAME_UBUNTU: 'coolercontrol_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   ARTIFACT_NAME_UBUNTU_D: 'coolercontrold_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   ARTIFACT_NAME_UBUNTU_LIQCTLD: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_ubuntu.deb'
   CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
+  DH_URI: docker.io
+  DH_REGISTRY_IMAGE: '${DH_URI}/coolercontrol/coolercontrold'
+  DH_CLOUD_BUILDER_NAME: "cc-builder-1"
+  DH_ORG: "coolercontrol"
   SECRET_DETECTION_ENABLED: 'true'
 
 stages:
@@ -99,6 +106,8 @@ gemnasium-python-dependency_scanning:
 
 test_all:
   stage: test
+  tags:
+    - saas-linux-large-amd64
   <<: [*cache_template, *main_image_template]
   rules:
     # This allows us to run a single job for MR branches that are pushed to, and allow these tests
@@ -156,10 +165,10 @@ build_appimages:
   image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
-  # This merge request rule looks ridiculous, but is needed
-  #  as merge_request triggers for pipelines are disabled by default
   rules:
     - if: $CI_PIPELINE_SOURCE
   before_script:
@@ -187,11 +196,43 @@ build_appimages:
       - assets-built/coolercontrol-ui-vendor.tzst
     expire_in: 5 days
 
+####################################### aarch64 build assets (Ubuntu 22.04)
+build_arm64:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  before_script:
+    - cargo --version
+    - rustc --version
+    - npm --version
+    - node --version
+    - python3 --version
+    - cmake --version
+  script:
+    - make build-daemon
+    - make assets-daemon
+    - make assets-ui
+  artifacts:
+    paths:
+      - assets-built/coolercontrold
+      - assets-built/coolercontrold-vendor.tzst
+      - assets-built/coolercontrol-ui-vendor.tzst
+    expire_in: 5 days
+
+
 ####################################### Debian >=BookWorm Base Package
-build_deb_bookworm:
+build_deb_bookworm_amd64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
   rules:
@@ -237,11 +278,66 @@ build_deb_bookworm:
       - coolercontrol*.deb
     expire_in: 5 days
 
+build_deb_bookworm_arm64:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    # cleanup old build files (somehow stays between runs)
+    - rm -f ../coolercontrol*.deb
+    # build dependencies:
+    - >
+      apt-get -y install
+      dh-python
+      pybuild-plugin-pyproject
+      python3-all
+      python3-setuptools
+      python3-build
+      liquidctl
+      python3-setproctitle
+      python3-fastapi
+      python3-uvicorn
+      nodejs
+      npm
+      build-essential
+      cmake
+      qt6-base-dev
+      qt6-webengine-dev
+      qt6-webengine-dev-tools
+      libdrm-dev
+      cargo
+    - |
+      python3 --version
+      cargo --version
+      rustc --version
+      npm --version
+      node --version
+      cmake --version
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - ls -lah ../
+    - cp ../coolercontrol*_arm64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: 'CoolerControl_aarch64_deb_${CI_COMMIT_SHORT_SHA}'
+    paths:
+      - coolercontrol*.deb
+    expire_in: 5 days
+
+
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
 build_ubuntu:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   needs:
     - compile_artifacts
   rules:
@@ -288,6 +384,155 @@ build_ubuntu:
     expire_in: 5 days
 
 ############################################################################################
+# Docker
+############################################################################################
+
+####################################### debian Docker Images
+
+push_dh-debian:
+  image: docker:dind
+  <<: [*main_image_template]
+  stage: build
+  services:
+    - docker:dind
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then 
+        IMAGE_TAG=$CI_COMMIT_TAG
+      else 
+        IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"
+      fi
+      export IMAGE_TAG
+    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
+    - |
+      apk add curl jq
+      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
+      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
+      mkdir -vp ~/.docker/cli-plugins/
+      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
+      chmod a+x ~/.docker/cli-plugins/docker-buildx
+    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
+      else 
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+      fi
+      export TAG_LINE
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        $TAG_LINE \
+        -f .gitlab/images/dockerhub/debian/Dockerfile \
+        --push \
+        .
+    - echo "Successful. x86_64 & aarch64 Debian images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+# For now, using multi-platform docker cloud builder
+#push_dh-debian_arm64:
+#  image: docker
+#  <<: [*cache_template, *main_image_template]
+#  stage: build
+#  tags:
+#    - saas-linux-large-arm64
+#  services:
+#    - docker:dind
+#  variables:
+#    DOCKER_DRIVER: overlay2
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
+#    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
+#    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/debian/Dockerfile ./
+#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:latest; fi;
+#    - docker run --name cc-dh-debian-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
+#    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+#    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+
+####################################### alpine Docker Images
+
+push_dh-alpine:
+  image: docker:dind
+  <<: [*main_image_template]
+  stage: build
+  services:
+    - docker:dind
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then 
+        IMAGE_TAG="alpine-$CI_COMMIT_TAG"
+      else 
+        IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"
+      fi
+      export IMAGE_TAG
+    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
+    - |
+      apk add curl jq
+      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
+      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
+      mkdir -vp ~/.docker/cli-plugins/
+      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
+      chmod a+x ~/.docker/cli-plugins/docker-buildx
+    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:alpine-latest --tag $DH_REGISTRY_IMAGE:alpine"
+      else 
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+      fi
+      export TAG_LINE
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        $TAG_LINE \
+        -f .gitlab/images/dockerhub/alpine/Dockerfile \
+        --push \
+        .
+    - echo "Successful. x86_64 & aarch64 Alpine images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+# For now, using multi-platform docker cloud builder
+#push_dh-alpine_arm64:
+#  image: docker
+#  <<: [*cache_template, *main_image_template]
+#  stage: build
+#  tags:
+#    - saas-linux-large-arm64
+#  services:
+#    - docker:dind
+#  variables:
+#    DOCKER_DRIVER: overlay2
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
+#    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
+#    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
+#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
+#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
+#    - docker run --name cc-dh-alpine-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
+#    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
+#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
+#    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+
+
+############################################################################################
 # Test Packages
 ############################################################################################
 
@@ -306,13 +551,30 @@ test_appimages:
     - ./CoolerControlD-x86_64.AppImage --version
     #- ./CoolerControl-x86_64.AppImage --version
 
-test_deb_bookworm:
+test_arm64:
   stage: test_packages
-  image: amd64/debian:bookworm
+  image: ubuntu:jammy
+  tags:
+    - saas-linux-small-arm64
   dependencies:
-    - build_deb_bookworm
+    - build_arm64
   needs:
-    - build_deb_bookworm
+    - build_arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - ls -lah ./
+    - ./assets-built/coolercontrold --version
+
+test_deb_bookworm_amd64:
+  stage: test_packages
+  tags:
+    - saas-linux-small-amd64
+  image: debian:bookworm
+  dependencies:
+    - build_deb_bookworm_amd64
+  needs:
+    - build_deb_bookworm_amd64
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -325,8 +587,31 @@ test_deb_bookworm:
     #- coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
+test_deb_bookworm_arm64:
+  stage: test_packages
+  tags:
+    - saas-linux-small-arm64
+  image: debian:bookworm
+  dependencies:
+    - build_deb_bookworm_arm64
+  needs:
+    - build_deb_bookworm_arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - apt update
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*arm64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*arm64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*arm64.deb
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    #- coolercontrol --version
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
+
 test_ubuntu_22.04:
   stage: test_packages
+  tags:
+    - saas-linux-small-amd64
   image: ubuntu:jammy
   dependencies:
     - build_ubuntu
@@ -346,6 +631,8 @@ test_ubuntu_22.04:
 
 test_ubuntu_latest:
   stage: test_packages
+  tags:
+    - saas-linux-small-amd64
   image: ubuntu:rolling
   dependencies:
     - build_ubuntu
@@ -403,14 +690,46 @@ upload_package_appimage_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
-upload_package_deb_bookworm:
+upload_artifacts_arm64:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_arm64
+  needs:
+    - build_arm64
+    - test_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst"
+
+upload_artifacts_arm64_beta:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_arm64
+  needs:
+    - build_arm64
+    - test_arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol_aarch64-ui-vendor.tzst"
+
+upload_package_deb_bookworm_amd64:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bookworm_amd64
   needs:
-    - build_deb_bookworm
-    - test_deb_bookworm
+    - build_deb_bookworm_amd64
+    - test_deb_bookworm_amd64
   rules:
     - if: $CI_COMMIT_TAG
   script:
@@ -428,7 +747,7 @@ upload_package_deb_bookworm:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
-upload_package_deb_bookworm_beta:
+upload_package_deb_bookworm_beta_amd64:
   stage: upload_packages
   image: curlimages/curl:latest
   variables:
@@ -436,16 +755,68 @@ upload_package_deb_bookworm_beta:
     ARTIFACT_NAME_DEB_BOOKWORM_BETA_D: coolercontrold_beta_amd64_bookworm.deb
     ARTIFACT_NAME_DEB_BOOKWORM_BETA: coolercontrol_beta_amd64_bookworm.deb
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bookworm_amd64
   needs:
-    - build_deb_bookworm
-    - test_deb_bookworm
+    - build_deb_bookworm_amd64
+    - test_deb_bookworm_amd64
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
     - mv coolercontrol-liqctld_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}
     - mv coolercontrold_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}
     - mv coolercontrol_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
+
+upload_package_deb_bookworm_arm64:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
+  variables:
+    ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_arm64.deb'
+    ARTIFACT_NAME_DEB_D: 'coolercontrold_${CI_COMMIT_TAG}_arm64.deb'
+    ARTIFACT_NAME_DEB_LIQCTLD: 'coolercontrol-liqctld_${CI_COMMIT_TAG}_arm64.deb'
+  dependencies:
+    - build_deb_bookworm_arm64
+  needs:
+    - build_deb_bookworm_arm64
+    - test_deb_bookworm_arm64
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/any-version $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB
+    - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64
+    - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64
+    - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM_ARM64
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_ARM64} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_ARM64}"
+
+upload_package_deb_bookworm_beta_arm64:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD: coolercontrol-liqctld_beta_arm64_bookworm.deb
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA_D: coolercontrold_beta_arm64_bookworm.deb
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA: coolercontrol_beta_arm64_bookworm.deb
+  dependencies:
+    - build_deb_bookworm_arm64
+  needs:
+    - build_deb_bookworm_arm64
+    - test_deb_bookworm_arm64
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+  script:
+    - mv coolercontrol-liqctld_*_arm64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}
+    - mv coolercontrold_*_arm64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}
+    - mv coolercontrol_*_arm64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}"
@@ -524,8 +895,14 @@ create_release:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - upload_package_appimage
-    - upload_package_deb_bookworm
+    - upload_artifacts_arm64
+    - upload_package_deb_bookworm_amd64
+    - upload_package_deb_bookworm_arm64
     - upload_package_ubuntu
+    - push_dh-debian
+    #- push_dh-debian_arm64
+    - push_dh-alpine
+    #- push_dh-alpine_arm64
   before_script:
     - echo 'Starting release job'
   rules:
@@ -543,17 +920,29 @@ create_release:
     assets:
       links:
         # Debian Packages:
-        - name: Debian Bookworm - Liqctld Daemon
+        - name: Debian Bookworm - Liqctld Daemon x86_64
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
           link_type: package
-        - name: Debian Bookworm - Daemon
+        - name: Debian Bookworm - Daemon x86_64 
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
           link_type: package
-        - name: Debian Bookworm - UI
+        - name: Debian Bookworm - UI x86_64
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}'
+          link_type: package
+        - name: Debian Bookworm - Liqctld Daemon aarch64
+          filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD_ARM64}'
+          link_type: package
+        - name: Debian Bookworm - Daemon aarch64
+          filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D_ARM64}'
+          link_type: package
+        - name: Debian Bookworm - UI aarch64
+          filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_ARM64}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_ARM64}'
           link_type: package
         - name: Ubuntu 22.04+ - Liqctld Daemon
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU_LIQCTLD}'
@@ -573,19 +962,31 @@ create_release:
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
           link_type: other
         # Assets:
-        - name: Daemon Binary
+        - name: Daemon Binary x86_64
           filepath: '/packages/coolercontrold_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}'
           link_type: other
-        - name: Desktop Application Binary
+        - name: Desktop Application Binary x86_64
           filepath: '/packages/coolercontrol_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}'
           link_type: other
-        - name: Daemon Vendored Dependencies
+        - name: Daemon Vendored Dependencies x86_64
           filepath: '/packages/coolercontrold-vendor.tzst'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
           link_type: other
-        - name: UI Build Assets
+        - name: UI Build Assets x86_64
           filepath: '/packages/coolercontrol-ui.tzst'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst'
+          link_type: other
+        - name: Daemon Binary aarch64
+          filepath: '/packages/coolercontrold_aarch64_${CI_COMMIT_TAG}'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}'
+          link_type: other
+        - name: Daemon Vendored Dependencies aarch64
+          filepath: '/packages/coolercontrold_aarch64-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst'
+          link_type: other
+        - name: UI Build Assets aarch64
+          filepath: '/packages/coolercontrol_aarch64-ui.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst'
           link_type: other
