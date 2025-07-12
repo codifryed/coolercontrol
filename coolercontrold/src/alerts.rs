@@ -29,10 +29,11 @@ use hashlink::LinkedHashMap;
 use log::{error, info, trace};
 use moro_local::Scope;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
@@ -94,7 +95,7 @@ impl Alert {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, JsonSchema)]
 pub enum AlertState {
     Active,
     /// Alert condition was satisfied at the stored time but the duration threshold has not been
@@ -113,6 +114,49 @@ impl AlertState {
             AlertState::Inactive => true,
             AlertState::Error => true,
         }
+    }
+}
+
+impl Serialize for AlertState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            AlertState::Active => serializer.serialize_str("Active"),
+            AlertState::Error => serializer.serialize_str("Error"),
+            AlertState::Inactive | AlertState::WarmUp(_) => serializer.serialize_str("Inactive"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AlertState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct AlertStateVisitor;
+
+        impl<'de> Visitor<'de> for AlertStateVisitor {
+            type Value = AlertState;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string representing an alert state variant")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "Active" => Ok(AlertState::Active),
+                    "WarmUp" | "Error" | "Inactive" => Ok(AlertState::Inactive),
+                    _ => Err(E::custom(format!("unknown variant: {value}"))),
+                }
+            }
+        }
+
+        deserializer.deserialize_str(AlertStateVisitor)
     }
 }
 
