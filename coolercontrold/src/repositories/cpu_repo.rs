@@ -35,7 +35,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, log, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::time::Instant;
@@ -304,7 +304,13 @@ impl CpuRepo {
             }
         }
         if cpu_info_freqs.is_empty() {
-            warn!("No CPU frequencies found in cpuinfo");
+            // should warn for multi-cpus, but info otherwise
+            let lvl = if cpu_info_physical_id > 0 {
+                log::Level::Warn
+            } else {
+                log::Level::Info
+            };
+            log!(lvl, "No CPU frequencies found in cpuinfo");
         }
         for (physical_id, freqs) in cpu_info_freqs {
             let avg_freq = freqs.iter().sum::<Mhz>() / freqs.len() as Mhz;
@@ -583,9 +589,14 @@ impl Repository for CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.len() != num_of_cpus {
-            return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {num_of_cpus} hwmon devices found: {}",
-                hwmon_devices.len()
-            ));
+            if hwmon_devices.is_empty().not() {
+                return Err(anyhow!(
+                    "Missing CPU specific HWMon devices. cpuinfo count: \
+                        {num_of_cpus} hwmon devices found: {}",
+                    hwmon_devices.len()
+                ));
+            }
+            info!("No CPU specific HWMON devices found.");
         }
 
         let mut cpu_freqs = Self::collect_freq().await;
