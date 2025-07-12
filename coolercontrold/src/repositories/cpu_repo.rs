@@ -543,10 +543,12 @@ impl CpuRepo {
                         error!("Error matching cpu load percents to processors: {err}");
                     }
                 }
-                match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
-                    Ok(freq) => channels.push(freq),
-                    Err(err) => {
-                        error!("Error matching cpu frequencies to processors: {err}");
+                if cpu_freqs.is_empty().not() {
+                    match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
+                        Ok(freq) => channels.push(freq),
+                        Err(err) => {
+                            error!("Error matching cpu frequencies to processors: {err}");
+                        }
                     }
                 }
                 match power_cap::find_power_cap_paths().await {
