@@ -27,8 +27,8 @@ use crate::modes::ModeController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
-use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
-use crate::repositories::repository::{DeviceList, DeviceLock, Repositories};
+use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repositories};
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
 use log::{error, info, warn};
@@ -330,7 +330,7 @@ async fn initialize_device_repos(
             lc_locations.append(&mut lc_locs);
             repos.liquidctl = Some(repo);
         }
-        Err(err) if err.downcast_ref() == Some(&InitError::Disabled) => info!("{err}"),
+        Err(err) if err.downcast_ref() == Some(&InitError::LiqctldDisabled) => info!("{err}"),
         Err(err) => warn!("Error initializing LIQUIDCTL Repo: {err}"),
     }
     // init these concurrently:
