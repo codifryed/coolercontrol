@@ -332,15 +332,6 @@ impl CpuRepo {
                 freq_present = false;
             }
         }
-        if cpu_info_freqs.is_empty() {
-            // should warn for multi-cpus, but info otherwise
-            let lvl = if cpu_info_physical_id > 0 {
-                log::Level::Warn
-            } else {
-                log::Level::Info
-            };
-            log!(lvl, "No CPU frequencies found in cpuinfo");
-        }
         for (physical_id, freqs) in cpu_info_freqs {
             let avg_freq = freqs.iter().sum::<Mhz>() / freqs.len() as Mhz;
             cpu_avgs.insert(physical_id, avg_freq);
@@ -503,6 +494,15 @@ impl CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_left_to_find = num_of_cpus;
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        if cpu_freqs.is_empty() {
+            // should warn for multi-cpus, but info otherwise
+            let lvl = if num_of_cpus > 1 {
+                log::Level::Warn
+            } else {
+                log::Level::Info
+            };
+            log!(lvl, "No CPU frequencies found in cpuinfo");
+        }
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
                 // is sorted
@@ -543,10 +543,12 @@ impl CpuRepo {
                         error!("Error matching cpu load percents to processors: {err}");
                     }
                 }
-                match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
-                    Ok(freq) => channels.push(freq),
-                    Err(err) => {
-                        error!("Error matching cpu frequencies to processors: {err}");
+                if cpu_freqs.is_empty().not() {
+                    match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
+                        Ok(freq) => channels.push(freq),
+                        Err(err) => {
+                            error!("Error matching cpu frequencies to processors: {err}");
+                        }
                     }
                 }
                 match power_cap::find_power_cap_paths().await {
