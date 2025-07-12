@@ -496,7 +496,7 @@ impl CpuRepo {
         let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         if cpu_freqs.is_empty() {
             // should warn for multi-cpus, but info otherwise
-            let lvl = if num_of_cpus > 0 {
+            let lvl = if num_of_cpus > 1 {
                 log::Level::Warn
             } else {
                 log::Level::Info
