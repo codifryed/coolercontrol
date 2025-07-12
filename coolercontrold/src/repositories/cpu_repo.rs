@@ -46,7 +46,12 @@ const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const SINGLE_CPU_FREQ_NAME: &str = "CPU Freq";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority, and we want to return the first match
-pub const CPU_DEVICE_NAMES_ORDERED: [&str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
+pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
+    "k10temp",         // standard AMD module
+    INTEL_DEVICE_NAME, // standard Intel module
+    "zenpower",        // zenpower AMD module
+    "cpu_thermal",     // Raspberry Pi module
+];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 const CPUINFO_PATH: &str = "/proc/cpuinfo";
 
@@ -85,7 +90,9 @@ impl CpuRepo {
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
         let mut processor_id: ProcessorID = 0;
-        let mut chg_count: usize = 0;
+        let mut processor_present = false;
+        let mut physical_id_present = false;
+        let mut model_name_present = false;
         for line in cpu_info_data.lines() {
             let mut it = line.split(':');
             let (key, value) = match (it.next(), it.next()) {
@@ -95,17 +102,17 @@ impl CpuRepo {
 
             if key == "processor" {
                 processor_id = value.parse()?;
-                chg_count += 1;
+                processor_present = true;
             }
             if key == "model name" {
                 model_name = value;
-                chg_count += 1;
+                model_name_present = true;
             }
             if key == "physical id" {
                 physical_id = value.parse()?;
-                chg_count += 1;
+                physical_id_present = true;
             }
-            if chg_count == 3 {
+            if processor_present && physical_id_present && model_name_present {
                 // after each processor's entry
                 self.cpu_infos
                     .entry(physical_id)
@@ -113,7 +120,26 @@ impl CpuRepo {
                     .push(processor_id);
                 self.cpu_model_names
                     .insert(physical_id, model_name.to_string());
-                chg_count = 0;
+                processor_present = false;
+                physical_id_present = false;
+                model_name_present = false;
+            }
+        }
+        if self.cpu_infos.is_empty() && self.cpu_model_names.is_empty() {
+            // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
+            // they do have a model name though.
+            for line in cpu_info_data.lines() {
+                let mut it = line.split(':');
+                let (key, value) = match (it.next(), it.next()) {
+                    (Some(key), Some(value)) => (key.trim(), value.trim()),
+                    _ => continue, // will skip empty lines and non-key-value lines
+                };
+                if key == "processor" {
+                    self.cpu_infos.entry(0).or_default().push(value.parse()?);
+                }
+                if key == "Model" {
+                    self.cpu_model_names.insert(0, value.to_string());
+                }
             }
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
@@ -271,7 +297,8 @@ impl CpuRepo {
         };
         let mut cpu_info_physical_id: PhysicalID = 0;
         let mut cpu_info_freq: f64 = 0.;
-        let mut chg_count: usize = 0;
+        let mut physical_id_present = false;
+        let mut freq_present = false;
         for line in cpu_info.lines() {
             if line.starts_with("physical id").not() && line.starts_with("cpu MHz").not() {
                 continue;
@@ -286,22 +313,23 @@ impl CpuRepo {
                     return cpu_avgs;
                 };
                 cpu_info_physical_id = phy_id;
-                chg_count += 1;
+                physical_id_present = true;
             }
             if key == "cpu MHz" {
                 let Ok(freq) = value.parse() else {
                     return cpu_avgs;
                 };
                 cpu_info_freq = freq;
-                chg_count += 1;
+                freq_present = true;
             }
-            if chg_count == 2 {
+            if physical_id_present && freq_present {
                 // after each processor's entry
                 cpu_info_freqs
                     .entry(cpu_info_physical_id)
                     .or_default()
                     .push(cpu_info_freq.trunc() as Mhz);
-                chg_count = 0;
+                physical_id_present = false;
+                freq_present = false;
             }
         }
         if cpu_info_freqs.is_empty() {
@@ -881,6 +909,10 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/resources/tests/cpuinfo/intel_single_cpu"
     ));
+    static CPUINFO_RASPBERRY_PI_5: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/raspberry_pi_5"
+    ));
 
     #[test]
     #[serial]
@@ -1072,6 +1104,99 @@ mod tests {
                 Some(&799),
                 "collect_freq should have the correct average frequency"
             );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_raspberry_pi_5() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
+            assert_eq!(
+                cpu_repo.cpu_infos.len(),
+                1,
+                "cpu_infos should have 1 physical cpu entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.len(),
+                1,
+                "cpu_model_names should have 1 entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&0).unwrap(),
+                "Raspberry Pi Compute Module 5 Rev 1.0",
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_raspberry_pi_5() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(
+                result.len(),
+                0,
+                "collect_freq should have no physical cpu entries"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_empty() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_err(),
+                "set_cpu_infos should return Err when not found: {result:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_empty() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(result.len(), 0);
         });
     }
 }
