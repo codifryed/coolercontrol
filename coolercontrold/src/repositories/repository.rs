@@ -19,12 +19,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use anyhow::Result;
-use async_trait::async_trait;
-
 use crate::device::{DeviceType, UID};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
+use anyhow::Result;
+use async_trait::async_trait;
+use derive_more::{Display, Error};
 
 pub type DeviceLock = Rc<RefCell<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
@@ -149,4 +149,15 @@ impl Repositories {
     fn clone_rc(repo: Option<&Rc<dyn Repository>>) -> Option<Rc<dyn Repository>> {
         repo.map(Rc::clone)
     }
+}
+
+/// Repository Initialization Errors
+/// Particularly useful for handling different initialization situations.
+#[derive(Debug, Clone, Display, Error, PartialEq)]
+pub enum InitError {
+    #[display("Liquidctl Integration is Disabled")]
+    LiqctldDisabled,
+
+    #[display("Connection Error: {msg}")]
+    Connection { msg: String },
 }

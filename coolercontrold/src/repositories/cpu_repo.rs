@@ -35,7 +35,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, log, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::time::Instant;
@@ -46,10 +46,16 @@ const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const SINGLE_CPU_FREQ_NAME: &str = "CPU Freq";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority, and we want to return the first match
-pub const CPU_DEVICE_NAMES_ORDERED: [&str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
+pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
+    "k10temp",         // standard AMD module
+    INTEL_DEVICE_NAME, // standard Intel module
+    "zenpower",        // zenpower AMD module
+    "cpu_thermal",     // Raspberry Pi module
+];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
+const CPUINFO_PATH: &str = "/proc/cpuinfo";
 
-// The ID of the actual physical CPU. On most systems there is only one:
+// The ID of the actual physical CPU. On most systems, there is only one:
 type PhysicalID = u8;
 type ProcessorID = u16; // the logical processor ID
 
@@ -79,12 +85,14 @@ impl CpuRepo {
         })
     }
 
-    async fn set_cpu_infos(&mut self) -> Result<()> {
-        let cpu_info_data = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await?;
+    async fn set_cpu_infos(&mut self, cpuinfo_path: &Path) -> Result<()> {
+        let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
         let mut processor_id: ProcessorID = 0;
-        let mut chg_count: usize = 0;
+        let mut processor_present = false;
+        let mut physical_id_present = false;
+        let mut model_name_present = false;
         for line in cpu_info_data.lines() {
             let mut it = line.split(':');
             let (key, value) = match (it.next(), it.next()) {
@@ -94,17 +102,17 @@ impl CpuRepo {
 
             if key == "processor" {
                 processor_id = value.parse()?;
-                chg_count += 1;
+                processor_present = true;
             }
             if key == "model name" {
                 model_name = value;
-                chg_count += 1;
+                model_name_present = true;
             }
             if key == "physical id" {
                 physical_id = value.parse()?;
-                chg_count += 1;
+                physical_id_present = true;
             }
-            if chg_count == 3 {
+            if processor_present && physical_id_present && model_name_present {
                 // after each processor's entry
                 self.cpu_infos
                     .entry(physical_id)
@@ -112,7 +120,26 @@ impl CpuRepo {
                     .push(processor_id);
                 self.cpu_model_names
                     .insert(physical_id, model_name.to_string());
-                chg_count = 0;
+                processor_present = false;
+                physical_id_present = false;
+                model_name_present = false;
+            }
+        }
+        if self.cpu_infos.is_empty() && self.cpu_model_names.is_empty() {
+            // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
+            // they do have a model name though.
+            for line in cpu_info_data.lines() {
+                let mut it = line.split(':');
+                let (key, value) = match (it.next(), it.next()) {
+                    (Some(key), Some(value)) => (key.trim(), value.trim()),
+                    _ => continue, // will skip empty lines and non-key-value lines
+                };
+                if key == "processor" {
+                    self.cpu_infos.entry(0).or_default().push(value.parse()?);
+                }
+                if key == "Model" {
+                    self.cpu_model_names.insert(0, value.to_string());
+                }
             }
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
@@ -252,11 +279,11 @@ impl CpuRepo {
 
     /// Collects the average frequency per Physical CPU.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    async fn collect_freq() -> HashMap<PhysicalID, Mhz> {
+    async fn collect_freq(cpuinfo_path: &Path) -> HashMap<PhysicalID, Mhz> {
         // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
         // cpuinfo not only will return which frequency belongs to which physical CPU,
         // which is important for CoolerControl's full multi-physical-cpu support,
-        // but also it's cached and therefor consistently fast across various systems.
+        // but also it's cached and therefore consistently fast across various systems.
         // See: https://github.com/giampaolo/psutil/issues/1851
         // The alternative is to read one of:
         //   /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq
@@ -265,12 +292,13 @@ impl CpuRepo {
         // clear how to associate the frequency with the physical CPU on multi-cpu systems.
         let mut cpu_avgs = HashMap::new();
         let mut cpu_info_freqs: HashMap<PhysicalID, Vec<Mhz>> = HashMap::new();
-        let Ok(cpu_info) = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await else {
+        let Ok(cpu_info) = cc_fs::read_txt(cpuinfo_path).await else {
             return cpu_avgs;
         };
         let mut cpu_info_physical_id: PhysicalID = 0;
         let mut cpu_info_freq: f64 = 0.;
-        let mut chg_count: usize = 0;
+        let mut physical_id_present = false;
+        let mut freq_present = false;
         for line in cpu_info.lines() {
             if line.starts_with("physical id").not() && line.starts_with("cpu MHz").not() {
                 continue;
@@ -285,26 +313,24 @@ impl CpuRepo {
                     return cpu_avgs;
                 };
                 cpu_info_physical_id = phy_id;
-                chg_count += 1;
+                physical_id_present = true;
             }
             if key == "cpu MHz" {
                 let Ok(freq) = value.parse() else {
                     return cpu_avgs;
                 };
                 cpu_info_freq = freq;
-                chg_count += 1;
+                freq_present = true;
             }
-            if chg_count == 2 {
+            if physical_id_present && freq_present {
                 // after each processor's entry
                 cpu_info_freqs
                     .entry(cpu_info_physical_id)
                     .or_default()
                     .push(cpu_info_freq.trunc() as Mhz);
-                chg_count = 0;
+                physical_id_present = false;
+                freq_present = false;
             }
-        }
-        if cpu_info_freqs.is_empty() {
-            warn!("No CPU frequencies found in cpuinfo");
         }
         for (physical_id, freqs) in cpu_info_freqs {
             let avg_freq = freqs.iter().sum::<Mhz>() / freqs.len() as Mhz;
@@ -467,7 +493,16 @@ impl CpuRepo {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_left_to_find = num_of_cpus;
-        let mut cpu_freqs = Self::collect_freq().await;
+        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
+        if cpu_freqs.is_empty() {
+            // should warn for multi-cpus, but info otherwise
+            let lvl = if num_of_cpus > 1 {
+                log::Level::Warn
+            } else {
+                log::Level::Info
+            };
+            log!(lvl, "No CPU frequencies found in cpuinfo");
+        }
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
                 // is sorted
@@ -508,10 +543,12 @@ impl CpuRepo {
                         error!("Error matching cpu load percents to processors: {err}");
                     }
                 }
-                match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
-                    Ok(freq) => channels.push(freq),
-                    Err(err) => {
-                        error!("Error matching cpu frequencies to processors: {err}");
+                if cpu_freqs.is_empty().not() {
+                    match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
+                        Ok(freq) => channels.push(freq),
+                        Err(err) => {
+                            error!("Error matching cpu frequencies to processors: {err}");
+                        }
                     }
                 }
                 match power_cap::find_power_cap_paths().await {
@@ -577,18 +614,23 @@ impl Repository for CpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.poll_rate = self.config.get_settings()?.poll_rate;
-        self.set_cpu_infos().await?;
+        self.set_cpu_infos(CPUINFO_PATH.as_ref()).await?;
         let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.len() != num_of_cpus {
-            return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {num_of_cpus} hwmon devices found: {}",
-                hwmon_devices.len()
-            ));
+            if hwmon_devices.is_empty().not() {
+                return Err(anyhow!(
+                    "Missing CPU specific HWMon devices. cpuinfo count: \
+                        {num_of_cpus} hwmon devices found: {}",
+                    hwmon_devices.len()
+                ));
+            }
+            info!("No CPU specific HWMON devices found.");
         }
 
-        let mut cpu_freqs = Self::collect_freq().await;
+        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         for (physical_id, driver) in hwmon_devices {
             for channel in driver.channels.iter().filter(|channel| {
                 channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
@@ -721,7 +763,7 @@ impl Repository for CpuRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
-        let mut cpu_freqs = Self::collect_freq().await;
+        let mut cpu_freqs = Self::collect_freq(CPUINFO_PATH.as_ref()).await;
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
                 let device_id = device_lock.borrow().type_index;
@@ -846,5 +888,317 @@ impl Repository for CpuRepo {
 
     async fn reinitialize_devices(&self) {
         error!("Reinitializing Devices is not supported for this Repository");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cc_fs;
+    use crate::config::Config;
+    use crate::repositories::cpu_repo::CpuRepo;
+    use serial_test::serial;
+    use std::rc::Rc;
+
+    static CPUINFO_AMD_SINGLE_CPU: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/amd_single_cpu"
+    ));
+    static CPUINFO_AMD_DOUBLE_CPU: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/amd_double_cpu"
+    ));
+    static CPUINFO_INTEL_SINGLE_CPU: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/intel_single_cpu"
+    ));
+    static CPUINFO_RASPBERRY_PI_5: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/resources/tests/cpuinfo/raspberry_pi_5"
+    ));
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_amd_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
+            assert_eq!(
+                cpu_repo.cpu_infos.len(),
+                1,
+                "cpu_infos should have 1 physical cpu entry"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.len(),
+                1,
+                "cpu_model_names should have 1 entry"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&0).unwrap(),
+                "AMD Ryzen 7 5800X 8-Core Processor",
+                "cpu_model_names should have the correct model name"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_amd_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(
+                result.len(),
+                1,
+                "collect_freq should have 1 physical cpu entry"
+            );
+            assert_eq!(
+                result.get(&0),
+                Some(&3005),
+                "collect_freq should have the correct average frequency"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_amd_double_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
+            assert_eq!(
+                cpu_repo.cpu_infos.len(),
+                2,
+                "cpu_infos should have 2 physical cpu entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.len(),
+                2,
+                "cpu_model_names should have 2 entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&0).unwrap(),
+                "AMD Ryzen 7 5800X 8-Core Processor#1",
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&1).unwrap(),
+                "AMD Ryzen 7 5800X 8-Core Processor#2",
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_amd_double_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(
+                result.len(),
+                2,
+                "collect_freq should have 2 physical cpu entries"
+            );
+            assert_eq!(
+                result.get(&0),
+                Some(&3005),
+                "collect_freq should have the correct average frequency"
+            );
+            assert_eq!(
+                result.get(&1),
+                Some(&818),
+                "collect_freq should have the correct average frequency"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_intel_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
+            assert_eq!(
+                cpu_repo.cpu_infos.len(),
+                1,
+                "cpu_infos should have 1 physical cpu entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.len(),
+                1,
+                "cpu_model_names should have 1 entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&0).unwrap(),
+                "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz",
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_intel_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(
+                result.len(),
+                1,
+                "collect_freq should have 1 physical cpu entries"
+            );
+            assert_eq!(
+                result.get(&0),
+                Some(&799),
+                "collect_freq should have the correct average frequency"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_raspberry_pi_5() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(result.is_ok(), "set_cpu_infos should return Ok: {result:?}");
+            assert_eq!(
+                cpu_repo.cpu_infos.len(),
+                1,
+                "cpu_infos should have 1 physical cpu entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.len(),
+                1,
+                "cpu_model_names should have 1 entries"
+            );
+            assert_eq!(
+                cpu_repo.cpu_model_names.get(&0).unwrap(),
+                "Raspberry Pi Compute Module 5 Rev 1.0",
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_raspberry_pi_5() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(
+                result.len(),
+                0,
+                "collect_freq should have no physical cpu entries"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_cpu_infos_empty() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+
+            // when:
+            let result = cpu_repo.set_cpu_infos(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_err(),
+                "set_cpu_infos should return Err when not found: {result:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_collect_freq_empty() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
+
+            // when:
+            let result = CpuRepo::collect_freq(&test_cpuinfo).await;
+
+            // then:
+            assert_eq!(result.len(), 0);
+        });
     }
 }

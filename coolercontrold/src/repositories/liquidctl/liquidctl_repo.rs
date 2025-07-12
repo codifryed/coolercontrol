@@ -27,7 +27,6 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use derive_more::{Display, Error};
 use futures_util::future::join_all;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
@@ -42,7 +41,7 @@ use crate::repositories::liquidctl::liqctld_client::{
 };
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
-use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 
@@ -71,7 +70,7 @@ impl LiquidctlRepo {
                 Ok(())
             }
             .await;
-            return Err(InitError::Disabled.into());
+            return Err(InitError::LiqctldDisabled.into());
         }
         info!("Attempting to connect to coolercontrol-liqctld...");
         let liqctld_client = LiqctldClient::new(LIQCTLD_CONNECTION_TRIES)
@@ -1176,13 +1175,4 @@ mod tests {
         );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
     }
-}
-
-#[derive(Debug, Clone, Display, Error, PartialEq)]
-pub enum InitError {
-    #[display("Liquidctl Integration is Disabled")]
-    Disabled,
-
-    #[display("Connection Error: {msg}")]
-    Connection { msg: String },
 }
