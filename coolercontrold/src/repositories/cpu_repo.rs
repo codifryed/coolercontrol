@@ -256,7 +256,7 @@ impl CpuRepo {
         // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
         // cpuinfo not only will return which frequency belongs to which physical CPU,
         // which is important for CoolerControl's full multi-physical-cpu support,
-        // but also it's cached and therefor consistently fast across various systems.
+        // but also it's cached and therefore consistently fast across various systems.
         // See: https://github.com/giampaolo/psutil/issues/1851
         // The alternative is to read one of:
         //   /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq
