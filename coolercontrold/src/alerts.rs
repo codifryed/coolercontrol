@@ -66,7 +66,7 @@ pub struct Alert {
 impl Alert {
     /// Updates the state based on [`value`] and returns whether the state changed.
     fn set_state(&mut self, value: f64) -> bool {
-        if value >= self.min && value =< self.max {
+        if value >= self.min && value <= self.max {
             let changed = self.state != AlertState::Inactive;
             self.state = AlertState::Inactive;
             return changed;
