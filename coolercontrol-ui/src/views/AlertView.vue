@@ -68,12 +68,13 @@ const confirm = useConfirm()
 
 const contextIsDirty: Ref<boolean> = ref(false)
 const shouldCreateAlert: boolean = !props.alertUID
+const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 
 const collectAlert = async (): Promise<Alert> => {
     if (shouldCreateAlert) {
         const newAlertName = `${t('views.alerts.newAlert')} ${settingsStore.alerts.length + 1}`
         const channelSource = new ChannelSource('', '', ChannelMetric.Temp)
-        return new Alert(newAlertName, channelSource, defaultMin, 100)
+        return new Alert(newAlertName, channelSource, defaultMin, 100, pollRate.value)
     } else {
         const foundAlert = settingsStore.alerts.find((alert) => alert.uid === props.alertUID!)
         if (foundAlert == undefined) {

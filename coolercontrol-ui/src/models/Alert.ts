@@ -37,7 +37,7 @@ export class Alert {
         channel_source: ChannelSource,
         min: number,
         max: number,
-        warmup_duration: number = 1,
+        warmup_duration: number,
     ) {
         this.name = name
         this.channel_source = channel_source

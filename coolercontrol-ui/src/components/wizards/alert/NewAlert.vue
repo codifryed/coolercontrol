@@ -66,11 +66,12 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
+const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 
 const collectAlert = (): Alert => {
     const newAlertName = `${t('views.alerts.newAlert')} ${settingsStore.alerts.length + 1}`
     const channelSource = new ChannelSource('', '', ChannelMetric.Temp)
-    return new Alert(newAlertName, channelSource, defaultMin, 100)
+    return new Alert(newAlertName, channelSource, defaultMin, 100, pollRate.value)
 }
 const alert: Alert = props.alert === undefined ? collectAlert() : props.alert
 const chosenChannelSource: Ref<AvailableChannel | undefined> = ref()
