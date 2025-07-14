@@ -621,9 +621,6 @@ onMounted(async () => {
                                     class="mt-4 max-w-xl text-base text-text-color-secondary"
                                 >
                                     <div v-if="isFirst">
-                                        <p>
-                                            {{ t('components.onboarding.beforeStart') }}
-                                        </p>
                                         <p class="mt-4">
                                             {{ t('components.onboarding.beforeStart') }}
                                             <br />
@@ -632,9 +629,10 @@ onMounted(async () => {
                                                 target="_blank"
                                                 class="text-accent outline-0 underline"
                                             >
-                                                {{ t('components.onboarding.settingUpDrivers') }}
-                                            </a>
-                                            .
+                                                {{
+                                                    t('components.onboarding.settingUpDrivers')
+                                                }} </a
+                                            >.
                                         </p>
                                         <br />
                                         <p>

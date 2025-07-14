@@ -712,8 +712,7 @@ export default {
         },
         onboarding: {
             welcome: 'Welcome to CoolerControl!',
-            beforeStart:
-                'Before we get started, one of them most important things to know about is',
+            beforeStart: 'Before we get started, one of the most important things to know about is',
             settingUpDrivers: 'setting up your hardware drivers',
             fansNotShowing:
                 'If your fans are not showing up or cannot be controlled, then likely there is an issue with your currently installed kernel drivers.',
