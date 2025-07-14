@@ -643,6 +643,7 @@ const uOptions: uPlot.Options = {
                         const pxPerXUnitSecond = u.valToPos(1, 'x') - u.valToPos(0, 'x')
                         // 10 seconds max zoom-in
                         u.cursor.drag!.dist = pxPerXUnitSecond * 10
+                        // todo: maybe allow full tooltip spread with "shift" + click... or just shift?
                         // if (e.ctrlKey) {
                         // }
                         handler(e)

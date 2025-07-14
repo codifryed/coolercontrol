@@ -43,9 +43,10 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, inject, onMounted, onUnmounted, reactive, Reactive, ref, Ref, watch } from 'vue'
-import { ElDropdown, ElTree } from 'element-plus'
+import {computed, inject, onMounted, onUnmounted, ref, Ref, watch} from 'vue'
+import { ElDropdown, ElTree, ElCollapse, ElCollapseItem } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
+import 'element-plus/es/components/collapse/style/css'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
@@ -87,6 +88,7 @@ import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
+import {VueDraggable} from "vue-draggable-plus"
 import { useI18n } from 'vue-i18n'
 
 // interface Tree {
@@ -155,11 +157,12 @@ const nodeProps = {
     label: 'label',
     class: speedControlMenuClass,
 }
-const data: Reactive<Tree[]> = reactive([])
+//const data: Reactive<Tree[]> = reactive([])
+const data: Ref<Tree[]> = ref([])
 
 // Remove computed wrapper for menu data
 const createTreeMenu = (): void => {
-    data.length = 0
+    data.value.length = 0
     const result: Tree[] = []
     if (settingsStore.menuEntitiesAtBottom) {
         result.push(customSensorsTree())
@@ -178,7 +181,7 @@ const createTreeMenu = (): void => {
         result.push(customSensorsTree())
         result.push(...devicesTreeArray())
     }
-    data.push(...result)
+    data.value.push(...result)
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {
 //     // todo: only add pinned node if there are pins
@@ -386,6 +389,21 @@ const devicesTreeArray = (): any[] => {
             deviceUID: device.uid,
             children: [],
             options: [{ deviceInfo: true }, { rename: true }],
+            menuOptions: ref([
+                {
+                    label: 'Options',
+                    items: [
+                        {
+                            label: 'Refresh',
+                            icon: 'pi pi-refresh'
+                        },
+                        {
+                            label: 'Export',
+                            icon: 'pi pi-upload'
+                        }
+                    ]
+                }
+            ])
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -553,10 +571,11 @@ const formatFrequency = (value: string): string =>
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
 
 const expandedNodeIds = (): Array<string> => {
-    return data
+    return data.value
         .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
         .map((node: any) => node.id)
 }
+const expandedIds = ref(expandedNodeIds())
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
@@ -821,6 +840,16 @@ const adjustTreeLeaves = (): void => {
     }
     setTimeout(dynamicAdjustment)
 }
+
+// add group class to all collapse header items (used to show options menus on hover)
+const addGroup = (): void => {
+    setTimeout(() => {
+        const elements = document.querySelectorAll('.el-collapse-item__header')
+        for (const element of elements) {
+            element.classList.add('group')
+        }
+    })
+}
 onMounted(async () => {
     adjustTreeLeaves()
 
@@ -828,6 +857,8 @@ onMounted(async () => {
     window.addEventListener('language-changed', () => {
         createTreeMenu()
     })
+
+    addGroup()
 })
 
 // Remove event listeners when component is unmounted
@@ -839,6 +870,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+<!--    <div>-->
+
     <!--    <div-->
     <!--        id="system-menu"-->
     <!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
@@ -847,6 +880,74 @@ onUnmounted(() => {
     <!--                {{ daemonState.systemName }}-->
     <!--            </span>-->
     <!--    </div>-->
+    <VueDraggable v-model="data" target=".cc-root-items" :scroll="true"
+                  :force-auto-scroll-fallback="true" :fallback-on-body="true"
+                  :animation="300"
+                  :direction="'vertical'" :scroll-sensitivity="deviceStore.getREMSize(5)"
+                  :scroll-speed="deviceStore.getREMSize(1.25)"
+                  :bubble-scroll="true" :revert-on-spill="true"
+                  :force-fallback="false"
+                  :fallback-tolerance="15">
+        <el-collapse class="cc-root-items" expand-icon-position="left"
+                     :model-value="expandedIds"
+                     @change="(activeNames) => addGroup()">
+            <el-collapse-item v-for="item in data" :name="item.id" :key="item.id">
+                <template #title="{ isActive }">
+                    <!--Root Elements-->
+                    <div class="flex group h-full w-full items-center justify-between outline-none">
+                    <div class="flex flex-row items-center min-w-0">
+                        <svg-icon
+                            v-if="item.icon"
+                            class="mr-1.5 min-w-7 w-7"
+                            type="mdi"
+                            :path="item.icon"
+                            :style="{
+                                    color: deviceChannelColor(item.deviceUID, item.name).value,
+                                }"
+                            :size="
+                                    deviceStore.getREMSize(
+                                        deviceChannelIconSize(item.deviceUID, item.name),
+                                    )
+                                "
+                        />
+                        <div class="flex flex-col overflow-hidden">
+                            <div
+                                class="tree-text leading-tight"
+                            >
+                                {{ item.label }}
+                            </div>
+                            <div>
+                            </div>
+                        </div>
+                    </div>
+                        <div class="hidden group-hover:flex mr-0 justify-end whitespace-normal">
+                            <div v-for="option in item.options">
+                                <menu-device-info
+                                    v-if="option.deviceInfo"
+                                    :device-u-i-d="item.deviceUID"
+                                    @click.stop
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, item)"
+                                />
+                                <!--                                        @open="(isOpen) => subMenuStatusChange(isOpen, item)"-->
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template v-if="item.children == null || item.children.length === 0"
+                          #icon="{ isActive }">
+                    <div class="w-4"/>
+                </template>
+                <VueDraggable v-model="item.children" :animation="300"
+                              :direction="'vertical'">
+                    <div v-for="childItem in item.children" :key="childItem.id">
+<!--                        todo: child style-->
+                        <!--Child Elements-->
+                        <span class="ml-2">{{ childItem.label }}</span>
+                    </div>
+                </VueDraggable>
+            </el-collapse-item>
+        </el-collapse>
+    </VueDraggable>
     <div>
         <el-tree
             ref="treeRef"
@@ -1171,11 +1272,24 @@ onUnmounted(() => {
     --el-color-primary-light-9: rgb(var(--colors-bg-two));
 }
 
+.el-collapse {
+    --el-fill-color-blank: rgb(var(--colors-bg-one));
+    --el-collapse-header-text-color: rgb(var(--colors-text-color));
+    --el-collapse-header-font-size: 1rem;
+    --el-collapse-content-font-size: 1rem;
+    --el-collapse-content-text-color: rgb(var(--colors-text-color));
+    border-top: 0;
+    border-bottom: 0;
+    --el-collapse-border-color: rgb(var(--colors-bg-one));
+    --el-collapse-header-height: 2.5rem;
+}
+
 .tree-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    // This is THE WAY to handle elements overflowing with white-space: nowrap
+    display: -webkit-box;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
 }
 
 .tree-data {
@@ -1197,6 +1311,55 @@ onUnmounted(() => {
 /******************************************************************************************
 * Unscoped Style needed to deeply affect the element components
 */
+.el-collapse-icon-position-left .el-collapse-item__header {
+    gap: 0.125rem;
+}
+
+.el-collapse-item__header {
+    border-bottom: 0;
+    //display: block;
+    border-radius: 0.5rem;
+}
+
+.el-collapse-item__header:hover {
+    background-color: rgb(var(--colors-bg-two));
+}
+
+.el-collapse-item__header.focusing:focus:not(:hover) {
+    // strange issue with fast clicking then triggers this (likely upstream bug)
+    color: rgb(var(--colors-text-color));
+}
+
+.el-collapse-item__title {
+    width: 100%;
+}
+
+
+.el-collapse-item__wrap {
+    border-bottom: 0;
+}
+
+.el-collapse-item__content {
+    line-height: normal;
+    padding-bottom: 0;
+}
+
+.el-collapse-item__arrow {
+    font-size: 1.0rem;
+    //font-weight: 800;
+    padding-left: 1px !important;
+}
+
+//body:has(.sortable-drag) * {
+//    user-select: none;
+//    cursor: grabbing !important;
+//}
+
+//.sortable-chosen .sortable-drag .sortable-ghost {
+//    cursor: grabbing !important;
+//    pointer-events: all;
+//}
+
 .el-tree-node__content {
     border-radius: 0.5rem;
 }

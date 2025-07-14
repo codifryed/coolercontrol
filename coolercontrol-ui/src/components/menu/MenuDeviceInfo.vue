@@ -26,6 +26,7 @@ import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { ref, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DriverType, getDriverTypeDisplayName } from '@/models/DeviceInfo'
+import Popover from 'primevue/popover'
 
 interface Props {
     deviceUID: UID
@@ -35,6 +36,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'open', value: boolean): void
 }>()
+
+const popRef = ref()
 
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
@@ -65,9 +68,11 @@ for (const device of deviceStore.allDevices()) {
 
 <template>
     <div v-tooltip.top="{ value: t('components.deviceInfo.details') }">
-        <popover-root @update:open="(value) => emit('open', value)">
-            <popover-trigger
+<!--        <popover-root @update:open="(value) => emit('open', value)">-->
+<!--            <popover-trigger-->
+        <div
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                @click="(event) => popRef.toggle(event)"
             >
                 <svg-icon
                     class="outline-0"
@@ -75,8 +80,11 @@ for (const device of deviceStore.allDevices()) {
                     :path="mdiInformationSlabCircleOutline"
                     :size="deviceStore.getREMSize(1.5)"
                 />
-            </popover-trigger>
-            <popover-content side="right" class="z-10">
+<!--            </popover-trigger>-->
+            </div>
+<!--            <popover-content side="right" class="z-10">-->
+            <Popover ref="popRef">
+
                 <div
                     class="w-full bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
                 >
@@ -150,8 +158,9 @@ for (const device of deviceStore.allDevices()) {
                         </tbody>
                     </table>
                 </div>
-            </popover-content>
-        </popover-root>
+            </Popover>
+<!--            </popover-content>-->
+<!--        </popover-root>-->
     </div>
 </template>
 

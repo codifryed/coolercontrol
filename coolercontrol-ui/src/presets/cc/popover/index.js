@@ -28,17 +28,17 @@ export default {
             'z-40 transform origin-center',
 
             // Color
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80',
-            'dark:border-surface-700',
+            // 'bg-surface-0 dark:bg-surface-800',
+            // 'text-surface-700 dark:text-surface-0/80',
+            // 'dark:border-surface-700',
 
             // Before: Arrow
-            'before:absolute before:w-0 before:-top-3 before:h-0 before:border-transparent before:border-solid before:ml-[10px] before:border-x-[10px] before:border-b-[10px] before:border-t-0 before:border-b-surface-300/10 dark:before:border-b-surface-700',
-            'after:absolute after:w-0 after:-top-[0.54rem] after:left-[4px] after:h-0 after:border-transparent after:border-solid after:ml-[8px] after:border-x-[8px] after:border-b-[8px] after:border-t-0 after:border-b-surface-0 dark:after:border-b-surface-800',
+            // 'before:absolute before:w-0 before:-top-3 before:h-0 before:border-transparent before:border-solid before:ml-[10px] before:border-x-[10px] before:border-b-[10px] before:border-t-0 before:border-b-surface-300/10 dark:before:border-b-surface-700',
+            // 'after:absolute after:w-0 after:-top-[0.54rem] after:left-[4px] after:h-0 after:border-transparent after:border-solid after:ml-[8px] after:border-x-[8px] after:border-b-[8px] after:border-t-0 after:border-b-surface-0 dark:after:border-b-surface-800',
         ],
     },
     content: {
-        class: 'p-5 items-center flex',
+        class: 'ml-8 mt-[-4rem] mb-[-2rem] p-0 items-center flex',
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',
