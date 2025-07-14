@@ -470,7 +470,7 @@ onMounted(async () => {
                                     class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
                                 >
                                     <div class="text-right float-right">
-                                        {{ t('views.alerts.seconds') }}
+                                        {{ t('views.alerts.warmupGreaterThan') }}
                                     </div>
                                 </td>
                                 <td
