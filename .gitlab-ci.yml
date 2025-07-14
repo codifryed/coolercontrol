@@ -389,12 +389,60 @@ build_ubuntu:
 
 ####################################### debian Docker Images
 
-push_dh-debian:
+# dockerhub cloud builder job (limited build minutes)
+#push_dh-debian:
+#  image: docker:dind
+#  <<: [*main_image_template]
+#  stage: build
+#  services:
+#    - docker:dind
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - |
+#      if [ "$CI_COMMIT_TAG" ]; then 
+#        IMAGE_TAG=$CI_COMMIT_TAG
+#      else 
+#        IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"
+#      fi
+#      export IMAGE_TAG
+#    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
+#    - |
+#      apk add curl jq
+#      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
+#      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
+#      mkdir -vp ~/.docker/cli-plugins/
+#      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
+#      chmod a+x ~/.docker/cli-plugins/docker-buildx
+#    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+#    - |
+#      if [ "$CI_COMMIT_TAG" ]; then
+#        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
+#      else 
+#        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+#      fi
+#      export TAG_LINE
+#    - |
+#      docker buildx build \
+#        --platform linux/amd64,linux/arm64 \
+#        $TAG_LINE \
+#        -f .gitlab/images/dockerhub/debian/Dockerfile \
+#        --push \
+#        .
+#    - echo "Successful. x86_64 & aarch64 Debian images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+push_dh-debian_amd64:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   services:
     - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
   needs:
     - compile_artifacts
   rules:
@@ -409,13 +457,41 @@ push_dh-debian:
       export IMAGE_TAG
     - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
     - |
-      apk add curl jq
-      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
-      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
-      mkdir -vp ~/.docker/cli-plugins/
-      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
-      chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+      if [ "$CI_COMMIT_TAG" ]; then
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
+      else 
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+      fi
+      export TAG_LINE
+    - docker build $TAG_LINE -f .gitlab/images/dockerhub/debian/Dockerfile ./
+    - docker run --name cc-dh-debian-amd64-test --rm -i $DH_REGISTRY_IMAGE:$IMAGE_TAG --version
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - echo "Successful. amd64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+push_dh-debian_arm64:
+  image: docker:dind
+  <<: [*main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then 
+        IMAGE_TAG=$CI_COMMIT_TAG
+      else 
+        IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"
+      fi
+      export IMAGE_TAG
+    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
     - |
       if [ "$CI_COMMIT_TAG" ]; then
         TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:latest"
@@ -423,49 +499,69 @@ push_dh-debian:
         TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
       fi
       export TAG_LINE
-    - |
-      docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_LINE \
-        -f .gitlab/images/dockerhub/debian/Dockerfile \
-        --push \
-        .
-    - echo "Successful. x86_64 & aarch64 Debian images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - docker build $TAG_LINE -f .gitlab/images/dockerhub/debian/Dockerfile ./
+    - docker run --name cc-dh-debian-arm64-test --rm -i $DH_REGISTRY_IMAGE:$IMAGE_TAG --version
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
+    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-# For now, using multi-platform docker cloud builder
-#push_dh-debian_arm64:
-#  image: docker
-#  <<: [*cache_template, *main_image_template]
+
+####################################### alpine Docker Images
+
+# dockerhub cloud builder job (limited build minutes)
+#push_dh-alpine:
+#  image: docker:dind
+#  <<: [*main_image_template]
 #  stage: build
-#  tags:
-#    - saas-linux-large-arm64
 #  services:
 #    - docker:dind
-#  variables:
-#    DOCKER_DRIVER: overlay2
 #  needs:
 #    - compile_artifacts
 #  rules:
 #    - if: $CI_PIPELINE_SOURCE
 #  script:
-#    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG=$CI_COMMIT_TAG; else IMAGE_TAG="beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
-#    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-#    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/debian/Dockerfile ./
-#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:latest; fi;
-#    - docker run --name cc-dh-debian-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
-#    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
-#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:latest; fi;
-#    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+#    - |
+#      if [ "$CI_COMMIT_TAG" ]; then 
+#        IMAGE_TAG="alpine-$CI_COMMIT_TAG"
+#      else 
+#        IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"
+#      fi
+#      export IMAGE_TAG
+#    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
+#    - |
+#      apk add curl jq
+#      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
+#      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
+#      mkdir -vp ~/.docker/cli-plugins/
+#      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
+#      chmod a+x ~/.docker/cli-plugins/docker-buildx
+#    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+#    - |
+#      if [ "$CI_COMMIT_TAG" ]; then
+#        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:alpine-latest --tag $DH_REGISTRY_IMAGE:alpine"
+#      else 
+#        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+#      fi
+#      export TAG_LINE
+#    - |
+#      docker buildx build \
+#        --platform linux/amd64,linux/arm64 \
+#        $TAG_LINE \
+#        -f .gitlab/images/dockerhub/alpine/Dockerfile \
+#        --push \
+#        .
+#    - echo "Successful. x86_64 & aarch64 Alpine images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
-
-####################################### alpine Docker Images
-
-push_dh-alpine:
+push_dh-alpine_amd64:
   image: docker:dind
   <<: [*main_image_template]
   stage: build
+  tags:
+    - saas-linux-large-amd64
   services:
     - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
   needs:
     - compile_artifacts
   rules:
@@ -480,13 +576,42 @@ push_dh-alpine:
       export IMAGE_TAG
     - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
     - |
-      apk add curl jq
-      ARCH=${CI_RUNNER_EXECUTABLE_ARCH#*/}
-      BUILDX_URL=$(curl -s https://raw.githubusercontent.com/docker/actions-toolkit/main/.github/buildx-lab-releases.json | jq -r ".latest.assets[] | select(endswith(\"linux-$ARCH\"))")
-      mkdir -vp ~/.docker/cli-plugins/
-      curl --silent -L --output ~/.docker/cli-plugins/docker-buildx $BUILDX_URL
-      chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker buildx create --use --driver cloud ${DH_ORG}/${DH_CLOUD_BUILDER_NAME}
+      if [ "$CI_COMMIT_TAG" ]; then
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:alpine-latest --tag $DH_REGISTRY_IMAGE:alpine"
+      else 
+        TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+      fi
+      export TAG_LINE
+    - docker build $TAG_LINE -f .gitlab/images/dockerhub/alpine/Dockerfile ./
+    - docker run --name cc-dh-alpine-amd64-test --rm -i $DH_REGISTRY_IMAGE:$IMAGE_TAG --version
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
+    - echo "Successful. amd64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+
+push_dh-alpine_arm64:
+  image: docker:dind
+  <<: [*main_image_template]
+  stage: build
+  tags:
+    - saas-linux-large-arm64
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then 
+        IMAGE_TAG="alpine-$CI_COMMIT_TAG"
+      else 
+        IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"
+      fi
+      export IMAGE_TAG
+    - echo "$DH_REGISTRY_PASSWORD" | docker login -u "$DH_REGISTRY_USER" --password-stdin "$DH_URI"
     - |
       if [ "$CI_COMMIT_TAG" ]; then
         TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG --tag $DH_REGISTRY_IMAGE:alpine-latest --tag $DH_REGISTRY_IMAGE:alpine"
@@ -494,41 +619,12 @@ push_dh-alpine:
         TAG_LINE="--tag $DH_REGISTRY_IMAGE:$IMAGE_TAG"
       fi
       export TAG_LINE
-    - |
-      docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_LINE \
-        -f .gitlab/images/dockerhub/alpine/Dockerfile \
-        --push \
-        .
-    - echo "Successful. x86_64 & aarch64 Alpine images pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
-
-# For now, using multi-platform docker cloud builder
-#push_dh-alpine_arm64:
-#  image: docker
-#  <<: [*cache_template, *main_image_template]
-#  stage: build
-#  tags:
-#    - saas-linux-large-arm64
-#  services:
-#    - docker:dind
-#  variables:
-#    DOCKER_DRIVER: overlay2
-#  needs:
-#    - compile_artifacts
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - if [ "$CI_COMMIT_TAG" ]; then IMAGE_TAG="alpine-$CI_COMMIT_TAG"; else IMAGE_TAG="alpine-beta-$CI_MERGE_REQUEST_IID"; fi; export IMAGE_TAG
-#    - docker login -u "$DH_REGISTRY_USER" -p "$DH_REGISTRY_PASSWORD" "$DH_URI"
-#    - docker build -t $DH_REGISTRY_IMAGE:$IMAGE_TAG -f .gitlab/images/dockerhub/alpine/Dockerfile ./
-#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine-latest; fi;
-#    - if [ "$CI_COMMIT_TAG" ]; then docker tag $DH_REGISTRY_IMAGE:$IMAGE_TAG $DH_REGISTRY_IMAGE:alpine; fi;
-#    - docker run --name cc-dh-alpine-arm64-test --rm -i -t $DH_REGISTRY_IMAGE:$IMAGE_TAG /usr/local/bin/coolercontrold --version
-#    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
-#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
-#    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
-#    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
+    - docker build $TAG_LINE -f .gitlab/images/dockerhub/alpine/Dockerfile ./
+    - docker run --name cc-dh-alpine-arm64-test --rm -i $DH_REGISTRY_IMAGE:$IMAGE_TAG --version
+    - docker push $DH_REGISTRY_IMAGE:$IMAGE_TAG
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine-latest; fi;
+    - if [ "$CI_COMMIT_TAG" ]; then docker push $DH_REGISTRY_IMAGE:alpine; fi;
+    - echo "Successful. aarch64 Image pushed as $DH_REGISTRY_IMAGE:$IMAGE_TAG"
 
 
 
