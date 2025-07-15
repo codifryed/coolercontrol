@@ -64,38 +64,37 @@ pub struct Alert {
 }
 
 impl Alert {
-    /// Updates the state based on [`value`] and returns whether the state changed.
-    fn set_state(&mut self, value: f64) -> bool {
+    /// Updates the state based on [`value`] and returns the old state if it changed.
+    fn set_state(&mut self, value: f64) -> Option<AlertState> {
+        let current = self.state;
+
         if value >= self.min && value <= self.max {
-            let changed = self.state != AlertState::Inactive;
             self.state = AlertState::Inactive;
-            return changed;
+        } else {
+            // We know we're out of bounds here.
+            match self.state {
+                AlertState::Active => {}
+                AlertState::WarmUp(time) => {
+                    if Local::now().signed_duration_since(time).as_seconds_f64()
+                        >= self.warmup_duration
+                    {
+                        self.state = AlertState::Active;
+                    }
+                }
+                // Error state means we could not retrieve the channel value. But if we're here with a
+                // channel value it means the errors were resolved e.g. by a daemon restart. Act as
+                // usual.
+                AlertState::Error | AlertState::Inactive => {
+                    self.state = AlertState::WarmUp(Local::now());
+                }
+            };
         }
 
-        // We know we're out of bounds here.
-        match self.state {
-            AlertState::Active => {}
-            AlertState::WarmUp(time) => {
-                if Local::now().signed_duration_since(time).as_seconds_f64() >= self.warmup_duration
-                {
-                    self.state = AlertState::Active;
-                    return true;
-                }
-            }
-            // Error state means we could not retrieve the channel value. But if we're here with a
-            // channel value it means the errors were resolved e.g. by a daemon restart. Act as
-            // usual.
-            AlertState::Error | AlertState::Inactive => {
-                self.state = AlertState::WarmUp(Local::now());
-                return true;
-            }
-        };
-
-        false
+        (self.state != current).then_some(current)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, JsonSchema)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Display, EnumString, JsonSchema)]
 pub enum AlertState {
     Active,
     /// Alert condition was satisfied at the stored time but the duration threshold has not been
@@ -104,17 +103,6 @@ pub enum AlertState {
     Inactive,
     /// Represents an error state. e.g. when one of the components in the alert isn't found.
     Error,
-}
-
-impl AlertState {
-    fn sends_message(&self) -> bool {
-        match self {
-            AlertState::Active => true,
-            AlertState::WarmUp(_) => false,
-            AlertState::Inactive => true,
-            AlertState::Error => true,
-        }
-    }
 }
 
 impl Serialize for AlertState {
@@ -306,7 +294,7 @@ impl AlertController {
                 .into());
             }
             // don't overwrite state:
-            let current_state = alerts_lock.get(&alert.uid).unwrap().state.clone();
+            let current_state = alerts_lock.get(&alert.uid).unwrap().state;
             alert.state = current_state;
             alerts_lock.insert(alert.uid.clone(), alert);
         }
@@ -430,8 +418,18 @@ impl AlertController {
                 }
             };
 
-            // No message if the state didn't change or the current state does not send messages
-            if !alert.set_state(channel_value) || !alert.state.sends_message() {
+            // No message if the state didn't change
+            let Some(old_state) = alert.set_state(channel_value) else {
+                continue;
+            };
+
+            // All transitions except these two send a message:
+            // - any state -> warmup
+            // - warmup -> inactive
+            if matches!(
+                (old_state, alert.state),
+                (_, AlertState::WarmUp(_)) | (AlertState::WarmUp(_), AlertState::Inactive)
+            ) {
                 continue;
             }
 
