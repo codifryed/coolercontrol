@@ -149,12 +149,30 @@ mod tests {
     fn interpolate_profile_test() {
         let given_expected = vec![
             ((vec![(20f64, 50u8), (50.0, 70), (60.0, 100)], 33.), 59u8),
-            ((vec![(20.0, 50), (50.0, 70)], 19.), 50),
-            ((vec![(20.0, 50), (50.0, 70)], 51.), 70),
             ((vec![(20.0, 50)], 20.), 50),
         ];
         for (given, expected) in given_expected {
             assert_eq!(interpolate_profile(&given.0, given.1), expected);
         }
+    }
+
+    #[test]
+    fn interpolate_profile_higher_temp_than_profile() {
+        let given_profile = vec![(20., 20), (50.0, 70), (60.0, 100)];
+        let given_temp = 120.;
+
+        let result = interpolate_profile(&given_profile, given_temp);
+
+        assert_eq!(result, 100);
+    }
+
+    #[test]
+    fn interpolate_profile_lower_temp_than_profile() {
+        let given_profile = vec![(20., 20), (50.0, 70), (60.0, 100)];
+        let given_temp = 0.;
+
+        let result = interpolate_profile(&given_profile, given_temp);
+
+        assert_eq!(result, 20);
     }
 }
