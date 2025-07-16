@@ -459,11 +459,11 @@ export default {
             maxValueTooltip: 'Values above this will trigger the alert.',
             minValueTooltip: 'Values below this will trigger the alert.',
             warmupDurationTooltip:
-                'The values must stay in trigger range for this duration before the alert is triggered. The effective warmup duration can only be a multiple of the daemon poll rate.',
+                'How long a condition must be active before the alert is considered active. It is checked only at regular poll-rate intervals and so may not be exactly this length.',
             greaterThan: 'greater than',
             lessThan: 'less than',
             newAlert: 'New Alert',
-            warmupGreaterThan: 'within trigger range longer than',
+            warmupGreaterThan: 'condition triggered longer than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
         },
