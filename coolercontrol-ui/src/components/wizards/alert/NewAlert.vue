@@ -80,8 +80,6 @@ const chosenMin: Ref<number> = ref(alert.min)
 const chosenMax: Ref<number> = ref(alert.max)
 const chosenName: Ref<string> = ref(alert.name)
 const chosenWarmupDuration: Ref<number> = ref(alert.warmup_duration)
-const warmupDurationStep: Ref<number> = pollRate
-const maxWarmupDuration: Ref<number> = ref(pollRate.value * 5)
 
 const channelSources: Ref<Array<AvailableChannelSources>> = ref([])
 const fillChannelSources = (): void => {
@@ -482,14 +480,13 @@ onMounted(async () => {
                                         v-model="chosenWarmupDuration"
                                         show-buttons
                                         :min="0"
-                                        :max="maxWarmupDuration"
-                                        :step="warmupDurationStep"
+                                        :max="10"
+                                        :step="0.5"
                                         :min-fraction-digits="1"
                                         :suffix="'s'"
                                         button-layout="horizontal"
                                         :input-style="{ width: '8rem' }"
                                         :disabled="chosenChannelSource == null"
-                                        :invalid="chosenWarmupDuration % warmupDurationStep != 0"
                                     >
                                         <template #incrementicon>
                                             <span class="pi pi-plus" />
@@ -502,13 +499,10 @@ onMounted(async () => {
                                         <Slider
                                             v-model="chosenWarmupDuration"
                                             class="!w-full"
-                                            :step="warmupDurationStep"
+                                            :step="0.5"
                                             :min="0"
-                                            :max="maxWarmupDuration"
+                                            :max="10"
                                             :disabled="chosenChannelSource == null"
-                                            :invalid="
-                                                chosenWarmupDuration % warmupDurationStep != 0
-                                            "
                                         />
                                     </div>
                                 </td>
