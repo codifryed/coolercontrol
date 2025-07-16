@@ -1,4 +1,4 @@
-﻿/*
+/*
  * CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2021-2025  Guy Boldon and contributors
  *
@@ -374,9 +374,12 @@ export default {
             triggerConditions: '触发条件',
             maxValueTooltip: '超过此值将触发警报。',
             minValueTooltip: '低于此值将触发警报。',
+            warmupDurationTooltip:
+                '条件必须保持多长时间才会将警报视为有效。该值仅按固定的轮询频率间隔进行检查，因此可能不完全是这个长度。',
             greaterThan: '大于',
             lessThan: '小于',
             newAlert: '新警报',
+            warmupGreaterThan: '条件触发时间超过',
             unsavedChanges: '此警报有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
         },
@@ -906,6 +909,7 @@ export default {
         alertState: {
             active: '激活',
             inactive: '未激活',
+            error: '错误',
         },
         deviceType: {
             customSensors: '自定义传感器',

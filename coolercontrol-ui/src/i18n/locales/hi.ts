@@ -407,9 +407,12 @@ export default {
             triggerConditions: 'ट्रिगर शर्तें',
             maxValueTooltip: 'इससे अधिक मान अलर्ट को ट्रिगर करेंगे।',
             minValueTooltip: 'इससे कम मान अलर्ट को ट्रिगर करेंगे।',
+            warmupDurationTooltip:
+                'अलर्ट को सक्रिय माने जाने से पहले किसी शर्त को कितनी देर तक सक्रिय रहना चाहिए। इसकी जाँच केवल नियमित पोल-रेट अंतराल पर की जाती है, इसलिए इसकी अवधि बिल्कुल इतनी नहीं हो सकती।',
             greaterThan: 'से अधिक',
             lessThan: 'से कम',
             newAlert: 'नया अलर्ट',
+            warmupGreaterThan: 'स्थिति लंबे समय तक ट्रिगर होती है',
             unsavedChanges: 'इस अलर्ट में असहेजे परिवर्तन हैं।',
             unsavedChangesHeader: 'असहेजे परिवर्तन',
         },
@@ -935,6 +938,7 @@ export default {
         alertState: {
             active: 'सक्रिय',
             inactive: 'निष्क्रिय',
+            error: 'गलती',
         },
         deviceType: {
             customSensors: 'कस्टम सेंसर',

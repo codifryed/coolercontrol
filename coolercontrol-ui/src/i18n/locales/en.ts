@@ -887,7 +887,6 @@ export default {
             rpm: 'RPM',
             freq: 'Freq',
             watts: 'Watts',
-            seconds: 'Seconds',
         },
         profile: {
             profileType: {
