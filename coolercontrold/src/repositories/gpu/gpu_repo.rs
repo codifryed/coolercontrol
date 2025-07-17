@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::env;
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::Duration;
@@ -35,6 +36,7 @@ use crate::repositories::gpu::amd::GpuAMD;
 use crate::repositories::gpu::nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::ENV_NVML;
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 pub const GPU_FREQ_NAME: &str = "GPU Freq";
@@ -74,7 +76,17 @@ impl GpuRepo {
 
     #[allow(clippy::cast_possible_truncation)]
     async fn detect_gpu_types(&mut self) {
-        let nvidia_dev_count = if self.force_nvidia_cli {
+        let nvml_enabled = env::var(ENV_NVML)
+            .ok()
+            .and_then(|env_nvml| {
+                env_nvml
+                    .parse::<u8>()
+                    .ok()
+                    .map(|bb| bb != 0)
+                    .or_else(|| Some(env_nvml.trim().to_lowercase() != "off"))
+            })
+            .unwrap_or(true);
+        let nvidia_dev_count = if self.force_nvidia_cli || nvml_enabled.not() {
             self.gpus_nvidia
                 .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
                 .await
