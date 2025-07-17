@@ -314,7 +314,7 @@ export default {
             filterSensors: '篩選傳感器',
             showControls: '顯示控制器',
             mouseActions:
-                '儀表板滑鼠操作：\n- 突出顯示區域進行縮放\n- 滾動滑鼠進行縮放\n- 縮放後右鍵平移\n- 雙擊重置並恢復更新',
+                '儀表板滑鼠操作：\n- 選取區域以縮放。\n- 滾動以縮放。\n- 縮放時按右鍵拖曳。\n- 雙擊重置並繼續更新。\n- Ctrl+點擊或中鍵點擊在提示框中顯示所有感應器。',
             fullPage: '全屏模式',
             filterBySensor: '按傳感器篩選',
             search: '搜索',
