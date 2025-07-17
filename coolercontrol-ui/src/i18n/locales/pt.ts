@@ -340,7 +340,7 @@ export default {
             filterSensors: 'Filtrar Sensores',
             showControls: 'Mostrar Controles',
             mouseActions:
-                'Ações do mouse no painel:\n- Destacar área para zoom.\n- Rolar para zoom.\n- Clique direito para mover quando ampliado.\n- Duplo clique para resetar e continuar atualizando.',
+                'Ações do mouse no painel:\n- Destacar seleção para zoom.\n- Deslizar para zoom.\n- Clicar com o botão direito para mover quando zoomado.\n- Clicar duas vezes para redefinir e retomar a atualização.\n- Ctrl+clicar ou clicar com o botão do meio para mostrar todos os sensores na dica de ferramenta.',
             fullPage: 'Tela Cheia',
             filterBySensor: 'Filtrar por Sensor',
             search: 'Pesquisar',

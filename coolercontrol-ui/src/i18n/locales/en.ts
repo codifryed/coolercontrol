@@ -397,7 +397,7 @@ export default {
             filterSensors: 'Filter Sensors',
             showControls: 'Show Controls',
             mouseActions:
-                'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.',
+                'Dashboard Mouse actions:\n- Highlight selection to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.\n- Ctrl+click or middle-click to show all sensors in tooltip.',
             fullPage: 'Full Page',
             filterBySensor: 'Filter by Sensor',
             search: 'Search',

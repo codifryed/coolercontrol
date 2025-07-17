@@ -412,7 +412,7 @@ export default {
             filterSensors: 'Filtrer les Capteurs',
             showControls: 'Afficher les Contrôles',
             mouseActions:
-                'Actions de souris sur le tableau de bord :\n- Surligner pour zoomer.\n- Faire défiler pour zoomer.\n- Clic droit pour se déplacer lorsque zoomé.\n- Double-clic pour réinitialiser et reprendre la mise à jour.',
+                'Actions de la souris sur le tableau de bord :\n- Mettre en surbrillance la sélection pour zoomer.\n- Faire défiler pour zoomer.\n- Cliquer avec le bouton droit pour faire glisser lorsque zoomé.\n- Double-cliquer pour réinitialiser et reprendre la mise à jour.\n- Ctrl+cliquer ou cliquer avec le bouton du milieu pour afficher tous les capteurs dans l\'info-bulle.',
             fullPage: 'Pleine Page',
             filterBySensor: 'Filtrer par Capteur',
             search: 'Rechercher',

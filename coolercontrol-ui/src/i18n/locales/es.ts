@@ -403,7 +403,7 @@ export default {
             filterSensors: 'Filtrar Sensores',
             showControls: 'Mostrar Controles',
             mouseActions:
-                'Acciones del ratón en el panel:\n- Resaltar para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.',
+                'Acciones del ratón en el panel:\n- Resaltar selección para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.\n- Ctrl+clic o clic medio para mostrar todos los sensores en la herramienta de ayuda.',
             fullPage: 'Página Completa',
             filterBySensor: 'Filtrar por Sensor',
             search: 'Buscar',

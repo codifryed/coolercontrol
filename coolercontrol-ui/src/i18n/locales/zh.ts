@@ -1,4 +1,4 @@
-/*
+﻿/*
  * CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2021-2025  Guy Boldon and contributors
  *
@@ -313,7 +313,7 @@ export default {
             filterSensors: '筛选传感器',
             showControls: '显示控制器',
             mouseActions:
-                '仪表盘鼠标操作：\n- 突出显示区域进行缩放\n- 滚动鼠标进行缩放\n- 缩放后右键平移\n- 双击重置并恢复更新',
+                '仪表盘鼠标操作:\n- 高亮选择以缩放.\n- 滚动以缩放.\n- 右键单击以平移.\n- 双击以重置并继续更新.\n- Ctrl+单击或中键单击以在工具提示中显示所有传感器.',
             fullPage: '全屏模式',
             filterBySensor: '按传感器筛选',
             search: '搜索',
