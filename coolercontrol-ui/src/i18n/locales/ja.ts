@@ -501,9 +501,12 @@ export default {
             triggerConditions: 'トリガー条件',
             maxValueTooltip: 'この値を超えるとアラートがトリガーされます。',
             minValueTooltip: 'この値未満になるとアラートがトリガーされます。',
+            warmupDurationTooltip:
+                'アラートがアクティブと判断されるまでに、条件がアクティブでなければならない期間。この期間は定期的なポーリング間隔でのみチェックされるため、必ずしもこの期間と正確に一致するとは限りません。',
             greaterThan: 'より大きい',
             lessThan: 'より小さい',
             newAlert: '新しいアラート',
+            warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
         },
@@ -937,6 +940,7 @@ export default {
         alertState: {
             active: 'アクティブ',
             inactive: '非アクティブ',
+            error: 'エラー',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

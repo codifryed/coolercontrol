@@ -455,9 +455,12 @@ export default {
             triggerConditions: 'شروط التنشيط',
             maxValueTooltip: 'القيم فوق هذا ستنشط التنبيه.',
             minValueTooltip: 'القيم أقل من هذا ستنشط التنبيه.',
+            warmupDurationTooltip:
+                'ما هي المدة التي يجب أن تبقى فيها الحالة نشطة قبل اعتبار التنبيه نشطًا؟ يتم التحقق منها فقط على فترات منتظمة بمعدل استطلاع، لذا قد لا تكون هذه المدة بالضبط.',
             greaterThan: 'أكبر من',
             lessThan: 'أقل من',
             newAlert: 'تنبيه جديد',
+            warmupGreaterThan: 'حالة تم تشغيلها لفترة أطول من',
             unsavedChanges: 'هناك تغييرات غير محفوظة تم إجراؤها على هذا التنبيه.',
             unsavedChangesHeader: 'تغييرات غير محفوظة',
         },
@@ -926,6 +929,7 @@ export default {
         alertState: {
             active: 'نشط',
             inactive: 'غير نشط',
+            error: 'خطأ',
         },
         deviceType: {
             customSensors: 'مستشعرات مخصصة',

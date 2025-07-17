@@ -401,9 +401,12 @@ export default {
             triggerConditions: 'Condições de Acionamento',
             maxValueTooltip: 'Valores acima disso acionarão o alerta.',
             minValueTooltip: 'Valores abaixo disso acionarão o alerta.',
+            warmupDurationTooltip:
+                'Durante quanto tempo uma condição deve permanecer ativa antes de o alerta ser considerado ativo. É verificado apenas em intervalos regulares de poll-rate e, por isso, pode não ter exatamente essa duração.',
             greaterThan: 'maior que',
             lessThan: 'menor que',
             newAlert: 'Novo Alerta',
+            warmupGreaterThan: 'condição desencadeada durante mais tempo do que',
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',
             unsavedChangesHeader: 'Alterações Não Salvas',
         },
@@ -946,6 +949,7 @@ export default {
         alertState: {
             active: 'Ativo',
             inactive: 'Inativo',
+            error: 'Erro',
         },
         deviceType: {
             customSensors: 'Sensores Personalizados',

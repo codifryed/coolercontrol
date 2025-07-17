@@ -375,9 +375,12 @@ export default {
             triggerConditions: '觸發條件',
             maxValueTooltip: '超過此值將觸發警報。',
             minValueTooltip: '低於此值將觸發警報。',
+            warmupDurationTooltip:
+                '條件必須保持多長時間才會將警報視為有效。該值僅按固定的輪詢頻率間隔進行檢查，因此可能不完全是這個長度。',
             greaterThan: '大於',
             lessThan: '小於',
             newAlert: '新警報',
+            warmupGreaterThan: '條件觸發時間超過',
             unsavedChanges: '此警報有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
         },
@@ -906,6 +909,7 @@ export default {
         alertState: {
             active: '激活',
             inactive: '未激活',
+            error: '錯誤',
         },
         deviceType: {
             customSensors: '自定義傳感器',

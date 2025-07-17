@@ -474,9 +474,12 @@ export default {
             triggerConditions: 'Conditions de Déclenchement',
             maxValueTooltip: "Les valeurs au-dessus de ceci déclencheront l'alerte.",
             minValueTooltip: "Les valeurs en dessous de ceci déclencheront l'alerte.",
+            warmupDurationTooltip:
+                "Durée pendant laquelle une condition doit être active avant que l'alerte soit considérée comme active. Cette durée est vérifiée uniquement à intervalles réguliers et peut donc varier.",
             greaterThan: 'supérieur à',
             lessThan: 'inférieur à',
             newAlert: 'Nouvelle Alerte',
+            warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
             unsavedChangesHeader: 'Changements non enregistrés',
         },
@@ -955,6 +958,7 @@ export default {
         alertState: {
             active: 'Actif',
             inactive: 'Inactif',
+            error: 'Erreur',
         },
         deviceType: {
             customSensors: 'Capteurs Personnalisés',

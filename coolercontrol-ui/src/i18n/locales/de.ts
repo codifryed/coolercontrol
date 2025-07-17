@@ -467,9 +467,12 @@ export default {
             triggerConditions: 'Auslösebedingungen',
             maxValueTooltip: 'Werte über diesem lösen die Warnung aus.',
             minValueTooltip: 'Werte unter diesem lösen die Warnung aus.',
+            warmupDurationTooltip:
+                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt. Die Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen und kann daher von dieser Länge abweichen.',
             greaterThan: 'größer als',
             lessThan: 'kleiner als',
             newAlert: 'Neue Warnung',
+            warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
         },
@@ -951,6 +954,7 @@ export default {
         alertState: {
             active: 'Aktiv',
             inactive: 'Inaktiv',
+            error: 'Fehler',
         },
         deviceType: {
             customSensors: 'Benutzerdefinierte Sensoren',

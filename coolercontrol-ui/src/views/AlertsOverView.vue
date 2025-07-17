@@ -23,8 +23,7 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { AlertState, getAlertStateDisplayName } from '@/models/Alert.ts'
-import { mdiBellOutline, mdiBellRingOutline } from '@mdi/js'
+import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/models/Alert.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 
@@ -52,11 +51,7 @@ const { t } = useI18n()
                                     :class="{
                                         'text-error': slotProps.data.state === AlertState.Active,
                                     }"
-                                    :path="
-                                        slotProps.data.state === AlertState.Active
-                                            ? mdiBellRingOutline
-                                            : mdiBellOutline
-                                    "
+                                    :path="getAlertStateIcon(slotProps.data.state)"
                                     :size="getREMSize(1.5)"
                                 />
                             </template>
