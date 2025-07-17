@@ -296,7 +296,7 @@ impl AlertController {
             // don't overwrite state:
             let current_state = alerts_lock.get(&alert.uid).unwrap().state;
             alert.state = current_state;
-            alerts_lock.insert(alert.uid.clone(), alert);
+            alerts_lock.replace(alert.uid.clone(), alert);
         }
         self.save_alert_data_to_config().await
     }
