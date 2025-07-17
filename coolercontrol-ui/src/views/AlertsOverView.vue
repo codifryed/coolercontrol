@@ -40,7 +40,7 @@ const { t } = useI18n()
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
                 <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
-                    t('views.alerts.createAlert')
+                    t('layout.topbar.alerts')
                 }}</span>
                 <div class="flex flex-row">
                     <DataTable class="w-[31rem]" :value="settingsStore.alerts">
