@@ -87,7 +87,7 @@ impl Alert {
                 AlertState::Error | AlertState::Inactive => {
                     self.state = AlertState::WarmUp(Local::now());
                 }
-            };
+            }
         }
 
         (self.state != current).then_some(current)
@@ -125,7 +125,7 @@ impl<'de> Deserialize<'de> for AlertState {
     {
         struct AlertStateVisitor;
 
-        impl<'de> Visitor<'de> for AlertStateVisitor {
+        impl Visitor<'_> for AlertStateVisitor {
             type Value = AlertState;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -296,7 +296,7 @@ impl AlertController {
             // don't overwrite state:
             let current_state = alerts_lock.get(&alert.uid).unwrap().state;
             alert.state = current_state;
-            alerts_lock.insert(alert.uid.clone(), alert);
+            alerts_lock.replace(alert.uid.clone(), alert);
         }
         self.save_alert_data_to_config().await
     }
@@ -331,6 +331,7 @@ impl AlertController {
     }
 
     /// Collects all Alerts that need firing
+    #[allow(clippy::too_many_lines)]
     fn process_and_collect_alerts_to_fire(&self) -> Vec<(Alert, AlertLogMessage)> {
         let mut alerts_to_fire = Vec::new();
         for alert in self.alerts.borrow_mut().values_mut() {

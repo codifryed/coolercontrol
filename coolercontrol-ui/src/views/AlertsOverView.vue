@@ -20,16 +20,22 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
-import DataTable from 'primevue/datatable'
+import DataTable, { DataTableRowSelectEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/models/Alert.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 const settingsStore = useSettingsStore()
 const { getREMSize } = useDeviceStore()
+const router = useRouter()
 const { t } = useI18n()
+
+const onRowSelect = (event: DataTableRowSelectEvent) => {
+    router.push({ name: 'alerts', params: { alertUID: event.data.uid } })
+}
 </script>
 
 <template>
@@ -40,10 +46,17 @@ const { t } = useI18n()
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
                 <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
-                    t('views.alerts.createAlert')
+                    t('layout.topbar.alerts')
                 }}</span>
                 <div class="flex flex-row">
-                    <DataTable class="w-[31rem]" :value="settingsStore.alerts">
+                    <DataTable
+                        class="w-[31rem]"
+                        :value="settingsStore.alerts"
+                        selection-mode="single"
+                        data-key="uid"
+                        :meta-key-selection="false"
+                        @row-select="onRowSelect"
+                    >
                         <Column header="">
                             <template #body="slotProps">
                                 <svg-icon
@@ -87,6 +100,9 @@ const { t } = useI18n()
                     :value="settingsStore.alertLogs"
                     sort-field="timestamp"
                     :sort-order="-1"
+                    selection-mode="single"
+                    :meta-key-selection="false"
+                    @row-select="onRowSelect"
                 >
                     <Column field="timestamp" :header="t('common.timestamp')" :sortable="true">
                         <template #body="slotProps">
