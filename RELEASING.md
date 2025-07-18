@@ -66,3 +66,5 @@ one.
    10. Note: if you ever need to fix the local nix store:
        `sudo nix-store --verify --check-contents --repair` or to clear out garbage:
        `nix-collect-garbage -d`
+
+<!--Test-->
