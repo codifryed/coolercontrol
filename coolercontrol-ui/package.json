@@ -49,7 +49,7 @@
         "@types/jsdom": "^21.1.7",
         "@types/node": "^20.19.8",
         "@vitejs/plugin-legacy": "6.1.1",
-        "@vitejs/plugin-vue": "^6.0.0",
+        "@vitejs/plugin-vue": "5.2.4",
         "@vue/test-utils": "^2.4.6",
         "@vue/tsconfig": "^0.7.0",
         "abortcontroller-polyfill": "^1.7.8",
