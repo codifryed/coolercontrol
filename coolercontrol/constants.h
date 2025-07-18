@@ -19,7 +19,7 @@
 
 #include <string>
 
-const std::string COOLER_CONTROL_VERSION = "2.2.1";
+const std::string COOLER_CONTROL_VERSION = "2.2.2";
 const std::string APP_ID = "org.coolercontrol.CoolerControl";
 const std::string APP_ID_SYMBOLIC = "org.coolercontrol.CoolerControl-symbolic";
 const std::string DBUS_SERVICE_NAME = "org.coolercontrol.CoolerControl.SingleInstance";
