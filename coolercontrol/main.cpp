@@ -16,10 +16,11 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
-#include <QDBusConnection>
+#include <QDBusInterface>
 #include <QLoggingCategory>
 
 #include "constants.h"
+#include "dbus_listener.h"
 #include "main_window.h"
 
 void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu) {
@@ -105,11 +106,18 @@ int main(int argc, char* argv[]) {
   // single-instance
   auto connection = QDBusConnection::sessionBus();
   if (connection.isConnected()) {
-    if (!connection.registerService(DBUS_NAME.data())) {
+    if (!connection.registerService(DBUS_SERVICE_NAME.data())) {
       qCritical()
-          << "There appears to already be an instance of CoolerControl running.\nPlease check your"
+          << "There appears to already be an instance of CoolerControl running.\nPlease check your "
              "system tray for the application icon or the task manager to find the running "
              "instance.";
+      // call the running service to bring the window to the foreground
+      if (QDBusInterface iface(DBUS_SERVICE_NAME.data(), DBUS_PATH.data()); iface.isValid()) {
+        qInfo() << "Attempting to show existing instance.";
+        if (QDBusReply<void> reply = iface.call("showInstance"); !reply.isValid()) {
+          qWarning("DBus Call failed: %s\n", qPrintable(reply.error().message()));
+        }
+      }
       return 1;
     }
   } else {
@@ -122,9 +130,19 @@ int main(int argc, char* argv[]) {
   w.setMinimumSize(400, 400);
   w.resize(1600, 900);
   w.handleStartInTray();
-  const auto exitCode = QApplication::exec();
+
   if (connection.isConnected()) {
-    connection.unregisterService(DBUS_NAME.data());
+    new DBusListener(&w);
+    if (const auto ifaceRegistered = connection.registerObject(DBUS_PATH.data(), &w);
+        !ifaceRegistered) {
+      qWarning() << "Failed to register D-Bus object interface";
+    }
+  }
+
+  const auto exitCode = QApplication::exec();
+
+  if (connection.isConnected()) {
+    connection.unregisterService(DBUS_SERVICE_NAME.data());
   }
   return exitCode;
 }

@@ -14,6 +14,7 @@ qt_add_executable(
   coolercontrol
   # WIN32 MACOSX_BUNDLE
   main.cpp
+  dbus_listener.h
   main_window.cpp
   main_window.h
   address_wizard.cpp
