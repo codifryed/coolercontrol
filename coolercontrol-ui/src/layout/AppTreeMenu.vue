@@ -47,6 +47,7 @@ import {
 import { computed, inject, onMounted, onUnmounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
+import Popover from 'primevue/popover'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
@@ -88,7 +89,10 @@ import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
+import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
+import MenuMoveTop from '@/components/menu/MenuMoveTop.vue'
+import MenuMoveBottom from '@/components/menu/MenuMoveBottom.vue'
 
 // interface Tree {
 //     label: string
@@ -366,10 +370,29 @@ const customSensorsTree = (): any => {
         }
     }
 }
+
+const hoverMenusAreClosed: Ref<boolean> = ref(true)
+const setHoverMenuStatus = (isOpen: boolean): void => {
+    hoverMenusAreClosed.value = !isOpen
+    const elements = document.querySelectorAll('.el-collapse-item__header')
+    for (const element of elements) {
+        if (isOpen) {
+            // This overrides the hover:bg-bg-two style set in the CSS style
+            // The reason for this is to avoid a flicker effect that happens when we add or remove
+            // css classes, which is due to the EL component also changing the classes (is-active).
+            element.setAttribute(
+                'style',
+                'background-color: rgb(var(--colors-bg-one)); cursor: default;',
+            )
+        } else {
+            element.removeAttribute('style')
+        }
+    }
+}
+
 const aSubMenuIsOpen: Ref<boolean> = ref(false)
-const subMenuStatusChange = (isOpen: boolean, data: any): void => {
+const subMenuStatusChange = (isOpen: boolean, _data: any): void => {
     aSubMenuIsOpen.value = isOpen
-    if (!isOpen) data.dropdownRef.handleClose()
 }
 
 const devicesTreeArray = (): any[] => {
@@ -558,6 +581,7 @@ const expandedNodeIds = (): Array<string> => {
         .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
         .map((node: any) => node.id)
 }
+const expandedIds = ref(expandedNodeIds())
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
@@ -822,6 +846,27 @@ const adjustTreeLeaves = (): void => {
     }
     setTimeout(dynamicAdjustment)
 }
+
+// add group class to all collapse header items (used to show options menus on hover)
+const addGroup = (): void => {
+    setTimeout(() => {
+        const elements = document.querySelectorAll('.el-collapse-item__header')
+        for (const element of elements) {
+            element.classList.add('group')
+        }
+    })
+}
+const moveToTop = (item: any, data: any): void => {
+    item.subMenuRef.hide()
+    data.splice(data.indexOf(item), 1)
+    data.unshift(item)
+}
+
+const moveToBottom = (item: any, data: any): void => {
+    item.subMenuRef.hide()
+    data.splice(data.indexOf(item), 1)
+    data.push(item)
+}
 onMounted(async () => {
     adjustTreeLeaves()
 
@@ -829,6 +874,8 @@ onMounted(async () => {
     window.addEventListener('language-changed', () => {
         createTreeMenu()
     })
+
+    addGroup()
 })
 
 // Remove event listeners when component is unmounted
@@ -848,6 +895,30 @@ onUnmounted(() => {
     <!--                {{ daemonState.systemName }}-->
     <!--            </span>-->
     <!--    </div>-->
+    <VueDraggable
+        v-model="data"
+        target=".cc-root-items"
+        :scroll="true"
+        :force-auto-scroll-fallback="true"
+        :fallback-on-body="true"
+        :animation="300"
+        :direction="'vertical'"
+        :scroll-sensitivity="deviceStore.getREMSize(5)"
+        :scroll-speed="deviceStore.getREMSize(1.25)"
+        :bubble-scroll="true"
+        :revert-on-spill="true"
+        :force-fallback="false"
+        :fallback-tolerance="15"
+    >
+        <el-collapse
+            class="cc-root-items"
+            expand-icon-position="left"
+            :model-value="expandedIds"
+            @change="(_activeNames) => addGroup()"
+            :before-collapse="() => hoverMenusAreClosed"
+        >
+        </el-collapse>
+    </VueDraggable>
     <div>
         <el-tree
             ref="treeRef"
