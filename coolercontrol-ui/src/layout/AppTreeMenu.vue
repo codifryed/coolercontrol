@@ -206,6 +206,7 @@ const dashboardsTree = (): any => {
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
         options: [{ dashboardInfo: true }, { dashboardAdd: true }],
+        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         children: settingsStore.dashboards.map((dashboard) => {
             return {
                 id: dashboard.uid,
@@ -233,6 +234,7 @@ const modesTree = (): any => {
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
         options: [{ modeInfo: true }, { modeAdd: true }],
+        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
             const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
@@ -267,6 +269,7 @@ const profilesTree = (): any => {
         name: null, // devices should not have names
         icon: mdiChartMultiple,
         options: [{ profileInfo: true }, { profileAdd: true }],
+        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
@@ -294,6 +297,7 @@ const functionsTree = (): any => {
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
         options: [{ functionInfo: true }, { functionAdd: true }],
+        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         children: settingsStore.functions
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
@@ -321,6 +325,7 @@ const alertsTree = (): any => {
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
         options: [{ alertInfo: true }, { alertAdd: true }],
+        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         children: settingsStore.alerts.map((alert) => {
             const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
             return {
@@ -366,6 +371,7 @@ const customSensorsTree = (): any => {
             name: null, // devices should not have names
             deviceUID: deviceUID,
             options: [{ customSensorInfo: true }, { customSensorAdd: true }],
+            subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
             children: sensorsChildren,
         }
     }
@@ -410,6 +416,7 @@ const devicesTreeArray = (): any[] => {
             deviceUID: device.uid,
             children: [],
             options: [{ deviceInfo: true }, { rename: true }],
+            subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -917,6 +924,136 @@ onUnmounted(() => {
             @change="(_activeNames) => addGroup()"
             :before-collapse="() => hoverMenusAreClosed"
         >
+            <el-collapse-item v-for="item in data" :name="item.id" :key="item.id">
+                <template #title>
+                    <!--Root Elements-->
+                    <div class="flex group h-full w-full items-center justify-between outline-none">
+                        <div class="flex flex-row items-center min-w-0">
+                            <svg-icon
+                                v-if="item.icon"
+                                class="mr-1.5 min-w-7 w-7"
+                                type="mdi"
+                                :path="item.icon"
+                                :style="{
+                                    color: deviceChannelColor(item.deviceUID, item.name).value,
+                                }"
+                                :size="
+                                    deviceStore.getREMSize(
+                                        deviceChannelIconSize(item.deviceUID, item.name),
+                                    )
+                                "
+                            />
+                            <div class="flex flex-col overflow-hidden">
+                                <div class="tree-text leading-tight">
+                                    {{ item.label }}
+                                </div>
+                                <div></div>
+                            </div>
+                        </div>
+                        <div
+                            class="hidden mr-1 justify-end whitespace-normal"
+                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                        >
+                            <div v-for="option in item.options">
+                                <menu-device-info
+                                    v-if="option.deviceInfo"
+                                    :device-u-i-d="item.deviceUID"
+                                    @click.stop
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-rename
+                                    v-else-if="option.rename"
+                                    :device-u-i-d="item.deviceUID"
+                                    :channel-name="item.name"
+                                    @click.stop
+                                    @name-change="(value: string) => (item.label = value)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-custom-sensor-info
+                                    v-else-if="option.customSensorInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
+                                <menu-dashboard-info
+                                    v-else-if="option.dashboardInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-dashboard-add
+                                    v-else-if="option.dashboardAdd"
+                                    @added="addDashbaord"
+                                />
+                                <menu-mode-info
+                                    v-else-if="option.modeInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
+                                <menu-profile-info
+                                    v-else-if="option.profileInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-profile-add
+                                    v-else-if="option.profileAdd"
+                                    @added="addProfile"
+                                />
+                                <menu-function-info
+                                    v-else-if="option.functionInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-function-add
+                                    v-else-if="option.functionAdd"
+                                    @added="addFunction"
+                                />
+                                <menu-alert-info
+                                    v-else-if="option.alertInfo"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-alert-add v-else-if="option.alertAdd" />
+                            </div>
+                            <div
+                                v-if="item.subMenuOptions"
+                                v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
+                            >
+                                <div
+                                    class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                                    @click.stop="(event) => item.subMenuRef.toggle(event)"
+                                >
+                                    <svg-icon
+                                        class="outline-0"
+                                        type="mdi"
+                                        :path="mdiDotsVertical"
+                                        :size="deviceStore.getREMSize(1.5)"
+                                    />
+                                </div>
+                                <Popover
+                                    :ref="(el) => (item.subMenuRef = el)"
+                                    @show="() => setHoverMenuStatus(true)"
+                                    @hide="() => setHoverMenuStatus(false)"
+                                >
+                                    <div
+                                        class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
+                                    >
+                                        <ul>
+                                            <li v-for="option in item.subMenuOptions">
+                                                <menu-move-top
+                                                    v-if="option.moveTop"
+                                                    @moveTop="moveToTop(item, data)"
+                                                />
+                                                <menu-move-bottom
+                                                    v-else-if="option.moveBottom"
+                                                    @moveBottom="moveToBottom(item, data)"
+                                                />
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </Popover>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template v-if="item.children == null || item.children.length === 0" #icon>
+                    <div class="w-4" />
+                </template>
+            </el-collapse-item>
         </el-collapse>
     </VueDraggable>
     <div>
