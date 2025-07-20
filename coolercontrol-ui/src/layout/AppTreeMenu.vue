@@ -361,7 +361,12 @@ const customSensorsTree = (): any => {
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ rename: true }, { color: true }, { customSensorDelete: true }],
+                options: [{ color: true }, { rename: true }],
+                subMenuOptions: [
+                    { moveTop: true },
+                    { customSensorDelete: true },
+                    { moveBottom: true },
+                ],
             })
         }
         return {

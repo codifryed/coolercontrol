@@ -49,8 +49,8 @@ const deleteCustomSensor = (): void => {
     const currentName: string =
         deviceSettings.sensorsAndChannels.get(props.customSensorID)?.name ?? props.customSensorID
     confirm.require({
-        message: t('views.customSensor.deleteCustomSensorConfirm', { name: currentName }),
-        header: t('views.customSensor.deleteCustomSensor'),
+        message: t('views.customSensors.deleteCustomSensorConfirm', { name: currentName }),
+        header: t('views.customSensors.deleteCustomSensor'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
         accept: async () => {
@@ -62,14 +62,20 @@ const deleteCustomSensor = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteCustomSensor"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click="deleteCustomSensor"
+    >
+        <svg-icon
+            class="outline-0 !cursor-pointer"
+            type="mdi"
+            :path="mdiDeleteOutline"
+            :size="deviceStore.getREMSize(1.5)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.delete') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>
