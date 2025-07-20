@@ -433,7 +433,7 @@ const devicesTreeArray = (): any[] => {
                 },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ rename: true }, { color: true }],
+                options: [{ color: true }, { rename: true }],
             })
         }
         for (const channel of device.status.channels) {
@@ -452,7 +452,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
-                    options: [{ rename: true }, { color: true }],
+                    options: [{ color: true }, { rename: true }],
                 })
             }
         }
@@ -472,7 +472,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     watts: channel.watts,
-                    options: [{ rename: true }, { color: true }],
+                    options: [{ color: true }, { rename: true }],
                 })
             }
         }
@@ -493,7 +493,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
-                    options: [{ rename: true }, { color: true }],
+                    options: [{ color: true }, { rename: true }],
                 })
             }
         }
@@ -529,7 +529,7 @@ const devicesTreeArray = (): any[] => {
                     duty: duty,
                     rpm: rpm,
                     isControllable: isControllable,
-                    options: [{ rename: true }, { color: true }, { speedControls: isControllable }],
+                    options: [{ color: true }, { rename: true }, { speedControls: isControllable }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
