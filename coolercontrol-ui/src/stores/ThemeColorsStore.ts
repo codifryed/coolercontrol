@@ -51,6 +51,32 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
             .match(/.{2}/g)!
             .map((x) => parseInt(x, 16))
     }
+
+    function RgbToHex(rgb: string): string {
+        if (isHexColor(rgb)) {
+            return rgb
+        }
+        const matches = rgb.match(/\d+/g)!.map((x) => parseInt(x, 10))
+        if (matches == null) {
+            console.error(`Invalid RGB color: ${rgb}`)
+            return rgb
+        }
+        const [r, g, b] = matches
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
+    }
+
+    function isHexColor(color: string): boolean {
+        return color.startsWith('#')
+    }
+
+    function isValidHex(color: string): boolean {
+        return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color)
+    }
+
+    function isRGBColor(color: string): boolean {
+        return color.startsWith('rgb')
+    }
+
     function convertColorToRGBA(color: string, opacity: number): string {
         if (color.includes('#')) {
             const rgbArray = hexToRgb(color)
@@ -63,5 +89,13 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
     }
 
     console.debug(`Theme Colors Store created`)
-    return { themeColors, hexToRgb, convertColorToRGBA }
+    return {
+        themeColors,
+        hexToRgb,
+        RgbToHex,
+        isHexColor,
+        isValidHex,
+        isRGBColor,
+        convertColorToRGBA,
+    }
 })
