@@ -47,7 +47,7 @@ const controlSetting = computed(() => {
 })
 </script>
 <template>
-    <div class="flex leading-tight">
+    <div class="flex leading-tight tree-text">
         {{ controlSetting }}
     </div>
 </template>

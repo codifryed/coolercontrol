@@ -1394,6 +1394,8 @@ onUnmounted(() => {
 
 .tree-text {
     // This is THE WAY to handle elements overflowing with white-space: nowrap
+    // same as tw line-clamp-1
+    overflow: hidden;
     display: -webkit-box;
     line-clamp: 1;
     -webkit-line-clamp: 1;
