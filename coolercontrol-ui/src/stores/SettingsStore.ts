@@ -67,9 +67,9 @@ export const useSettingsStore = defineStore('settings', () => {
         '#FF0000',
         '#FFFF00',
         '#00FF00',
-        '#FF00FF',
         '#00FFFF',
         '#0000FF',
+        '#FF00FF',
     ])
 
     const functions: Ref<Array<Function>> = ref([])
