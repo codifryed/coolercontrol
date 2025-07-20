@@ -32,6 +32,7 @@ import {
     mdiChartLine,
     mdiChartMultiple,
     mdiCircleMultipleOutline,
+    mdiDotsVertical,
     mdiFan,
     mdiFlask,
     mdiFlaskOutline,
@@ -155,11 +156,11 @@ const nodeProps = {
     label: 'label',
     class: speedControlMenuClass,
 }
-const data: Reactive<Tree[]> = reactive([])
+const data: Ref<Tree[]> = ref([])
 
 // Remove computed wrapper for menu data
 const createTreeMenu = (): void => {
-    data.length = 0
+    data.value.length = 0
     const result: Tree[] = []
     if (settingsStore.menuEntitiesAtBottom) {
         result.push(customSensorsTree())
@@ -178,7 +179,7 @@ const createTreeMenu = (): void => {
         result.push(customSensorsTree())
         result.push(...devicesTreeArray())
     }
-    data.push(...result)
+    data.value.push(...result)
 }
 // const pinnedTree = (data: Reactive<Tree[]>): any => {
 //     // todo: only add pinned node if there are pins
@@ -553,7 +554,7 @@ const formatFrequency = (value: string): string =>
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
 
 const expandedNodeIds = (): Array<string> => {
-    return data
+    return data.value
         .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
         .map((node: any) => node.id)
 }
