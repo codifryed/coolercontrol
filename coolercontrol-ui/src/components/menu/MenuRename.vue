@@ -106,7 +106,7 @@ const nameInvalid = computed(() => {
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.rename') }">
         <div
             class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
-            @click="(event) => popRef.toggle(event)"
+            @click.stop.prevent="(event) => popRef.toggle(event)"
         >
             <svg-icon
                 class="outline-0"
