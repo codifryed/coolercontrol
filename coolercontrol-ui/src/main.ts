@@ -21,6 +21,7 @@ import { createPinia } from 'pinia'
 import './style.css'
 import 'primeicons/primeicons.css'
 import 'uplot/dist/uPlot.min.css'
+import 'vue-color/style.css'
 import 'abortcontroller-polyfill/dist/abortsignal-polyfill-only'
 
 import App from './App.vue'
