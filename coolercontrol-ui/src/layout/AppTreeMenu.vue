@@ -1172,11 +1172,24 @@ onUnmounted(() => {
     --el-color-primary-light-9: rgb(var(--colors-bg-two));
 }
 
+.el-collapse {
+    --el-fill-color-blank: rgb(var(--colors-bg-one));
+    --el-collapse-header-text-color: rgb(var(--colors-text-color));
+    --el-collapse-header-font-size: 1rem;
+    --el-collapse-content-font-size: 1rem;
+    --el-collapse-content-text-color: rgb(var(--colors-text-color));
+    border-top: 0;
+    border-bottom: 0;
+    --el-collapse-border-color: rgb(var(--colors-bg-one));
+    --el-collapse-header-height: 2.5rem;
+}
+
 .tree-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    // This is THE WAY to handle elements overflowing with white-space: nowrap
+    display: -webkit-box;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
 }
 
 .tree-data {
@@ -1198,6 +1211,46 @@ onUnmounted(() => {
 /******************************************************************************************
 * Unscoped Style needed to deeply affect the element components
 */
+.el-collapse-icon-position-left .el-collapse-item__header {
+    gap: 0.125rem;
+}
+
+.el-collapse-item__header {
+    border-bottom: 0;
+    //display: block;
+    border-radius: 0.5rem;
+}
+
+.el-collapse-item__header:hover {
+    background-color: rgb(var(--colors-bg-two));
+}
+
+.el-collapse-item__header.focusing:focus:not(:hover) {
+    // strange issue with fast clicking then triggers this (likely upstream bug)
+    color: rgb(var(--colors-text-color));
+}
+
+.el-collapse-item__title {
+    width: 100%;
+}
+
+.el-collapse-item__wrap {
+    border-bottom: 0;
+    // creates a bit of separation between expanded items
+    margin-bottom: 0.5rem;
+}
+
+.el-collapse-item__content {
+    line-height: normal;
+    padding-bottom: 0;
+}
+
+.el-collapse-item__arrow {
+    font-size: 1rem;
+    //font-weight: 800;
+    padding-left: 1px !important;
+}
+
 .el-tree-node__content {
     border-radius: 0.5rem;
 }
