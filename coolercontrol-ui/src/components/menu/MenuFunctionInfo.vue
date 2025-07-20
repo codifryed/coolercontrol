@@ -20,8 +20,9 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
+import Popover from 'primevue/popover'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 interface Props {}
@@ -31,34 +32,34 @@ const emit = defineEmits<{
     (e: 'open', value: boolean): void
 }>()
 
+const popRef = ref()
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
 </script>
 
 <template>
     <div v-tooltip.top="{ value: t('common.overview') }">
-        <popover-root @update:open="(value) => emit('open', value)">
-            <popover-trigger
-                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+        <div
+            class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+            @click.stop="(event) => popRef.toggle(event)"
+        >
+            <svg-icon
+                class="outline-0"
+                type="mdi"
+                :path="mdiInformationSlabCircleOutline"
+                :size="deviceStore.getREMSize(1.5)"
+            />
+        </div>
+        <Popover ref="popRef" @show="emit('open', true)" @hide="emit('open', false)">
+            <div
+                class="mt-2.5 w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
             >
-                <svg-icon
-                    class="outline-0"
-                    type="mdi"
-                    :path="mdiInformationSlabCircleOutline"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </popover-trigger>
-            <popover-content side="right" class="z-10">
-                <div
-                    class="w-full max-w-prose bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
-                >
-                    <span class="font-bold text-lg">{{ t('components.functionInfo.title') }}</span>
-                    <div class="mt-1 h-2 border-border-one border-t-2" />
-                    {{ t('components.functionInfo.description') }}<br /><br />
-                    <i>{{ t('components.functionInfo.identityFunction') }}</i>
-                </div>
-            </popover-content>
-        </popover-root>
+                <span class="font-bold text-lg">{{ t('components.functionInfo.title') }}</span>
+                <div class="mt-1 h-2 border-border-one border-t-2" />
+                {{ t('components.functionInfo.description') }}<br /><br />
+                <i>{{ t('components.functionInfo.identityFunction') }}</i>
+            </div>
+        </Popover>
     </div>
 </template>
 

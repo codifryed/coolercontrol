@@ -51,10 +51,13 @@ emitter.on('custom-sensor-add', addCustomSensor)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addCustomSensor') }">
+    <div
+        class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+        v-tooltip.top="{ value: t('layout.menu.tooltips.addCustomSensor') }"
+    >
         <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="addCustomSensor"
+            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
+            @click.stop="addCustomSensor"
         >
             <svg-icon
                 type="mdi"

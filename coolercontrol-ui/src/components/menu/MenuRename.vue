@@ -26,7 +26,7 @@ import { UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, ref, type Ref } from 'vue'
 import InputText from 'primevue/inputtext'
-import { PopoverClose, PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
+import Popover from 'primevue/popover'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
@@ -40,6 +40,7 @@ const emit = defineEmits<{
     (e: 'open', value: boolean): void
 }>()
 
+const popRef = ref()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
@@ -93,6 +94,7 @@ const closeAndSave = (): void => {
                       .get(props.deviceUID)!
                       .sensorsAndChannels.get(props.channelName)!.name,
         )
+        popRef.value.hide()
     }
 }
 const nameInvalid = computed(() => {
@@ -102,47 +104,52 @@ const nameInvalid = computed(() => {
 
 <template>
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.rename') }">
-        <popover-root @update:open="(value) => emit('open', value)">
-            <popover-trigger
-                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+        <div
+            class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+            @click="(event) => popRef.toggle(event)"
+        >
+            <svg-icon
+                class="outline-0"
+                type="mdi"
+                :path="mdiRenameOutline"
+                :size="deviceStore.getREMSize(1.5)"
+            />
+        </div>
+        <Popover ref="popRef" @show="emit('open', true)" @hide="emit('open', false)">
+            <div
+                class="mt-2 w-80 bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
             >
-                <svg-icon
-                    class="outline-0"
-                    type="mdi"
-                    :path="mdiRenameOutline"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </popover-trigger>
-            <popover-content side="right" class="z-10">
-                <div class="w-80 bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
-                    <span class="text-xl font-bold">{{ t('common.editName') }}</span>
-                    <div class="mt-8 flex flex-col">
-                        <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
-                            {{ systemDisplayName }}
-                        </small>
-                        <InputText
-                            ref="inputArea"
-                            id="property-name"
-                            class="w-20rem"
-                            :invalid="nameInvalid"
-                            v-model="nameInput"
-                            @keydown.enter.prevent="clickSaveButton"
-                        />
-                    </div>
-                    <small id="rename-help" class="ml-2">
-                        {{ t('common.blankNameResetDefault') }}
+                <span class="text-xl font-bold">{{ t('common.editName') }}</span>
+                <div class="mt-8 flex flex-col">
+                    <small class="ml-2 mb-1 font-light text-sm text-text-color-secondary">
+                        {{ systemDisplayName }}
                     </small>
-                    <br />
-                    <div class="text-right mt-4">
-                        <popover-close ref="saveButton" @click="closeAndSave">
-                            <Button class="bg-accent/80 hover:bg-accent/100" label="Save">
-                                {{ t('common.save') }}
-                            </Button>
-                        </popover-close>
-                    </div>
+                    <InputText
+                        ref="inputArea"
+                        id="property-name"
+                        class="w-20rem"
+                        :invalid="nameInvalid"
+                        v-model="nameInput"
+                        @keydown.enter.prevent="clickSaveButton"
+                        autofocus
+                    />
                 </div>
-            </popover-content>
-        </popover-root>
+                <small id="rename-help" class="ml-2">
+                    {{ t('common.blankNameResetDefault') }}
+                </small>
+                <br />
+                <div class="text-right mt-4">
+                    <Button
+                        ref="saveButton"
+                        class="bg-accent/80 hover:bg-accent/100"
+                        label="Save"
+                        @click="closeAndSave"
+                    >
+                        {{ t('common.save') }}
+                    </Button>
+                </div>
+            </div>
+        </Popover>
     </div>
 </template>
 
