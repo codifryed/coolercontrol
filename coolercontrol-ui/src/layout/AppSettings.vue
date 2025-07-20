@@ -62,6 +62,13 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 
+interface Props {
+    tabNumber?: string
+}
+
+const props = defineProps<Props>()
+const tabValue = ref(props.tabNumber != null && props.tabNumber ? props.tabNumber : '0')
+
 const { t } = useI18n()
 
 const applyThinkPadFanControl = (value: boolean | string | number) => {
@@ -312,7 +319,7 @@ onUnmounted(() => {
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="pb-16 h-screen w-full">
-            <Tabs value="0">
+            <Tabs v-model:value="tabValue">
                 <TabList>
                     <Tab value="0" as="div" class="flex w-1/5 justify-center items-center gap-2">
                         <svg-icon
