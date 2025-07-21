@@ -957,6 +957,11 @@ onUnmounted(() => {
 </script>
 
 <template>
+    <div id="system-menu" class="flex text-text-color mx-0 pb-1 tree-text">
+        <span class="ml-1 text-2xl mb-2 items-center tree-text">
+            {{ daemonState.systemName }}
+        </span>
+    </div>
     <!--Pined Items-->
     <el-collapse
         v-if="pinnedItems.length > 0"
