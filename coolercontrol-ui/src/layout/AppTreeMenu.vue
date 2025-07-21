@@ -39,6 +39,7 @@ import {
     mdiLedOn,
     mdiLightningBoltCircle,
     mdiMemory,
+    mdiPinOutline,
     mdiSineWave,
     mdiSpeedometer,
     mdiTelevisionShimmer,
@@ -104,6 +105,12 @@ interface Tree {
     [key: string]: any
 }
 
+interface PinnedItems {
+    // rootId: string
+    id: string
+    ref: any
+}
+
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
@@ -113,7 +120,7 @@ const { t } = useI18n()
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
-const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => {
+const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Ref<Color> => {
     let color = ref('')
     if (
         deviceUID == null ||
@@ -131,7 +138,7 @@ const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => 
     return color
 }
 
-const deviceChannelIconSize = (deviceUID: UID, name: string | undefined): number => {
+const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefined): number => {
     if (deviceUID == null) {
         // Group root like Dashboards, Modes, etc
         return 1.75
@@ -164,6 +171,19 @@ const nodeProps = {
 const data: Ref<Tree[]> = ref([])
 
 // Remove computed wrapper for menu data
+const pinnedItems: Ref<Array<PinnedItems>> = ref([])
+const pinItem = (item: any) => {
+    pinnedItems.value.push({
+        id: item.id,
+        ref: item,
+    })
+}
+const isPinned = (item: any): boolean => {
+    return pinnedItems.value.some((pinnedItem) => pinnedItem.id === item.id)
+}
+const unPinItem = (item: any) => {
+    pinnedItems.value = pinnedItems.value.filter((pinnedItem) => pinnedItem.id !== item.id)
+}
 const createTreeMenu = (): void => {
     data.value.length = 0
     const result: Tree[] = []
@@ -186,20 +206,7 @@ const createTreeMenu = (): void => {
     }
     data.value.push(...result)
 }
-// const pinnedTree = (data: Reactive<Tree[]>): any => {
-//     // todo: only add pinned node if there are pins
-//     //  perhaps the children should be added after the tree is created and "we link to the already created child ID"? (copy-ish)
-//
-//     // pull saved "pinned" node IDs from settingsStore
-//     // copy those nodes from the data array and add them to the pinned tree
-//     return {
-//         id: 'pinned',
-//         label: 'Pinned',
-//         icon: mdiPinOutline,
-//         name: null, // devices should not have names
-//         options: [],
-//     }
-// }
+
 const dashboardsTree = (): any => {
     return {
         id: 'dashboards',
@@ -440,7 +447,12 @@ const devicesTreeArray = (): any[] => {
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 options: [{ color: true }, { rename: true }],
-                subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                subMenuOptions: [
+                    { moveTop: true },
+                    { pin: true },
+                    { disable: true },
+                    { moveBottom: true },
+                ],
             })
         }
         for (const channel of device.status.channels) {
@@ -460,7 +472,12 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     freq: channel.freq,
                     options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
         }
@@ -481,7 +498,12 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     watts: channel.watts,
                     options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
         }
@@ -503,7 +525,12 @@ const devicesTreeArray = (): any[] => {
                     duty: channel.duty,
                     rpm: channel.rpm,
                     options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
         }
@@ -540,7 +567,12 @@ const devicesTreeArray = (): any[] => {
                     rpm: rpm,
                     isControllable: isControllable,
                     options: [{ color: true }, { rename: true }, { speedControls: isControllable }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -560,7 +592,12 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     options: [{ rename: true }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -580,7 +617,12 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     options: [{ rename: true }],
-                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+                    subMenuOptions: [
+                        { moveTop: true },
+                        { pin: true },
+                        { disable: true },
+                        { moveBottom: true },
+                    ],
                 })
             }
         }
@@ -626,9 +668,11 @@ const addDashbaord = (dashboardUID: UID) => {
     )
     adjustTreeLeaves()
 }
+
 interface DashboardUIDObj {
     dashboardUID: UID
 }
+
 const addDashboardMenu = (dashboardUIDObj: DashboardUIDObj): void =>
     addDashbaord(dashboardUIDObj.dashboardUID)
 emitter.on('dashboard-add-menu', addDashboardMenu)
@@ -720,9 +764,11 @@ const addMode = (modeUID: UID): void => {
     )
     adjustTreeLeaves()
 }
+
 interface ModeUIDObj {
     modeUID: UID
 }
+
 const addModeMenu = (modeUIDObj: ModeUIDObj): void => addMode(modeUIDObj.modeUID)
 emitter.on('mode-add-menu', addModeMenu)
 
@@ -753,6 +799,7 @@ const addProfile = (profileUID: UID): void => {
 interface ProfileUIDObj {
     profileUID: UID
 }
+
 const addProfileMenu = (profileUIDObj: ProfileUIDObj): void => addProfile(profileUIDObj.profileUID)
 emitter.on('profile-add-menu', addProfileMenu)
 
@@ -783,9 +830,11 @@ const addFunction = (functionUID: UID): void => {
     )
     adjustTreeLeaves()
 }
+
 interface FunctionUIDObj {
     functionUID: UID
 }
+
 const addFunctionMenu = (functionUIDObj: FunctionUIDObj): void =>
     addFunction(functionUIDObj.functionUID)
 emitter.on('function-add-menu', addFunctionMenu)
@@ -800,6 +849,7 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
 interface AlertUIDObj {
     alertUID: UID
 }
+
 const addAlert = (alertUIDObj: AlertUIDObj): void => {
     const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUIDObj.alertUID)
     if (newAlert == null) {
@@ -907,14 +957,61 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <!--    <div-->
-    <!--        id="system-menu"-->
-    <!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
-    <!--    >-->
-    <!--            <span class="flex ml-4 text-2xl mb-1 items-center">-->
-    <!--                {{ daemonState.systemName }}-->
-    <!--            </span>-->
-    <!--    </div>-->
+    <!--Pined Items-->
+    <el-collapse
+        v-if="pinnedItems.length > 0"
+        expand-icon-position="left"
+        :model-value="'pinned'"
+        @change="(_activeNames) => addGroup()"
+        :before-collapse="() => hoverMenusAreClosed"
+    >
+        <el-collapse-item name="pinned" :key="'pinned'">
+            <template #title>
+                <div class="flex group h-full w-full items-center justify-between outline-none">
+                    <div class="flex flex-row items-center min-w-0">
+                        <svg-icon
+                            class="mr-1.5 min-w-7 w-7"
+                            type="mdi"
+                            :path="mdiPinOutline"
+                            :style="{
+                                color: deviceChannelColor(undefined, '').value,
+                            }"
+                            :size="
+                                deviceStore.getREMSize(deviceChannelIconSize(undefined, undefined))
+                            "
+                        />
+                        <div class="flex flex-col overflow-hidden">
+                            <div class="tree-text leading-tight">
+                                {{ t('layout.menu.pinned') }}
+                            </div>
+                            <div></div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            <VueDraggable
+                v-model="pinnedItems"
+                :scroll="true"
+                :force-auto-scroll-fallback="true"
+                :fallback-on-body="true"
+                :animation="300"
+                :direction="'vertical'"
+                :scroll-sensitivity="deviceStore.getREMSize(5)"
+                :scroll-speed="deviceStore.getREMSize(1.25)"
+                :bubble-scroll="true"
+                :revert-on-spill="true"
+                :force-fallback="true"
+                :fallback-tolerance="15"
+                :clone="toRaw"
+                @start="setHoverMenuStatus(true)"
+                @end="setHoverMenuStatus(false)"
+            >
+                <div v-for="pinnedItem in pinnedItems" :key="pinnedItem.id">
+                </div>
+            </VueDraggable>
+        </el-collapse-item>
+    </el-collapse>
+    <!--Main Menu-->
     <VueDraggable
         v-model="data"
         target=".cc-root-items"
