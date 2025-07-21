@@ -40,7 +40,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("CoolerControl-RDNA3/4-OC")
 
-__VERSION__ = "4"
+__VERSION__ = "5"
 
 
 class RDNA4Test:
@@ -642,6 +642,8 @@ def main():
     test.commit_zero_rpm_changes()
     test.set_zero_rpm_stop_temp_highest()
     test.commit_zero_rpm_stop_temp_changes()
+    # to see if we can commit already-applied settings:
+    test.commit_pp_od_clk_voltage()
     test.wait_for_freq_stabilization()
     test.read_sensors()
 
@@ -665,6 +667,8 @@ def main():
     test.commit_fan_curve_changes()
     test.commit_zero_rpm_changes()
     test.commit_zero_rpm_stop_temp_changes()
+    # to see if we can commit already-applied settings:
+    test.commit_pp_od_clk_voltage()
     test.wait_for_freq_stabilization()
     test.read_sensors()
 
@@ -682,6 +686,8 @@ def main():
 
     test.apply_flat_simple_fan_curve(fan_speed_duty)
     test.commit_fan_curve_changes()
+    # to see if we can commit already-applied settings:
+    test.commit_pp_od_clk_voltage()
     test.wait_for_freq_stabilization()
     test.read_sensors()
 
@@ -699,6 +705,8 @@ def main():
 
     test.set_zero_rpm(False)
     test.commit_zero_rpm_changes()
+    # to see if we can commit already-applied settings:
+    test.commit_pp_od_clk_voltage()
     test.wait_for_freq_stabilization()
     test.read_sensors()
 
