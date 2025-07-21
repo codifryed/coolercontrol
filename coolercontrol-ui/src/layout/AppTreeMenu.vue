@@ -93,6 +93,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
 import MenuMoveTop from '@/components/menu/MenuMoveTop.vue'
 import MenuMoveBottom from '@/components/menu/MenuMoveBottom.vue'
+import MenuDisable from '@/components/menu/MenuDisable.vue'
 
 // interface Tree {
 //     label: string
@@ -421,7 +422,7 @@ const devicesTreeArray = (): any[] => {
             deviceUID: device.uid,
             children: [],
             options: [{ deviceInfo: true }, { rename: true }],
-            subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+            subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -439,6 +440,7 @@ const devicesTreeArray = (): any[] => {
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 options: [{ color: true }, { rename: true }],
+                subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
             })
         }
         for (const channel of device.status.channels) {
@@ -458,6 +460,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     freq: channel.freq,
                     options: [{ color: true }, { rename: true }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
         }
@@ -478,6 +481,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     watts: channel.watts,
                     options: [{ color: true }, { rename: true }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
         }
@@ -499,6 +503,7 @@ const devicesTreeArray = (): any[] => {
                     duty: channel.duty,
                     rpm: channel.rpm,
                     options: [{ color: true }, { rename: true }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
         }
@@ -535,6 +540,7 @@ const devicesTreeArray = (): any[] => {
                     rpm: rpm,
                     isControllable: isControllable,
                     options: [{ color: true }, { rename: true }, { speedControls: isControllable }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -554,6 +560,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     options: [{ rename: true }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -573,6 +580,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     options: [{ rename: true }],
+                    subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
                 })
             }
         }
