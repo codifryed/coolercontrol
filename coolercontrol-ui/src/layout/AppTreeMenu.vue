@@ -927,8 +927,11 @@ onUnmounted(() => {
         :scroll-speed="deviceStore.getREMSize(1.25)"
         :bubble-scroll="true"
         :revert-on-spill="true"
-        :force-fallback="false"
+        :force-fallback="true"
         :fallback-tolerance="15"
+        :clone="toRaw"
+        @start="setHoverMenuStatus(true)"
+        @end="setHoverMenuStatus(false)"
     >
         <el-collapse
             class="cc-root-items"
@@ -1028,7 +1031,7 @@ onUnmounted(() => {
                             >
                                 <div
                                     class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
-                                    @click.stop="(event) => item.subMenuRef.toggle(event)"
+                                    @click.stop.prevent="(event) => item.subMenuRef.toggle(event)"
                                 >
                                     <svg-icon
                                         class="outline-0"
@@ -1421,6 +1424,12 @@ onUnmounted(() => {
     align-content: end;
     //display: inline-block;
     //min-width: 5rem;
+}
+
+.sortable-fallback {
+    color: rgb(var(--colors-text-color));
+    background-color: rgba(var(--colors-bg-two) / 0.625);
+    border-radius: 0.5rem;
 }
 
 //.custom-tree-node {
