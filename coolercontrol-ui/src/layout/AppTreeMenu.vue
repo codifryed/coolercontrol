@@ -184,6 +184,33 @@ const isPinned = (item: any): boolean => {
 const unPinItem = (item: any) => {
     pinnedItems.value = pinnedItems.value.filter((pinnedItem) => pinnedItem.id !== item.id)
 }
+
+enum Menu {
+    COLOR,
+    RENAME,
+    DEVICE_INFO,
+    CUSTOM_SENSOR_INFO,
+    CUSTOM_SENSOR_ADD,
+    DASHBOARD_INFO,
+    DASHBOARD_ADD,
+    MODE_INFO,
+    MODE_ADD,
+    PROFILE_INFO,
+    PROFILE_ADD,
+    FUNCTION_INFO,
+    FUNCTION_ADD,
+    ALERT_INFO,
+    ALERT_ADD,
+    IS_CONTROLLABLE,
+}
+enum SubMenu {
+    MOVE_TOP,
+    PIN,
+    DISABLE,
+    CUSTOM_SENSOR_DELETE,
+    MOVE_BOTTOM,
+}
+
 const createTreeMenu = (): void => {
     data.value.length = 0
     const result: Tree[] = []
@@ -213,8 +240,8 @@ const dashboardsTree = (): any => {
         label: t('layout.menu.dashboards'),
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
-        options: [{ dashboardInfo: true }, { dashboardAdd: true }],
-        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+        menus: [Menu.DASHBOARD_INFO, Menu.DASHBOARD_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.dashboards.map((dashboard) => {
             return {
                 id: dashboard.uid,
@@ -241,8 +268,8 @@ const modesTree = (): any => {
         label: t('layout.menu.modes'),
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
-        options: [{ modeInfo: true }, { modeAdd: true }],
-        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+        menus: [Menu.MODE_INFO, Menu.MODE_ADD],
+        submenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
             const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
@@ -276,8 +303,8 @@ const profilesTree = (): any => {
         label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        options: [{ profileInfo: true }, { profileAdd: true }],
-        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+        menus: [Menu.PROFILE_INFO, Menu.PROFILE_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
@@ -304,8 +331,8 @@ const functionsTree = (): any => {
         label: t('layout.menu.functions'),
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
-        options: [{ functionInfo: true }, { functionAdd: true }],
-        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+        menus: [Menu.FUNCTION_INFO, Menu.FUNCTION_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.functions
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
@@ -332,8 +359,8 @@ const alertsTree = (): any => {
         label: t('layout.menu.alerts'),
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
-        options: [{ alertInfo: true }, { alertAdd: true }],
-        subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+        menus: [Menu.ALERT_INFO, Menu.ALERT_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.alerts.map((alert) => {
             const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
             return {
@@ -369,12 +396,8 @@ const customSensorsTree = (): any => {
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ color: true }, { rename: true }],
-                subMenuOptions: [
-                    { moveTop: true },
-                    { customSensorDelete: true },
-                    { moveBottom: true },
-                ],
+                menus: [Menu.COLOR, Menu.RENAME],
+                subMenus: [SubMenu.MOVE_TOP, SubMenu.CUSTOM_SENSOR_DELETE, SubMenu.MOVE_BOTTOM],
             })
         }
         return {
@@ -383,8 +406,8 @@ const customSensorsTree = (): any => {
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,
-            options: [{ customSensorInfo: true }, { customSensorAdd: true }],
-            subMenuOptions: [{ moveTop: true }, { moveBottom: true }],
+            menus: [Menu.CUSTOM_SENSOR_INFO, Menu.CUSTOM_SENSOR_ADD],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
             children: sensorsChildren,
         }
     }
@@ -428,8 +451,8 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ deviceInfo: true }, { rename: true }],
-            subMenuOptions: [{ moveTop: true }, { disable: true }, { moveBottom: true }],
+            menus: [Menu.DEVICE_INFO, Menu.RENAME],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -446,13 +469,8 @@ const devicesTreeArray = (): any[] => {
                 },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ color: true }, { rename: true }],
-                subMenuOptions: [
-                    { moveTop: true },
-                    { pin: true },
-                    { disable: true },
-                    { moveBottom: true },
-                ],
+                menus: [Menu.COLOR, Menu.RENAME],
+                subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
             })
         }
         for (const channel of device.status.channels) {
@@ -471,13 +489,8 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
-                    options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -497,13 +510,8 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     watts: channel.watts,
-                    options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -524,13 +532,8 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
-                    options: [{ color: true }, { rename: true }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -566,13 +569,8 @@ const devicesTreeArray = (): any[] => {
                     duty: duty,
                     rpm: rpm,
                     isControllable: isControllable,
-                    options: [{ color: true }, { rename: true }, { speedControls: isControllable }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.COLOR, Menu.RENAME, Menu.IS_CONTROLLABLE],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -591,13 +589,8 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -616,13 +609,8 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }],
-                    subMenuOptions: [
-                        { moveTop: true },
-                        { pin: true },
-                        { disable: true },
-                        { moveBottom: true },
-                    ],
+                    menus: [Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -1072,15 +1060,15 @@ onUnmounted(() => {
                             class="hidden mr-1 justify-end whitespace-normal"
                             :class="{ 'group-hover:flex': hoverMenusAreClosed }"
                         >
-                            <div v-for="option in item.options">
+                            <div v-for="menu in item.menus">
                                 <menu-device-info
-                                    v-if="option.deviceInfo"
+                                    v-if="menu === Menu.DEVICE_INFO"
                                     :device-u-i-d="item.deviceUID"
                                     @click.stop
                                     @open="setHoverMenuStatus"
                                 />
                                 <menu-rename
-                                    v-else-if="option.rename"
+                                    v-else-if="menu === Menu.RENAME"
                                     :device-u-i-d="item.deviceUID"
                                     :channel-name="item.name"
                                     @click.stop
@@ -1088,47 +1076,52 @@ onUnmounted(() => {
                                     @open="setHoverMenuStatus"
                                 />
                                 <menu-custom-sensor-info
-                                    v-else-if="option.customSensorInfo"
+                                    v-else-if="menu === Menu.CUSTOM_SENSOR_INFO"
                                     @open="setHoverMenuStatus"
                                 />
-                                <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
+                                <menu-custom-sensor-add
+                                    v-else-if="menu === Menu.CUSTOM_SENSOR_ADD"
+                                />
                                 <menu-dashboard-info
-                                    v-else-if="option.dashboardInfo"
+                                    v-else-if="menu === Menu.DASHBOARD_INFO"
                                     @open="setHoverMenuStatus"
                                 />
                                 <menu-dashboard-add
-                                    v-else-if="option.dashboardAdd"
+                                    v-else-if="menu === Menu.DASHBOARD_ADD"
                                     @added="addDashbaord"
                                 />
                                 <menu-mode-info
-                                    v-else-if="option.modeInfo"
+                                    v-else-if="menu === Menu.MODE_INFO"
                                     @open="setHoverMenuStatus"
                                 />
-                                <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
+                                <menu-mode-add
+                                    v-else-if="menu === Menu.MODE_ADD"
+                                    @added="addMode"
+                                />
                                 <menu-profile-info
-                                    v-else-if="option.profileInfo"
+                                    v-else-if="menu === Menu.PROFILE_INFO"
                                     @open="setHoverMenuStatus"
                                 />
                                 <menu-profile-add
-                                    v-else-if="option.profileAdd"
+                                    v-else-if="menu === Menu.PROFILE_ADD"
                                     @added="addProfile"
                                 />
                                 <menu-function-info
-                                    v-else-if="option.functionInfo"
+                                    v-else-if="menu === Menu.FUNCTION_INFO"
                                     @open="setHoverMenuStatus"
                                 />
                                 <menu-function-add
-                                    v-else-if="option.functionAdd"
+                                    v-else-if="menu === Menu.FUNCTION_ADD"
                                     @added="addFunction"
                                 />
                                 <menu-alert-info
-                                    v-else-if="option.alertInfo"
+                                    v-else-if="menu === Menu.ALERT_INFO"
                                     @open="setHoverMenuStatus"
                                 />
-                                <menu-alert-add v-else-if="option.alertAdd" />
+                                <menu-alert-add v-else-if="menu === Menu.ALERT_ADD" />
                             </div>
                             <div
-                                v-if="item.subMenuOptions"
+                                v-if="item.subMenus"
                                 v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
                             >
                                 <div
@@ -1151,13 +1144,17 @@ onUnmounted(() => {
                                         class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
                                     >
                                         <ul>
-                                            <li v-for="option in item.subMenuOptions">
+                                            <li v-for="subMenu in item.subMenus">
                                                 <menu-move-top
-                                                    v-if="option.moveTop"
+                                                    v-if="subMenu === SubMenu.MOVE_TOP"
                                                     @moveTop="moveToTop(item, data)"
                                                 />
+                                                <menu-disable
+                                                    v-else-if="subMenu === SubMenu.DISABLE"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
                                                 <menu-move-bottom
-                                                    v-else-if="option.moveBottom"
+                                                    v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
                                                     @moveBottom="moveToBottom(item, data)"
                                                 />
                                             </li>
