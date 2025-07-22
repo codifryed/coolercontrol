@@ -59,7 +59,7 @@ import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
 import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
-import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
+import SubSubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
@@ -92,9 +92,9 @@ import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
-import MenuMoveTop from '@/components/menu/MenuMoveTop.vue'
-import MenuMoveBottom from '@/components/menu/MenuMoveBottom.vue'
-import MenuDisable from '@/components/menu/MenuDisable.vue'
+import SubSubMenuMoveTop from '@/components/menu/SubMenuMoveTop.vue'
+import SubSubMenuMoveBottom from '@/components/menu/SubMenuMoveBottom.vue'
+import SubSubMenuDisable from '@/components/menu/SubMenuDisable.vue'
 
 // interface Tree {
 //     label: string
@@ -1145,15 +1145,15 @@ onUnmounted(() => {
                                     >
                                         <ul>
                                             <li v-for="subMenu in item.subMenus">
-                                                <menu-move-top
+                                                <sub-sub-menu-move-top
                                                     v-if="subMenu === SubMenu.MOVE_TOP"
                                                     @moveTop="moveToTop(item, data)"
                                                 />
-                                                <menu-disable
+                                                <sub-sub-menu-disable
                                                     v-else-if="subMenu === SubMenu.DISABLE"
                                                     @close="item.subMenuRef.hide()"
                                                 />
-                                                <menu-move-bottom
+                                                <sub-sub-menu-move-bottom
                                                     v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
                                                     @moveBottom="moveToBottom(item, data)"
                                                 />
