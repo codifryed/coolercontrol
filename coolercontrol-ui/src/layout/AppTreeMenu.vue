@@ -59,8 +59,8 @@ import MenuColor from '@/components/menu/MenuColor.vue'
 import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
-import SubSubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDelete.vue'
 import SubMenuDashboardDelete from '@/components/menu/SubMenuDashboardDelete.vue'
+import SubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
@@ -93,9 +93,11 @@ import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
-import SubSubMenuMoveTop from '@/components/menu/SubMenuMoveTop.vue'
-import SubSubMenuMoveBottom from '@/components/menu/SubMenuMoveBottom.vue'
-import SubSubMenuDisable from '@/components/menu/SubMenuDisable.vue'
+import SubMenuMoveTop from '@/components/menu/SubMenuMoveTop.vue'
+import SubMenuMoveBottom from '@/components/menu/SubMenuMoveBottom.vue'
+import SubMenuDisable from '@/components/menu/SubMenuDisable.vue'
+import { useDaemonState } from '@/stores/DaemonState.ts'
+import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 
 // interface Tree {
 //     label: string
@@ -116,6 +118,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const route = useRoute()
+const daemonState = useDaemonState()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const { t } = useI18n()
 
@@ -1144,15 +1147,15 @@ onUnmounted(() => {
                                     >
                                         <ul>
                                             <li v-for="subMenu in item.subMenus">
-                                                <sub-sub-menu-move-top
+                                                <sub-menu-move-top
                                                     v-if="subMenu === SubMenu.MOVE_TOP"
                                                     @moveTop="moveToTop(item, data)"
                                                 />
-                                                <sub-sub-menu-disable
+                                                <sub-menu-disable
                                                     v-else-if="subMenu === SubMenu.DISABLE"
                                                     @close="item.subMenuRef.hide()"
                                                 />
-                                                <sub-sub-menu-move-bottom
+                                                <sub-menu-move-bottom
                                                     v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
                                                     @moveBottom="moveToBottom(item, data)"
                                                 />
