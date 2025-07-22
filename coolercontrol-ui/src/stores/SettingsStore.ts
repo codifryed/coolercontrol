@@ -105,6 +105,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
     const dashboards: Array<Dashboard> = reactive([...Dashboard.defaults()])
+    const homeDashboard: Ref<UID | undefined> = ref()
     const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
@@ -188,6 +189,11 @@ export const useSettingsStore = defineStore('settings', () => {
         if (uiSettings.dashboards.length > 0) {
             dashboards.length = 0
             dashboards.push(...uiSettings.dashboards)
+        }
+        homeDashboard.value = uiSettings.homeDashboard
+        if (homeDashboard.value == null) {
+            // set home dashboard to first dashboard by default
+            homeDashboard.value = dashboards[0].uid
         }
         chartLineScale.value = uiSettings.chartLineScale
         if (deviceStore.isQtApp()) {
@@ -868,6 +874,7 @@ export const useSettingsStore = defineStore('settings', () => {
             [
                 allUIDeviceSettings.value,
                 dashboards,
+                homeDashboard,
                 chartLineScale,
                 startInSystemTray,
                 closeToSystemTray,
@@ -905,6 +912,7 @@ export const useSettingsStore = defineStore('settings', () => {
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
                     uiSettings.dashboards = dashboards
+                    uiSettings.homeDashboard = homeDashboard.value
                     uiSettings.chartLineScale = chartLineScale.value
                     if (deviceStore.isQtApp()) {
                         try {
@@ -1151,6 +1159,7 @@ export const useSettingsStore = defineStore('settings', () => {
         modeInEdit,
         allUIDeviceSettings,
         dashboards,
+        homeDashboard,
         chartLineScale,
         startInSystemTray,
         closeToSystemTray,

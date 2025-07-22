@@ -101,7 +101,6 @@ const dashboardItems = computed(() => {
     }
     return dashboardItems
 })
-const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {
@@ -355,7 +354,8 @@ const addItems = computed(() => [
                     :class="{
                         'text-accent':
                             router.currentRoute.value.fullPath === '/' ||
-                            router.currentRoute.value.params.dashboardUID === homeDashboardUID,
+                            router.currentRoute.value.params.dashboardUID ===
+                                settingsStore.homeDashboard,
                     }"
                     type="mdi"
                     :path="mdiHomeAnalytics"
@@ -376,9 +376,13 @@ const addItems = computed(() => [
                                         router.currentRoute.value.params.dashboardUID ===
                                             item.uid ||
                                         (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === homeDashboardUID),
+                                            item.uid === settingsStore.homeDashboard),
                                 }"
-                                :path="item.mdiIcon ?? ''"
+                                :path="
+                                    item.uid === settingsStore.homeDashboard
+                                        ? mdiHomeAnalytics
+                                        : (item.mdiIcon ?? '')
+                                "
                                 :size="getREMSize(1.25)"
                             />
                             <span
@@ -388,7 +392,7 @@ const addItems = computed(() => [
                                         router.currentRoute.value.params.dashboardUID ===
                                             item.uid ||
                                         (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === homeDashboardUID),
+                                            item.uid === settingsStore.homeDashboard),
                                 }"
                             >
                                 {{ item.label }}

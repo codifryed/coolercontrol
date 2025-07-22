@@ -36,6 +36,7 @@ import {
     mdiFan,
     mdiFlask,
     mdiFlaskOutline,
+    mdiHomeAnalytics,
     mdiLedOn,
     mdiLightningBoltCircle,
     mdiMemory,
@@ -58,15 +59,15 @@ import MenuColor from '@/components/menu/MenuColor.vue'
 import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
-import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
 import SubSubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDelete.vue'
+import SubMenuDashboardDelete from '@/components/menu/SubMenuDashboardDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
 import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
 import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
-import MenuDashboardDuplicate from '@/components/menu/MenuDashboardDuplicate.vue'
+import SubMenuDashboardDuplicate from '@/components/menu/SubMenuDashboardDuplicate.vue'
 import MenuProfileDelete from '@/components/menu/MenuProfileDelete.vue'
 import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
 import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
@@ -193,6 +194,8 @@ enum Menu {
     CUSTOM_SENSOR_ADD,
     DASHBOARD_INFO,
     DASHBOARD_ADD,
+    DASHBOARD_HOME,
+    DASHBOARD_RENAME,
     MODE_INFO,
     MODE_ADD,
     PROFILE_INFO,
@@ -208,6 +211,8 @@ enum SubMenu {
     PIN,
     DISABLE,
     CUSTOM_SENSOR_DELETE,
+    DASHBOARD_DUPLICATE,
+    DASHBOARD_DELETE,
     MOVE_BOTTOM,
 }
 
@@ -246,22 +251,26 @@ const dashboardsTree = (): any => {
             return {
                 id: dashboard.uid,
                 label: dashboard.name,
-                icon: mdiChartBoxOutline,
+                icon:
+                    dashboard.uid === settingsStore.homeDashboard
+                        ? mdiHomeAnalytics
+                        : mdiChartBoxOutline,
                 deviceUID: 'Dashboards',
                 dashboardUID: dashboard.uid,
                 name: dashboard.uid,
                 to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-                options: [
-                    { dashboardHome: true },
-                    { dashboardRename: true },
-                    { dashboardDuplicate: true },
-                    { dashboardDelete: true },
+                menus: [Menu.DASHBOARD_HOME, Menu.DASHBOARD_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.DASHBOARD_DUPLICATE,
+                    SubMenu.DASHBOARD_DELETE,
+                    SubMenu.MOVE_BOTTOM,
                 ],
             }
         }),
     }
 }
-const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesTree = (): any => {
     return {
         id: 'modes',
@@ -636,25 +645,24 @@ const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
     )!
-    treeRef.value!.append(
-        {
-            id: dashboardUID,
-            label: newDashboard.name,
-            icon: mdiChartBoxOutline,
-            deviceUID: 'Dashboards',
-            dashboardUID: dashboardUID,
-            name: dashboardUID,
-            to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
-            options: [
-                { dashboardHome: true },
-                { dashboardRename: true },
-                { dashboardDuplicate: true },
-                { dashboardDelete: true },
-            ],
-        },
-        'dashboards',
-    )
-    adjustTreeLeaves()
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children.push({
+        id: dashboardUID,
+        label: newDashboard.name,
+        icon: mdiChartBoxOutline,
+        deviceUID: 'Dashboards',
+        dashboardUID: dashboardUID,
+        name: dashboardUID,
+        to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
+        menus: [Menu.DASHBOARD_HOME, Menu.DASHBOARD_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.DASHBOARD_DUPLICATE,
+            SubMenu.DASHBOARD_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
 
 interface DashboardUIDObj {
@@ -669,28 +677,19 @@ const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children = dashboardParent!.children.filter(
+        (item: any) => item.id !== dashboardUID,
+    )
 }
-const rearrangeDashboards = (): void => {
-    const children = settingsStore.dashboards.map((dashboard) => {
-        return {
-            id: dashboard.uid,
-            label: dashboard.name,
-            icon: mdiChartBoxOutline,
-            deviceUID: 'Dashboards',
-            dashboardUID: dashboard.uid,
-            name: dashboard.uid,
-            to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-            options: [
-                { dashboardHome: true },
-                { dashboardRename: true },
-                { dashboardDuplicate: true },
-                { dashboardDelete: true },
-            ],
-        }
+const homeDashboardSet = (): void => {
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children.forEach((item: any) => {
+        item.icon =
+            item.dashboardUID === settingsStore.homeDashboard
+                ? mdiHomeAnalytics
+                : mdiChartBoxOutline
     })
-    treeRef.value!.getNode('dashboards').childNodes = []
-    treeRef.value!.getNode('dashboards').doCreateChildren(children)
 }
 
 /**
@@ -1230,7 +1229,8 @@ onUnmounted(() => {
                         class="flex h-full items-center justify-between outline-none"
                         :class="{
                             'text-accent':
-                                route.fullPath === '/' && data.dashboardUID === homeDashboardUID,
+                                route.fullPath === '/' &&
+                                data.dashboardUID === settingsStore.homeDashboard,
                         }"
                         tabindex="0"
                         exact

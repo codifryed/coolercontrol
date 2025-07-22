@@ -35,6 +35,7 @@ export class UISettingsDTO {
 
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
+    homeDashboard?: UID
     themeMode: ThemeMode = ThemeMode.SYSTEM
     chartLineScale: number = 1.5
     time24: boolean = false

@@ -57,11 +57,13 @@ const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
+const homeDashboard: Dashboard =
+    settingsStore.dashboards.find((dashboard) => dashboard.uid === settingsStore.homeDashboard) ??
+    settingsStore.dashboards[0] // show first dashboard if no Home Dashboard set
 const dashboard: Dashboard =
     props.dashboardUID != null
-        ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ??
-          settingsStore.dashboards[0])
-        : settingsStore.dashboards[0] // show first dashboard by default
+        ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ?? homeDashboard)
+        : homeDashboard
 
 const chartTypes = [...$enum(ChartType).values()].map((type) => ({
     value: type,
