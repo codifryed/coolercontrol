@@ -42,7 +42,7 @@ const addAlert = (): void => {
             header: t('views.alerts.newAlert'),
             position: 'center',
             modal: true,
-            dismissableMask: false,
+            dismissableMask: true,
         },
         data: {},
     })

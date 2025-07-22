@@ -42,7 +42,7 @@ const addCustomSensor = (): void => {
             header: t('components.wizards.customSensor.new'),
             position: 'center',
             modal: true,
-            dismissableMask: false,
+            dismissableMask: true,
         },
         data: {},
     })
