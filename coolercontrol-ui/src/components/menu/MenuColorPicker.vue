@@ -60,9 +60,11 @@ const closeAndReset = (): void => {
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)!
         .sensorsAndChannels.get(props.channelName)!.userColor = undefined
-    const defaultColor = settingsStore.allUIDeviceSettings
-        .get(props.deviceUID)!
-        .sensorsAndChannels.get(props.channelName)!.defaultColor
+    const defaultColor = colorStore.RgbToHex(
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceUID)!
+            .sensorsAndChannels.get(props.channelName)!.defaultColor,
+    )
     currentColor.value = defaultColor
     emit('colorChange', defaultColor)
     newColorApplied = true
