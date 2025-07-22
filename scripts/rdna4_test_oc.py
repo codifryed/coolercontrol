@@ -40,7 +40,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("CoolerControl-RDNA3/4-OC")
 
-__VERSION__ = "5"
+__VERSION__ = "6"
 
 
 class RDNA4Test:
@@ -125,24 +125,19 @@ class RDNA4Test:
     def find_amdgpu_hwmon_path(self) -> Path:
         if self.args.test:
             return Path("rdna4_data") / "rx9070xt" / "hwmon" / "hwmon5"
-        hwmon_path: Path | None = None
-        amd_gpu_count = 0
         for hwmon_name in glob.glob("/sys/class/hwmon/hwmon*/name"):
             if "amdgpu" in Path(hwmon_name).read_text():
-                amd_gpu_count += 1
-                if amd_gpu_count > 1:
-                    log.error(
-                        f"Multiple amdgpu hwmons detected. "
-                        f"Will use ONLY the first one for testing. "
-                        f"Additional location: {hwmon_name}"
-                    )
-                    continue
                 hwmon_path = Path(hwmon_name).parent
-                log.info(f"Found AMDGPU hwmon sysfs at {hwmon_path}")
-        if hwmon_path is None:
-            log.error("Could not find AMDGPU hwmon path. Exiting.")
-            sys.exit(1)
-        return hwmon_path
+                device_path = (hwmon_path / "device").resolve()
+                fan_curve_path = device_path / "gpu_od" / "fan_ctrl" / "fan_curve"
+                if fan_curve_path.exists():
+                    log.info(f"Found RDNA4 AMDGPU hwmon sysfs at {hwmon_path}")
+                    return hwmon_path
+                log.warning(
+                    f"Found amdgpu hwmon, but not RDNA4; fan_curve file not found in {hwmon_name}"
+                )
+        log.error("Could not find RDNA4 AMDGPU hwmon path. Exiting.")
+        sys.exit(1)
 
     def get_device_path(self) -> Path:
         if self.args.test:
