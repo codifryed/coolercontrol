@@ -409,7 +409,12 @@ const customSensorsTree = (): any => {
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 menus: [Menu.COLOR, Menu.RENAME],
-                subMenus: [SubMenu.MOVE_TOP, SubMenu.CUSTOM_SENSOR_DELETE, SubMenu.MOVE_BOTTOM],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.CUSTOM_SENSOR_DELETE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             })
         }
         return {
