@@ -99,6 +99,14 @@ const dashboardItems = computed(() => {
             },
         })
     }
+    const dashboardMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'dashboards')
+    if (dashboardMenuOrder?.children?.length) {
+        dashboardItems.sort((a: any, b: any) => {
+            const indexA = dashboardMenuOrder.children.indexOf(a.uid) ?? Number.MAX_SAFE_INTEGER
+            const indexB = dashboardMenuOrder.children.indexOf(b.uid) ?? Number.MAX_SAFE_INTEGER
+            return indexA - indexB
+        })
+    }
     return dashboardItems
 })
 const modesItems = computed(() => {
