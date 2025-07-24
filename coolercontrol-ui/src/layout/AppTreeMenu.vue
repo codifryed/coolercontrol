@@ -99,19 +99,8 @@ import SubMenuDisable from '@/components/menu/SubMenuDisable.vue'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 
-// interface Tree {
-//     label: string
-//     children?: Tree[]
-// }
 interface Tree {
-    // necessary for test filter
     [key: string]: any
-}
-
-interface PinnedItems {
-    // rootId: string
-    id: string
-    ref: any
 }
 
 const deviceStore = useDeviceStore()
@@ -163,7 +152,6 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
     }
 }
 
-// const filterText: Ref<string> = ref('')
 const treeRef = ref<InstanceType<typeof ElTree>>()
 const speedControlMenuClass = ({ isControllable }: TreeNodeData) =>
     isControllable ? 'speed-control-menu' : ''
@@ -172,21 +160,23 @@ const nodeProps = {
     label: 'label',
     class: speedControlMenuClass,
 }
-const data: Ref<Tree[]> = ref([])
 
-// Remove computed wrapper for menu data
-const pinnedItems: Ref<Array<PinnedItems>> = ref([])
+const data: Ref<Array<Tree>> = ref([])
+const pinnedItems: Ref<Array<Tree>> = ref([])
+
 const pinItem = (item: any) => {
-    pinnedItems.value.push({
-        id: item.id,
-        ref: item,
-    })
+    pinnedItems.value.push(item)
+    changedPinnedItems()
 }
 const isPinned = (item: any): boolean => {
     return pinnedItems.value.some((pinnedItem) => pinnedItem.id === item.id)
 }
 const unPinItem = (item: any) => {
     pinnedItems.value = pinnedItems.value.filter((pinnedItem) => pinnedItem.id !== item.id)
+    changedPinnedItems()
+}
+const changedPinnedItems = () => {
+    settingsStore.pinnedIds = pinnedItems.value.map((item: any) => item.id)
 }
 
 enum Menu {
@@ -222,24 +212,58 @@ enum SubMenu {
 const createTreeMenu = (): void => {
     data.value.length = 0
     const result: Tree[] = []
-    if (settingsStore.menuEntitiesAtBottom) {
-        result.push(customSensorsTree())
-        result.push(...devicesTreeArray())
-        result.push(dashboardsTree())
-        result.push(modesTree())
-        result.push(profilesTree())
-        result.push(functionsTree())
-        result.push(alertsTree())
-    } else {
-        result.push(dashboardsTree())
-        result.push(modesTree())
-        result.push(profilesTree())
-        result.push(functionsTree())
-        result.push(alertsTree())
-        result.push(customSensorsTree())
-        result.push(...devicesTreeArray())
+    result.push(dashboardsTree())
+    result.push(modesTree())
+    result.push(profilesTree())
+    result.push(functionsTree())
+    result.push(alertsTree())
+    result.push(customSensorsTree())
+    result.push(...devicesTreeArray())
+    if (settingsStore.menuOrder.length > 0) {
+        // Sort main menu items
+        result.sort((a, b) => {
+            const indexA =
+                settingsStore.menuOrder.findIndex((item) => item.id === a.id) ??
+                Number.MAX_SAFE_INTEGER
+            const indexB =
+                settingsStore.menuOrder.findIndex((item) => item.id === b.id) ??
+                Number.MAX_SAFE_INTEGER
+            return indexA - indexB
+        })
+
+        // Sort children of each menu item
+        result.forEach((menuItem) => {
+            const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === menuItem.id)
+            if (menuOrderItem?.children?.length) {
+                menuItem.children.sort((a: any, b: any) => {
+                    const indexA = menuOrderItem.children.indexOf(a.id) ?? Number.MAX_SAFE_INTEGER
+                    const indexB = menuOrderItem.children.indexOf(b.id) ?? Number.MAX_SAFE_INTEGER
+                    return indexA - indexB
+                })
+            }
+        })
     }
     data.value.push(...result)
+}
+
+const saveMenuOrderChanges = () => {
+    settingsStore.menuOrder = data.value.map((item: any) => {
+        return { id: item.id, children: item.children.map((child: any) => child.id) }
+    })
+}
+const createPinnedMenu = (): void => {
+    pinnedItems.value.length = 0
+    if (settingsStore.pinnedIds.length > 0) {
+        settingsStore.pinnedIds.forEach((id: string) => {
+            data.value.forEach((item: any) => {
+                item.children.forEach((child: any) => {
+                    if (child.id === id) {
+                        pinnedItems.value.push(child)
+                    }
+                })
+            })
+        })
+    }
 }
 
 const dashboardsTree = (): any => {
@@ -637,18 +661,20 @@ const devicesTreeArray = (): any[] => {
 }
 
 createTreeMenu()
+const expandAllMenusByDefault = (): void => {
+    if (settingsStore.expandedMenuIds != null) {
+        return // settings already exist
+    }
+    settingsStore.expandedMenuIds = data.value.map((node: any) => node.id)
+}
+expandAllMenusByDefault()
+createPinnedMenu()
 
 const formatFrequency = (value: string): string =>
     settingsStore.frequencyPrecision === 1
         ? value
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
 
-const expandedNodeIds = (): Array<string> => {
-    return data.value
-        .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
-        .map((node: any) => node.id)
-}
-const expandedIds = ref(expandedNodeIds())
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
@@ -933,11 +959,10 @@ const moveToBottom = (item: any, data: any): void => {
     data.push(item)
 }
 onMounted(async () => {
-    adjustTreeLeaves()
-
     // Listen for language change events, refresh menu
     window.addEventListener('language-changed', () => {
         createTreeMenu()
+        createPinnedMenu()
     })
 
     addGroup()
@@ -947,6 +972,7 @@ onMounted(async () => {
 onUnmounted(() => {
     window.removeEventListener('language-changed', () => {
         createTreeMenu()
+        createPinnedMenu()
     })
 })
 </script>
@@ -1004,9 +1030,14 @@ onUnmounted(() => {
                 :fallback-tolerance="15"
                 :clone="toRaw"
                 @start="setHoverMenuStatus(true)"
-                @end="setHoverMenuStatus(false)"
+                @end="
+                    () => {
+                        setHoverMenuStatus(false)
+                        changedPinnedItems()
+                    }
+                "
             >
-                <div v-for="pinnedItem in pinnedItems" :key="pinnedItem.id">
+                <div v-for="childItem in pinnedItems" :key="childItem.id">
                 </div>
             </VueDraggable>
         </el-collapse-item>
@@ -1028,13 +1059,18 @@ onUnmounted(() => {
         :fallback-tolerance="15"
         :clone="toRaw"
         @start="setHoverMenuStatus(true)"
-        @end="setHoverMenuStatus(false)"
+        @end="
+            () => {
+                setHoverMenuStatus(false)
+                saveMenuOrderChanges()
+            }
+        "
     >
         <el-collapse
             class="cc-root-items"
             expand-icon-position="left"
-            :model-value="expandedIds"
-            @change="(_activeNames) => addGroup()"
+            v-model="settingsStore.expandedMenuIds"
+            @change="addGroup"
             :before-collapse="() => hoverMenusAreClosed"
         >
             <el-collapse-item v-for="item in data" :name="item.id" :key="item.id">
@@ -1188,17 +1224,8 @@ onUnmounted(() => {
             node-key="id"
             empty-text="No Matches"
             :indent="deviceStore.getREMSize(0.5)"
-            :default-expanded-keys="expandedNodeIds()"
             :render-after-expand="false"
             :icon="TreeIcon"
-            @node-collapse="(node) => settingsStore.collapsedMenuNodeIds.push(node.id)"
-            @node-expand="
-                (node) => {
-                    const indexOfNode = settingsStore.collapsedMenuNodeIds.indexOf(node.id)
-                    if (indexOfNode < 0) return
-                    settingsStore.collapsedMenuNodeIds.splice(indexOfNode, 1)
-                }
-            "
         >
             <template #default="{ node, data }">
                 <el-dropdown
