@@ -43,6 +43,7 @@ import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewpor
 import { ElColorPicker, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
 import 'element-plus/es/components/color-picker/style/css'
+import 'element-plus/es/components/tree/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
@@ -1353,6 +1354,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+.el-tree {
+    --el-fill-color-blank: rgb(var(--colors-bg-one));
+    --el-font-size-base: 1rem;
+    --el-tree-text-color: rgb(var(--colors-text-color));
+    --el-tree-node-content-height: 2.5rem;
+    --el-tree-node-hover-bg-color: rgb(var(--colors-bg-two));
+    --el-text-color-placeholder: rgb(var(--colors-text-color));
+    --el-color-primary-light-9: rgb(var(--colors-bg-two));
+}
+
 .el-switch {
     --el-switch-on-color: rgb(var(--colors-accent));
     --el-switch-off-color: rgb(var(--colors-bg-one));
@@ -1426,5 +1437,26 @@ onUnmounted(() => {
     display: none;
     height: 0;
     width: 0;
+}
+
+.tree-text {
+    // This is THE WAY to handle elements overflowing with white-space: nowrap
+    // same as tw line-clamp-1
+    overflow: hidden;
+    display: -webkit-box;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+</style>
+
+<style lang="scss">
+.el-tree-node__content {
+    border-radius: 0.5rem;
+}
+
+.el-tree-node__expand-icon {
+    font-size: 1rem;
+    padding-left: 1px !important;
 }
 </style>
