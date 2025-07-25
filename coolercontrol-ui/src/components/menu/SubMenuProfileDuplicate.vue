@@ -35,6 +35,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'added', profileUID: UID): void
+    (e: 'close'): void
 }>()
 
 const { t } = useI18n()
@@ -68,18 +69,25 @@ const duplicateProfile = async (): Promise<void> => {
         life: 3000,
     })
     emit('added', newProfile.uid)
+    emit('close')
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.duplicate') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="duplicateProfile"
-        >
-            <svg-icon type="mdi" :path="mdiContentDuplicate" :size="deviceStore.getREMSize(1.2)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="duplicateProfile"
+    >
+        <svg-icon
+            type="mdi"
+            class="outline-0 !cursor-pointer"
+            :path="mdiContentDuplicate"
+            :size="deviceStore.getREMSize(1.25)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.duplicate') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

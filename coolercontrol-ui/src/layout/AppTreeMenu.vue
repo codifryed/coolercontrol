@@ -69,9 +69,9 @@ import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
 import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
 import SubMenuDashboardDuplicate from '@/components/menu/SubMenuDashboardDuplicate.vue'
-import MenuProfileDelete from '@/components/menu/MenuProfileDelete.vue'
+import SubMenuProfileDelete from '@/components/menu/SubMenuProfileDelete.vue'
 import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
-import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
+import SubMenuProfileDuplicate from '@/components/menu/SubMenuProfileDuplicate.vue'
 import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
 import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
 import MenuModeRename from '@/components/menu/MenuModeRename.vue'
@@ -100,6 +100,7 @@ import SubMenuDisable from '@/components/menu/SubMenuDisable.vue'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
+import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
 
 interface Tree {
     [key: string]: any
@@ -197,6 +198,8 @@ enum Menu {
     MODE_RENAME,
     PROFILE_INFO,
     PROFILE_ADD,
+    PROFILE_APPLY,
+    PROFILE_RENAME,
     FUNCTION_INFO,
     FUNCTION_ADD,
     ALERT_INFO,
@@ -213,6 +216,8 @@ enum SubMenu {
     MODE_UPDATE,
     MODE_DUPLICATE,
     MODE_DELETE,
+    PROFILE_DUPLICATE,
+    PROFILE_DELETE,
     MOVE_BOTTOM,
 }
 
@@ -360,16 +365,19 @@ const profilesTree = (): any => {
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
                 return {
-                    id: `profiles_${profile.uid}`,
+                    id: profile.uid,
                     label: profile.name,
                     icon: mdiChartLine,
                     deviceUID: 'Profiles',
                     uid: profile.uid,
                     to: { name: 'profiles', params: { profileUID: profile.uid } },
-                    options: [
-                        { profileRename: true },
-                        { profileDuplicate: true },
-                        { profileDelete: true },
+                    menus: [Menu.PROFILE_APPLY, Menu.PROFILE_RENAME],
+                    subMenus: [
+                        SubMenu.MOVE_TOP,
+                        SubMenu.PIN,
+                        SubMenu.PROFILE_DUPLICATE,
+                        SubMenu.PROFILE_DELETE,
+                        SubMenu.MOVE_BOTTOM,
                     ],
                 }
             }),
@@ -809,19 +817,23 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addProfile = (profileUID: UID): void => {
     const newProfile = settingsStore.profiles.find((profile) => profile.uid === profileUID)!
-    treeRef.value!.append(
-        {
-            id: `profiles_${newProfile.uid}`,
-            label: newProfile.name,
-            icon: mdiChartLine,
-            deviceUID: 'Profiles',
-            uid: newProfile.uid,
-            to: { name: 'profiles', params: { profileUID: newProfile.uid } },
-            options: [{ profileRename: true }, { profileDuplicate: true }, { profileDelete: true }],
-        },
-        'profiles',
-    )
-    adjustTreeLeaves()
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')
+    profilesParent?.children.push({
+        id: newProfile.uid,
+        label: newProfile.name,
+        icon: mdiChartLine,
+        deviceUID: 'Profiles',
+        uid: newProfile.uid,
+        to: { name: 'profiles', params: { profileUID: newProfile.uid } },
+        menus: [Menu.PROFILE_APPLY, Menu.PROFILE_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.PROFILE_DUPLICATE,
+            SubMenu.PROFILE_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
 
 interface ProfileUIDObj {
@@ -835,7 +847,8 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     if (route.params != null && route.params.profileUID === profileUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`profiles_${profileUID}`))
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')!
+    profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1437,6 +1450,16 @@ onUnmounted(() => {
                                         @name-change="(name: string) => (childItem.label = name)"
                                         @open="setHoverMenuStatus"
                                     />
+                                    <menu-profile-apply
+                                        v-else-if="menu === Menu.PROFILE_APPLY"
+                                        :profile-u-i-d="childItem.uid"
+                                    />
+                                    <menu-profile-rename
+                                        v-else-if="menu === Menu.PROFILE_RENAME"
+                                        :profile-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
                                 </div>
                                 <!-- More Options Menu -->
                                 <div
@@ -1533,6 +1556,22 @@ onUnmounted(() => {
                                                         v-else-if="subMenu === SubMenu.MODE_DELETE"
                                                         :mode-u-i-d="childItem.uid"
                                                         @deleted="deleteMode"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-profile-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.PROFILE_DUPLICATE
+                                                        "
+                                                        :profile-u-i-d="childItem.uid"
+                                                        @added="addProfile"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-profile-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.PROFILE_DELETE
+                                                        "
+                                                        :profile-u-i-d="childItem.uid"
+                                                        @deleted="deleteProfile"
                                                         @close="childItem.subMenuRef.hide()"
                                                     />
                                                     <sub-menu-move-bottom
