@@ -46,9 +46,8 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, inject, onMounted, onUnmounted, reactive, Reactive, ref, Ref, watch } from 'vue'
-import { ElDropdown, ElTree } from 'element-plus'
-import 'element-plus/es/components/tree/style/css'
+import { inject, onMounted, onUnmounted, ref, Ref, toRaw, watch } from 'vue'
+import { ElCollapse, ElCollapseItem } from 'element-plus'
 import 'element-plus/es/components/collapse/style/css'
 import Popover from 'primevue/popover'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
@@ -78,13 +77,11 @@ import MenuModeRename from '@/components/menu/MenuModeRename.vue'
 import SubMenuModeDelete from '@/components/menu/SubMenuModeDelete.vue'
 import SubMenuModeDuplicate from '@/components/menu/SubMenuModeDuplicate.vue'
 import SubMenuModeUpdate from '@/components/menu/SubMenuModeUpdate.vue'
-import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
 import MenuModeInfo from '@/components/menu/MenuModeInfo.vue'
 import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
 import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
 import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
-import TreeIcon from '@/components/TreeIcon.vue'
 import { AlertState } from '@/models/Alert.ts'
 import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
 import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
@@ -155,15 +152,6 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
         // channels, etc.
         return 1.5
     }
-}
-
-const treeRef = ref<InstanceType<typeof ElTree>>()
-const speedControlMenuClass = ({ isControllable }: TreeNodeData) =>
-    isControllable ? 'speed-control-menu' : ''
-const nodeProps = {
-    children: 'children',
-    label: 'label',
-    class: speedControlMenuClass,
 }
 
 const data: Ref<Array<Tree>> = ref([])
@@ -514,11 +502,6 @@ const setHoverMenuStatus = (isOpen: boolean): void => {
             element.removeAttribute('style')
         }
     }
-}
-
-const aSubMenuIsOpen: Ref<boolean> = ref(false)
-const subMenuStatusChange = (isOpen: boolean, _data: any): void => {
-    aSubMenuIsOpen.value = isOpen
 }
 
 const devicesTreeArray = (): any[] => {
@@ -964,27 +947,6 @@ emitter.on('alert-state-change', alertStateChange)
 watch(settingsStore.alertsActive, alertStateChange)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-const adjustTreeLeaves = (): void => {
-    const dynamicAdjustment = (): void => {
-        const mainMenu = document.getElementById('main-menu')
-        const children = mainMenu!.getElementsByClassName('el-tree-node__children')
-        for (const child of children) {
-            const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
-            if (els.length > 0) {
-                for (const el of els) {
-                    el.innerHTML = '<div class="w-2"/>'
-                    el.classList.add('border-l')
-                    el.classList.add('border-border-one/70')
-                    el.classList.add('!visible')
-                    el.classList.add('!h-[inherit]')
-                    el.classList.remove('el-icon')
-                    el.classList.add('w-2')
-                }
-            }
-        }
-    }
-    setTimeout(dynamicAdjustment)
-}
 
 // add group class to all collapse header items (used to show options menus on hover)
 const addGroup = (): void => {
@@ -1683,322 +1645,9 @@ onUnmounted(() => {
             </el-collapse-item>
         </el-collapse>
     </VueDraggable>
-    <div>
-        <el-tree
-            ref="treeRef"
-            id="main-menu"
-            class="w-full"
-            :data="data"
-            :props="nodeProps"
-            node-key="id"
-            empty-text="No Matches"
-            :indent="deviceStore.getREMSize(0.5)"
-            :render-after-expand="false"
-            :icon="TreeIcon"
-        >
-            <template #default="{ node, data }">
-                <el-dropdown
-                    :ref="(el) => (data.dropdownRef = el)"
-                    :id="data.id"
-                    class="ml-0.5 h-full w-full outline-none"
-                    :show-timeout="0"
-                    :hide-timeout="0"
-                    :disabled="data.options == null || data.options.length == 0"
-                    placement="top-end"
-                    :popper-options="{
-                        modifiers: [
-                            {
-                                name: 'offset',
-                                options: {
-                                    offset: [
-                                        0,
-                                        data.isControllable
-                                            ? -deviceStore.getREMSize(2.7)
-                                            : -deviceStore.getREMSize(2.4),
-                                    ],
-                                },
-                            },
-                        ],
-                    }"
-                    :teleported="true"
-                    :hide-on-click="false"
-                    :trigger="aSubMenuIsOpen ? 'click' : 'hover'"
-                >
-                    <!--This options with so many dropdowns causes a strange issue when scrolling-->
-                    <!--down a large list of sensors-->
-                    <!--:popper-options="{-->
-                    <!--modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],-->
-                    <!--}"-->
-                    <router-link
-                        class="flex h-full items-center justify-between outline-none"
-                        :class="{
-                            'text-accent':
-                                route.fullPath === '/' &&
-                                data.dashboardUID === settingsStore.homeDashboard,
-                        }"
-                        tabindex="0"
-                        exact
-                        :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
-                        :to="!data.to ? '' : data.to"
-                        v-slot="{ isActive }"
-                    >
-                        <div class="flex flex-row items-center min-w-0">
-                            <svg-icon
-                                v-if="data.icon"
-                                class="mr-1.5 min-w-6"
-                                :class="{
-                                    'text-accent': data.isActive,
-                                    'text-error': data.alertIsActive,
-                                }"
-                                type="mdi"
-                                :path="data.icon ?? ''"
-                                :style="{
-                                    color: deviceChannelColor(data.deviceUID, data.name).value,
-                                }"
-                                :size="
-                                    deviceStore.getREMSize(
-                                        deviceChannelIconSize(data.deviceUID, data.name),
-                                    )
-                                "
-                            />
-                            <div class="flex flex-col overflow-hidden">
-                                <div
-                                    class="tree-text leading-tight"
-                                    :class="{ 'mr-2': data.deviceUID && !data.name }"
-                                >
-                                    {{ node.label }}
-                                </div>
-                                <div v-if="data.isControllable" class="mt-0.5">
-                                    <menu-control-view
-                                        :device-u-i-d="data.deviceUID"
-                                        :channel-name="data.name"
-                                        :class="{ 'text-text-color-secondary': !isActive }"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex ml-2 justify-end">
-                            <div v-if="data.temp != null" class="items-end tree-data">
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.temp }}
-                                <span>°&nbsp;&nbsp;&nbsp;</span>
-                            </div>
-                            <div v-else-if="data.freq != null" class="items-end tree-data">
-                                {{
-                                    formatFrequency(
-                                        deviceChannelValues(data.deviceUID, data.name)!.freq!,
-                                    )
-                                }}
-                                <span style="font-size: 0.62rem">
-                                    {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
-                                </span>
-                            </div>
-                            <div v-else-if="data.watts != null" class="items-end tree-data">
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.watts }}
-                                <span style="font-size: 0.62rem">W&nbsp;&nbsp;&nbsp;</span>
-                            </div>
-                            <div
-                                v-else-if="data.duty != null && data.rpm == null"
-                                class="content-end tree-data"
-                            >
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
-                                <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
-                            </div>
-                            <div
-                                v-else-if="data.rpm != null && data.duty == null"
-                                class="items-end tree-data"
-                            >
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
-                                <span style="font-size: 0.7rem">rpm</span>
-                            </div>
-                            <div
-                                v-else-if="data.duty != null && data.rpm != null"
-                                class="items-end flex flex-col leading-none tree-data"
-                            >
-                                <span :class="{ 'mb-0.5': data.isControllable }">
-                                    {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
-                                    <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
-                                </span>
-                                <span :class="{ 'mt-0.5': data.isControllable }">
-                                    {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
-                                    <span style="font-size: 0.7rem">rpm</span>
-                                </span>
-                            </div>
-                        </div>
-                    </router-link>
-                    <template #dropdown>
-                        <div
-                            class="border border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center p-[2px]"
-                        >
-                            <div v-for="option in data.options">
-                                <menu-rename
-                                    v-if="option.rename"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                    @name-change="(value: string) => (data.label = value)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-color
-                                    v-else-if="option.color"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                    :color="data.color"
-                                    @color-reset="(newColor: Color) => (data.color = newColor)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-device-info
-                                    v-else-if="option.deviceInfo"
-                                    :device-u-i-d="data.deviceUID"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-info
-                                    v-else-if="option.dashboardInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-add
-                                    v-else-if="option.dashboardAdd"
-                                    @added="addDashbaord"
-                                />
-                                <menu-dashboard-home
-                                    v-else-if="option.dashboardHome"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @rearrange="rearrangeDashboards"
-                                />
-                                <menu-dashboard-rename
-                                    v-else-if="option.dashboardRename"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-duplicate
-                                    v-else-if="option.dashboardDuplicate"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @added="addDashbaord"
-                                />
-                                <menu-dashboard-delete
-                                    v-else-if="option.dashboardDelete"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @deleted="deleteDashboard"
-                                />
-                                <menu-mode-info
-                                    v-else-if="option.modeInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
-                                <menu-mode-update
-                                    v-else-if="option.modeUpdate"
-                                    :mode-u-i-d="data.uid"
-                                    @updated="activeModesChange"
-                                />
-                                <menu-mode-duplicate
-                                    v-else-if="option.modeDuplicate"
-                                    :mode-u-i-d="data.uid"
-                                    @added="addMode"
-                                />
-                                <menu-mode-rename
-                                    v-else-if="option.modeRename"
-                                    :mode-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-mode-delete
-                                    v-else-if="option.modeDelete"
-                                    :mode-u-i-d="data.uid"
-                                    @deleted="deleteMode"
-                                />
-                                <menu-profile-info
-                                    v-else-if="option.profileInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-profile-add
-                                    v-else-if="option.profileAdd"
-                                    @added="addProfile"
-                                />
-                                <menu-profile-duplicate
-                                    v-else-if="option.profileDuplicate"
-                                    :profile-u-i-d="data.uid"
-                                    @added="addProfile"
-                                />
-                                <menu-profile-rename
-                                    v-else-if="option.profileRename"
-                                    :profile-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-profile-delete
-                                    v-else-if="option.profileDelete"
-                                    :profile-u-i-d="data.uid"
-                                    @deleted="deleteProfile"
-                                />
-                                <menu-function-info
-                                    v-else-if="option.functionInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-function-add
-                                    v-else-if="option.functionAdd"
-                                    @added="addFunction"
-                                />
-                                <menu-function-duplicate
-                                    v-else-if="option.functionDuplicate"
-                                    :function-u-i-d="data.uid"
-                                    @added="addFunction"
-                                />
-                                <menu-function-rename
-                                    v-else-if="option.functionRename"
-                                    :function-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-function-delete
-                                    v-else-if="option.functionDelete"
-                                    :function-u-i-d="data.uid"
-                                    @deleted="deleteFunction"
-                                />
-                                <menu-alert-info
-                                    v-else-if="option.alertInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-alert-add v-else-if="option.alertAdd" />
-                                <menu-alert-rename
-                                    v-else-if="option.alertRename"
-                                    :alert-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-alert-delete
-                                    v-else-if="option.alertDelete"
-                                    :alert-u-i-d="data.uid"
-                                    @deleted="deleteAlert"
-                                />
-                                <menu-custom-sensor-info
-                                    v-else-if="option.customSensorInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
-                                <menu-custom-sensor-delete
-                                    v-else-if="option.customSensorDelete"
-                                    :device-u-i-d="data.deviceUID"
-                                    :custom-sensor-i-d="data.name"
-                                />
-                            </div>
-                        </div>
-                    </template>
-                </el-dropdown>
-            </template>
-        </el-tree>
-    </div>
 </template>
 
 <style scoped lang="scss">
-.el-tree {
-    --el-fill-color-blank: rgb(var(--colors-bg-one));
-    --el-font-size-base: 1rem;
-    --el-tree-text-color: rgb(var(--colors-text-color));
-    --el-tree-node-content-height: 2.5rem;
-    --el-tree-node-hover-bg-color: rgb(var(--colors-bg-two));
-    --el-text-color-placeholder: rgb(var(--colors-text-color));
-    --el-color-primary-light-9: rgb(var(--colors-bg-two));
-}
-
 .el-collapse {
     --el-fill-color-blank: rgb(var(--colors-bg-one));
     --el-collapse-header-text-color: rgb(var(--colors-text-color));
@@ -2034,13 +1683,6 @@ onUnmounted(() => {
     background-color: rgba(var(--colors-bg-two) / 0.625);
     border-radius: 0.5rem;
 }
-
-//.custom-tree-node {
-//    flex: 1;
-//    display: flex;
-//    align-items: center;
-//    justify-content: space-between;
-//}
 </style>
 <style lang="scss">
 /******************************************************************************************
@@ -2083,29 +1725,6 @@ onUnmounted(() => {
 .el-collapse-item__arrow {
     font-size: 1rem;
     //font-weight: 800;
-    padding-left: 1px !important;
-}
-
-.el-tree-node__content {
-    border-radius: 0.5rem;
-}
-
-.speed-control-menu {
-    --el-tree-node-content-height: 3rem;
-}
-
-.el-zoom-in-top-enter-action,
-.el-zoom-in-top-enter-to {
-    transition-duration: 0ms;
-    transition-delay: 0;
-}
-.el-zoom-in-top-leave-action,
-.el-zoom-in-top-leave-to {
-    transition-duration: 0ms;
-    transition-delay: 0;
-}
-.el-tree-node__expand-icon {
-    font-size: 1rem;
     padding-left: 1px !important;
 }
 </style>
