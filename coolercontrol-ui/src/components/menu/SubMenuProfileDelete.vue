@@ -52,9 +52,11 @@ const deleteProfile = (): void => {
     )
     if (profileIndex === -1) {
         console.error('Profile not found for removal: ' + profileUIDToDelete)
+        emit('close')
         return
     }
     if (profileUIDToDelete === '0') {
+        emit('close')
         return // can't delete default
     }
     const profileName = settingsStore.profiles[profileIndex].name
@@ -84,6 +86,7 @@ const deleteProfile = (): void => {
         accept: async () => {
             // emit needs to happen first for Profiles, since they're re-loaded in by deleting
             emit('deleted', profileUIDToDelete)
+            emit('close')
             await settingsStore.deleteProfile(profileUIDToDelete)
             toast.add({
                 severity: 'success',
@@ -91,7 +94,6 @@ const deleteProfile = (): void => {
                 detail: t('views.profiles.profileDeleted'),
                 life: 3000,
             })
-            emit('close')
         },
         reject: () => {
             emit('close')

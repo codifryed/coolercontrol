@@ -30,6 +30,7 @@ import MultiSelect from 'primevue/multiselect'
 import { ChannelMetric } from '@/models/ChannelSource.ts'
 import { storeToRefs } from 'pinia'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
+import { useRoute, useRouter } from 'vue-router'
 
 const emit = defineEmits<{
     (e: 'close'): void
@@ -56,6 +57,8 @@ interface AvailableChannelSources {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const router = useRouter()
+const route = useRoute()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const { t } = useI18n()
 
@@ -175,6 +178,14 @@ const updateValues = (): void => {
 const applyProfileToChannels = async (): Promise<void> => {
     const setting = new DeviceSettingWriteProfileDTO(props.profileUID)
     for (const channel of chosenChannels.value) {
+        // we route away from device channels currently open to avoid UI conflicts
+        if (
+            route.params != null &&
+            route.params.deviceUID === channel.deviceUID &&
+            route.params.channelName === channel.channelName
+        ) {
+            await router.push({ name: 'system-overview' })
+        }
         await settingsStore.saveDaemonDeviceSettingProfile(
             channel.deviceUID,
             channel.channelName,

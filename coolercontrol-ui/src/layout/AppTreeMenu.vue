@@ -1577,7 +1577,12 @@ onUnmounted(() => {
                                                         v-else-if="subMenu === SubMenu.MODE_DELETE"
                                                         :mode-u-i-d="childItem.uid"
                                                         @deleted="deleteMode"
-                                                        @close="childItem.subMenuRef.hide()"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
                                                     />
                                                     <sub-menu-profile-duplicate
                                                         v-else-if="
@@ -1593,6 +1598,12 @@ onUnmounted(() => {
                                                         "
                                                         :profile-u-i-d="childItem.uid"
                                                         @deleted="deleteProfile"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
                                                     />
                                                     <sub-menu-function-duplicate
                                                         v-else-if="

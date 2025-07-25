@@ -49,6 +49,7 @@ const duplicateProfile = async (): Promise<void> => {
     )
     if (profileToDuplicate == null) {
         console.error('Profile not found for duplication: ' + props.profileUID)
+        emit('close')
         return
     }
     const newProfile = new Profile(
