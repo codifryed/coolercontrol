@@ -1048,6 +1048,364 @@ onUnmounted(() => {
                 "
             >
                 <div v-for="childItem in pinnedItems" :key="childItem.id">
+                    <!--Pinned Elements Start-->
+                    <!--This is a complete copy from the childItems standard menu below-->
+                    <router-link
+                        class="flex h-10 group items-center justify-between outline-none rounded-lg"
+                        :class="{
+                            'h-12': childItem.isControllable,
+                            'hover:bg-bg-two': hoverMenusAreClosed,
+                            'pointer-events-none': !hoverMenusAreClosed,
+                            'text-accent':
+                                route.fullPath === '/' &&
+                                childItem.dashboardUID != null &&
+                                childItem.dashboardUID === settingsStore.homeDashboard,
+                        }"
+                        tabindex="0"
+                        exact
+                        :exact-active-class="childItem.to != null ? 'text-accent font-medium' : ''"
+                        :to="!childItem.to ? '' : childItem.to"
+                        v-slot="{ isActive }"
+                    >
+                        <!-- Child Item Icons and Labels -->
+                        <div class="flex flex-row items-center min-w-0">
+                            <div class="w-2 min-w-2 whitespace-pre" />
+                            <div
+                                class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
+                                :class="{ 'h-12': childItem.isControllable }"
+                            />
+                            <svg-icon
+                                v-if="childItem.icon"
+                                class="mr-1.5 min-w-6"
+                                :class="{
+                                    'text-accent': childItem.isActive,
+                                    'text-error': childItem.alertIsActive,
+                                }"
+                                type="mdi"
+                                :path="childItem.icon ?? ''"
+                                :style="{
+                                    color: deviceChannelColor(childItem.deviceUID, childItem.name)
+                                        .value,
+                                }"
+                                :size="
+                                    deviceStore.getREMSize(
+                                        deviceChannelIconSize(childItem.deviceUID, childItem.name),
+                                    )
+                                "
+                            />
+                            <div class="flex flex-col overflow-hidden">
+                                <div
+                                    class="tree-text leading-tight"
+                                    :class="{ 'mr-2': childItem.deviceUID && !childItem.name }"
+                                >
+                                    {{ childItem.label }}
+                                </div>
+                                <div v-if="childItem.isControllable" class="mt-0.5">
+                                    <menu-control-view
+                                        :device-u-i-d="childItem.deviceUID"
+                                        :channel-name="childItem.name"
+                                        :class="{ 'text-text-color-secondary': !isActive }"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sensor Metrics -->
+                        <div
+                            class="flex ml-2 mr-1 justify-end"
+                            :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
+                        >
+                            <div v-if="childItem.temp != null" class="items-end tree-data">
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.temp }}
+                                <span>°&nbsp;&nbsp;&nbsp;</span>
+                            </div>
+                            <div v-else-if="childItem.freq != null" class="items-end tree-data">
+                                {{
+                                    formatFrequency(
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .freq!,
+                                    )
+                                }}
+                                <span style="font-size: 0.62rem">
+                                    {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
+                                </span>
+                            </div>
+                            <div v-else-if="childItem.watts != null" class="items-end tree-data">
+                                {{
+                                    deviceChannelValues(childItem.deviceUID, childItem.name)!.watts
+                                }}
+                                <span style="font-size: 0.62rem">W&nbsp;&nbsp;&nbsp;</span>
+                            </div>
+                            <div
+                                v-else-if="childItem.duty != null && childItem.rpm == null"
+                                class="content-end tree-data"
+                            >
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.duty }}
+                                <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                            </div>
+                            <div
+                                v-else-if="childItem.rpm != null && childItem.duty == null"
+                                class="items-end tree-data"
+                            >
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.rpm }}
+                                <span style="font-size: 0.7rem">rpm</span>
+                            </div>
+                            <div
+                                v-else-if="childItem.duty != null && childItem.rpm != null"
+                                class="items-end flex flex-col leading-none tree-data"
+                            >
+                                <span :class="{ 'mb-0.5': childItem.isControllable }">
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .duty
+                                    }}
+                                    <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                </span>
+                                <span :class="{ 'mt-0.5': childItem.isControllable }">
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .rpm
+                                    }}
+                                    <span style="font-size: 0.7rem">rpm</span>
+                                </span>
+                            </div>
+                        </div>
+                        <!-- Hover Menu -->
+                        <div
+                            class="hidden mr-1 justify-end whitespace-normal"
+                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                        >
+                            <div v-for="menu in childItem.menus">
+                                <menu-color-picker
+                                    v-if="menu === Menu.COLOR"
+                                    :device-u-i-d="childItem.deviceUID"
+                                    :channel-name="childItem.name"
+                                    :color="
+                                        deviceChannelColor(childItem.deviceUID, childItem.name)
+                                            .value
+                                    "
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-rename
+                                    v-else-if="menu === Menu.RENAME"
+                                    :device-u-i-d="childItem.deviceUID"
+                                    :channel-name="childItem.name"
+                                    @click.stop
+                                    @name-change="(value: string) => (childItem.label = value)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-dashboard-home
+                                    v-else-if="menu === Menu.DASHBOARD_HOME"
+                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                    @home-set="homeDashboardSet"
+                                />
+                                <menu-dashboard-rename
+                                    v-else-if="menu === Menu.DASHBOARD_RENAME"
+                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-mode-activate
+                                    v-else-if="menu === Menu.MODE_ACTIVATE"
+                                    :mode-u-i-d="childItem.uid"
+                                />
+                                <menu-mode-rename
+                                    v-else-if="menu === Menu.MODE_RENAME"
+                                    :mode-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-profile-apply
+                                    v-else-if="menu === Menu.PROFILE_APPLY"
+                                    :profile-u-i-d="childItem.uid"
+                                />
+                                <menu-profile-rename
+                                    v-else-if="menu === Menu.PROFILE_RENAME"
+                                    :profile-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-function-apply
+                                    v-else-if="menu === Menu.FUNCTION_APPLY"
+                                    :function-u-i-d="childItem.uid"
+                                />
+                                <menu-function-rename
+                                    v-else-if="menu === Menu.FUNCTION_RENAME"
+                                    :function-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-alert-rename
+                                    v-else-if="menu === Menu.ALERT_RENAME"
+                                    :alert-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                            </div>
+                            <!-- More Options Menu -->
+                            <div
+                                v-if="childItem.subMenus"
+                                v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
+                            >
+                                <div
+                                    class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                                    @click.stop.prevent="
+                                        (event) => childItem.subMenuRef.toggle(event)
+                                    "
+                                >
+                                    <svg-icon
+                                        class="outline-0"
+                                        type="mdi"
+                                        :path="mdiDotsVertical"
+                                        :size="deviceStore.getREMSize(1.5)"
+                                    />
+                                </div>
+                                <Popover
+                                    :ref="(el) => (childItem.subMenuRef = el)"
+                                    @show="() => setHoverMenuStatus(true)"
+                                    @hide="() => setHoverMenuStatus(false)"
+                                >
+                                    <div
+                                        class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
+                                    >
+                                        <ul>
+                                            <li v-for="subMenu in childItem.subMenus">
+                                                <sub-menu-move-top
+                                                    v-if="subMenu === SubMenu.MOVE_TOP"
+                                                    @moveTop="moveToTop(childItem, pinnedItems)"
+                                                />
+                                                <sub-menu-pin
+                                                    v-else-if="subMenu === SubMenu.PIN"
+                                                    :is-pinned="isPinned(childItem)"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                    @pin="pinItem(childItem)"
+                                                    @unpin="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            unPinItem(childItem)
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-custom-sensor-delete
+                                                    v-else-if="
+                                                        subMenu === SubMenu.CUSTOM_SENSOR_DELETE
+                                                    "
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :custom-sensor-i-d="childItem.name"
+                                                />
+                                                <sub-menu-disable
+                                                    v-else-if="subMenu === SubMenu.DISABLE"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-dashboard-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.DASHBOARD_DUPLICATE
+                                                    "
+                                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                                    @added="addDashbaord"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-dashboard-delete
+                                                    v-else-if="subMenu === SubMenu.DASHBOARD_DELETE"
+                                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                                    @deleted="
+                                                        (dashboardUID: UID) => {
+                                                            deleteDashboard(dashboardUID)
+                                                            setHoverMenuStatus(false)
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-mode-update
+                                                    v-else-if="subMenu === SubMenu.MODE_UPDATE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @updated="activeModesChange"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-mode-duplicate
+                                                    v-else-if="subMenu === SubMenu.MODE_DUPLICATE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @added="addMode"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-mode-delete
+                                                    v-else-if="subMenu === SubMenu.MODE_DELETE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @deleted="deleteMode"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-profile-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.PROFILE_DUPLICATE
+                                                    "
+                                                    :profile-u-i-d="childItem.uid"
+                                                    @added="addProfile"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-profile-delete
+                                                    v-else-if="subMenu === SubMenu.PROFILE_DELETE"
+                                                    :profile-u-i-d="childItem.uid"
+                                                    @deleted="deleteProfile"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-function-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.FUNCTION_DUPLICATE
+                                                    "
+                                                    :function-u-i-d="childItem.uid"
+                                                    @added="addFunction"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-function-delete
+                                                    v-else-if="subMenu === SubMenu.FUNCTION_DELETE"
+                                                    :function-u-i-d="childItem.uid"
+                                                    @deleted="deleteFunction"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-alert-duplicate
+                                                    v-else-if="subMenu === SubMenu.ALERT_DUPLICATE"
+                                                    :alert-u-i-d="childItem.uid"
+                                                    @added="addAlert"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-alert-delete
+                                                    v-else-if="subMenu === SubMenu.ALERT_DELETE"
+                                                    :alert-u-i-d="childItem.uid"
+                                                    @deleted="deleteAlert"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-move-bottom
+                                                    v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
+                                                    @moveBottom="
+                                                        moveToBottom(childItem, pinnedItems)
+                                                    "
+                                                />
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </Popover>
+                            </div>
+                        </div>
+                    </router-link>
+                    <!--Pinned Elements End-->
                 </div>
             </VueDraggable>
         </el-collapse-item>
