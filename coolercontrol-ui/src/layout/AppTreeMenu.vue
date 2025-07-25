@@ -65,9 +65,9 @@ import SubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDele
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
-import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
+import SubMenuFunctionDelete from '@/components/menu/SubMenuFunctionDelete.vue'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
-import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
+import SubMenuFunctionDuplicate from '@/components/menu/SubMenuFunctionDuplicate.vue'
 import SubMenuDashboardDuplicate from '@/components/menu/SubMenuDashboardDuplicate.vue'
 import SubMenuProfileDelete from '@/components/menu/SubMenuProfileDelete.vue'
 import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
@@ -101,6 +101,7 @@ import { useDaemonState } from '@/stores/DaemonState.ts'
 import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
+import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
 
 interface Tree {
     [key: string]: any
@@ -202,6 +203,8 @@ enum Menu {
     PROFILE_RENAME,
     FUNCTION_INFO,
     FUNCTION_ADD,
+    FUNCTION_APPLY,
+    FUNCTION_RENAME,
     ALERT_INFO,
     ALERT_ADD,
     IS_CONTROLLABLE,
@@ -218,6 +221,8 @@ enum SubMenu {
     MODE_DELETE,
     PROFILE_DUPLICATE,
     PROFILE_DELETE,
+    FUNCTION_DUPLICATE,
+    FUNCTION_DELETE,
     MOVE_BOTTOM,
 }
 
@@ -397,16 +402,19 @@ const functionsTree = (): any => {
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
                 return {
-                    id: `functions_${fun.uid}`,
+                    id: fun.uid,
                     label: fun.name,
                     icon: mdiFlask,
                     deviceUID: 'Functions',
                     uid: fun.uid,
                     to: { name: 'functions', params: { functionUID: fun.uid } },
-                    options: [
-                        { functionRename: true },
-                        { functionDuplicate: true },
-                        { functionDelete: true },
+                    menus: [Menu.FUNCTION_APPLY, Menu.FUNCTION_RENAME],
+                    subMenus: [
+                        SubMenu.MOVE_TOP,
+                        SubMenu.PIN,
+                        SubMenu.FUNCTION_DUPLICATE,
+                        SubMenu.FUNCTION_DELETE,
+                        SubMenu.MOVE_BOTTOM,
                     ],
                 }
             }),
@@ -854,23 +862,23 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addFunction = (functionUID: UID): void => {
     const newFunction = settingsStore.functions.find((fun) => fun.uid === functionUID)!
-    treeRef.value!.append(
-        {
-            id: `functions_${newFunction.uid}`,
-            label: newFunction.name,
-            icon: mdiFlask,
-            deviceUID: 'Functions',
-            uid: newFunction.uid,
-            to: { name: 'functions', params: { functionUID: newFunction.uid } },
-            options: [
-                { functionRename: true },
-                { functionDuplicate: true },
-                { functionDelete: true },
-            ],
-        },
-        'functions',
-    )
-    adjustTreeLeaves()
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')
+    functionsParent?.children.push({
+        id: newFunction.uid,
+        label: newFunction.name,
+        icon: mdiFlask,
+        deviceUID: 'Functions',
+        uid: newFunction.uid,
+        to: { name: 'functions', params: { functionUID: newFunction.uid } },
+        menus: [Menu.FUNCTION_APPLY, Menu.FUNCTION_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.FUNCTION_DUPLICATE,
+            SubMenu.FUNCTION_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
 
 interface FunctionUIDObj {
@@ -885,7 +893,10 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')!
+    functionsParent.children = functionsParent.children.filter(
+        (item: any) => item.id !== functionUID,
+    )
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1460,6 +1471,16 @@ onUnmounted(() => {
                                         @name-change="(name: string) => (childItem.label = name)"
                                         @open="setHoverMenuStatus"
                                     />
+                                    <menu-function-apply
+                                        v-else-if="menu === Menu.FUNCTION_APPLY"
+                                        :function-u-i-d="childItem.uid"
+                                    />
+                                    <menu-function-rename
+                                        v-else-if="menu === Menu.FUNCTION_RENAME"
+                                        :function-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
                                 </div>
                                 <!-- More Options Menu -->
                                 <div
@@ -1572,7 +1593,27 @@ onUnmounted(() => {
                                                         "
                                                         :profile-u-i-d="childItem.uid"
                                                         @deleted="deleteProfile"
+                                                    />
+                                                    <sub-menu-function-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.FUNCTION_DUPLICATE
+                                                        "
+                                                        :function-u-i-d="childItem.uid"
+                                                        @added="addFunction"
                                                         @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-function-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.FUNCTION_DELETE
+                                                        "
+                                                        :function-u-i-d="childItem.uid"
+                                                        @deleted="deleteFunction"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
                                                     />
                                                     <sub-menu-move-bottom
                                                         v-else-if="subMenu === SubMenu.MOVE_BOTTOM"

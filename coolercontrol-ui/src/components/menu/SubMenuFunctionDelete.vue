@@ -35,6 +35,7 @@ interface Props {
 
 const emit = defineEmits<{
     (e: 'deleted', functionUID: UID): void
+    (e: 'close'): void
 }>()
 
 const props = defineProps<Props>()
@@ -52,9 +53,11 @@ const deleteFunction = (): void => {
     )
     if (functionIndex === -1) {
         console.error('Function not found for removal: ' + functionUIDToDelete)
+        emit('close')
         return
     }
     if (functionUIDToDelete === '0') {
+        emit('close')
         return // can't delete default
     }
     const functionName = settingsStore.functions[functionIndex].name
@@ -82,20 +85,25 @@ const deleteFunction = (): void => {
                 life: 3000,
             })
             emit('deleted', functionUIDToDelete)
+            emit('close')
+        },
+        reject: () => {
+            emit('close')
         },
     })
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('common.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteFunction"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="deleteFunction"
+    >
+        <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+        <span class="ml-1.5">
+            {{ t('common.delete') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>
