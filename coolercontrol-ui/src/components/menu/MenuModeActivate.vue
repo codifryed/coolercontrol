@@ -19,55 +19,46 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiContentDuplicate } from '@mdi/js'
+import { mdiBookmarkCheckOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { UID } from '@/models/Device.ts'
 import { useI18n } from 'vue-i18n'
+import { UID } from '@/models/Device.ts'
 
-interface Props {
+const props = defineProps<{
     modeUID: UID
-}
-
-const props = defineProps<Props>()
-const emit = defineEmits<{
-    (e: 'added', modeUID: UID): void
-    (e: 'close'): void
 }>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const duplicateMode = async (): Promise<void> => {
-    const modeToDuplicate = settingsStore.modes.find((mode) => mode.uid === props.modeUID)
-    if (modeToDuplicate == null) {
-        console.error('Mode not found for duplication: ' + props.modeUID)
-        emit('close')
-        return
-    }
-    const newMode = await settingsStore.duplicateMode(props.modeUID)
-    if (newMode != null) emit('added', newMode.uid)
-    emit('close')
+const activateMode = async (): Promise<void> => {
+    // auto-reloads active modes from the new active mode SSE (and triggers menu update)
+    await settingsStore.activateMode(props.modeUID)
 }
 </script>
 
 <template>
-    <Button
-        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
-        @click.stop.prevent="duplicateMode"
+    <div
+        v-tooltip.top="{
+            value: t('views.mode.activateMode'),
+            disabled: props.modeUID === settingsStore.modeActiveCurrent,
+        }"
     >
-        <svg-icon
-            type="mdi"
-            class="outline-0 !cursor-pointer"
-            :path="mdiContentDuplicate"
-            :size="deviceStore.getREMSize(1.25)"
-        />
-        <span class="ml-1.5">
-            {{ t('layout.menu.tooltips.duplicate') }}
-        </span>
-    </Button>
+        <Button
+            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
+            :disabled="props.modeUID === settingsStore.modeActiveCurrent"
+            @click.stop.prevent="activateMode"
+        >
+            <svg-icon
+                type="mdi"
+                :path="mdiBookmarkCheckOutline"
+                :size="deviceStore.getREMSize(1.5)"
+            />
+        </Button>
+    </div>
 </template>
 
 <style scoped lang="scss"></style>

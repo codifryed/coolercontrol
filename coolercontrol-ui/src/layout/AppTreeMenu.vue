@@ -74,9 +74,9 @@ import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
 import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
 import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
 import MenuModeRename from '@/components/menu/MenuModeRename.vue'
-import MenuModeDelete from '@/components/menu/MenuModeDelete.vue'
-import MenuModeDuplicate from '@/components/menu/MenuModeDuplicate.vue'
-import MenuModeUpdate from '@/components/menu/MenuModeUpdate.vue'
+import SubMenuModeDelete from '@/components/menu/SubMenuModeDelete.vue'
+import SubMenuModeDuplicate from '@/components/menu/SubMenuModeDuplicate.vue'
+import SubMenuModeUpdate from '@/components/menu/SubMenuModeUpdate.vue'
 import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
 import MenuModeInfo from '@/components/menu/MenuModeInfo.vue'
 import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
@@ -98,6 +98,7 @@ import SubMenuMoveBottom from '@/components/menu/SubMenuMoveBottom.vue'
 import SubMenuDisable from '@/components/menu/SubMenuDisable.vue'
 import { useDaemonState } from '@/stores/DaemonState.ts'
 import SubMenuPin from '@/components/menu/SubMenuPin.vue'
+import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 
 interface Tree {
     [key: string]: any
@@ -191,6 +192,8 @@ enum Menu {
     DASHBOARD_RENAME,
     MODE_INFO,
     MODE_ADD,
+    MODE_ACTIVATE,
+    MODE_RENAME,
     PROFILE_INFO,
     PROFILE_ADD,
     FUNCTION_INFO,
@@ -206,6 +209,9 @@ enum SubMenu {
     CUSTOM_SENSOR_DELETE,
     DASHBOARD_DUPLICATE,
     DASHBOARD_DELETE,
+    MODE_UPDATE,
+    MODE_DUPLICATE,
+    MODE_DELETE,
     MOVE_BOTTOM,
 }
 
@@ -307,12 +313,12 @@ const modesTree = (): any => {
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
         menus: [Menu.MODE_INFO, Menu.MODE_ADD],
-        submenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
             const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
             return {
-                id: `modes_${mode.uid}`,
+                id: mode.uid,
                 label: mode.name,
                 icon: isActive
                     ? mdiBookmarkCheckOutline
@@ -324,11 +330,14 @@ const modesTree = (): any => {
                 isActive: isActive,
                 isRecentlyActive: isRecentlyActive,
                 to: { name: 'modes', params: { modeUID: mode.uid } },
-                options: [
-                    { modeRename: true },
-                    { modeUpdate: true },
-                    { modeDuplicate: true },
-                    { modeDelete: true },
+                menus: [Menu.MODE_ACTIVATE, Menu.MODE_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.MODE_UPDATE,
+                    SubMenu.MODE_DUPLICATE,
+                    SubMenu.MODE_DELETE,
+                    SubMenu.MOVE_BOTTOM,
                 ],
             }
         }),
@@ -425,6 +434,7 @@ const customSensorsTree = (): any => {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const temp of device.status.temps) {
             sensorsChildren.push({
+                // This prefix is needed, as names are not unique across devices
                 id: `custom-sensors_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
@@ -737,20 +747,18 @@ const homeDashboardSet = (): void => {
  * @param {string} _ - the UID of the mode that was just activated/deactivated
  */
 const activeModesChange = async (_: UID): Promise<void> => {
-    treeRef
-        .value!.getNode('modes')
-        .getChildren()
-        .forEach((data: TreeNodeData) => {
-            const isActive: boolean = settingsStore.modeActiveCurrent === data.uid
-            const isRecentlyActive: boolean = settingsStore.modeActivePrevious === data.uid
-            data.icon = isActive
-                ? mdiBookmarkCheckOutline
-                : isRecentlyActive
-                  ? mdiBookmarkOffOutline
-                  : mdiBookmarkOutline
-            data.isActive = isActive
-            data.isRecentlyActive = isRecentlyActive
-        })
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    modesParent?.children.forEach((item: any) => {
+        const isActive: boolean = settingsStore.modeActiveCurrent === item.uid
+        const isRecentlyActive: boolean = settingsStore.modeActivePrevious === item.uid
+        item.icon = isActive
+            ? mdiBookmarkCheckOutline
+            : isRecentlyActive
+              ? mdiBookmarkOffOutline
+              : mdiBookmarkOutline
+        item.isActive = isActive
+        item.isRecentlyActive = isRecentlyActive
+    })
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
@@ -762,30 +770,30 @@ const addMode = (modeUID: UID): void => {
     const newMode = settingsStore.modes.find((mode) => mode.uid === modeUID)!
     const isActive: boolean = settingsStore.modeActiveCurrent === newMode.uid
     const isRecentlyActive: boolean = settingsStore.modeActivePrevious === newMode.uid
-    treeRef.value!.append(
-        {
-            id: `modes_${newMode.uid}`,
-            label: newMode.name,
-            icon: isActive
-                ? mdiBookmarkCheckOutline
-                : isRecentlyActive
-                  ? mdiBookmarkOffOutline
-                  : mdiBookmarkOutline,
-            deviceUID: 'Modes',
-            uid: newMode.uid,
-            isActive: isActive,
-            isRecentlyActive: isRecentlyActive,
-            to: { name: 'modes', params: { modeUID: newMode.uid } },
-            options: [
-                { modeRename: true },
-                { modeUpdate: true },
-                { modeDuplicate: true },
-                { modeDelete: true },
-            ],
-        },
-        'modes',
-    )
-    adjustTreeLeaves()
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    modesParent!.children.push({
+        id: newMode.uid,
+        label: newMode.name,
+        icon: isActive
+            ? mdiBookmarkCheckOutline
+            : isRecentlyActive
+              ? mdiBookmarkOffOutline
+              : mdiBookmarkOutline,
+        deviceUID: 'Modes',
+        uid: newMode.uid,
+        isActive: isActive,
+        isRecentlyActive: isRecentlyActive,
+        to: { name: 'modes', params: { modeUID: newMode.uid } },
+        menus: [Menu.MODE_ACTIVATE, Menu.MODE_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.MODE_UPDATE,
+            SubMenu.MODE_DUPLICATE,
+            SubMenu.MODE_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
 
 interface ModeUIDObj {
@@ -799,7 +807,8 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`modes_${modeUID}`))
+    const modesParent = data.value.find((item: any) => item.id === 'modes')!
+    modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
 }
 
 const addProfile = (profileUID: UID): void => {

@@ -26,6 +26,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 
 interface Props {
     modeUID: UID
@@ -34,6 +35,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'updated', modeUID: UID): void
+    (e: 'close'): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -56,32 +58,34 @@ const updateModeWithCurrentSettings = async (): Promise<void> => {
         accept: async () => {
             const successful = await settingsStore.updateModeSettings(props.modeUID)
             if (successful) emit('updated', props.modeUID)
+            emit('close')
+        },
+        reject: () => {
+            emit('close')
         },
     })
 }
-const isActivated = false
+const isActivated = computed(() => settingsStore.modeActiveCurrent === props.modeUID)
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{
-            value: t('layout.menu.tooltips.updateWithCurrentSettings'),
-            disabled: isActivated,
-        }"
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 outline-none"
+        :class="{ 'hover:text-text-color hover:bg-surface-hover': !isActivated }"
+        :disabled="isActivated"
+        @click.stop.prevent="updateModeWithCurrentSettings"
     >
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="updateModeWithCurrentSettings"
-            :disabled="isActivated"
-        >
-            <svg-icon
-                type="mdi"
-                :class="{ 'cursor-default opacity-50': isActivated }"
-                :path="mdiUploadOutline"
-                :size="deviceStore.getREMSize(1.5)"
-            />
-        </Button>
-    </div>
+        <svg-icon
+            type="mdi"
+            class="outline-0 !cursor-pointer"
+            :class="{ '!cursor-default opacity-50': isActivated }"
+            :path="mdiUploadOutline"
+            :size="deviceStore.getREMSize(1.5)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.updateWithCurrentSettings') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>
