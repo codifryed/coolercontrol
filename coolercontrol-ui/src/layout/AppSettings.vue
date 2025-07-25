@@ -245,20 +245,6 @@ const applyGenericDaemonChange = _.debounce(
     2000,
 )
 
-const applyQuickUIRefresh = _.debounce(() => deviceStore.reloadUI(), 1000)
-
-const applyEntitiesBelowSensorsChange = (value: boolean | string | number): void => {
-    toast.add({
-        severity: 'success',
-        summary: t('common.success'),
-        detail: Boolean(value)
-            ? t('layout.settings.entitiesBelowSensorsEnabledMessage')
-            : t('layout.settings.entitiesBelowSensorsDisabledMessage'),
-        life: 3000,
-    })
-    applyQuickUIRefresh()
-}
-
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
 const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
 const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
