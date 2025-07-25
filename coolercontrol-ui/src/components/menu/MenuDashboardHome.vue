@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
-import { mdiHomeAnalytics } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiHomeAnalytics } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -57,7 +57,7 @@ const setDashboardAsHome = (): void => {
             @click="setDashboardAsHome"
             :disabled="props.dashboardUID === settingsStore.homeDashboard"
         >
-            <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.2)" />
+            <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>
