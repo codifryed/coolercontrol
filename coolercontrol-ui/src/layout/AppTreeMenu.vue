@@ -89,7 +89,7 @@ import { AlertState } from '@/models/Alert.ts'
 import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
 import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
 import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
-import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
+import SubMenuAlertDelete from '@/components/menu/SubMenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -102,6 +102,7 @@ import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
 import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
+import SubMenuAlertDuplicate from '@/components/menu/SubMenuAlertDuplicate.vue'
 
 interface Tree {
     [key: string]: any
@@ -207,6 +208,7 @@ enum Menu {
     FUNCTION_RENAME,
     ALERT_INFO,
     ALERT_ADD,
+    ALERT_RENAME,
     IS_CONTROLLABLE,
 }
 enum SubMenu {
@@ -223,6 +225,8 @@ enum SubMenu {
     PROFILE_DELETE,
     FUNCTION_DUPLICATE,
     FUNCTION_DELETE,
+    ALERT_DUPLICATE,
+    ALERT_DELETE,
     MOVE_BOTTOM,
 }
 
@@ -433,14 +437,21 @@ const alertsTree = (): any => {
         children: settingsStore.alerts.map((alert) => {
             const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
             return {
-                id: `alerts_${alert.uid}`,
+                id: alert.uid,
                 label: alert.name,
                 icon: isActive ? mdiBellRingOutline : mdiBellOutline,
                 deviceUID: 'Alerts',
                 uid: alert.uid,
                 alertIsActive: isActive,
                 to: { name: 'alerts', params: { alertUID: alert.uid } },
-                options: [{ alertRename: true }, { alertDelete: true }],
+                menus: [Menu.ALERT_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.ALERT_DUPLICATE,
+                    SubMenu.ALERT_DELETE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             }
         }),
     }
@@ -900,50 +911,53 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-interface AlertUIDObj {
-    alertUID: UID
-}
-
-const addAlert = (alertUIDObj: AlertUIDObj): void => {
-    const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUIDObj.alertUID)
+const addAlert = (alertUID: UID): void => {
+    const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUID)
     if (newAlert == null) {
-        console.error('Alert with UID: ' + alertUIDObj.alertUID + ' not found')
+        console.error('Alert with UID: ' + alertUID + ' not found')
         return
     }
     const isActive = newAlert.state === AlertState.Active
-    treeRef.value!.append(
-        {
-            id: `alerts_${newAlert.uid}`,
-            label: newAlert.name,
-            icon: isActive ? mdiBellRingOutline : mdiBellOutline,
-            deviceUID: 'Alerts',
-            uid: newAlert.uid,
-            alertIsActive: isActive,
-            to: { name: 'alerts', params: { alertUID: newAlert.uid } },
-            options: [{ alertRename: true }, { alertDelete: true }],
-        },
-        'alerts',
-    )
-    adjustTreeLeaves()
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')
+    alertsParent?.children.push({
+        id: newAlert.uid,
+        label: newAlert.name,
+        icon: isActive ? mdiBellRingOutline : mdiBellOutline,
+        deviceUID: 'Alerts',
+        uid: newAlert.uid,
+        alertIsActive: isActive,
+        to: { name: 'alerts', params: { alertUID: newAlert.uid } },
+        menus: [Menu.ALERT_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.ALERT_DUPLICATE,
+            SubMenu.ALERT_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
-emitter.on('alert-add-menu', addAlert)
+interface AlertUIDObj {
+    alertUID: UID
+}
+const addAlertMenu = (alertUIDObj: AlertUIDObj) => addAlert(alertUIDObj.alertUID)
+emitter.on('alert-add-menu', addAlertMenu)
 
 const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`alerts_${alertUID}`))
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
+    alertsParent.children = alertsParent.children.filter((item: any) => item.id !== alertUID)
 }
 
 const alertStateChange = (): void => {
-    treeRef
-        .value!.getNode('alerts')
-        .getChildren()
-        .forEach((data: TreeNodeData) => {
-            const isActive = settingsStore.alertsActive.includes(data.uid)
-            data.alertIsActive = isActive
-            data.icon = isActive ? mdiBellRingOutline : mdiBellOutline
-        })
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
+    alertsParent.children.forEach((item: any) => {
+        const isActive = settingsStore.alertsActive.includes(item.uid)
+        item.alertIsActive = isActive
+        item.icon = isActive ? mdiBellRingOutline : mdiBellOutline
+    })
 }
 emitter.on('alert-state-change', alertStateChange)
 
@@ -1481,6 +1495,12 @@ onUnmounted(() => {
                                         @name-change="(name: string) => (childItem.label = name)"
                                         @open="setHoverMenuStatus"
                                     />
+                                    <menu-alert-rename
+                                        v-else-if="menu === Menu.ALERT_RENAME"
+                                        :alert-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
                                 </div>
                                 <!-- More Options Menu -->
                                 <div
@@ -1619,6 +1639,25 @@ onUnmounted(() => {
                                                         "
                                                         :function-u-i-d="childItem.uid"
                                                         @deleted="deleteFunction"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-alert-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_DUPLICATE
+                                                        "
+                                                        :alert-u-i-d="childItem.uid"
+                                                        @added="addAlert"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-alert-delete
+                                                        v-else-if="subMenu === SubMenu.ALERT_DELETE"
+                                                        :alert-u-i-d="childItem.uid"
+                                                        @deleted="deleteAlert"
                                                         @close="
                                                             () => {
                                                                 setHoverMenuStatus(false)

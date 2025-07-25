@@ -33,6 +33,7 @@ interface Props {
 
 const emit = defineEmits<{
     (e: 'deleted', alertUID: UID): void
+    (e: 'close'): void
 }>()
 
 const props = defineProps<Props>()
@@ -49,6 +50,7 @@ const deleteAlert = (): void => {
     )
     if (alertIndex === -1) {
         console.error('Alert not found for removal: ' + alertUIDToDelete)
+        emit('close')
         return
     }
     const alertName = settingsStore.alerts[alertIndex].name
@@ -59,20 +61,25 @@ const deleteAlert = (): void => {
         accept: async () => {
             const successful = await settingsStore.deleteAlert(alertUIDToDelete)
             if (successful) emit('deleted', alertUIDToDelete)
+            emit('close')
+        },
+        reject: () => {
+            emit('close')
         },
     })
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteAlert"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="deleteAlert"
+    >
+        <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+        <span class="ml-1.5">
+            {{ t('views.alerts.deleteAlert') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>
