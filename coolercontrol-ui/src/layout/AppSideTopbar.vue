@@ -90,9 +90,9 @@ const dashboardItems = computed(() => {
     const dashboardItems = []
     for (const dashboard of settingsStore.dashboards) {
         dashboardItems.push({
+            uid: dashboard.uid,
             label: dashboard.name,
             mdiIcon: mdiChartBoxOutline,
-            uid: dashboard.uid,
             command: async () => {
                 dashboardMenuRef.value?.handleClose()
                 await router.push({ name: 'dashboards', params: { dashboardUID: dashboard.uid } })
@@ -102,9 +102,11 @@ const dashboardItems = computed(() => {
     const dashboardMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'dashboards')
     if (dashboardMenuOrder?.children?.length) {
         dashboardItems.sort((a: any, b: any) => {
-            const indexA = dashboardMenuOrder.children.indexOf(a.uid) ?? Number.MAX_SAFE_INTEGER
-            const indexB = dashboardMenuOrder.children.indexOf(b.uid) ?? Number.MAX_SAFE_INTEGER
-            return indexA - indexB
+            const getIndex = (item: any) => {
+                const index = dashboardMenuOrder.children.indexOf(item.uid)
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            return getIndex(a) - getIndex(b)
         })
     }
     return dashboardItems
@@ -115,6 +117,7 @@ const modesItems = computed(() => {
         const isActive = settingsStore.modeActiveCurrent === mode.uid
         const isRecentlyActive = settingsStore.modeActivePrevious === mode.uid
         menuItems.push({
+            uid: mode.uid,
             label: mode.name,
             isActive: isActive,
             isRecentlyActive: isRecentlyActive,
@@ -126,6 +129,16 @@ const modesItems = computed(() => {
             command: async () => {
                 await settingsStore.activateMode(mode.uid)
             },
+        })
+    }
+    const modeMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'modes')
+    if (modeMenuOrder?.children?.length) {
+        menuItems.sort((a: any, b: any) => {
+            const getIndex = (item: any) => {
+                const index = modeMenuOrder.children.indexOf(item.uid)
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            return getIndex(a) - getIndex(b)
         })
     }
     return menuItems

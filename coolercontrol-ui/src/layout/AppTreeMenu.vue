@@ -222,13 +222,13 @@ const createTreeMenu = (): void => {
     if (settingsStore.menuOrder.length > 0) {
         // Sort main menu items
         result.sort((a, b) => {
-            const indexA =
-                settingsStore.menuOrder.findIndex((item) => item.id === a.id) ??
-                Number.MAX_SAFE_INTEGER
-            const indexB =
-                settingsStore.menuOrder.findIndex((item) => item.id === b.id) ??
-                Number.MAX_SAFE_INTEGER
-            return indexA - indexB
+            const getIndex = (item: any) => {
+                const index = settingsStore.menuOrder.findIndex(
+                    (menuItem) => menuItem.id === item.id,
+                )
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            return getIndex(a) - getIndex(b)
         })
 
         // Sort children of each menu item
@@ -236,9 +236,11 @@ const createTreeMenu = (): void => {
             const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === menuItem.id)
             if (menuOrderItem?.children?.length) {
                 menuItem.children.sort((a: any, b: any) => {
-                    const indexA = menuOrderItem.children.indexOf(a.id) ?? Number.MAX_SAFE_INTEGER
-                    const indexB = menuOrderItem.children.indexOf(b.id) ?? Number.MAX_SAFE_INTEGER
-                    return indexA - indexB
+                    const getIndex = (item: any) => {
+                        const index = menuOrderItem.children.indexOf(item.id)
+                        return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                    }
+                    return getIndex(a) - getIndex(b)
                 })
             }
         })
