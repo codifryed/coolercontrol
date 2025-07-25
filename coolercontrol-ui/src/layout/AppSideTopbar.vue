@@ -391,7 +391,7 @@ const addItems = computed(() => [
                                         ? mdiHomeAnalytics
                                         : (item.mdiIcon ?? '')
                                 "
-                                :size="getREMSize(1.25)"
+                                :size="getREMSize(1.325)"
                             />
                             <span
                                 class="ml-1.5"

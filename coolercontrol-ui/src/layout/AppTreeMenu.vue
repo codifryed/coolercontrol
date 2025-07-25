@@ -142,7 +142,7 @@ const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefi
         deviceUID.startsWith('Profiles') ||
         deviceUID.startsWith('Functions')
     ) {
-        return 1.0
+        return 1.25
     } else if (deviceUID && !name) {
         // Device roots
         return 1.75
