@@ -280,6 +280,7 @@ const dashboardsTree = (): any => {
         id: 'dashboards',
         label: t('layout.menu.dashboards'),
         icon: mdiChartBoxMultipleOutline,
+        color: '#FF7F00',
         name: null, // devices should not have names
         menus: [Menu.DASHBOARD_INFO, Menu.DASHBOARD_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
@@ -312,6 +313,7 @@ const modesTree = (): any => {
         id: 'modes',
         label: t('layout.menu.modes'),
         icon: mdiBookmarkMultipleOutline,
+        color: '#7F00FF',
         name: null, // devices should not have names
         menus: [Menu.MODE_INFO, Menu.MODE_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
@@ -351,6 +353,7 @@ const profilesTree = (): any => {
         label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
+        color: '#007FFF',
         menus: [Menu.PROFILE_INFO, Menu.PROFILE_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.profiles
@@ -378,6 +381,7 @@ const functionsTree = (): any => {
         id: 'functions',
         label: t('layout.menu.functions'),
         icon: mdiFlaskOutline,
+        color: '#7FFF00',
         name: null, // devices should not have names
         menus: [Menu.FUNCTION_INFO, Menu.FUNCTION_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
@@ -407,6 +411,7 @@ const alertsTree = (): any => {
         label: t('layout.menu.alerts'),
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
+        color: '#FF007F',
         menus: [Menu.ALERT_INFO, Menu.ALERT_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
         children: settingsStore.alerts.map((alert) => {
@@ -439,8 +444,6 @@ const customSensorsTree = (): any => {
                 id: `custom-sensors_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
-                hasColor: true,
-                color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
@@ -514,8 +517,6 @@ const devicesTreeArray = (): any[] => {
                 id: `${device.uid}_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
-                hasColor: true,
-                color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
                 to: {
                     name: 'single-dashboard',
@@ -534,8 +535,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSineWave,
                     to: {
                         name: 'single-dashboard',
@@ -555,8 +554,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiLightningBoltCircle,
                     to: {
                         name: 'single-dashboard',
@@ -576,8 +573,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSpeedometer,
                     to: {
                         name: 'single-dashboard',
@@ -612,8 +607,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channelName}`,
                     label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
                     name: channelName,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channelName),
                     icon: mdiFan,
                     to: {
                         name: 'device-speed',
@@ -687,7 +680,7 @@ const formatFrequency = (value: string): string =>
     settingsStore.frequencyPrecision === 1
         ? value
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
-
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
@@ -739,6 +732,7 @@ const homeDashboardSet = (): void => {
     })
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
  * Updates the mode tree nodes to reflect the current active modes.
  *
@@ -812,6 +806,7 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addProfile = (profileUID: UID): void => {
     const newProfile = settingsStore.profiles.find((profile) => profile.uid === profileUID)!
     treeRef.value!.append(
@@ -843,6 +838,7 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     treeRef.value!.remove(treeRef.value!.getNode(`profiles_${profileUID}`))
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addFunction = (functionUID: UID): void => {
     const newFunction = settingsStore.functions.find((fun) => fun.uid === functionUID)!
     treeRef.value!.append(
@@ -879,6 +875,7 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 interface AlertUIDObj {
     alertUID: UID
 }
@@ -928,6 +925,7 @@ emitter.on('alert-state-change', alertStateChange)
 
 watch(settingsStore.alertsActive, alertStateChange)
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const adjustTreeLeaves = (): void => {
     const dynamicAdjustment = (): void => {
         const mainMenu = document.getElementById('main-menu')
@@ -1096,7 +1094,9 @@ onUnmounted(() => {
                                 type="mdi"
                                 :path="item.icon"
                                 :style="{
-                                    color: deviceChannelColor(item.deviceUID, item.name).value,
+                                    color:
+                                        item.color ??
+                                        deviceChannelColor(item.deviceUID, item.name).value,
                                 }"
                                 :size="
                                     deviceStore.getREMSize(
@@ -1402,9 +1402,9 @@ onUnmounted(() => {
                                         v-if="menu === Menu.COLOR"
                                         :device-u-i-d="childItem.deviceUID"
                                         :channel-name="childItem.name"
-                                        :color="childItem.color"
-                                        @color-change="
-                                            (newColor: Color) => (childItem.color = newColor)
+                                        :color="
+                                            deviceChannelColor(childItem.deviceUID, childItem.name)
+                                                .value
                                         "
                                         @open="setHoverMenuStatus"
                                     />
