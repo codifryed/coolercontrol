@@ -85,7 +85,7 @@ const deleteDashboard = (): void => {
             :size="deviceStore.getREMSize(1.5)"
         />
         <span class="ml-1.5">
-            {{ t('layout.menu.tooltips.delete') }}
+            {{ t('views.dashboard.deleteDashboard') }}
         </span>
     </Button>
 </template>

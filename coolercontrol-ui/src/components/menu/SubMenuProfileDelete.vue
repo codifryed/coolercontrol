@@ -109,7 +109,7 @@ const deleteProfile = (): void => {
     >
         <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
         <span class="ml-1.5">
-            {{ t('common.delete') }}
+            {{ t('views.profiles.deleteProfile') }}
         </span>
     </Button>
 </template>

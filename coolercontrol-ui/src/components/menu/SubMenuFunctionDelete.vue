@@ -101,7 +101,7 @@ const deleteFunction = (): void => {
     >
         <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
         <span class="ml-1.5">
-            {{ t('common.delete') }}
+            {{ t('views.functions.deleteFunction') }}
         </span>
     </Button>
 </template>
