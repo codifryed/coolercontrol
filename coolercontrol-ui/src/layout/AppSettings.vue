@@ -457,40 +457,6 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
-                                <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.entitiesBelowSensors')
-                                    "
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
-                                    >
-                                        <div
-                                            class="float-left py-1"
-                                            v-tooltip.top="
-                                                t('layout.settings.tooltips.triggersUIRestart')
-                                            "
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestart"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
-                                        <div class="text-right float-right">
-                                            {{ t('layout.settings.entitiesBelowSensors') }}
-                                        </div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <el-switch
-                                            v-model="settingsStore.menuEntitiesAtBottom"
-                                            size="large"
-                                            @change="applyEntitiesBelowSensorsChange"
-                                        />
-                                    </td>
-                                </tr>
                                 <tr v-tooltip.right="t('layout.settings.tooltips.fullScreen')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
