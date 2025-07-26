@@ -50,7 +50,7 @@ const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
 const { t } = useI18n()
 
-const currentColor: Ref<Color> = ref(colorStore.RgbToHex(props.color))
+const currentColor: Ref<Color> = ref(colorStore.rgbToHex(props.color))
 let newColorApplied: boolean = false
 
 const popRef = ref()
@@ -60,7 +60,7 @@ const closeAndReset = (): void => {
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)!
         .sensorsAndChannels.get(props.channelName)!.userColor = undefined
-    const defaultColor = colorStore.RgbToHex(
+    const defaultColor = colorStore.rgbToHex(
         settingsStore.allUIDeviceSettings
             .get(props.deviceUID)!
             .sensorsAndChannels.get(props.channelName)!.defaultColor,
@@ -85,7 +85,7 @@ const popoverClose = (): void => {
     // hide from the above buttons also triggers this:
     if (!newColorApplied) {
         // reset to starting color
-        currentColor.value = colorStore.RgbToHex(props.color)
+        currentColor.value = colorStore.rgbToHex(props.color)
     }
     newColorApplied = false
     emit('open', false)

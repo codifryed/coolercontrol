@@ -52,6 +52,11 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
             .map((x) => parseInt(x, 16))
     }
 
+    function hexToRgbThemeString(hex: string): string {
+        const [r, g, b] = hexToRgb(hex)
+        return `${r} ${g} ${b}`
+    }
+
     function hexToRgbString(hex: string): string {
         if (isRGBColor(hex)) {
             return hex
@@ -59,7 +64,7 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
         return `rgb(${hexToRgb(hex).join(', ')})`
     }
 
-    function RgbToHex(rgb: string): string {
+    function rgbToHex(rgb: string): string {
         if (isHexColor(rgb)) {
             return rgb
         }
@@ -104,7 +109,8 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
         themeColors,
         hexToRgb,
         hexToRgbString,
-        RgbToHex,
+        hexToRgbThemeString,
+        rgbToHex,
         isHexColor,
         isValidHex,
         convertColorToRGBA,

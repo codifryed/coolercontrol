@@ -65,7 +65,7 @@ const colorStore = useThemeColorsStore()
 const { t } = useI18n()
 
 // We store all colors as hex internally (text input, etc)
-const currentColor: Ref<Color> = ref(colorStore.RgbToHex(colorModel.value))
+const currentColor: Ref<Color> = ref(colorStore.rgbToHex(colorModel.value))
 const popRef = ref()
 const saveButton = ref()
 // used to help determine closing behavior, whether closed by OK or clicking away/cancel.
@@ -73,7 +73,7 @@ let newColorApplied: boolean = false
 
 const closeAndReset = (): void => {
     if (!props.defaultColor) return
-    currentColor.value = colorStore.RgbToHex(props.defaultColor)
+    currentColor.value = colorStore.rgbToHex(props.defaultColor)
     colorModel.value = props.defaultColor
     emit('change', props.defaultColor)
     newColorApplied = true
@@ -95,7 +95,7 @@ const popoverClose = (): void => {
     // hide from the above buttons also triggers this:
     if (!newColorApplied) {
         // reset to starting color
-        currentColor.value = colorStore.RgbToHex(colorModel.value)
+        currentColor.value = colorStore.rgbToHex(colorModel.value)
     }
     newColorApplied = false
     emit('open', false)
