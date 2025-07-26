@@ -51,10 +51,12 @@ const setDashboardAsHome = (): void => {
             value: t('views.dashboard.setAsHome'),
             disabled: props.dashboardUID === settingsStore.homeDashboard,
         }"
+        :class="{ 'cursor-default': props.dashboardUID === settingsStore.homeDashboard }"
+        @click.stop.prevent
     >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="setDashboardAsHome"
+            @click.stop.prevent="setDashboardAsHome"
             :disabled="props.dashboardUID === settingsStore.homeDashboard"
         >
             <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.5)" />

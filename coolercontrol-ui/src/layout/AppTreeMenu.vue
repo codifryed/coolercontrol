@@ -733,7 +733,7 @@ const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     )
     unPinItem({ id: dashboardUID })
 }
-const homeDashboardSet = (): void => {
+const homeDashboardSet = async (): Promise<void> => {
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
     dashboardParent!.children.forEach((item: any) => {
         item.icon =
@@ -741,6 +741,7 @@ const homeDashboardSet = (): void => {
                 ? mdiHomeAnalytics
                 : mdiChartBoxOutline
     })
+    await router.push({ name: 'system-overview' })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

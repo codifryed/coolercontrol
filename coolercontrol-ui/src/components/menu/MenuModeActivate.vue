@@ -46,6 +46,8 @@ const activateMode = async (): Promise<void> => {
             value: t('views.mode.activateMode'),
             disabled: props.modeUID === settingsStore.modeActiveCurrent,
         }"
+        :class="{ 'cursor-default': props.modeUID === settingsStore.modeActiveCurrent }"
+        @click.stop.prevent
     >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
