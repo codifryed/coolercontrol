@@ -26,6 +26,15 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
     const cssRoot = document.querySelector(':root')
     const getStyle = (varName: string): string =>
         `rgb(${getComputedStyle(cssRoot!).getPropertyValue(varName)})`
+    const reLoadThemeColors = () => {
+        themeColors.value.accent = getStyle('--colors-accent')
+        themeColors.value.bg_one = getStyle('--colors-bg-one')
+        themeColors.value.bg_two = getStyle('--colors-bg-two')
+        themeColors.value.border = getStyle('--colors-border-one')
+        themeColors.value.text_color = getStyle('--colors-text-color')
+        themeColors.value.text_color_secondary = getStyle('--colors-text-color-secondary')
+    }
+
     const themeColors = ref({
         accent: getStyle('--colors-accent'),
         bg_one: getStyle('--colors-bg-one'),
@@ -107,6 +116,7 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
     console.debug(`Theme Colors Store created`)
     return {
         themeColors,
+        reLoadThemeColors,
         hexToRgb,
         hexToRgbString,
         hexToRgbThemeString,

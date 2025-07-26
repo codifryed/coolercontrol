@@ -170,16 +170,19 @@ const setNewColorAccent = (newHexColor: Color): void => {
     customThemeAccent.value = newHexColor
     settingsStore.customTheme.accent = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-accent', settingsStore.customTheme.accent)
+    colorStore.reLoadThemeColors()
 }
 const setNewColorBgOne = (newHexColor: Color): void => {
     customThemeBgOne.value = newHexColor
     settingsStore.customTheme.bgOne = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-one', settingsStore.customTheme.bgOne)
+    colorStore.reLoadThemeColors()
 }
 const setNewColorBgTwo = (newHexColor: Color): void => {
     customThemeBgTwo.value = newHexColor
     settingsStore.customTheme.bgTwo = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-two', settingsStore.customTheme.bgTwo)
+    colorStore.reLoadThemeColors()
 }
 const setNewColorBorder = (newHexColor: Color): void => {
     customThemeBorder.value = newHexColor
@@ -188,6 +191,7 @@ const setNewColorBorder = (newHexColor: Color): void => {
         '--colors-border-one',
         settingsStore.customTheme.borderOne,
     )
+    colorStore.reLoadThemeColors()
 }
 const setNewColorText = (newHexColor: Color): void => {
     customThemeText.value = newHexColor
@@ -196,6 +200,7 @@ const setNewColorText = (newHexColor: Color): void => {
         '--colors-text-color',
         settingsStore.customTheme.textColor,
     )
+    colorStore.reLoadThemeColors()
 }
 const setNewColorTextSecondary = (newHexColor: Color): void => {
     customThemeTextSecondary.value = newHexColor
@@ -204,6 +209,7 @@ const setNewColorTextSecondary = (newHexColor: Color): void => {
         '--colors-text-color-secondary',
         settingsStore.customTheme.textColorSecondary,
     )
+    colorStore.reLoadThemeColors()
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
