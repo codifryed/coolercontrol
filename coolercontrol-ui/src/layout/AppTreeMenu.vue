@@ -1449,7 +1449,10 @@ onUnmounted(() => {
             <el-collapse-item v-for="item in data" :name="item.id" :key="item.id">
                 <template #title>
                     <!--Root Elements-->
-                    <div class="flex group h-full w-full items-center justify-between outline-none">
+                    <div
+                        :id="item.id"
+                        class="flex group h-full w-full items-center justify-between outline-none"
+                    >
                         <div class="flex flex-row items-center min-w-0">
                             <svg-icon
                                 v-if="item.icon"
