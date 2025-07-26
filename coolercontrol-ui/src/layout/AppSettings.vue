@@ -17,13 +17,8 @@
   -->
 
 <script setup lang="ts">
-import { inject, onMounted, type Ref, ref, watch, computed, onUnmounted } from 'vue'
-import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { useConfirm } from 'primevue/useconfirm'
-import { useToast } from 'primevue/usetoast'
-import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
-import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiDnsOutline,
     mdiFormatListBulleted,
@@ -32,13 +27,18 @@ import {
     mdiRestart,
     mdiViewQuiltOutline,
 } from '@mdi/js'
+import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
+import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { ElColorPicker, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
@@ -54,14 +54,15 @@ import { Emitter, EventType } from 'mitt'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useI18n } from 'vue-i18n'
 import { api as fullscreenApi } from 'vue-fullscreen'
+import _ from 'lodash'
+import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
+import CCColorPicker from '@/components/CCColorPicker.vue'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-import _ from 'lodash'
-import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 
 interface Props {
     tabNumber?: string
@@ -595,28 +596,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.accent') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeAccent"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorAccent"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeAccent"
+                                                color-format="rgb"
+                                                :default-color="`rgb(${defaultCustomTheme.accent})`"
+                                                @change="setNewColorAccent"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -627,28 +617,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.bgOne') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeBgOne"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorBgOne"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeBgOne"
+                                                color-format="rgb"
+                                                :default-color="`rgb(${defaultCustomTheme.bgOne})`"
+                                                @change="setNewColorBgOne"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -659,28 +638,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.bgTwo') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div
-                                                class="color-wrapper my-1 rounded-lg border-2 border-border-one"
-                                            >
-                                                <el-color-picker
+                                            <div class="rounded-lg bg-bg-one">
+                                                <c-c-color-picker
                                                     v-model="customThemeBgTwo"
                                                     color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
+                                                    :default-color="`rgb(${defaultCustomTheme.bgTwo})`"
                                                     @change="setNewColorBgTwo"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
                                                 />
                                             </div>
                                         </div>
@@ -693,28 +661,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.border') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeBorder"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorBorder"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeBorder"
+                                                color-format="rgb"
+                                                :default-color="`rgb(${defaultCustomTheme.borderOne})`"
+                                                @change="setNewColorBorder"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -725,28 +682,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.text') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeText"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorText"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeText"
+                                                color-format="rgb"
+                                                :default-color="`rgb(${defaultCustomTheme.textColor})`"
+                                                @change="setNewColorText"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -757,28 +703,17 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.textSecondary') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeTextSecondary"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorTextSecondary"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeTextSecondary"
+                                                color-format="rgb"
+                                                :default-color="`rgb(${defaultCustomTheme.textColorSecondary})`"
+                                                @change="setNewColorTextSecondary"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -1372,71 +1307,6 @@ onUnmounted(() => {
     --el-color-primary: rgb(var(--colors-text-color));
     // switch inactive text color:
     --el-text-color-primary: rgb(var(--colors-text-color));
-}
-
-.color-wrapper {
-    line-height: normal;
-    height: 2rem;
-    width: 2rem;
-}
-
-.color-wrapper :deep(.el-color-picker__trigger) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 2rem !important;
-    width: 2rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__mask) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 2rem !important;
-    width: 2rem !important;
-    border-radius: 0.5rem !important;
-    background-color: rgba(0, 0, 0, 0);
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color) {
-    border: 0 !important;
-    border-radius: 0.5rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__color) {
-    opacity: 0.2;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__trigger) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner) {
-    border-radius: 0.5rem !important;
-    opacity: 0.8;
-    width: 2rem !important;
-    height: 2rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner):hover {
-    opacity: 1;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
-    display: none;
-    height: 0;
-    width: 0;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
-    display: none;
-    height: 0;
-    width: 0;
 }
 
 .tree-text {

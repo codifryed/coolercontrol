@@ -19,64 +19,74 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiPalette } from '@mdi/js'
+import { mdiChevronDownBox, mdiPalette } from '@mdi/js'
 import { Color, UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ChromePicker, CompactPicker } from 'vue-color'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Popover from 'primevue/popover'
-import { ref, Ref } from 'vue'
+import { computed, ref, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 
 //! This is our own custom color picker component, which is similar to the ElColorPicker component,
 //! but with more custom control.
-interface Props {
-    deviceUID: UID
-    channelName: string
-    color: Color
-}
+const colorModel = defineModel<Color>({ required: true })
 
-const props = defineProps<Props>()
+const props = defineProps<{
+    colorFormat?: string
+    defaultColor?: Color
+}>()
 const emit = defineEmits<{
-    (e: 'colorChange', value: Color): void
+    (e: 'change', value: Color): void
     (e: 'open', value: boolean): void
 }>()
+
+enum ColorFormat {
+    RGB = 'rgb',
+    HEX = 'hex',
+}
+const colorFormat = computed(() => {
+    switch (props.colorFormat) {
+        case ColorFormat.RGB:
+            return ColorFormat.RGB
+        case ColorFormat.HEX:
+            return ColorFormat.HEX
+        default:
+            return ColorFormat.RGB
+    }
+})
 
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
 const { t } = useI18n()
 
-const currentColor: Ref<Color> = ref(colorStore.RgbToHex(props.color))
-let newColorApplied: boolean = false
-
+// We store all colors as hex internally (text input, etc)
+const currentColor: Ref<Color> = ref(colorStore.RgbToHex(colorModel.value))
 const popRef = ref()
 const saveButton = ref()
+// used to help determine closing behavior, whether closed by OK or clicking away/cancel.
+let newColorApplied: boolean = false
 
 const closeAndReset = (): void => {
-    settingsStore.allUIDeviceSettings
-        .get(props.deviceUID)!
-        .sensorsAndChannels.get(props.channelName)!.userColor = undefined
-    const defaultColor = colorStore.RgbToHex(
-        settingsStore.allUIDeviceSettings
-            .get(props.deviceUID)!
-            .sensorsAndChannels.get(props.channelName)!.defaultColor,
-    )
-    currentColor.value = defaultColor
-    emit('colorChange', defaultColor)
+    if (!props.defaultColor) return
+    currentColor.value = colorStore.RgbToHex(props.defaultColor)
+    colorModel.value = props.defaultColor
+    emit('change', props.defaultColor)
     newColorApplied = true
     popRef.value.hide()
 }
 const clickSaveButton = (): void => saveButton.value.$el.click()
 const closeAndSave = (): void => {
-    const newColor = currentColor.value
-    settingsStore.allUIDeviceSettings
-        .get(props.deviceUID)!
-        .sensorsAndChannels.get(props.channelName)!.userColor = newColor
-    emit('colorChange', newColor)
+    colorModel.value =
+        colorFormat.value === ColorFormat.HEX
+            ? currentColor.value
+            : colorStore.hexToRgbString(currentColor.value)
+    console.debug('colorModel to save', colorModel.value)
+    emit('change', colorModel.value)
     newColorApplied = true
     popRef.value.hide()
 }
@@ -85,7 +95,7 @@ const popoverClose = (): void => {
     // hide from the above buttons also triggers this:
     if (!newColorApplied) {
         // reset to starting color
-        currentColor.value = colorStore.RgbToHex(props.color)
+        currentColor.value = colorStore.RgbToHex(colorModel.value)
     }
     newColorApplied = false
     emit('open', false)
@@ -95,15 +105,15 @@ const popoverClose = (): void => {
 <template>
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.chooseColor') }">
         <div
-            class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+            class="rounded-lg w-10 h-10 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover cursor-pointer"
             @click.stop.prevent="(event) => popRef.toggle(event)"
         >
             <svg-icon
                 class="outline-0"
                 type="mdi"
                 :path="mdiPalette"
-                :size="deviceStore.getREMSize(1.5)"
-                :style="{ color: props.color }"
+                :size="deviceStore.getREMSize(2.25)"
+                :style="{ color: currentColor }"
             />
         </div>
         <Popover ref="popRef" @show="emit('open', true)" @hide="popoverClose">
