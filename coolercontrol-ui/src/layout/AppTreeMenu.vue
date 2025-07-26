@@ -731,6 +731,7 @@ const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     dashboardParent!.children = dashboardParent!.children.filter(
         (item: any) => item.id !== dashboardUID,
     )
+    unPinItem({ id: dashboardUID })
 }
 const homeDashboardSet = (): void => {
     const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
@@ -814,6 +815,7 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     }
     const modesParent = data.value.find((item: any) => item.id === 'modes')!
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
+    unPinItem({ id: modeUID })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -851,6 +853,7 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     }
     const profilesParent = data.value.find((item: any) => item.id === 'profiles')!
     profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
+    unPinItem({ id: profileUID })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -891,6 +894,7 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     functionsParent.children = functionsParent.children.filter(
         (item: any) => item.id !== functionUID,
     )
+    unPinItem({ id: functionUID })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -932,6 +936,7 @@ const deleteAlert = async (alertUID: UID): Promise<void> => {
     }
     const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
     alertsParent.children = alertsParent.children.filter((item: any) => item.id !== alertUID)
+    unPinItem({ id: alertUID })
 }
 
 const alertStateChange = (): void => {
