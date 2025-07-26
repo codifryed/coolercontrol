@@ -19,14 +19,14 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiChevronDownBox, mdiPalette } from '@mdi/js'
-import { Color, UID } from '@/models/Device.ts'
+import { mdiPalette } from '@mdi/js'
+import { Color } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ChromePicker, CompactPicker } from 'vue-color'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Popover from 'primevue/popover'
-import { computed, ref, Ref } from 'vue'
+import { computed, ref, Ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
@@ -40,7 +40,6 @@ const props = defineProps<{
     defaultColor?: Color
 }>()
 const emit = defineEmits<{
-    (e: 'change', value: Color): void
     (e: 'open', value: boolean): void
 }>()
 
@@ -74,20 +73,18 @@ let newColorApplied: boolean = false
 const closeAndReset = (): void => {
     if (!props.defaultColor) return
     currentColor.value = colorStore.rgbToHex(props.defaultColor)
-    colorModel.value = props.defaultColor
-    emit('change', props.defaultColor)
     newColorApplied = true
+    colorModel.value = props.defaultColor
     popRef.value.hide()
 }
 const clickSaveButton = (): void => saveButton.value.$el.click()
 const closeAndSave = (): void => {
+    newColorApplied = true
     colorModel.value =
         colorFormat.value === ColorFormat.HEX
             ? currentColor.value
             : colorStore.hexToRgbString(currentColor.value)
-    console.debug('colorModel to save', colorModel.value)
-    emit('change', colorModel.value)
-    newColorApplied = true
+    // note: the color model is updated with a reactive delay, so logging is error-prone
     popRef.value.hide()
 }
 
@@ -100,6 +97,11 @@ const popoverClose = (): void => {
     newColorApplied = false
     emit('open', false)
 }
+
+watch(colorModel, () => {
+    if (newColorApplied) return
+    currentColor.value = colorStore.rgbToHex(colorModel.value)
+})
 </script>
 
 <template>

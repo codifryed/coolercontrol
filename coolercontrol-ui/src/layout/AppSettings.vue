@@ -21,7 +21,9 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiDnsOutline,
+    mdiExport,
     mdiFormatListBulleted,
+    mdiImport,
     mdiLaptop,
     mdiMonitor,
     mdiRestart,
@@ -32,7 +34,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
+import { CustomThemeSettings, defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
@@ -40,9 +42,8 @@ import TabList from 'primevue/tablist'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
-import { ElColorPicker, ElSwitch } from 'element-plus'
+import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
-import 'element-plus/es/components/color-picker/style/css'
 import 'element-plus/es/components/tree/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
@@ -57,9 +58,11 @@ import { api as fullscreenApi } from 'vue-fullscreen'
 import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 import CCColorPicker from '@/components/CCColorPicker.vue'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const colorStore = useThemeColorsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -154,63 +157,49 @@ const lineThicknessOptions = ref([
     { optionSize: 4, value: 2.0 },
     { optionSize: 6, value: 3.0 },
 ])
-const customThemeAccent: Ref<Color> = ref(`rgb(${settingsStore.customTheme.accent})`)
-const customThemeBgOne: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgOne})`)
-const customThemeBgTwo: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgTwo})`)
-const customThemeBorder: Ref<Color> = ref(`rgb(${settingsStore.customTheme.borderOne})`)
-const customThemeText: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColor})`)
+const customThemeAccent: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.accent))
+const customThemeBgOne: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.bgOne))
+const customThemeBgTwo: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.bgTwo))
+const customThemeBorder: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.borderOne))
+const customThemeText: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.textColor))
 const customThemeTextSecondary: Ref<Color> = ref(
-    `rgb(${settingsStore.customTheme.textColorSecondary})`,
+    colorStore.rgbToHex(settingsStore.customTheme.textColorSecondary),
 )
-const setNewColorAccent = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeAccent.value = `rgb(${defaultCustomTheme.accent})`
-    }
-    settingsStore.customTheme.accent = customThemeAccent.value.replaceAll(/[a-z]|[(),]/g, '')
+
+const setNewColorAccent = (newHexColor: Color): void => {
+    customThemeAccent.value = newHexColor
+    settingsStore.customTheme.accent = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-accent', settingsStore.customTheme.accent)
 }
-const setNewColorBgOne = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBgOne.value = `rgb(${defaultCustomTheme.bgOne})`
-    }
-    settingsStore.customTheme.bgOne = customThemeBgOne.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBgOne = (newHexColor: Color): void => {
+    customThemeBgOne.value = newHexColor
+    settingsStore.customTheme.bgOne = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-one', settingsStore.customTheme.bgOne)
 }
-const setNewColorBgTwo = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBgTwo.value = `rgb(${defaultCustomTheme.bgTwo})`
-    }
-    settingsStore.customTheme.bgTwo = customThemeBgTwo.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBgTwo = (newHexColor: Color): void => {
+    customThemeBgTwo.value = newHexColor
+    settingsStore.customTheme.bgTwo = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-two', settingsStore.customTheme.bgTwo)
 }
-const setNewColorBorder = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBorder.value = `rgb(${defaultCustomTheme.borderOne})`
-    }
-    settingsStore.customTheme.borderOne = customThemeBorder.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBorder = (newHexColor: Color): void => {
+    customThemeBorder.value = newHexColor
+    settingsStore.customTheme.borderOne = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-border-one',
         settingsStore.customTheme.borderOne,
     )
 }
-const setNewColorText = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeText.value = `rgb(${defaultCustomTheme.textColor})`
-    }
-    settingsStore.customTheme.textColor = customThemeText.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorText = (newHexColor: Color): void => {
+    customThemeText.value = newHexColor
+    settingsStore.customTheme.textColor = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-text-color',
         settingsStore.customTheme.textColor,
     )
 }
-const setNewColorTextSecondary = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeTextSecondary.value = `rgb(${defaultCustomTheme.textColorSecondary})`
-    }
-    settingsStore.customTheme.textColorSecondary = customThemeTextSecondary.value.replaceAll(
-        /[a-z]|[(),]/g,
-        '',
-    )
+const setNewColorTextSecondary = (newHexColor: Color): void => {
+    customThemeTextSecondary.value = newHexColor
+    settingsStore.customTheme.textColorSecondary = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-text-color-secondary',
         settingsStore.customTheme.textColorSecondary,
@@ -266,6 +255,95 @@ const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 watch(pollRate, () => {
     applyGenericDaemonChange()
 })
+
+// This interface is used for exporting/importing custom HEX color themes
+// We transition to and from the CustomThemeSettings interface which contains
+// a 'R G B' string value.
+interface CustomColorTheme extends CustomThemeSettings {}
+class CustomColorTheme {
+    static fromCustomThemeSettings(customThemeSettings: CustomThemeSettings): CustomColorTheme {
+        const customColorTheme = new CustomColorTheme()
+        customColorTheme.accent = colorStore.rgbToHex(customThemeSettings.accent)
+        customColorTheme.bgOne = colorStore.rgbToHex(customThemeSettings.bgOne)
+        customColorTheme.bgTwo = colorStore.rgbToHex(customThemeSettings.bgTwo)
+        customColorTheme.borderOne = colorStore.rgbToHex(customThemeSettings.borderOne)
+        customColorTheme.textColor = colorStore.rgbToHex(customThemeSettings.textColor)
+        customColorTheme.textColorSecondary = colorStore.rgbToHex(
+            customThemeSettings.textColorSecondary,
+        )
+        return customColorTheme
+    }
+
+    static fromJson(jsonObj: any): CustomColorTheme {
+        if (CustomColorTheme.isCustomThemeSettings(jsonObj)) {
+            return CustomColorTheme.fromCustomThemeSettings(jsonObj)
+        }
+        throw new Error('Invalid JSON object for CustomColorTheme')
+    }
+
+    static isCustomThemeSettings(jsonObj: any): jsonObj is CustomThemeSettings {
+        return (
+            typeof jsonObj.accent === 'string' &&
+            colorStore.isValidHex(jsonObj.accent) &&
+            typeof jsonObj.bgOne === 'string' &&
+            colorStore.isValidHex(jsonObj.bgOne) &&
+            typeof jsonObj.bgTwo === 'string' &&
+            colorStore.isValidHex(jsonObj.bgTwo) &&
+            typeof jsonObj.borderOne === 'string' &&
+            colorStore.isValidHex(jsonObj.borderOne) &&
+            typeof jsonObj.textColor === 'string' &&
+            colorStore.isValidHex(jsonObj.textColor) &&
+            typeof jsonObj.textColorSecondary === 'string' &&
+            colorStore.isValidHex(jsonObj.textColorSecondary)
+        )
+    }
+
+    applyCustomColorTheme(): void {
+        setNewColorAccent(this.accent)
+        setNewColorBgOne(this.bgOne)
+        setNewColorBgTwo(this.bgTwo)
+        setNewColorBorder(this.borderOne)
+        setNewColorText(this.textColor)
+        setNewColorTextSecondary(this.textColorSecondary)
+    }
+}
+const downloadThemeFileName = 'coolercontrol-color-theme.json'
+const downloadThemeHref = computed((): string => {
+    const customColorTheme = CustomColorTheme.fromCustomThemeSettings(settingsStore.customTheme)
+    const blob = new Blob([JSON.stringify(customColorTheme)], { type: 'application/json' })
+    return URL.createObjectURL(blob)
+})
+const downloadThemeDatasetURL = computed((): string => {
+    return ['application/json', downloadThemeFileName, downloadThemeHref].join(':')
+})
+const createJsonUploader = (): void => {
+    const inputFileElement = document.createElement('input')
+    inputFileElement.setAttribute('type', 'file')
+    inputFileElement.setAttribute('accept', '.json')
+    inputFileElement.onchange = function () {
+        getUploadedJson(this)
+    }
+    document.body.appendChild(inputFileElement)
+    inputFileElement.click()
+    inputFileElement.remove()
+}
+const getUploadedJson = (fileInput: any) => {
+    const files = fileInput.files
+    if (files.length <= 0) return
+    const file = files[0]
+    if (file.size > 1024) {
+        console.error('JSON File too large for single Color Theme')
+        return
+    }
+    file.text().then(function (text: string) {
+        console.log('text', text)
+        const result = JSON.parse(text)
+        const customThemeSettings = CustomColorTheme.fromJson(result)
+        customThemeSettings.applyCustomColorTheme()
+        // const formatted = JSON.stringify(result, null, 2)
+        // console.log('result', formatted)
+    })
+}
 
 const portScrolled = (event: WheelEvent): void => {
     if (daemonPort.value == null) return
@@ -603,9 +681,11 @@ onUnmounted(() => {
                                         >
                                             <c-c-color-picker
                                                 v-model="customThemeAccent"
-                                                color-format="rgb"
-                                                :default-color="`rgb(${defaultCustomTheme.accent})`"
-                                                @change="setNewColorAccent"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(defaultCustomTheme.accent)
+                                                "
+                                                @update:model-value="setNewColorAccent"
                                             />
                                         </div>
                                     </td>
@@ -624,9 +704,11 @@ onUnmounted(() => {
                                         >
                                             <c-c-color-picker
                                                 v-model="customThemeBgOne"
-                                                color-format="rgb"
-                                                :default-color="`rgb(${defaultCustomTheme.bgOne})`"
-                                                @change="setNewColorBgOne"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(defaultCustomTheme.bgOne)
+                                                "
+                                                @update:model-value="setNewColorBgOne"
                                             />
                                         </div>
                                     </td>
@@ -646,9 +728,13 @@ onUnmounted(() => {
                                             <div class="rounded-lg bg-bg-one">
                                                 <c-c-color-picker
                                                     v-model="customThemeBgTwo"
-                                                    color-format="rgb"
-                                                    :default-color="`rgb(${defaultCustomTheme.bgTwo})`"
-                                                    @change="setNewColorBgTwo"
+                                                    color-format="hex"
+                                                    :default-color="
+                                                        colorStore.rgbToHex(
+                                                            defaultCustomTheme.bgTwo,
+                                                        )
+                                                    "
+                                                    @update:model-value="setNewColorBgTwo"
                                                 />
                                             </div>
                                         </div>
@@ -668,9 +754,13 @@ onUnmounted(() => {
                                         >
                                             <c-c-color-picker
                                                 v-model="customThemeBorder"
-                                                color-format="rgb"
-                                                :default-color="`rgb(${defaultCustomTheme.borderOne})`"
-                                                @change="setNewColorBorder"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.borderOne,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorBorder"
                                             />
                                         </div>
                                     </td>
@@ -689,9 +779,13 @@ onUnmounted(() => {
                                         >
                                             <c-c-color-picker
                                                 v-model="customThemeText"
-                                                color-format="rgb"
-                                                :default-color="`rgb(${defaultCustomTheme.textColor})`"
-                                                @change="setNewColorText"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.textColor,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorText"
                                             />
                                         </div>
                                     </td>
@@ -710,10 +804,76 @@ onUnmounted(() => {
                                         >
                                             <c-c-color-picker
                                                 v-model="customThemeTextSecondary"
-                                                color-format="rgb"
-                                                :default-color="`rgb(${defaultCustomTheme.textColorSecondary})`"
-                                                @change="setNewColorTextSecondary"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.textColorSecondary,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorTextSecondary"
                                             />
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="float-right">
+                                            {{ t('layout.settings.customTheme.export') }}
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <a
+                                                :href="downloadThemeHref"
+                                                :download="downloadThemeFileName"
+                                                :data-downloadurl="downloadThemeDatasetURL"
+                                                class="w-full"
+                                            >
+                                                <Button
+                                                    class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                                >
+                                                    <svg-icon
+                                                        class="outline-0"
+                                                        type="mdi"
+                                                        :path="mdiExport"
+                                                        :size="deviceStore.getREMSize(1.625)"
+                                                    />
+                                                </Button>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="float-right">
+                                            {{ t('layout.settings.customTheme.import') }}
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <Button
+                                                class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                                @click="createJsonUploader"
+                                            >
+                                                <svg-icon
+                                                    class="outline-0"
+                                                    type="mdi"
+                                                    :path="mdiImport"
+                                                    :size="deviceStore.getREMSize(1.625)"
+                                                />
+                                            </Button>
                                         </div>
                                     </td>
                                 </tr>
