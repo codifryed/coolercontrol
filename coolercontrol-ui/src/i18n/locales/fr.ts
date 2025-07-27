@@ -214,6 +214,8 @@ export default {
                 border: 'Couleur de la Bordure',
                 text: 'Couleur du Texte',
                 textSecondary: 'Couleur du Texte Secondaire',
+                export: 'Exporter le Thème',
+                import: 'Importer le Thème',
             },
             tooltips: {
                 introduction: "Commencer le tour d'introduction de l'application.",
@@ -294,6 +296,7 @@ export default {
             customSensors: 'Capteurs personnalisés',
             modes: 'Modes',
             alerts: 'Alertes',
+            pinned: 'Épinglé',
             tooltips: {
                 delete: 'Supprimer',
                 createMode: 'Créer un mode à partir des paramètres actuels',
@@ -313,6 +316,13 @@ export default {
                 addCustomSensor: 'Ajouter un capteur personnalisé',
                 addFunction: 'Ajouter une fonction',
                 chooseColor: 'Choisir une couleur',
+                options: "Plus d'Options",
+                moveTop: 'Déplacer en Haut',
+                moveBottom: 'Déplacer en Bas',
+                disable: 'Désactiver',
+                pin: 'Épingler en Haut',
+                unpin: 'Désépingler',
+                profileApply: 'Appliquer le Profil aux ventilateurs',
             },
         },
         add: {
@@ -412,7 +422,7 @@ export default {
             filterSensors: 'Filtrer les Capteurs',
             showControls: 'Afficher les Contrôles',
             mouseActions:
-                'Actions de souris sur le tableau de bord :\n- Surligner pour zoomer.\n- Faire défiler pour zoomer.\n- Clic droit pour se déplacer lorsque zoomé.\n- Double-clic pour réinitialiser et reprendre la mise à jour.',
+                "Actions de la souris sur le tableau de bord :\n- Mettre en surbrillance la sélection pour zoomer.\n- Faire défiler pour zoomer.\n- Cliquer avec le bouton droit pour faire glisser lorsque zoomé.\n- Double-cliquer pour réinitialiser et reprendre la mise à jour.\n- Ctrl+cliquer ou cliquer avec le bouton du milieu pour afficher tous les capteurs dans l'info-bulle.",
             fullPage: 'Pleine Page',
             filterBySensor: 'Filtrer par Capteur',
             search: 'Rechercher',
@@ -474,9 +484,12 @@ export default {
             triggerConditions: 'Conditions de Déclenchement',
             maxValueTooltip: "Les valeurs au-dessus de ceci déclencheront l'alerte.",
             minValueTooltip: "Les valeurs en dessous de ceci déclencheront l'alerte.",
+            warmupDurationTooltip:
+                "Durée pendant laquelle une condition doit être active avant que l'alerte soit considérée comme active. Cette durée est vérifiée uniquement à intervalles réguliers et peut donc varier.",
             greaterThan: 'supérieur à',
             lessThan: 'inférieur à',
             newAlert: 'Nouvelle Alerte',
+            warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
             unsavedChangesHeader: 'Changements non enregistrés',
         },
@@ -831,6 +844,19 @@ export default {
             profile: {
                 willCreated: 'sera créé.',
             },
+            profileApply: {
+                applyProfile: 'Appliquer le Profil',
+                channelsApply: 'Canaux pour Appliquer le Profil',
+                selectChannels: 'Sélectionner les Canaux',
+                channelsTooltip: 'Sélectionnez un ou plusieurs canaux pour appliquer ce Profil.',
+            },
+            functionApply: {
+                applyFunction: 'Appliquer la Fonction',
+                profilesApply: 'Profils pour Appliquer la Fonction',
+                selectProfiles: 'Sélectionner les Profils',
+                profilesTooltip:
+                    'Sélectionnez un ou plusieurs Profils pour appliquer cette Fonction.',
+            },
             customSensor: {
                 new: 'Nouveau Capteur Personnalisé',
             },
@@ -955,6 +981,7 @@ export default {
         alertState: {
             active: 'Actif',
             inactive: 'Inactif',
+            error: 'Erreur',
         },
         deviceType: {
             customSensors: 'Capteurs Personnalisés',

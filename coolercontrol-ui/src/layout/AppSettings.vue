@@ -17,32 +17,34 @@
   -->
 
 <script setup lang="ts">
-import { inject, onMounted, type Ref, ref, watch, computed, onUnmounted } from 'vue'
-import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { useConfirm } from 'primevue/useconfirm'
-import { useToast } from 'primevue/usetoast'
-import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
-import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
 import {
     mdiDnsOutline,
+    mdiExport,
     mdiFormatListBulleted,
+    mdiImport,
     mdiLaptop,
     mdiMonitor,
     mdiRestart,
     mdiViewQuiltOutline,
 } from '@mdi/js'
+import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import { CustomThemeSettings, defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
+import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
-import { ElColorPicker, ElSwitch } from 'element-plus'
+import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
-import 'element-plus/es/components/color-picker/style/css'
+import 'element-plus/es/components/tree/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
@@ -53,14 +55,24 @@ import { Emitter, EventType } from 'mitt'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
 import { useI18n } from 'vue-i18n'
 import { api as fullscreenApi } from 'vue-fullscreen'
+import _ from 'lodash'
+import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
+import CCColorPicker from '@/components/CCColorPicker.vue'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const colorStore = useThemeColorsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-import _ from 'lodash'
-import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
+
+interface Props {
+    tabNumber?: string
+}
+
+const props = defineProps<Props>()
+const tabValue = ref(props.tabNumber != null && props.tabNumber ? props.tabNumber : '0')
 
 const { t } = useI18n()
 
@@ -145,67 +157,59 @@ const lineThicknessOptions = ref([
     { optionSize: 4, value: 2.0 },
     { optionSize: 6, value: 3.0 },
 ])
-const customThemeAccent: Ref<Color> = ref(`rgb(${settingsStore.customTheme.accent})`)
-const customThemeBgOne: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgOne})`)
-const customThemeBgTwo: Ref<Color> = ref(`rgb(${settingsStore.customTheme.bgTwo})`)
-const customThemeBorder: Ref<Color> = ref(`rgb(${settingsStore.customTheme.borderOne})`)
-const customThemeText: Ref<Color> = ref(`rgb(${settingsStore.customTheme.textColor})`)
+const customThemeAccent: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.accent))
+const customThemeBgOne: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.bgOne))
+const customThemeBgTwo: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.bgTwo))
+const customThemeBorder: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.borderOne))
+const customThemeText: Ref<Color> = ref(colorStore.rgbToHex(settingsStore.customTheme.textColor))
 const customThemeTextSecondary: Ref<Color> = ref(
-    `rgb(${settingsStore.customTheme.textColorSecondary})`,
+    colorStore.rgbToHex(settingsStore.customTheme.textColorSecondary),
 )
-const setNewColorAccent = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeAccent.value = `rgb(${defaultCustomTheme.accent})`
-    }
-    settingsStore.customTheme.accent = customThemeAccent.value.replaceAll(/[a-z]|[(),]/g, '')
+
+const setNewColorAccent = (newHexColor: Color): void => {
+    customThemeAccent.value = newHexColor
+    settingsStore.customTheme.accent = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-accent', settingsStore.customTheme.accent)
+    colorStore.reLoadThemeColors()
 }
-const setNewColorBgOne = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBgOne.value = `rgb(${defaultCustomTheme.bgOne})`
-    }
-    settingsStore.customTheme.bgOne = customThemeBgOne.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBgOne = (newHexColor: Color): void => {
+    customThemeBgOne.value = newHexColor
+    settingsStore.customTheme.bgOne = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-one', settingsStore.customTheme.bgOne)
+    colorStore.reLoadThemeColors()
 }
-const setNewColorBgTwo = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBgTwo.value = `rgb(${defaultCustomTheme.bgTwo})`
-    }
-    settingsStore.customTheme.bgTwo = customThemeBgTwo.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBgTwo = (newHexColor: Color): void => {
+    customThemeBgTwo.value = newHexColor
+    settingsStore.customTheme.bgTwo = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty('--colors-bg-two', settingsStore.customTheme.bgTwo)
+    colorStore.reLoadThemeColors()
 }
-const setNewColorBorder = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeBorder.value = `rgb(${defaultCustomTheme.borderOne})`
-    }
-    settingsStore.customTheme.borderOne = customThemeBorder.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorBorder = (newHexColor: Color): void => {
+    customThemeBorder.value = newHexColor
+    settingsStore.customTheme.borderOne = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-border-one',
         settingsStore.customTheme.borderOne,
     )
+    colorStore.reLoadThemeColors()
 }
-const setNewColorText = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeText.value = `rgb(${defaultCustomTheme.textColor})`
-    }
-    settingsStore.customTheme.textColor = customThemeText.value.replaceAll(/[a-z]|[(),]/g, '')
+const setNewColorText = (newHexColor: Color): void => {
+    customThemeText.value = newHexColor
+    settingsStore.customTheme.textColor = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-text-color',
         settingsStore.customTheme.textColor,
     )
+    colorStore.reLoadThemeColors()
 }
-const setNewColorTextSecondary = (newColor: Color | null): void => {
-    if (newColor == null) {
-        customThemeTextSecondary.value = `rgb(${defaultCustomTheme.textColorSecondary})`
-    }
-    settingsStore.customTheme.textColorSecondary = customThemeTextSecondary.value.replaceAll(
-        /[a-z]|[(),]/g,
-        '',
-    )
+const setNewColorTextSecondary = (newHexColor: Color): void => {
+    customThemeTextSecondary.value = newHexColor
+    settingsStore.customTheme.textColorSecondary = colorStore.hexToRgbThemeString(newHexColor)
     document.documentElement.style.setProperty(
         '--colors-text-color-secondary',
         settingsStore.customTheme.textColorSecondary,
     )
+    colorStore.reLoadThemeColors()
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
@@ -238,20 +242,6 @@ const applyGenericDaemonChange = _.debounce(
     2000,
 )
 
-const applyQuickUIRefresh = _.debounce(() => deviceStore.reloadUI(), 1000)
-
-const applyEntitiesBelowSensorsChange = (value: boolean | string | number): void => {
-    toast.add({
-        severity: 'success',
-        summary: t('common.success'),
-        detail: Boolean(value)
-            ? t('layout.settings.entitiesBelowSensorsEnabledMessage')
-            : t('layout.settings.entitiesBelowSensorsDisabledMessage'),
-        life: 3000,
-    })
-    applyQuickUIRefresh()
-}
-
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
 const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
 const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
@@ -271,6 +261,95 @@ const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 watch(pollRate, () => {
     applyGenericDaemonChange()
 })
+
+// This interface is used for exporting/importing custom HEX color themes
+// We transition to and from the CustomThemeSettings interface which contains
+// a 'R G B' string value.
+interface CustomColorTheme extends CustomThemeSettings {}
+class CustomColorTheme {
+    static fromCustomThemeSettings(customThemeSettings: CustomThemeSettings): CustomColorTheme {
+        const customColorTheme = new CustomColorTheme()
+        customColorTheme.accent = colorStore.rgbToHex(customThemeSettings.accent)
+        customColorTheme.bgOne = colorStore.rgbToHex(customThemeSettings.bgOne)
+        customColorTheme.bgTwo = colorStore.rgbToHex(customThemeSettings.bgTwo)
+        customColorTheme.borderOne = colorStore.rgbToHex(customThemeSettings.borderOne)
+        customColorTheme.textColor = colorStore.rgbToHex(customThemeSettings.textColor)
+        customColorTheme.textColorSecondary = colorStore.rgbToHex(
+            customThemeSettings.textColorSecondary,
+        )
+        return customColorTheme
+    }
+
+    static fromJson(jsonObj: any): CustomColorTheme {
+        if (CustomColorTheme.isCustomThemeSettings(jsonObj)) {
+            return CustomColorTheme.fromCustomThemeSettings(jsonObj)
+        }
+        throw new Error('Invalid JSON object for CustomColorTheme')
+    }
+
+    static isCustomThemeSettings(jsonObj: any): jsonObj is CustomThemeSettings {
+        return (
+            typeof jsonObj.accent === 'string' &&
+            colorStore.isValidHex(jsonObj.accent) &&
+            typeof jsonObj.bgOne === 'string' &&
+            colorStore.isValidHex(jsonObj.bgOne) &&
+            typeof jsonObj.bgTwo === 'string' &&
+            colorStore.isValidHex(jsonObj.bgTwo) &&
+            typeof jsonObj.borderOne === 'string' &&
+            colorStore.isValidHex(jsonObj.borderOne) &&
+            typeof jsonObj.textColor === 'string' &&
+            colorStore.isValidHex(jsonObj.textColor) &&
+            typeof jsonObj.textColorSecondary === 'string' &&
+            colorStore.isValidHex(jsonObj.textColorSecondary)
+        )
+    }
+
+    applyCustomColorTheme(): void {
+        setNewColorAccent(this.accent)
+        setNewColorBgOne(this.bgOne)
+        setNewColorBgTwo(this.bgTwo)
+        setNewColorBorder(this.borderOne)
+        setNewColorText(this.textColor)
+        setNewColorTextSecondary(this.textColorSecondary)
+    }
+}
+const downloadThemeFileName = 'coolercontrol-color-theme.json'
+const downloadThemeHref = computed((): string => {
+    const customColorTheme = CustomColorTheme.fromCustomThemeSettings(settingsStore.customTheme)
+    const blob = new Blob([JSON.stringify(customColorTheme)], { type: 'application/json' })
+    return URL.createObjectURL(blob)
+})
+const downloadThemeDatasetURL = computed((): string => {
+    return ['application/json', downloadThemeFileName, downloadThemeHref].join(':')
+})
+const createJsonUploader = (): void => {
+    const inputFileElement = document.createElement('input')
+    inputFileElement.setAttribute('type', 'file')
+    inputFileElement.setAttribute('accept', '.json')
+    inputFileElement.onchange = function () {
+        getUploadedJson(this)
+    }
+    document.body.appendChild(inputFileElement)
+    inputFileElement.click()
+    inputFileElement.remove()
+}
+const getUploadedJson = (fileInput: any) => {
+    const files = fileInput.files
+    if (files.length <= 0) return
+    const file = files[0]
+    if (file.size > 1024) {
+        console.error('JSON File too large for single Color Theme')
+        return
+    }
+    file.text().then(function (text: string) {
+        console.log('text', text)
+        const result = JSON.parse(text)
+        const customThemeSettings = CustomColorTheme.fromJson(result)
+        customThemeSettings.applyCustomColorTheme()
+        // const formatted = JSON.stringify(result, null, 2)
+        // console.log('result', formatted)
+    })
+}
 
 const portScrolled = (event: WheelEvent): void => {
     if (daemonPort.value == null) return
@@ -312,7 +391,7 @@ onUnmounted(() => {
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="pb-16 h-screen w-full">
-            <Tabs value="0">
+            <Tabs v-model:value="tabValue">
                 <TabList>
                     <Tab value="0" as="div" class="flex w-1/5 justify-center items-center gap-2">
                         <svg-icon
@@ -447,40 +526,6 @@ onUnmounted(() => {
                                         <el-switch
                                             v-model="settingsStore.hideMenuCollapseIcon"
                                             size="large"
-                                        />
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-tooltip.right="
-                                        t('layout.settings.tooltips.entitiesBelowSensors')
-                                    "
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
-                                    >
-                                        <div
-                                            class="float-left py-1"
-                                            v-tooltip.top="
-                                                t('layout.settings.tooltips.triggersUIRestart')
-                                            "
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestart"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
-                                        <div class="text-right float-right">
-                                            {{ t('layout.settings.entitiesBelowSensors') }}
-                                        </div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <el-switch
-                                            v-model="settingsStore.menuEntitiesAtBottom"
-                                            size="large"
-                                            @change="applyEntitiesBelowSensorsChange"
                                         />
                                     </td>
                                 </tr>
@@ -635,28 +680,19 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.accent') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeAccent"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorAccent"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeAccent"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(defaultCustomTheme.accent)
+                                                "
+                                                @update:model-value="setNewColorAccent"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -667,28 +703,19 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.bgOne') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeBgOne"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorBgOne"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeBgOne"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(defaultCustomTheme.bgOne)
+                                                "
+                                                @update:model-value="setNewColorBgOne"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -699,28 +726,21 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.bgTwo') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div
-                                                class="color-wrapper my-1 rounded-lg border-2 border-border-one"
-                                            >
-                                                <el-color-picker
+                                            <div class="rounded-lg bg-bg-one">
+                                                <c-c-color-picker
                                                     v-model="customThemeBgTwo"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
+                                                    color-format="hex"
+                                                    :default-color="
+                                                        colorStore.rgbToHex(
+                                                            defaultCustomTheme.bgTwo,
+                                                        )
                                                     "
-                                                    :validate-event="false"
-                                                    @change="setNewColorBgTwo"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
+                                                    @update:model-value="setNewColorBgTwo"
                                                 />
                                             </div>
                                         </div>
@@ -733,28 +753,21 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.border') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeBorder"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorBorder"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeBorder"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.borderOne,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorBorder"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -765,28 +778,21 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.text') }}
                                     </td>
                                     <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeText"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorText"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
-                                                />
-                                            </div>
+                                            <c-c-color-picker
+                                                v-model="customThemeText"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.textColor,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorText"
+                                            />
                                         </div>
                                     </td>
                                 </tr>
@@ -797,28 +803,83 @@ onUnmounted(() => {
                                         {{ t('layout.settings.customTheme.textSecondary') }}
                                     </td>
                                     <td
+                                        class="p-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <c-c-color-picker
+                                                v-model="customThemeTextSecondary"
+                                                color-format="hex"
+                                                :default-color="
+                                                    colorStore.rgbToHex(
+                                                        defaultCustomTheme.textColorSecondary,
+                                                    )
+                                                "
+                                                @update:model-value="setNewColorTextSecondary"
+                                            />
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="float-right">
+                                            {{ t('layout.settings.customTheme.export') }}
+                                        </div>
+                                    </td>
+                                    <td
                                         class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
                                     >
                                         <div
                                             class="w-full h-full content-center flex justify-center"
                                         >
-                                            <div class="color-wrapper my-1">
-                                                <el-color-picker
-                                                    v-model="customThemeTextSecondary"
-                                                    color-format="rgb"
-                                                    :predefine="
-                                                        settingsStore.predefinedColorOptions
-                                                    "
-                                                    :validate-event="false"
-                                                    @change="setNewColorTextSecondary"
-                                                    :confirm-text="
-                                                        t('layout.settings.colorPickerConfirm')
-                                                    "
-                                                    :cancel-text="
-                                                        t('layout.settings.colorPickerCancel')
-                                                    "
+                                            <a
+                                                :href="downloadThemeHref"
+                                                :download="downloadThemeFileName"
+                                                :data-downloadurl="downloadThemeDatasetURL"
+                                                class="w-full"
+                                            >
+                                                <Button
+                                                    class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                                >
+                                                    <svg-icon
+                                                        class="outline-0"
+                                                        type="mdi"
+                                                        :path="mdiExport"
+                                                        :size="deviceStore.getREMSize(1.625)"
+                                                    />
+                                                </Button>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div class="float-right">
+                                            {{ t('layout.settings.customTheme.import') }}
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <Button
+                                                class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                                @click="createJsonUploader"
+                                            >
+                                                <svg-icon
+                                                    class="outline-0"
+                                                    type="mdi"
+                                                    :path="mdiImport"
+                                                    :size="deviceStore.getREMSize(1.625)"
                                                 />
-                                            </div>
+                                            </Button>
                                         </div>
                                     </td>
                                 </tr>
@@ -1394,6 +1455,16 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+.el-tree {
+    --el-fill-color-blank: rgb(var(--colors-bg-one));
+    --el-font-size-base: 1rem;
+    --el-tree-text-color: rgb(var(--colors-text-color));
+    --el-tree-node-content-height: 2.5rem;
+    --el-tree-node-hover-bg-color: rgb(var(--colors-bg-two));
+    --el-text-color-placeholder: rgb(var(--colors-text-color));
+    --el-color-primary-light-9: rgb(var(--colors-bg-two));
+}
+
 .el-switch {
     --el-switch-on-color: rgb(var(--colors-accent));
     --el-switch-off-color: rgb(var(--colors-bg-one));
@@ -1404,68 +1475,24 @@ onUnmounted(() => {
     --el-text-color-primary: rgb(var(--colors-text-color));
 }
 
-.color-wrapper {
-    line-height: normal;
-    height: 2rem;
-    width: 2rem;
+.tree-text {
+    // This is THE WAY to handle elements overflowing with white-space: nowrap
+    // same as tw line-clamp-1
+    overflow: hidden;
+    display: -webkit-box;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+</style>
+
+<style lang="scss">
+.el-tree-node__content {
+    border-radius: 0.5rem;
 }
 
-.color-wrapper :deep(.el-color-picker__trigger) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 2rem !important;
-    width: 2rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__mask) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 2rem !important;
-    width: 2rem !important;
-    border-radius: 0.5rem !important;
-    background-color: rgba(0, 0, 0, 0);
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color) {
-    border: 0 !important;
-    border-radius: 0.5rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__color) {
-    opacity: 0.2;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__trigger) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner) {
-    border-radius: 0.5rem !important;
-    opacity: 0.8;
-    width: 2rem !important;
-    height: 2rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner):hover {
-    opacity: 1;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
-    display: none;
-    height: 0;
-    width: 0;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
-    display: none;
-    height: 0;
-    width: 0;
+.el-tree-node__expand-icon {
+    font-size: 1rem;
+    padding-left: 1px !important;
 }
 </style>

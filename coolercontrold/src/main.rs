@@ -27,8 +27,8 @@ use crate::modes::ModeController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
-use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
-use crate::repositories::repository::{DeviceList, DeviceLock, Repositories};
+use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repositories};
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
 use log::{error, info, warn};
@@ -64,8 +64,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ```
 /// COOLERCONTROL_LOG=DEBUG coolercontrold
 /// ```
-
 const ENV_LOG: &str = "COOLERCONTROL_LOG";
+
 /// Environment Variable: log level (short form)
 /// Takes a valid upper-case log level
 ///
@@ -103,13 +103,22 @@ const ENV_HOST_IP4: &str = "CC_HOST_IP4";
 const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
 /// Environment Variable: To disable dbus integration (sleep listener)
-/// Takes one of: ["1", "0", "ON", "on", "OFF", "off"]
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///
 /// # Example
 /// ```
 /// CC_DBUS=ON coolercontrold
 /// ```
 const ENV_DBUS: &str = "CC_DBUS";
+
+/// Environment Variable: To disable NVML integration
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_NVML=ON coolercontrold
+/// ```
+const ENV_NVML: &str = "CC_NVML";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;

@@ -209,6 +209,8 @@ export default {
                 border: 'Color del Borde',
                 text: 'Color del Texto',
                 textSecondary: 'Color del Texto Secundario',
+                export: 'Exportar Tema',
+                import: 'Importar Tema',
             },
             tooltips: {
                 introduction: 'Iniciar el recorrido de introducción de la aplicación.',
@@ -287,6 +289,7 @@ export default {
             customSensors: 'Sensores personalizados',
             modes: 'Modos',
             alerts: 'Alertas',
+            pinned: 'Fijado',
             tooltips: {
                 delete: 'Eliminar',
                 createMode: 'Crear modo desde configuración actual',
@@ -306,6 +309,13 @@ export default {
                 addCustomSensor: 'Añadir sensor personalizado',
                 addFunction: 'Añadir función',
                 chooseColor: 'Elegir color',
+                options: 'Más Opciones',
+                moveTop: 'Mover al Inicio',
+                moveBottom: 'Mover al Final',
+                disable: 'Deshabilitar',
+                pin: 'Fijar al Inicio',
+                unpin: 'Desfijar',
+                profileApply: 'Aplicar Perfil a ventiladores',
             },
         },
         add: {
@@ -403,7 +413,7 @@ export default {
             filterSensors: 'Filtrar Sensores',
             showControls: 'Mostrar Controles',
             mouseActions:
-                'Acciones del ratón en el panel:\n- Resaltar para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.',
+                'Acciones del ratón en el panel:\n- Resaltar selección para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.\n- Ctrl+clic o clic medio para mostrar todos los sensores en la herramienta de ayuda.',
             fullPage: 'Página Completa',
             filterBySensor: 'Filtrar por Sensor',
             search: 'Buscar',
@@ -464,9 +474,12 @@ export default {
             triggerConditions: 'Condiciones de Activación',
             maxValueTooltip: 'Los valores por encima de esto activarán la alerta.',
             minValueTooltip: 'Los valores por debajo de esto activarán la alerta.',
+            warmupDurationTooltip:
+                'Cuánto tiempo debe estar activa una condición para que la alerta se considere activa. Se verifica solo a intervalos regulares de sondeo, por lo que puede no tener exactamente esta duración.',
             greaterThan: 'mayor que',
             lessThan: 'menor que',
             newAlert: 'Nueva Alerta',
+            warmupGreaterThan: 'condición activada por más tiempo que',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',
             unsavedChangesHeader: 'Cambios no guardados',
         },
@@ -817,6 +830,18 @@ export default {
             profile: {
                 willCreated: 'será creado.',
             },
+            profileApply: {
+                applyProfile: 'Aplicar Perfil',
+                channelsApply: 'Canales para Aplicar Perfil',
+                selectChannels: 'Seleccionar Canales',
+                channelsTooltip: 'Seleccione uno o más canales para aplicar este Perfil.',
+            },
+            functionApply: {
+                applyFunction: 'Aplicar Función',
+                profilesApply: 'Perfiles para Aplicar Función',
+                selectProfiles: 'Seleccionar Perfiles',
+                profilesTooltip: 'Seleccione uno o más Perfiles para aplicar esta Función.',
+            },
             customSensor: {
                 new: 'Nuevo Sensor Personalizado',
             },
@@ -941,6 +966,7 @@ export default {
         alertState: {
             active: 'Activo',
             inactive: 'Inactivo',
+            error: 'Error',
         },
         deviceType: {
             customSensors: 'Sensores Personalizados',

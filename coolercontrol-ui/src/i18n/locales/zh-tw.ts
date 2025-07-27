@@ -204,6 +204,8 @@ export default {
                 border: '邊框顏色',
                 text: '文字顏色',
                 textSecondary: '次要文字顏色',
+                export: '匯出主題',
+                import: '匯入主題',
             },
             tooltips: {
                 introduction: '開始應用程式介紹導覽。',
@@ -275,6 +277,7 @@ export default {
             customSensors: '自定義傳感器',
             modes: '模式',
             alerts: '警報',
+            pinned: '已釘選',
             tooltips: {
                 delete: '刪除',
                 createMode: '從當前設置創建模式',
@@ -294,6 +297,13 @@ export default {
                 addCustomSensor: '添加自定義傳感器',
                 addFunction: '添加功能',
                 chooseColor: '選擇顏色',
+                options: '更多選項',
+                moveTop: '移至頂部',
+                moveBottom: '移至底部',
+                disable: '停用',
+                pin: '釘選至頂部',
+                unpin: '取消釘選',
+                profileApply: '將設定檔套用至風扇',
             },
         },
         add: {
@@ -314,7 +324,7 @@ export default {
             filterSensors: '篩選傳感器',
             showControls: '顯示控制器',
             mouseActions:
-                '儀表板滑鼠操作：\n- 突出顯示區域進行縮放\n- 滾動滑鼠進行縮放\n- 縮放後右鍵平移\n- 雙擊重置並恢復更新',
+                '儀表板滑鼠操作：\n- 選取區域以縮放。\n- 滾動以縮放。\n- 縮放時按右鍵拖曳。\n- 雙擊重置並繼續更新。\n- Ctrl+點擊或中鍵點擊在提示框中顯示所有感應器。',
             fullPage: '全屏模式',
             filterBySensor: '按傳感器篩選',
             search: '搜索',
@@ -375,9 +385,12 @@ export default {
             triggerConditions: '觸發條件',
             maxValueTooltip: '超過此值將觸發警報。',
             minValueTooltip: '低於此值將觸發警報。',
+            warmupDurationTooltip:
+                '條件必須保持多長時間才會將警報視為有效。該值僅按固定的輪詢頻率間隔進行檢查，因此可能不完全是這個長度。',
             greaterThan: '大於',
             lessThan: '小於',
             newAlert: '新警報',
+            warmupGreaterThan: '條件觸發時間超過',
             unsavedChanges: '此警報有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
         },
@@ -783,6 +796,18 @@ export default {
             profile: {
                 willCreated: '將被建立。',
             },
+            profileApply: {
+                applyProfile: '套用設定檔',
+                channelsApply: '要套用設定檔的通道',
+                selectChannels: '選擇通道',
+                channelsTooltip: '選擇一個或多個通道來套用此設定檔。',
+            },
+            functionApply: {
+                applyFunction: '套用功能',
+                profilesApply: '要套用功能的設定檔',
+                selectProfiles: '選擇設定檔',
+                profilesTooltip: '選擇一個或多個設定檔來套用此功能。',
+            },
             customSensor: {
                 new: '新自訂感測器',
             },
@@ -906,6 +931,7 @@ export default {
         alertState: {
             active: '激活',
             inactive: '未激活',
+            error: '錯誤',
         },
         deviceType: {
             customSensors: '自定義傳感器',

@@ -210,6 +210,8 @@ export default {
                 border: 'Rahmenfarbe',
                 text: 'Textfarbe',
                 textSecondary: 'Sekundäre Textfarbe',
+                export: 'Theme exportieren',
+                import: 'Theme importieren',
             },
             tooltips: {
                 introduction: 'Die Einführungstour der Anwendung starten.',
@@ -288,6 +290,7 @@ export default {
             customSensors: 'Benutzerdefinierte Sensoren',
             modes: 'Modi',
             alerts: 'Warnungen',
+            pinned: 'Angeheftet',
             tooltips: {
                 delete: 'Löschen',
                 createMode: 'Modus aus aktuellen Einstellungen erstellen',
@@ -307,6 +310,13 @@ export default {
                 addCustomSensor: 'Benutzerdefinierten Sensor hinzufügen',
                 addFunction: 'Funktion hinzufügen',
                 chooseColor: 'Farbe wählen',
+                options: 'Weitere Optionen',
+                moveTop: 'An die Spitze verschieben',
+                moveBottom: 'An das Ende verschieben',
+                disable: 'Deaktivieren',
+                pin: 'An die Spitze anheften',
+                unpin: 'Loslassen',
+                profileApply: 'Profil auf Lüfter anwenden',
             },
         },
         add: {
@@ -405,7 +415,7 @@ export default {
             filterSensors: 'Sensoren filtern',
             showControls: 'Steuerungen anzeigen',
             mouseActions:
-                'Dashboard-Mausaktionen:\n- Markieren zum Zoomen.\n- Scrollen zum Zoomen.\n- Rechtsklick zum Schwenken im gezoomten Zustand.\n- Doppelklick zum Zurücksetzen und fortsetzen der Aktualisierung.',
+                'Dashboard-Mausaktionen:\n- Markieren zum Zoomen.\n- Scrollen zum Zoomen.\n- Rechtsklick zum Schwenken im gezoomten Zustand.\n- Doppelklick zum Zurücksetzen und fortsetzen der Aktualisierung.\n- Strg+Klick oder Mausklick in der Mitte, um alle Sensoren im Tooltip anzuzeigen.',
             fullPage: 'Vollseite',
             filterBySensor: 'Nach Sensor filtern',
             search: 'Suchen',
@@ -467,9 +477,12 @@ export default {
             triggerConditions: 'Auslösebedingungen',
             maxValueTooltip: 'Werte über diesem lösen die Warnung aus.',
             minValueTooltip: 'Werte unter diesem lösen die Warnung aus.',
+            warmupDurationTooltip:
+                'Gibt an, wie lange eine Bedingung aktiv sein muss, bevor die Warnung als aktiv gilt. Die Überprüfung erfolgt nur in regelmäßigen Poll-Intervallen und kann daher von dieser Länge abweichen.',
             greaterThan: 'größer als',
             lessThan: 'kleiner als',
             newAlert: 'Neue Warnung',
+            warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
         },
@@ -834,6 +847,20 @@ export default {
             profile: {
                 willCreated: 'wird erstellt.',
             },
+            profileApply: {
+                applyProfile: 'Profil anwenden',
+                channelsApply: 'Kanäle für Profilanwendung',
+                selectChannels: 'Kanäle auswählen',
+                channelsTooltip:
+                    'Wählen Sie einen oder mehrere Kanäle aus, auf die dieses Profil angewendet werden soll.',
+            },
+            functionApply: {
+                applyFunction: 'Funktion anwenden',
+                profilesApply: 'Profile für Funktionsanwendung',
+                selectProfiles: 'Profile auswählen',
+                profilesTooltip:
+                    'Wählen Sie ein oder mehrere Profile aus, auf die diese Funktion angewendet werden soll.',
+            },
             customSensor: {
                 new: 'Neuer benutzerdefinierter Sensor',
             },
@@ -951,6 +978,7 @@ export default {
         alertState: {
             active: 'Aktiv',
             inactive: 'Inaktiv',
+            error: 'Fehler',
         },
         deviceType: {
             customSensors: 'Benutzerdefinierte Sensoren',

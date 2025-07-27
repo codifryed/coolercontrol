@@ -39,6 +39,8 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
     tooltip.style.color = 'rgb(var(--colors-text-color))'
     tooltip.style.padding = '0.5rem'
     let tooltipVisible: boolean = false
+    const standardHeightPercent: number = 0.04
+    let showAll = false
 
     const showTooltip = () => {
         if (!tooltipVisible) {
@@ -69,12 +71,202 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
         // handle tooltip positioning:
         const leftOffset =
             u.cursor.left! < u.width * 0.9 - tooltip.offsetWidth ? 10 : -(tooltip.offsetWidth + 10)
-        const topOffset =
-            u.cursor.top! < u.height * 0.9 - tooltip.offsetHeight
-                ? 10
-                : -(tooltip.offsetHeight + 10)
-        tooltip.style.top = topOffset + u.cursor.top + 'px'
         tooltip.style.left = leftOffset + u.cursor.left + 'px'
+
+        if (showAll) {
+            const remainingHeight = u.height * 0.95 - tooltip.offsetHeight
+            if (remainingHeight < 20) {
+                // static position at topif tooltip is almost >= graph height
+                tooltip.style.top = '10px'
+            } else if (u.cursor.top! < remainingHeight) {
+                // dynamic position below cursor position if tooltip hasn't reached the bottom
+                tooltip.style.top = 10 + u.cursor.top + 'px'
+            } else {
+                // static position on the bottom when the tooltip has reached the bottom
+                tooltip.style.top = remainingHeight + 10 + 'px'
+            }
+        } else {
+            // dynamic position below or above the cursor position
+            const topOffset =
+                u.cursor.top! < u.height * 0.95 - tooltip.offsetHeight
+                    ? 10
+                    : -(tooltip.offsetHeight + 10)
+            tooltip.style.top = topOffset + u.cursor.top + 'px'
+        }
+    }
+
+    const drawTooltip = (u: uPlot) => {
+        const seriesTexts: Array<string> = []
+        const c = u.cursor
+        const percentScaleMax: undefined | number = u.scales[SCALE_KEY_PERCENT]?.max
+        const percentScaleMin: undefined | number = u.scales[SCALE_KEY_PERCENT]?.min
+        let lowerPercentLimit: number = 210
+        let upperPercentLimit: number = -1
+        const rpmScaleMax: undefined | number = u.scales[SCALE_KEY_RPM]?.max
+        const rpmScaleMin: undefined | number = u.scales[SCALE_KEY_RPM]?.min
+        let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
+        let upperRpmLimit: number = -1
+        const wattScaleMax: undefined | number = u.scales[SCALE_KEY_WATTS]?.max
+        const wattScaleMin: undefined | number = u.scales[SCALE_KEY_WATTS]?.min
+        let lowerWattLimit: number = 4_294_967_295 // Max u32 value from daemon
+        let upperWattLimit: number = -1
+        for (const [i, series] of u.series.entries()) {
+            if (i == 0) {
+                // time series
+                continue
+            }
+            if (series.show) {
+                const seriesValue: number = u.data[i][c.idx!]!
+                if (seriesValue == null) {
+                    // when leaving the canvas area during an update,
+                    // the value can be undefined
+                    continue
+                }
+                if (!showAll) {
+                    const isPercentScale: boolean = series.scale == SCALE_KEY_PERCENT
+                    const isRpmScale: boolean = series.scale == SCALE_KEY_RPM
+                    const isWattScale: boolean = series.scale == SCALE_KEY_WATTS
+                    // Calculate Cursor values once for all series:
+                    if (
+                        upperPercentLimit == -1 &&
+                        isPercentScale &&
+                        percentScaleMax != null &&
+                        percentScaleMin != null
+                    ) {
+                        // Calculate Percent series' value range once for all series
+                        const percentCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_PERCENT)
+                        const percentScaleRange = percentScaleMax - percentScaleMin
+                        const percentSeriesValueRange = percentScaleRange * standardHeightPercent
+                        const percentSeriesValueRangeSplit = percentSeriesValueRange / 2
+                        lowerPercentLimit = percentCursorValue - percentSeriesValueRangeSplit
+                        upperPercentLimit = percentCursorValue + percentSeriesValueRangeSplit
+                        // keeps upper and lower boundaries within the canvas area:
+                        if (lowerPercentLimit < percentScaleMin + percentSeriesValueRangeSplit) {
+                            lowerPercentLimit = percentScaleMin
+                            upperPercentLimit = percentScaleMin + percentSeriesValueRange
+                        } else if (
+                            upperPercentLimit >
+                            percentScaleMax - percentSeriesValueRangeSplit
+                        ) {
+                            lowerPercentLimit = percentScaleMax - percentSeriesValueRange
+                            upperPercentLimit = percentScaleMax
+                        }
+                    } else if (
+                        upperRpmLimit == -1 &&
+                        isRpmScale &&
+                        rpmScaleMax != null &&
+                        rpmScaleMin != null
+                    ) {
+                        // Calculate RPM series' value range once for all series
+                        const rpmCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_RPM)
+                        const rpmScaleRange = rpmScaleMax - rpmScaleMin
+                        const rpmSeriesValueRange = rpmScaleRange * standardHeightPercent
+                        const rpmSeriesValueRangeSplit = rpmSeriesValueRange / 2
+                        lowerRpmLimit = rpmCursorValue - rpmSeriesValueRangeSplit
+                        upperRpmLimit = rpmCursorValue + rpmSeriesValueRangeSplit
+                        // keeps upper and lower boundaries within the canvas area:
+                        if (lowerRpmLimit < rpmScaleMin + rpmSeriesValueRangeSplit) {
+                            lowerRpmLimit = rpmScaleMin
+                            upperRpmLimit = rpmScaleMin + rpmSeriesValueRange
+                        } else if (upperRpmLimit > rpmScaleMax - rpmSeriesValueRangeSplit) {
+                            lowerRpmLimit = rpmScaleMax - rpmSeriesValueRange
+                            upperRpmLimit = rpmScaleMax
+                        }
+                    } else if (
+                        upperWattLimit == -1 &&
+                        isWattScale &&
+                        wattScaleMax != null &&
+                        wattScaleMin != null
+                    ) {
+                        // Calculate Watt series' value range once for all series
+                        const wattCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_WATTS)
+                        const wattScaleRange = wattScaleMax - wattScaleMin
+                        const wattSeriesValueRange = wattScaleRange * standardHeightPercent
+                        const wattSeriesValueRangeSplit = wattSeriesValueRange / 2
+                        lowerWattLimit = wattCursorValue - wattSeriesValueRangeSplit
+                        upperWattLimit = wattCursorValue + wattSeriesValueRangeSplit
+                        // keeps upper and lower boundaries within the canvas area:
+                        if (lowerWattLimit < wattScaleMin + wattSeriesValueRangeSplit) {
+                            lowerWattLimit = wattScaleMin
+                            upperWattLimit = wattScaleMin + wattSeriesValueRange
+                        } else if (upperWattLimit > wattScaleMax - wattSeriesValueRangeSplit) {
+                            lowerWattLimit = wattScaleMax - wattSeriesValueRange
+                            upperWattLimit = wattScaleMax
+                        }
+                    }
+                    // Check if series is in range of the cursor
+                    if (
+                        isPercentScale &&
+                        (seriesValue < lowerPercentLimit || seriesValue > upperPercentLimit)
+                    ) {
+                        // Out of range for the percent scale
+                        continue
+                    }
+                    if (
+                        isRpmScale &&
+                        (seriesValue < lowerRpmLimit || seriesValue > upperRpmLimit)
+                    ) {
+                        // out of range for the rpm scale
+                        continue
+                    }
+                    if (
+                        isWattScale &&
+                        (seriesValue < lowerWattLimit || seriesValue > upperWattLimit)
+                    ) {
+                        // out of range for the watt scale
+                        continue
+                    }
+                }
+                // @ts-ignore
+                const lineName = allDevicesLineProperties.get(series.label!)?.name
+                let lineValue: string = ''
+                let suffix: string = ''
+                // @ts-ignore
+                if (series.label!.endsWith('duty')) {
+                    lineValue = seriesValue.toString()
+                    suffix = '%'
+                    // @ts-ignore
+                } else if (series.label!.endsWith('temp')) {
+                    lineValue = seriesValue.toFixed(1)
+                    suffix = '°'
+                    // @ts-ignore
+                } else if (series.label!.endsWith('load')) {
+                    lineValue = seriesValue.toString()
+                    suffix = '%'
+                    // @ts-ignore
+                } else if (series.label!.endsWith('freq')) {
+                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
+                    if (frequencyPrecision === 1) {
+                        lineValue = seriesValue.toString()
+                        suffix = 'Mhz'
+                    } else {
+                        lineValue = seriesValue.toFixed(2)
+                        suffix = 'Ghz'
+                    }
+                    // @ts-ignore
+                } else if (series.label!.endsWith('rpm')) {
+                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
+                    suffix = 'rpm'
+                    lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                    // @ts-ignore
+                } else if (series.label!.endsWith('watts')) {
+                    lineValue = seriesValue.toFixed(1)
+                    suffix = 'W'
+                }
+                // @ts-ignore
+                const lineColor = allDevicesLineProperties.get(series.label!)?.color
+                seriesTexts.push(
+                    `<tr><td><i class="pi pi-minus" style="color:${lineColor};"/></td><td>${lineName}&nbsp;</td><td>${lineValue} ${suffix}</td></tr>`,
+                )
+            }
+        }
+        if (seriesTexts.length > 0) {
+            seriesTexts.splice(0, 0, '<table style="white-space: nowrap;">')
+            seriesTexts.push('</table>')
+            setTooltip(u, seriesTexts.join(''))
+        } else {
+            hideTooltip()
+        }
     }
 
     return {
@@ -82,193 +274,28 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
             init: [
                 (u: uPlot, _: uPlot.Options, __: uPlot.AlignedData) => {
                     u.over.appendChild(tooltip)
+                    // u.over.tabIndex = -1 // required for key handlers
+                    u.over.addEventListener(
+                        'mousedown',
+                        (e) => {
+                            if (e.ctrlKey || e.button === 1) {
+                                showAll = true
+                                drawTooltip(u)
+                            }
+                        },
+                        true,
+                    )
+                    u.over.addEventListener(
+                        'mouseup',
+                        (_) => {
+                            showAll = false
+                            hideTooltip()
+                        },
+                        true,
+                    )
                 },
             ],
-            setCursor: [
-                (u: uPlot) => {
-                    const seriesTexts: Array<string> = []
-                    const c = u.cursor
-                    const percentScaleMax: undefined | number = u.scales[SCALE_KEY_PERCENT]?.max
-                    const percentScaleMin: undefined | number = u.scales[SCALE_KEY_PERCENT]?.min
-                    let lowerPercentLimit: number = 210
-                    let upperPercentLimit: number = -1
-                    const rpmScaleMax: undefined | number = u.scales[SCALE_KEY_RPM]?.max
-                    const rpmScaleMin: undefined | number = u.scales[SCALE_KEY_RPM]?.min
-                    let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
-                    let upperRpmLimit: number = -1
-                    const wattScaleMax: undefined | number = u.scales[SCALE_KEY_WATTS]?.max
-                    const wattScaleMin: undefined | number = u.scales[SCALE_KEY_WATTS]?.min
-                    let lowerWattLimit: number = 4_294_967_295 // Max u32 value from daemon
-                    let upperWattLimit: number = -1
-                    for (const [i, series] of u.series.entries()) {
-                        if (i == 0) {
-                            // time series
-                            continue
-                        }
-                        if (series.show) {
-                            const seriesValue: number = u.data[i][c.idx!]!
-                            if (seriesValue == null) {
-                                // when leaving the canvas area during an update,
-                                // the value can be undefined
-                                continue
-                            }
-                            const isPercentScale: boolean = series.scale == SCALE_KEY_PERCENT
-                            const isRpmScale: boolean = series.scale == SCALE_KEY_RPM
-                            const isWattScale: boolean = series.scale == SCALE_KEY_WATTS
-                            // Calculate Cursor values once for all series:
-                            if (
-                                upperPercentLimit == -1 &&
-                                isPercentScale &&
-                                percentScaleMax != null &&
-                                percentScaleMin != null
-                            ) {
-                                // Calculate Percent series' value range once for all series
-                                const percentCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_PERCENT)
-                                const percentScaleRange = percentScaleMax - percentScaleMin
-                                const percentSeriesValueRange = percentScaleRange * 0.04
-                                const percentSeriesValueRangeSplit = percentSeriesValueRange / 2
-                                lowerPercentLimit =
-                                    percentCursorValue - percentSeriesValueRangeSplit
-                                upperPercentLimit =
-                                    percentCursorValue + percentSeriesValueRangeSplit
-                                // keeps upper and lower boundaries within the canvas area:
-                                if (
-                                    lowerPercentLimit <
-                                    percentScaleMin + percentSeriesValueRangeSplit
-                                ) {
-                                    lowerPercentLimit = percentScaleMin
-                                    upperPercentLimit = percentScaleMin + percentSeriesValueRange
-                                } else if (
-                                    upperPercentLimit >
-                                    percentScaleMax - percentSeriesValueRangeSplit
-                                ) {
-                                    lowerPercentLimit = percentScaleMax - percentSeriesValueRange
-                                    upperPercentLimit = percentScaleMax
-                                }
-                            } else if (
-                                upperRpmLimit == -1 &&
-                                isRpmScale &&
-                                rpmScaleMax != null &&
-                                rpmScaleMin != null
-                            ) {
-                                // Calculate RPM series' value range once for all series
-                                const rpmCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_RPM)
-                                const rpmScaleRange = rpmScaleMax - rpmScaleMin
-                                const rpmSeriesValueRange = rpmScaleRange * 0.04
-                                const rpmSeriesValueRangeSplit = rpmSeriesValueRange / 2
-                                lowerRpmLimit = rpmCursorValue - rpmSeriesValueRangeSplit
-                                upperRpmLimit = rpmCursorValue + rpmSeriesValueRangeSplit
-                                // keeps upper and lower boundaries within the canvas area:
-                                if (lowerRpmLimit < rpmScaleMin + rpmSeriesValueRangeSplit) {
-                                    lowerRpmLimit = rpmScaleMin
-                                    upperRpmLimit = rpmScaleMin + rpmSeriesValueRange
-                                } else if (upperRpmLimit > rpmScaleMax - rpmSeriesValueRangeSplit) {
-                                    lowerRpmLimit = rpmScaleMax - rpmSeriesValueRange
-                                    upperRpmLimit = rpmScaleMax
-                                }
-                            } else if (
-                                upperWattLimit == -1 &&
-                                isWattScale &&
-                                wattScaleMax != null &&
-                                wattScaleMin != null
-                            ) {
-                                // Calculate Watt series' value range once for all series
-                                const wattCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_WATTS)
-                                const wattScaleRange = wattScaleMax - wattScaleMin
-                                const wattSeriesValueRange = wattScaleRange * 0.04
-                                const wattSeriesValueRangeSplit = wattSeriesValueRange / 2
-                                lowerWattLimit = wattCursorValue - wattSeriesValueRangeSplit
-                                upperWattLimit = wattCursorValue + wattSeriesValueRangeSplit
-                                // keeps upper and lower boundaries within the canvas area:
-                                if (lowerWattLimit < wattScaleMin + wattSeriesValueRangeSplit) {
-                                    lowerWattLimit = wattScaleMin
-                                    upperWattLimit = wattScaleMin + wattSeriesValueRange
-                                } else if (
-                                    upperWattLimit >
-                                    wattScaleMax - wattSeriesValueRangeSplit
-                                ) {
-                                    lowerWattLimit = wattScaleMax - wattSeriesValueRange
-                                    upperWattLimit = wattScaleMax
-                                }
-                            }
-                            // Check if series is in range of the cursor
-                            if (
-                                isPercentScale &&
-                                (seriesValue < lowerPercentLimit || seriesValue > upperPercentLimit)
-                            ) {
-                                // Out of range for the percent scale
-                                continue
-                            }
-                            if (
-                                isRpmScale &&
-                                (seriesValue < lowerRpmLimit || seriesValue > upperRpmLimit)
-                            ) {
-                                // out of range for the rpm scale
-                                continue
-                            }
-                            if (
-                                isWattScale &&
-                                (seriesValue < lowerWattLimit || seriesValue > upperWattLimit)
-                            ) {
-                                // out of range for the watt scale
-                                continue
-                            }
-                            // @ts-ignore
-                            const lineName = allDevicesLineProperties.get(series.label!)?.name
-                            let lineValue: string = ''
-                            let suffix: string = ''
-                            // @ts-ignore
-                            if (series.label!.endsWith('duty')) {
-                                lineValue = seriesValue.toString()
-                                suffix = '%'
-                                // @ts-ignore
-                            } else if (series.label!.endsWith('temp')) {
-                                lineValue = seriesValue.toFixed(1)
-                                suffix = '°'
-                                // @ts-ignore
-                            } else if (series.label!.endsWith('load')) {
-                                lineValue = seriesValue.toString()
-                                suffix = '%'
-                                // @ts-ignore
-                            } else if (series.label!.endsWith('freq')) {
-                                const frequencyPrecision = seriesValue.toString().includes('.')
-                                    ? 1000
-                                    : 1
-                                if (frequencyPrecision === 1) {
-                                    lineValue = seriesValue.toString()
-                                    suffix = 'Mhz'
-                                } else {
-                                    lineValue = seriesValue.toFixed(2)
-                                    suffix = 'Ghz'
-                                }
-                                // @ts-ignore
-                            } else if (series.label!.endsWith('rpm')) {
-                                const frequencyPrecision = seriesValue.toString().includes('.')
-                                    ? 1000
-                                    : 1
-                                suffix = 'rpm'
-                                lineValue = (seriesValue * frequencyPrecision).toFixed(0)
-                                // @ts-ignore
-                            } else if (series.label!.endsWith('watts')) {
-                                lineValue = seriesValue.toFixed(1)
-                                suffix = 'W'
-                            }
-                            // @ts-ignore
-                            const lineColor = allDevicesLineProperties.get(series.label!)?.color
-                            seriesTexts.push(
-                                `<tr><td><i class="pi pi-minus" style="color:${lineColor};"/></td><td>${lineName}&nbsp;</td><td>${lineValue} ${suffix}</td></tr>`,
-                            )
-                        }
-                    }
-                    if (seriesTexts.length > 0) {
-                        seriesTexts.splice(0, 0, '<table style="white-space: nowrap;">')
-                        seriesTexts.push('</table>')
-                        setTooltip(u, seriesTexts.join(''))
-                    } else {
-                        hideTooltip()
-                    }
-                },
-            ],
+            setCursor: [drawTooltip],
         },
     }
 }
@@ -276,6 +303,8 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
 export const columnHighlightPlugin = () => {
     const highlightEl: HTMLElement = document.createElement('div')
     const highlightEl2: HTMLElement = document.createElement('div')
+    const standardHeightPercent: number = 0.04
+    const standardHeightPercentHalf: number = 0.02
     return {
         hooks: {
             init: [
@@ -288,7 +317,7 @@ export const columnHighlightPlugin = () => {
                         position: 'absolute',
                         left: 0,
                         top: 0,
-                        height: '4%',
+                        height: `${standardHeightPercent * 100}%`,
                         backgroundColor: 'rgba(var(--colors-accent) / 0.3)',
                     })
                     uPlot.assign(highlightEl2.style, {
@@ -341,12 +370,12 @@ export const columnHighlightPlugin = () => {
                     const scale_max = u.scales[scale_key].max!
                     const scale_min = u.scales[scale_key].min!
                     const scale_range = scale_max - scale_min
-                    const scale_2_percent = scale_range * 0.02
+                    const scale_half_height_percent = scale_range * standardHeightPercentHalf
                     const percentCursorValue = u.posToVal(u.cursor.top ?? 0, scale_key)
                     const topCursorValue = Math.min(
                         Math.max(
-                            percentCursorValue + scale_2_percent,
-                            scale_min + scale_2_percent * 2,
+                            percentCursorValue + scale_half_height_percent,
+                            scale_min + scale_half_height_percent * 2,
                         ),
                         scale_max,
                     )

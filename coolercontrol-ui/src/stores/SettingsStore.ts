@@ -26,6 +26,7 @@ import {
     defaultCustomTheme,
     DeviceUISettings,
     DeviceUISettingsDTO,
+    MenuOrderIds,
     SensorAndChannelSettings,
     ThemeMode,
     UISettingsDTO,
@@ -67,9 +68,9 @@ export const useSettingsStore = defineStore('settings', () => {
         '#FF0000',
         '#FFFF00',
         '#00FF00',
-        '#FF00FF',
         '#00FFFF',
         '#0000FF',
+        '#FF00FF',
     ])
 
     const functions: Ref<Array<Function>> = ref([])
@@ -105,6 +106,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
     const dashboards: Array<Dashboard> = reactive([...Dashboard.defaults()])
+    const homeDashboard: Ref<UID | undefined> = ref()
     const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
@@ -112,10 +114,11 @@ export const useSettingsStore = defineStore('settings', () => {
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
-    const collapsedMenuNodeIds: Ref<Array<string>> = ref([])
+    const menuOrder: Ref<Array<MenuOrderIds>> = ref([])
+    const expandedMenuIds: Ref<Array<string> | undefined> = ref()
+    const pinnedIds: Ref<Array<string>> = ref([])
     const collapsedMainMenu: Ref<boolean> = ref(false)
     const hideMenuCollapseIcon: Ref<boolean> = ref(false)
-    const menuEntitiesAtBottom: Ref<boolean> = ref(false)
     const mainMenuWidthRem: Ref<number> = ref(24)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
@@ -189,6 +192,11 @@ export const useSettingsStore = defineStore('settings', () => {
             dashboards.length = 0
             dashboards.push(...uiSettings.dashboards)
         }
+        homeDashboard.value = uiSettings.homeDashboard
+        if (homeDashboard.value == null) {
+            // set home dashboard to first dashboard by default
+            homeDashboard.value = dashboards[0].uid
+        }
         chartLineScale.value = uiSettings.chartLineScale
         if (deviceStore.isQtApp()) {
             // @ts-ignore
@@ -205,11 +213,12 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
         time24.value = uiSettings.time24
-        collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
+        menuOrder.value = uiSettings.menuOrder
+        expandedMenuIds.value = uiSettings.expandedMenuIds
+        pinnedIds.value = uiSettings.pinnedIds
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
         mainMenuWidthRem.value = uiSettings.mainMenuWidthRem
         hideMenuCollapseIcon.value = uiSettings.hideMenuCollapseIcon
-        menuEntitiesAtBottom.value = uiSettings.menuEntitiesAtBottom
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -868,6 +877,7 @@ export const useSettingsStore = defineStore('settings', () => {
             [
                 allUIDeviceSettings.value,
                 dashboards,
+                homeDashboard,
                 chartLineScale,
                 startInSystemTray,
                 closeToSystemTray,
@@ -875,10 +885,11 @@ export const useSettingsStore = defineStore('settings', () => {
                 themeMode,
                 uiScale,
                 time24,
-                collapsedMenuNodeIds.value,
+                menuOrder,
+                expandedMenuIds,
+                pinnedIds,
                 collapsedMainMenu,
                 hideMenuCollapseIcon,
-                menuEntitiesAtBottom,
                 mainMenuWidthRem,
                 frequencyPrecision,
                 customTheme,
@@ -905,6 +916,7 @@ export const useSettingsStore = defineStore('settings', () => {
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
                     uiSettings.dashboards = dashboards
+                    uiSettings.homeDashboard = homeDashboard.value
                     uiSettings.chartLineScale = chartLineScale.value
                     if (deviceStore.isQtApp()) {
                         try {
@@ -920,10 +932,11 @@ export const useSettingsStore = defineStore('settings', () => {
                     }
                     uiSettings.themeMode = themeMode.value
                     uiSettings.time24 = time24.value
-                    uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
+                    uiSettings.menuOrder = menuOrder.value
+                    uiSettings.expandedMenuIds = expandedMenuIds.value
+                    uiSettings.pinnedIds = pinnedIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value
                     uiSettings.hideMenuCollapseIcon = hideMenuCollapseIcon.value
-                    uiSettings.menuEntitiesAtBottom = menuEntitiesAtBottom.value
                     uiSettings.mainMenuWidthRem = mainMenuWidthRem.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
@@ -1151,6 +1164,7 @@ export const useSettingsStore = defineStore('settings', () => {
         modeInEdit,
         allUIDeviceSettings,
         dashboards,
+        homeDashboard,
         chartLineScale,
         startInSystemTray,
         closeToSystemTray,
@@ -1158,10 +1172,11 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode,
         uiScale,
         time24,
-        collapsedMenuNodeIds,
+        menuOrder,
+        expandedMenuIds,
+        pinnedIds,
         collapsedMainMenu,
         hideMenuCollapseIcon,
-        menuEntitiesAtBottom,
         mainMenuWidthRem,
         frequencyPrecision,
         customTheme,

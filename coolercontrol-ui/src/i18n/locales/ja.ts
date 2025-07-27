@@ -198,6 +198,8 @@ export default {
                 border: 'ボーダーカラー',
                 text: 'テキストカラー',
                 textSecondary: 'セカンダリテキストカラー',
+                export: 'テーマをエクスポート',
+                import: 'テーマをインポート',
             },
             applySettingAndRestart:
                 'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
@@ -299,6 +301,7 @@ export default {
             customSensors: 'カスタムセンサー',
             modes: 'モード',
             alerts: 'アラート',
+            pinned: 'ピン留め済み',
             tooltips: {
                 delete: '削除',
                 createMode: '現在の設定からモードを作成',
@@ -318,6 +321,13 @@ export default {
                 addCustomSensor: 'カスタムセンサーを追加',
                 addFunction: '機能を追加',
                 chooseColor: '色を選択',
+                options: 'その他のオプション',
+                moveTop: '上に移動',
+                moveBottom: '下に移動',
+                disable: '無効化',
+                pin: '上部にピン留め',
+                unpin: 'ピン留め解除',
+                profileApply: 'ファンにプロファイルを適用',
             },
         },
         add: {
@@ -440,7 +450,7 @@ export default {
             filterSensors: 'センサーをフィルター',
             showControls: 'コントロールを表示',
             mouseActions:
-                'ダッシュボードのマウス操作：\n- ハイライトしてズーム。\n- スクロールしてズーム。\n- ズーム時に右クリックでパン。\n- ダブルクリックでリセットして更新を再開。',
+                'ダッシュボードのマウス操作:\n- 選択範囲をハイライトしてズーム。\n- スクロールでズーム。\n- ズーム時に右クリックでパン。\n- ダブルクリックでリセットして更新を再開。\n- Ctrl+クリックまたは中クリックでツールチップにすべてのセンサーを表示。',
             fullPage: 'フルページ',
             filterBySensor: 'センサーでフィルター',
             search: '検索',
@@ -501,9 +511,12 @@ export default {
             triggerConditions: 'トリガー条件',
             maxValueTooltip: 'この値を超えるとアラートがトリガーされます。',
             minValueTooltip: 'この値未満になるとアラートがトリガーされます。',
+            warmupDurationTooltip:
+                'アラートがアクティブと判断されるまでに、条件がアクティブでなければならない期間。この期間は定期的なポーリング間隔でのみチェックされるため、必ずしもこの期間と正確に一致するとは限りません。',
             greaterThan: 'より大きい',
             lessThan: 'より小さい',
             newAlert: '新しいアラート',
+            warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
         },
@@ -821,6 +834,18 @@ export default {
             profile: {
                 willCreated: '作成されます。',
             },
+            profileApply: {
+                applyProfile: 'プロファイルを適用',
+                channelsApply: 'プロファイルを適用するチャンネル',
+                selectChannels: 'チャンネルを選択',
+                channelsTooltip: 'プロファイルを適用するチャンネルを選択してください。',
+            },
+            functionApply: {
+                applyFunction: '機能を適用',
+                profilesApply: '機能を適用するプロファイル',
+                selectProfiles: 'プロファイルを選択',
+                profilesTooltip: '機能を適用するプロファイルを選択してください。',
+            },
             customSensor: {
                 new: '新しいカスタムセンサー',
             },
@@ -937,6 +962,7 @@ export default {
         alertState: {
             active: 'アクティブ',
             inactive: '非アクティブ',
+            error: 'エラー',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

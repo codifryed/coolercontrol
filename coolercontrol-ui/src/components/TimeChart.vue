@@ -640,11 +640,13 @@ const uOptions: uPlot.Options = {
             mousedown: (u, targ, handler) => {
                 return (e) => {
                     if (e.button == 0) {
+                        if (e.ctrlKey) {
+                            // no drag-selection when ctrl is pressed
+                            return
+                        }
                         const pxPerXUnitSecond = u.valToPos(1, 'x') - u.valToPos(0, 'x')
                         // 10 seconds max zoom-in
                         u.cursor.drag!.dist = pxPerXUnitSecond * 10
-                        // if (e.ctrlKey) {
-                        // }
                         handler(e)
                     }
                 }

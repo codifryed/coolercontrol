@@ -26,14 +26,16 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { Profile } from '@/models/Profile.ts'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-    profileUID: UID
+    functionUID: UID
 }
 
 const emit = defineEmits<{
-    (e: 'deleted', profileUID: UID): void
+    (e: 'deleted', functionUID: UID): void
+    (e: 'close'): void
 }>()
 
 const props = defineProps<Props>()
@@ -44,66 +46,64 @@ const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 
-const deleteProfile = (): void => {
-    const profileUIDToDelete: UID = props.profileUID
-    const profileIndex: number = settingsStore.profiles.findIndex(
-        (profile) => profile.uid === profileUIDToDelete,
+const deleteFunction = (): void => {
+    const functionUIDToDelete = props.functionUID
+    const functionIndex: number = settingsStore.functions.findIndex(
+        (fun) => fun.uid === functionUIDToDelete,
     )
-    if (profileIndex === -1) {
-        console.error('Profile not found for removal: ' + profileUIDToDelete)
+    if (functionIndex === -1) {
+        console.error('Function not found for removal: ' + functionUIDToDelete)
+        emit('close')
         return
     }
-    if (profileUIDToDelete === '0') {
+    if (functionUIDToDelete === '0') {
+        emit('close')
         return // can't delete default
     }
-    const profileName = settingsStore.profiles[profileIndex].name
-    const associatedChannelSettings: Array<string> = []
-    for (const [deviceUID, setting] of settingsStore.allDaemonDeviceSettings) {
-        for (const channel_setting of setting.settings.values()) {
-            if (channel_setting.profile_uid === profileUIDToDelete) {
-                associatedChannelSettings.push(
-                    settingsStore.allUIDeviceSettings
-                        .get(deviceUID)!
-                        .sensorsAndChannels.get(channel_setting.channel_name)!.name,
-                )
-            }
-        }
-    }
+    const functionName = settingsStore.functions[functionIndex].name
+    const associatedProfiles: Array<Profile> = settingsStore.profiles.filter(
+        (p) => p.function_uid === functionUIDToDelete,
+    )
     const deleteMessage: string =
-        associatedChannelSettings.length === 0
-            ? t('views.profiles.deleteProfileConfirm', { name: profileName })
-            : t('views.profiles.deleteProfileWithChannelsConfirm', {
-                  name: profileName,
-                  channels: associatedChannelSettings.join(', '),
+        associatedProfiles.length === 0
+            ? t('views.functions.deleteFunctionConfirm', { name: functionName })
+            : t('views.functions.deleteFunctionWithProfilesConfirm', {
+                  name: functionName,
+                  profiles: associatedProfiles.map((p) => p.name).join(', '),
               })
     confirm.require({
         message: deleteMessage,
-        header: t('views.profiles.deleteProfile'),
+        header: t('views.functions.deleteFunction'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
-            // emit needs to happen first for Profiles, since they're re-loaded in by deleting
-            emit('deleted', profileUIDToDelete)
-            await settingsStore.deleteProfile(profileUIDToDelete)
+            await settingsStore.deleteFunction(functionUIDToDelete)
+            settingsStore.functions.splice(functionIndex, 1)
             toast.add({
                 severity: 'success',
                 summary: t('common.success'),
-                detail: t('views.profiles.profileDeleted'),
+                detail: t('views.functions.functionDeleted'),
                 life: 3000,
             })
+            emit('deleted', functionUIDToDelete)
+            emit('close')
+        },
+        reject: () => {
+            emit('close')
         },
     })
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('common.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteProfile"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="deleteFunction"
+    >
+        <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+        <span class="ml-1.5">
+            {{ t('views.functions.deleteFunction') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

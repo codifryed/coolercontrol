@@ -204,6 +204,8 @@ export default {
                 border: '边框颜色',
                 text: '文本颜色',
                 textSecondary: '次要文本颜色',
+                export: '导出主题',
+                import: '导入主题',
             },
             tooltips: {
                 introduction: '启动应用程序引导教程。',
@@ -274,6 +276,7 @@ export default {
             customSensors: '自定义传感器',
             modes: '模式',
             alerts: '警报',
+            pinned: '已固定',
             tooltips: {
                 delete: '删除',
                 createMode: '从当前设置创建模式',
@@ -293,6 +296,13 @@ export default {
                 addCustomSensor: '添加自定义传感器',
                 addFunction: '添加功能',
                 chooseColor: '选择颜色',
+                options: '更多选项',
+                moveTop: '移至顶部',
+                moveBottom: '移至底部',
+                disable: '禁用',
+                pin: '固定到顶部',
+                unpin: '取消固定',
+                profileApply: '将配置文件应用到风扇',
             },
         },
         add: {
@@ -313,7 +323,7 @@ export default {
             filterSensors: '筛选传感器',
             showControls: '显示控制器',
             mouseActions:
-                '仪表盘鼠标操作：\n- 突出显示区域进行缩放\n- 滚动鼠标进行缩放\n- 缩放后右键平移\n- 双击重置并恢复更新',
+                '仪表盘鼠标操作:\n- 高亮选择以缩放.\n- 滚动以缩放.\n- 右键单击以平移.\n- 双击以重置并继续更新.\n- Ctrl+单击或中键单击以在工具提示中显示所有传感器.',
             fullPage: '全屏模式',
             filterBySensor: '按传感器筛选',
             search: '搜索',
@@ -374,9 +384,12 @@ export default {
             triggerConditions: '触发条件',
             maxValueTooltip: '超过此值将触发警报。',
             minValueTooltip: '低于此值将触发警报。',
+            warmupDurationTooltip:
+                '条件必须保持多长时间才会将警报视为有效。该值仅按固定的轮询频率间隔进行检查，因此可能不完全是这个长度。',
             greaterThan: '大于',
             lessThan: '小于',
             newAlert: '新警报',
+            warmupGreaterThan: '条件触发时间超过',
             unsavedChanges: '此警报有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
         },
@@ -783,6 +796,18 @@ export default {
             profile: {
                 willCreated: '将被创建。',
             },
+            profileApply: {
+                applyProfile: '应用配置文件',
+                channelsApply: '要应用配置文件的通道',
+                selectChannels: '选择通道',
+                channelsTooltip: '选择一个或多个通道来应用此配置文件。',
+            },
+            functionApply: {
+                applyFunction: '应用功能',
+                profilesApply: '要应用功能的配置文件',
+                selectProfiles: '选择配置文件',
+                profilesTooltip: '选择一个或多个配置文件来应用此功能。',
+            },
             customSensor: {
                 new: '新建自定义传感器',
             },
@@ -906,6 +931,7 @@ export default {
         alertState: {
             active: '激活',
             inactive: '未激活',
+            error: '错误',
         },
         deviceType: {
             customSensors: '自定义传感器',

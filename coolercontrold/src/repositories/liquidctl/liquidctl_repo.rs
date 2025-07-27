@@ -23,7 +23,14 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use futures_util::future::join_all;
+use heck::ToTitleCase;
+use log::{debug, error, info, trace, warn};
+use regex::Regex;
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
@@ -35,7 +42,7 @@ use crate::repositories::liquidctl::liqctld_client::{
 use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
-use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
@@ -64,7 +71,15 @@ impl LiquidctlRepo {
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
         {
-            return Err(InitError::Disabled.into());
+            let _: Result<()> = async {
+                // attempt to quickly shut down the liqctld service if it happens to be running.
+                let liqctld_client = LiqctldClient::new(1).await?;
+                liqctld_client.post_quit().await?;
+                liqctld_client.shutdown();
+                Ok(())
+            }
+            .await;
+            return Err(InitError::LiqctldDisabled.into());
         }
         if let Err(err) = tokio::task::spawn_blocking(liqctld_service::verify_env).await? {
             let msg = format!(
@@ -1182,16 +1197,4 @@ mod tests {
         );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
     }
-}
-
-#[derive(Debug, Clone, Display, Error, PartialEq)]
-pub enum InitError {
-    #[display("Liquidctl Integration is Disabled")]
-    Disabled,
-
-    #[display("Connection Error: {msg}")]
-    Connection { msg: String },
-
-    #[display("Python environment Error: {msg}")]
-    Env { msg: String },
 }

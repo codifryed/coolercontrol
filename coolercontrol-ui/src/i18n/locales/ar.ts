@@ -206,6 +206,8 @@ export default {
                 border: 'لون الحدود',
                 text: 'لون النص',
                 textSecondary: 'لون النص الثانوي',
+                export: 'تصدير السمة',
+                import: 'استيراد السمة',
             },
             tooltips: {
                 introduction: 'بدء جولة تعريفية للتطبيق.',
@@ -281,6 +283,7 @@ export default {
             customSensors: 'المستشعرات المخصصة',
             modes: 'الأوضاع',
             alerts: 'التنبيهات',
+            pinned: 'مثبت',
             tooltips: {
                 delete: 'حذف',
                 createMode: 'إنشاء وضع من الإعدادات الحالية',
@@ -300,6 +303,13 @@ export default {
                 addCustomSensor: 'إضافة مستشعر مخصص',
                 addFunction: 'إضافة وظيفة',
                 chooseColor: 'اختيار اللون',
+                options: 'خيارات إضافية',
+                moveTop: 'نقل إلى الأعلى',
+                moveBottom: 'نقل إلى الأسفل',
+                disable: 'تعطيل',
+                pin: 'تثبيت في الأعلى',
+                unpin: 'إلغاء التثبيت',
+                profileApply: 'تطبيق الملف الشخصي على المراوح',
             },
         },
         add: {
@@ -394,7 +404,7 @@ export default {
             filterSensors: 'تصفية المستشعرات',
             showControls: 'إظهار عناصر التحكم',
             mouseActions:
-                'إجراءات الماوس على لوحة المعلومات:\n- تحديد للتكبير.\n- التمرير للتكبير.\n- النقر بزر الماوس الأيمن للتحريك عند التكبير.\n- النقر المزدوج لإعادة التعيين واستئناف التحديث.',
+                'إجراءات الماوس في لوحة المعلومات:\n- إبراز التحديد لتحقيق التكبير.\n- التمرير لتحقيق التكبير.\n- النقر بزر الماوس الأيمن لتحريكه عندما يكون مخصصًا.\n- النقر المزدوج لاستعادة والعودة إلى التحديث.\n- النقر بزر الماوس Ctrl أو النقر بزر الماوس الأوسط لعرض جميع المستشعرات في النصيح.',
             fullPage: 'صفحة كاملة',
             filterBySensor: 'تصفية حسب المستشعر',
             search: 'بحث',
@@ -455,9 +465,12 @@ export default {
             triggerConditions: 'شروط التنشيط',
             maxValueTooltip: 'القيم فوق هذا ستنشط التنبيه.',
             minValueTooltip: 'القيم أقل من هذا ستنشط التنبيه.',
+            warmupDurationTooltip:
+                'ما هي المدة التي يجب أن تبقى فيها الحالة نشطة قبل اعتبار التنبيه نشطًا؟ يتم التحقق منها فقط على فترات منتظمة بمعدل استطلاع، لذا قد لا تكون هذه المدة بالضبط.',
             greaterThan: 'أكبر من',
             lessThan: 'أقل من',
             newAlert: 'تنبيه جديد',
+            warmupGreaterThan: 'حالة تم تشغيلها لفترة أطول من',
             unsavedChanges: 'هناك تغييرات غير محفوظة تم إجراؤها على هذا التنبيه.',
             unsavedChangesHeader: 'تغييرات غير محفوظة',
         },
@@ -802,6 +815,18 @@ export default {
                 profile: {
                     willCreated: 'سيتم إنشاؤه.',
                 },
+                profileApply: {
+                    applyProfile: 'تطبيق الملف الشخصي',
+                    channelsApply: 'القنوات لتطبيق الملف الشخصي عليها',
+                    selectChannels: 'اختيار القنوات',
+                    channelsTooltip: 'اختر قناة واحدة أو أكثر لتطبيق هذا الملف الشخصي عليها.',
+                },
+                functionApply: {
+                    applyFunction: 'تطبيق الوظيفة',
+                    profilesApply: 'الملفات الشخصية لتطبيق الوظيفة عليها',
+                    selectProfiles: 'اختيار الملفات الشخصية',
+                    profilesTooltip: 'اختر ملف شخصي واحد أو أكثر لتطبيق هذه الوظيفة عليه.',
+                },
                 customSensor: {
                     new: 'مستشعر مخصص جديد',
                 },
@@ -926,6 +951,7 @@ export default {
         alertState: {
             active: 'نشط',
             inactive: 'غير نشط',
+            error: 'خطأ',
         },
         deviceType: {
             customSensors: 'مستشعرات مخصصة',

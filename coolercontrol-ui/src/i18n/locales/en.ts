@@ -205,6 +205,8 @@ export default {
                 border: 'Border Color',
                 text: 'Text Color',
                 textSecondary: 'Secondary Text Color',
+                export: 'Export Theme',
+                import: 'Import Theme',
             },
             tooltips: {
                 introduction: 'Start the application introduction tour.',
@@ -282,6 +284,7 @@ export default {
             customSensors: 'Custom Sensors',
             modes: 'Modes',
             alerts: 'Alerts',
+            pinned: 'Pinned',
             tooltips: {
                 delete: 'Delete',
                 createMode: 'Create Mode from Current Settings',
@@ -301,6 +304,13 @@ export default {
                 addCustomSensor: 'Add Custom Sensor',
                 addFunction: 'Add Function',
                 chooseColor: 'Choose Color',
+                options: 'More Options',
+                moveTop: 'Move to Top',
+                moveBottom: 'Move to Bottom',
+                disable: 'Disable',
+                pin: 'Pin to Top',
+                unpin: 'Unpin',
+                profileApply: 'Apply Profile to fans',
             },
         },
         add: {
@@ -397,7 +407,7 @@ export default {
             filterSensors: 'Filter Sensors',
             showControls: 'Show Controls',
             mouseActions:
-                'Dashboard Mouse actions:\n- Highlight to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.',
+                'Dashboard Mouse actions:\n- Highlight selection to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.\n- Ctrl+click or middle-click to show all sensors in tooltip.',
             fullPage: 'Full Page',
             filterBySensor: 'Filter by Sensor',
             search: 'Search',
@@ -458,9 +468,12 @@ export default {
             triggerConditions: 'Trigger Conditions',
             maxValueTooltip: 'Values above this will trigger the alert.',
             minValueTooltip: 'Values below this will trigger the alert.',
+            warmupDurationTooltip:
+                'How long a condition must be active before the alert is considered active. It is checked only at regular poll-rate intervals and so may not be exactly this length.',
             greaterThan: 'greater than',
             lessThan: 'less than',
             newAlert: 'New Alert',
+            warmupGreaterThan: 'condition triggered longer than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
         },
@@ -712,8 +725,7 @@ export default {
         },
         onboarding: {
             welcome: 'Welcome to CoolerControl!',
-            beforeStart:
-                'Before we get started, one of them most important things to know about is',
+            beforeStart: 'Before we get started, one of the most important things to know about is',
             settingUpDrivers: 'setting up your hardware drivers',
             fansNotShowing:
                 'If your fans are not showing up or cannot be controlled, then likely there is an issue with your currently installed kernel drivers.',
@@ -807,6 +819,18 @@ export default {
             },
             profile: {
                 willCreated: 'will be created.',
+            },
+            profileApply: {
+                applyProfile: 'Apply Profile',
+                channelsApply: 'Channels to Apply Profile to',
+                selectChannels: 'Select Channels',
+                channelsTooltip: 'Select one or more channels to apply this Profile to.',
+            },
+            functionApply: {
+                applyFunction: 'Apply Function',
+                profilesApply: 'Profiles to Apply Function to',
+                selectProfiles: 'Select Profiles',
+                profilesTooltip: 'Select one or more Profiles to apply this Function to.',
             },
             customSensor: {
                 new: 'New Custom Sensor',
@@ -931,6 +955,7 @@ export default {
         alertState: {
             active: 'Active',
             inactive: 'Inactive',
+            error: 'Error',
         },
         deviceType: {
             customSensors: 'Custom Sensors',

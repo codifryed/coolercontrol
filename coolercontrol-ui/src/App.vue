@@ -600,13 +600,16 @@ onMounted(async () => {
         :options="{
             autoFinishByExit: true,
             scrollToStep: { enabled: !settingsStore.showOnboarding },
-            overlay: { preventOverlayInteraction: settingsStore.showOnboarding },
+            // scrollToStep: { enabled: true },
+            // overlay: {
+            //     preventOverlayInteraction: settingsStore.showOnboarding,
+            // },
         }"
         @finish="settingsStore.showOnboarding = false"
     >
         <template #default="{ previous, next, step, isFirst, isLast }">
             <VOnboardingStep>
-                <div class="bg-bg-two shadow rounded-lg">
+                <div class="bg-bg-two shadow rounded-lg border-2 border-border-one">
                     <div class="px-4 py-5 sm:p-6">
                         <div class="sm:flex sm:justify-between">
                             <div v-if="step.content">
@@ -621,9 +624,6 @@ onMounted(async () => {
                                     class="mt-4 max-w-xl text-base text-text-color-secondary"
                                 >
                                     <div v-if="isFirst">
-                                        <p>
-                                            {{ t('components.onboarding.beforeStart') }}
-                                        </p>
                                         <p class="mt-4">
                                             {{ t('components.onboarding.beforeStart') }}
                                             <br />
@@ -632,9 +632,10 @@ onMounted(async () => {
                                                 target="_blank"
                                                 class="text-accent outline-0 underline"
                                             >
-                                                {{ t('components.onboarding.settingUpDrivers') }}
-                                            </a>
-                                            .
+                                                {{
+                                                    t('components.onboarding.settingUpDrivers')
+                                                }} </a
+                                            >.
                                         </p>
                                         <br />
                                         <p>
@@ -718,6 +719,7 @@ onMounted(async () => {
     --el-color-primary: rgb(var(--colors-accent));
     --v-onboarding-overlay-z: 60;
     --v-onboarding-step-z: 70;
+    --v-onboarding-overlay-opacity: 0.125;
 }
 [data-v-onboarding-wrapper] [data-popper-arrow]::before {
     content: '';
@@ -734,6 +736,8 @@ onMounted(async () => {
     height: 1rem;
     position: absolute;
     z-index: -1;
+    border-left: 2px solid rgb(var(--colors-border-one));
+    border-bottom: 2px solid rgb(var(--colors-border-one));
 }
 
 [data-v-onboarding-wrapper] [data-popper-placement^='top'] > [data-popper-arrow] {

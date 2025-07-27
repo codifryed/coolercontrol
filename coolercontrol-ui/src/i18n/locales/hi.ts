@@ -206,6 +206,8 @@ export default {
                 border: 'बॉर्डर रंग',
                 text: 'पाठ रंग',
                 textSecondary: 'माध्यमिक पाठ रंग',
+                export: 'थीम निर्यात करें',
+                import: 'थीम आयात करें',
             },
         },
         menu: {
@@ -216,6 +218,7 @@ export default {
             customSensors: 'कस्टम सेंसर',
             modes: 'मोड',
             alerts: 'अलर्ट',
+            pinned: 'Pinned',
             tooltips: {
                 delete: 'हटाएं',
                 createMode: 'वर्तमान सेटिंग्स से मोड बनाएं',
@@ -235,6 +238,13 @@ export default {
                 addCustomSensor: 'कस्टम सेंसर जोड़ें',
                 addFunction: 'फंक्शन जोड़ें',
                 chooseColor: 'रंग चुनें',
+                options: 'अधिक विकल्प',
+                moveTop: 'शीर्ष पर ले जाएं',
+                moveBottom: 'नीचे ले जाएं',
+                disable: 'अक्षम करें',
+                pin: 'शीर्ष पर पिन करें',
+                unpin: 'अनपिन करें',
+                profileApply: 'पंखों पर प्रोफाइल लागू करें',
             },
         },
         add: {
@@ -346,7 +356,7 @@ export default {
             filterSensors: 'फ़िल्टर सेंसर',
             showControls: 'कंट्रोल दिखाएं',
             mouseActions:
-                'डैशबोर्ड माउस क्रियाएँ:\n- ज़ूम के लिए हाइलाइट करें।\n- ज़ूम के लिए स्क्रॉल करें।\n- ज़ूम होने पर पैन करने के लिए राइट-क्लिक करें।\n- रीसेट और अपडेट जारी रखने के लिए डबल-क्लिक करें।',
+                'डैशबोर्ड माउस एक्शन्स:\n- ज़ूम करने के लिए हाइलाइट सिलेक्शन करें।\n- ज़ूम करने के लिए स्क्रॉल करें।\n- ज़ूम करने पर राइट-क्लिक करें और पैन करें।\n- डबल-क्लिक करें और अपडेट करना शुरू करें।\n- सभी सेंसर्स के टूलटिप्स को दिखाने के लिए Ctrl+क्लिक या मिडिल-क्लिक करें।',
             fullPage: 'पूर्ण पेज',
             filterBySensor: 'सेंसर द्वारा फ़िल्टर करें',
             search: 'खोज',
@@ -407,9 +417,12 @@ export default {
             triggerConditions: 'ट्रिगर शर्तें',
             maxValueTooltip: 'इससे अधिक मान अलर्ट को ट्रिगर करेंगे।',
             minValueTooltip: 'इससे कम मान अलर्ट को ट्रिगर करेंगे।',
+            warmupDurationTooltip:
+                'अलर्ट को सक्रिय माने जाने से पहले किसी शर्त को कितनी देर तक सक्रिय रहना चाहिए। इसकी जाँच केवल नियमित पोल-रेट अंतराल पर की जाती है, इसलिए इसकी अवधि बिल्कुल इतनी नहीं हो सकती।',
             greaterThan: 'से अधिक',
             lessThan: 'से कम',
             newAlert: 'नया अलर्ट',
+            warmupGreaterThan: 'स्थिति लंबे समय तक ट्रिगर होती है',
             unsavedChanges: 'इस अलर्ट में असहेजे परिवर्तन हैं।',
             unsavedChangesHeader: 'असहेजे परिवर्तन',
         },
@@ -812,6 +825,18 @@ export default {
             profile: {
                 willCreated: 'बनाई जाएगी।',
             },
+            profileApply: {
+                applyProfile: 'प्रोफाइल लागू करें',
+                channelsApply: 'प्रोफाइल लागू करने के लिए चैनल',
+                selectChannels: 'चैनल चुनें',
+                channelsTooltip: 'इस प्रोफाइल को लागू करने के लिए एक या अधिक चैनल चुनें।',
+            },
+            functionApply: {
+                applyFunction: 'फंक्शन लागू करें',
+                profilesApply: 'फंक्शन लागू करने के लिए प्रोफाइल',
+                selectProfiles: 'प्रोफाइल चुनें',
+                profilesTooltip: 'इस फंक्शन को लागू करने के लिए एक या अधिक प्रोफाइल चुनें।',
+            },
             customSensor: {
                 new: 'नया कस्टम सेंसर',
             },
@@ -935,6 +960,7 @@ export default {
         alertState: {
             active: 'सक्रिय',
             inactive: 'निष्क्रिय',
+            error: 'गलती',
         },
         deviceType: {
             customSensors: 'कस्टम सेंसर',

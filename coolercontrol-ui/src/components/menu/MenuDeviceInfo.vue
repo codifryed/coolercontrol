@@ -22,10 +22,10 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
 import { DeviceType, getDeviceTypeDisplayName, UID } from '@/models/Device.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
 import { ref, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DriverType, getDriverTypeDisplayName } from '@/models/DeviceInfo'
+import Popover from 'primevue/popover'
 
 interface Props {
     deviceUID: UID
@@ -35,6 +35,8 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'open', value: boolean): void
 }>()
+
+const popRef = ref()
 
 const deviceStore = useDeviceStore()
 const { t } = useI18n()
@@ -65,93 +67,93 @@ for (const device of deviceStore.allDevices()) {
 
 <template>
     <div v-tooltip.top="{ value: t('components.deviceInfo.details') }">
-        <popover-root @update:open="(value) => emit('open', value)">
-            <popover-trigger
-                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
-            >
-                <svg-icon
-                    class="outline-0"
-                    type="mdi"
-                    :path="mdiInformationSlabCircleOutline"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </popover-trigger>
-            <popover-content side="right" class="z-10">
-                <div
-                    class="w-full bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
-                >
-                    <table>
-                        <tbody>
-                            <tr>
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.systemName') }}
-                                </td>
-                                <td class="table-data">{{ systemDeviceName }}</td>
-                            </tr>
-                            <tr>
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.deviceType') }}
-                                </td>
-                                <td class="table-data">
-                                    {{ getDeviceTypeDisplayName(deviceType) }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.deviceUID') }}
-                                </td>
-                                <td class="table-data">{{ props.deviceUID }}</td>
-                            </tr>
-                            <tr v-if="firmwareVersion">
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.firmwareVersion') }}
-                                </td>
-                                <td class="table-data">{{ firmwareVersion }}</td>
-                            </tr>
-                            <tr v-if="model">
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.model') }}
-                                </td>
-                                <td class="table-data">{{ model }}</td>
-                            </tr>
-                            <tr v-if="driverName">
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.driverName') }}
-                                </td>
-                                <td class="table-data">{{ driverName }}</td>
-                            </tr>
-                            <tr>
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.driverType') }}
-                                </td>
-                                <td class="table-data">
-                                    {{ getDriverTypeDisplayName(driverType) }}
-                                </td>
-                            </tr>
-                            <tr v-if="driverVersion">
-                                <td class="table-data font-bold text-lg text-end">
-                                    {{ t('components.deviceInfo.driverVersion') }}
-                                </td>
-                                <td class="table-data">{{ driverVersion }}</td>
-                            </tr>
-                            <tr v-if="driverLocations">
-                                <td class="table-data font-bold text-lg text-end align-text-top">
-                                    {{ t('components.deviceInfo.locations') }}
-                                </td>
-                                <td class="table-data">
-                                    <p
-                                        v-for="driverLocation in driverLocations"
-                                        class="leading-loose"
-                                    >
-                                        {{ driverLocation }}
-                                    </p>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </popover-content>
-        </popover-root>
+        <!--        <popover-root @update:open="(value) => emit('open', value)">-->
+        <!--            <popover-trigger-->
+        <div
+            class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+            @click="(event) => popRef.toggle(event)"
+        >
+            <svg-icon
+                class="outline-0"
+                type="mdi"
+                :path="mdiInformationSlabCircleOutline"
+                :size="deviceStore.getREMSize(1.5)"
+            />
+            <!--            </popover-trigger>-->
+        </div>
+        <!--            <popover-content side="right" class="z-10">-->
+        <Popover ref="popRef" @show="emit('open', true)" @hide="emit('open', false)">
+            <div class="w-full bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
+                <table>
+                    <tbody>
+                        <tr>
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.systemName') }}
+                            </td>
+                            <td class="table-data">{{ systemDeviceName }}</td>
+                        </tr>
+                        <tr>
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.deviceType') }}
+                            </td>
+                            <td class="table-data">
+                                {{ getDeviceTypeDisplayName(deviceType) }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.deviceUID') }}
+                            </td>
+                            <td class="table-data">{{ props.deviceUID }}</td>
+                        </tr>
+                        <tr v-if="firmwareVersion">
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.firmwareVersion') }}
+                            </td>
+                            <td class="table-data">{{ firmwareVersion }}</td>
+                        </tr>
+                        <tr v-if="model">
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.model') }}
+                            </td>
+                            <td class="table-data">{{ model }}</td>
+                        </tr>
+                        <tr v-if="driverName">
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.driverName') }}
+                            </td>
+                            <td class="table-data">{{ driverName }}</td>
+                        </tr>
+                        <tr>
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.driverType') }}
+                            </td>
+                            <td class="table-data">
+                                {{ getDriverTypeDisplayName(driverType) }}
+                            </td>
+                        </tr>
+                        <tr v-if="driverVersion">
+                            <td class="table-data font-bold text-lg text-end">
+                                {{ t('components.deviceInfo.driverVersion') }}
+                            </td>
+                            <td class="table-data">{{ driverVersion }}</td>
+                        </tr>
+                        <tr v-if="driverLocations">
+                            <td class="table-data font-bold text-lg text-end align-text-top">
+                                {{ t('components.deviceInfo.locations') }}
+                            </td>
+                            <td class="table-data">
+                                <p v-for="driverLocation in driverLocations" class="leading-loose">
+                                    {{ driverLocation }}
+                                </p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </Popover>
+        <!--            </popover-content>-->
+        <!--        </popover-root>-->
     </div>
 </template>
 

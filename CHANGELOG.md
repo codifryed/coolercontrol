@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [2.2.2] - 2025-07-18
+
+### Added
+
+- Support for devices that only have non-controllable fans (#465)
+- aarch64/arm64 & musl build support (!327, #475)
+- Support for raspberry cpus (!329)
+- DockerHub builds (!331)
+- Alert warmup duration (#466)
+- Show all sensors with chart toggle (#480)
+- Show running instance when starting desktop app (#453)
+
+### Changed
+
+- Updated dependencies (!336)
+
+### Fixed
+
+- liquidctl Coolit driver support (#467)
+- Hover menu not displaying correctly (#468)
+- ThinkPad full-speed mode not disengaging (#470)
+- Daemon status translation key (!328)
+- Duplicate welcome text (#477)
+- Minor Alerts related issues (!333)
+
 ## [2.2.1] - 2025-06-13
 
 ### Added

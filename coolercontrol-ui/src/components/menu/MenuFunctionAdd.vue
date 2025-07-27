@@ -66,10 +66,13 @@ emitter.on('function-add', addFunction)
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.addFunction') }">
+    <div
+        class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+        v-tooltip.top="{ value: t('layout.menu.tooltips.addFunction') }"
+    >
         <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="addFunction"
+            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
+            @click.stop="addFunction"
         >
             <svg-icon type="mdi" :path="mdiFlaskPlusOutline" :size="deviceStore.getREMSize(1.5)" />
         </Button>

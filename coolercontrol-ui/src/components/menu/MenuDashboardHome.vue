@@ -17,14 +17,13 @@
   -->
 
 <script setup lang="ts">
-import { mdiHomeAnalytics } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiHomeAnalytics } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
-import { computed, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
@@ -33,25 +32,16 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'rearrange'): void
+    (e: 'homeSet'): void
 }>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const chosenDashboardIndex: Ref<number> = computed(() =>
-    settingsStore.dashboards.findIndex((dashboard) => dashboard.uid === props.dashboardUID),
-)
-
 const setDashboardAsHome = (): void => {
-    if (chosenDashboardIndex.value < 0) {
-        console.error('Dashboard not found for home dashboard: ' + props.dashboardUID)
-        return
-    }
-    const removedDashboards = settingsStore.dashboards.splice(chosenDashboardIndex.value, 1)
-    settingsStore.dashboards.unshift(removedDashboards[0])
-    emit('rearrange')
+    settingsStore.homeDashboard = props.dashboardUID
+    emit('homeSet')
 }
 </script>
 
@@ -59,15 +49,17 @@ const setDashboardAsHome = (): void => {
     <div
         v-tooltip.top="{
             value: t('views.dashboard.setAsHome'),
-            disabled: chosenDashboardIndex === 0,
+            disabled: props.dashboardUID === settingsStore.homeDashboard,
         }"
+        :class="{ 'cursor-default': props.dashboardUID === settingsStore.homeDashboard }"
+        @click.stop.prevent
     >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="setDashboardAsHome"
-            :disabled="chosenDashboardIndex === 0"
+            @click.stop.prevent="setDashboardAsHome"
+            :disabled="props.dashboardUID === settingsStore.homeDashboard"
         >
-            <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.2)" />
+            <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>
