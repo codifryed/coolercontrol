@@ -56,6 +56,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import hotkeys from 'hotkeys-js'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -71,6 +72,56 @@ const logoUrl = `/logo.svg`
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
 
+hotkeys('ctrl+,', () => {
+    router.push({ name: 'settings' })
+    return false
+})
+hotkeys('ctrl+h', () => {
+    router.push({ name: 'system-overview' })
+    return false
+})
+hotkeys('ctrl+a', () => {
+    router.push({ name: 'alerts-overview' })
+    return false
+})
+hotkeys('ctrl+c', () => {
+    router.push({ name: 'system-controls' })
+    return false
+})
+hotkeys('ctrl+i', () => {
+    router.push({ name: 'app-info' })
+    return false
+})
+hotkeys('ctrl+alt+1', () => {
+    if (settingsStore.dashboards.length > 0) {
+        const dashboardUID = settingsStore.dashboards[0].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+2', () => {
+    if (settingsStore.dashboards.length > 1) {
+        const dashboardUID = settingsStore.dashboards[1].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+3', () => {
+    if (settingsStore.dashboards.length > 2) {
+        const dashboardUID = settingsStore.dashboards[2].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+4', () => {
+    if (settingsStore.dashboards.length > 3) {
+        const dashboardUID = settingsStore.dashboards[3].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+left', () => {
+    emitter.emit('collapse-side-menu')
+})
+hotkeys('ctrl+right', () => {
+    emitter.emit('expand-side-menu')
+})
 const daemonBadgeSeverity = computed((): string => {
     switch (daemonState.status) {
         case DaemonStatus.OK:

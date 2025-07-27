@@ -69,6 +69,18 @@ const toggleSideMenu = (): void => {
     settingsStore.collapsedMainMenu = menuPanelRef.value?.isCollapsed ?? false
 }
 emitter.on('toggle-side-menu', toggleSideMenu)
+const collapseSideMenu = (): void => {
+    if (menuPanelRef.value?.isCollapsed) return
+    menuPanelRef.value?.collapse()
+    settingsStore.collapsedMainMenu = menuPanelRef.value?.isCollapsed ?? false
+}
+emitter.on('collapse-side-menu', collapseSideMenu)
+const expandSideMenu = (): void => {
+    if (!menuPanelRef.value?.isCollapsed) return
+    menuPanelRef.value?.expand()
+    settingsStore.collapsedMainMenu = menuPanelRef.value?.isCollapsed ?? false
+}
+emitter.on('expand-side-menu', expandSideMenu)
 
 onMounted(async () => {
     // apply the saved change on startup to the menu itself.
