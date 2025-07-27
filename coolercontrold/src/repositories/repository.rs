@@ -158,6 +158,9 @@ pub enum InitError {
     #[display("Liquidctl Integration is Disabled")]
     LiqctldDisabled,
 
+    #[display("Python Environment Error: {msg}")]
+    PythonEnv { msg: String },
+
     #[display("Connection Error: {msg}")]
     Connection { msg: String },
 }

@@ -23,14 +23,7 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
-use std::time::Instant;
-
-use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
-use futures_util::future::join_all;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
-use regex::Regex;
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
@@ -47,7 +40,6 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use derive_more::{Display, Error};
 use futures_util::future::join_all;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
@@ -88,7 +80,7 @@ impl LiquidctlRepo {
                 distribution's package manager. If not, you may disable liquidctl support \
                 to no longer see this message. {err}"
             );
-            return Err(InitError::Env { msg }.into());
+            return Err(InitError::PythonEnv { msg }.into());
         }
         let service_handle = tokio::task::spawn_blocking(liqctld_service::run);
         // give the service a moment to come up and detect devices
