@@ -209,6 +209,8 @@ export default {
                 border: 'Color del Borde',
                 text: 'Color del Texto',
                 textSecondary: 'Color del Texto Secundario',
+                export: 'Exportar Tema',
+                import: 'Importar Tema',
             },
             tooltips: {
                 introduction: 'Iniciar el recorrido de introducción de la aplicación.',
@@ -287,6 +289,7 @@ export default {
             customSensors: 'Sensores personalizados',
             modes: 'Modos',
             alerts: 'Alertas',
+            pinned: 'Fijado',
             tooltips: {
                 delete: 'Eliminar',
                 createMode: 'Crear modo desde configuración actual',
@@ -306,6 +309,13 @@ export default {
                 addCustomSensor: 'Añadir sensor personalizado',
                 addFunction: 'Añadir función',
                 chooseColor: 'Elegir color',
+                options: 'Más Opciones',
+                moveTop: 'Mover al Inicio',
+                moveBottom: 'Mover al Final',
+                disable: 'Deshabilitar',
+                pin: 'Fijar al Inicio',
+                unpin: 'Desfijar',
+                profileApply: 'Aplicar Perfil a ventiladores',
             },
         },
         add: {
@@ -819,6 +829,18 @@ export default {
             },
             profile: {
                 willCreated: 'será creado.',
+            },
+            profileApply: {
+                applyProfile: 'Aplicar Perfil',
+                channelsApply: 'Canales para Aplicar Perfil',
+                selectChannels: 'Seleccionar Canales',
+                channelsTooltip: 'Seleccione uno o más canales para aplicar este Perfil.',
+            },
+            functionApply: {
+                applyFunction: 'Aplicar Función',
+                profilesApply: 'Perfiles para Aplicar Función',
+                selectProfiles: 'Seleccionar Perfiles',
+                profilesTooltip: 'Seleccione uno o más Perfiles para aplicar esta Función.',
             },
             customSensor: {
                 new: 'Nuevo Sensor Personalizado',

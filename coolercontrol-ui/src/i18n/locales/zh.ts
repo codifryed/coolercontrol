@@ -204,6 +204,8 @@ export default {
                 border: '边框颜色',
                 text: '文本颜色',
                 textSecondary: '次要文本颜色',
+                export: '导出主题',
+                import: '导入主题',
             },
             tooltips: {
                 introduction: '启动应用程序引导教程。',
@@ -274,6 +276,7 @@ export default {
             customSensors: '自定义传感器',
             modes: '模式',
             alerts: '警报',
+            pinned: '已固定',
             tooltips: {
                 delete: '删除',
                 createMode: '从当前设置创建模式',
@@ -293,6 +296,13 @@ export default {
                 addCustomSensor: '添加自定义传感器',
                 addFunction: '添加功能',
                 chooseColor: '选择颜色',
+                options: '更多选项',
+                moveTop: '移至顶部',
+                moveBottom: '移至底部',
+                disable: '禁用',
+                pin: '固定到顶部',
+                unpin: '取消固定',
+                profileApply: '将配置文件应用到风扇',
             },
         },
         add: {
@@ -785,6 +795,18 @@ export default {
             },
             profile: {
                 willCreated: '将被创建。',
+            },
+            profileApply: {
+                applyProfile: '应用配置文件',
+                channelsApply: '要应用配置文件的通道',
+                selectChannels: '选择通道',
+                channelsTooltip: '选择一个或多个通道来应用此配置文件。',
+            },
+            functionApply: {
+                applyFunction: '应用功能',
+                profilesApply: '要应用功能的配置文件',
+                selectProfiles: '选择配置文件',
+                profilesTooltip: '选择一个或多个配置文件来应用此功能。',
             },
             customSensor: {
                 new: '新建自定义传感器',

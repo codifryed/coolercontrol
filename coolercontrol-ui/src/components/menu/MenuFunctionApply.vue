@@ -19,47 +19,51 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiBellPlusOutline } from '@mdi/js'
+import { mdiFlaskRoundBottom } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
-import { defineAsyncComponent, inject } from 'vue'
-import { Emitter, EventType } from 'mitt'
+import { UID } from '@/models/Device.ts'
 
-interface Props {}
+const props = defineProps<{
+    functionUID: UID
+}>()
 
-defineProps<Props>()
-const deviceStore = useDeviceStore()
 const { t } = useI18n()
-const dialog = useDialog()
-const alertWizard = defineAsyncComponent(() => import('../wizards/alert/Wizard.vue'))
-const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const deviceStore = useDeviceStore()
 
-const addAlert = (): void => {
-    dialog.open(alertWizard, {
+const dialog = useDialog()
+const functionApplyWizard = defineAsyncComponent(
+    () => import('../wizards/function-apply/Wizard.vue'),
+)
+
+const applyFunction = async (): Promise<void> => {
+    dialog.open(functionApplyWizard, {
         props: {
-            header: t('views.alerts.newAlert'),
+            header: t('components.wizards.functionApply.applyFunction'),
             position: 'center',
             modal: true,
             dismissableMask: true,
         },
-        data: {},
+        data: {
+            functionUID: props.functionUID,
+        },
     })
 }
-emitter.on('alert-add', addAlert)
 </script>
 
 <template>
     <div
         class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
-        v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }"
+        v-tooltip.top="{ value: t('components.wizards.functionApply.applyFunction') }"
     >
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
-            @click.stop="addAlert"
+            @click.stop.prevent="applyFunction"
         >
-            <svg-icon type="mdi" :path="mdiBellPlusOutline" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiFlaskRoundBottom" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>

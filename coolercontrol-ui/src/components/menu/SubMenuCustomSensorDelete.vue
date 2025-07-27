@@ -25,14 +25,14 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
-import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-    dashboardUID: UID
+    deviceUID: UID // the main CustomSensor device has a UUID
+    customSensorID: string // individual sensors are like channel on normal devices
 }
 const emit = defineEmits<{
-    (e: 'deleted', dashboardUID: UID): void
+    (e: 'deleted', customSensorID: string): void
 }>()
 
 const props = defineProps<Props>()
@@ -40,53 +40,42 @@ const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
-const toast = useToast()
 const { t } = useI18n()
+// const toast = useToast()
 
-const deleteDashboard = (): void => {
-    const dashboardIndex: number = settingsStore.dashboards.findIndex(
-        (dashboard) => dashboard.uid === props.dashboardUID,
-    )
-    if (dashboardIndex === -1) {
-        console.error('Dashboard not found for removal: ', props.dashboardUID)
-        return
-    }
+const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)!
+
+const deleteCustomSensor = (): void => {
+    const currentName: string =
+        deviceSettings.sensorsAndChannels.get(props.customSensorID)?.name ?? props.customSensorID
     confirm.require({
-        message: t('views.dashboard.deleteDashboardConfirm', {
-            name: settingsStore.dashboards[dashboardIndex].name,
-        }),
-        header: t('views.dashboard.deleteDashboard'),
+        message: t('views.customSensors.deleteCustomSensorConfirm', { name: currentName }),
+        header: t('views.customSensors.deleteCustomSensor'),
         icon: 'pi pi-exclamation-triangle',
         defaultFocus: 'accept',
         accept: async () => {
-            settingsStore.dashboards.splice(dashboardIndex, 1)
-            toast.add({
-                severity: 'success',
-                summary: t('common.success'),
-                detail: t('views.dashboard.dashboardDeleted'),
-                life: 3000,
-            })
-            emit('deleted', props.dashboardUID)
+            await settingsStore.deleteCustomSensor(props.deviceUID, props.customSensorID)
+            emit('deleted', props.deviceUID)
         },
     })
 }
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{
-            value: t('layout.menu.tooltips.delete'),
-            disabled: settingsStore.dashboards.length < 2,
-        }"
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click="deleteCustomSensor"
     >
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteDashboard"
-            :disabled="settingsStore.dashboards.length < 2"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+        <svg-icon
+            class="outline-0 !cursor-pointer"
+            type="mdi"
+            :path="mdiDeleteOutline"
+            :size="deviceStore.getREMSize(1.5)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.delete') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

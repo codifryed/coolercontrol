@@ -204,6 +204,8 @@ export default {
                 border: '邊框顏色',
                 text: '文字顏色',
                 textSecondary: '次要文字顏色',
+                export: '匯出主題',
+                import: '匯入主題',
             },
             tooltips: {
                 introduction: '開始應用程式介紹導覽。',
@@ -275,6 +277,7 @@ export default {
             customSensors: '自定義傳感器',
             modes: '模式',
             alerts: '警報',
+            pinned: '已釘選',
             tooltips: {
                 delete: '刪除',
                 createMode: '從當前設置創建模式',
@@ -294,6 +297,13 @@ export default {
                 addCustomSensor: '添加自定義傳感器',
                 addFunction: '添加功能',
                 chooseColor: '選擇顏色',
+                options: '更多選項',
+                moveTop: '移至頂部',
+                moveBottom: '移至底部',
+                disable: '停用',
+                pin: '釘選至頂部',
+                unpin: '取消釘選',
+                profileApply: '將設定檔套用至風扇',
             },
         },
         add: {
@@ -785,6 +795,18 @@ export default {
             },
             profile: {
                 willCreated: '將被建立。',
+            },
+            profileApply: {
+                applyProfile: '套用設定檔',
+                channelsApply: '要套用設定檔的通道',
+                selectChannels: '選擇通道',
+                channelsTooltip: '選擇一個或多個通道來套用此設定檔。',
+            },
+            functionApply: {
+                applyFunction: '套用功能',
+                profilesApply: '要套用功能的設定檔',
+                selectProfiles: '選擇設定檔',
+                profilesTooltip: '選擇一個或多個設定檔來套用此功能。',
             },
             customSensor: {
                 new: '新自訂感測器',

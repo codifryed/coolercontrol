@@ -35,13 +35,15 @@ export class UISettingsDTO {
 
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
+    homeDashboard?: UID
     themeMode: ThemeMode = ThemeMode.SYSTEM
     chartLineScale: number = 1.5
     time24: boolean = false
-    collapsedMenuNodeIds: Array<string> = []
+    menuOrder: Array<MenuOrderIds> = []
+    expandedMenuIds: Array<string> | undefined
+    pinnedIds: Array<string> = []
     collapsedMainMenu: boolean = false
     hideMenuCollapseIcon: boolean = false
-    menuEntitiesAtBottom: boolean = false
     mainMenuWidthRem: number = 24
     frequencyPrecision: number = 1
     customTheme: CustomThemeSettings = {
@@ -113,6 +115,11 @@ export class DeviceUISettingsDTO {
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
+}
+
+export interface MenuOrderIds {
+    id: string
+    children: Array<string>
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>

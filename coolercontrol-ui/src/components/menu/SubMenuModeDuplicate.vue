@@ -17,62 +17,57 @@
   -->
 
 <script setup lang="ts">
-import { mdiDeleteOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiContentDuplicate } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
-import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-    alertUID: UID
+    modeUID: UID
 }
 
-const emit = defineEmits<{
-    (e: 'deleted', alertUID: UID): void
-}>()
-
 const props = defineProps<Props>()
+const emit = defineEmits<{
+    (e: 'added', modeUID: UID): void
+    (e: 'close'): void
+}>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const confirm = useConfirm()
 const { t } = useI18n()
 
-const deleteAlert = (): void => {
-    const alertUIDToDelete: UID = props.alertUID
-    const alertIndex: number = settingsStore.alerts.findIndex(
-        (alert) => alert.uid === alertUIDToDelete,
-    )
-    if (alertIndex === -1) {
-        console.error('Alert not found for removal: ' + alertUIDToDelete)
+const duplicateMode = async (): Promise<void> => {
+    const modeToDuplicate = settingsStore.modes.find((mode) => mode.uid === props.modeUID)
+    if (modeToDuplicate == null) {
+        console.error('Mode not found for duplication: ' + props.modeUID)
+        emit('close')
         return
     }
-    const alertName = settingsStore.alerts[alertIndex].name
-    confirm.require({
-        message: t('views.alerts.deleteAlertConfirm', { name: alertName }),
-        header: t('views.alerts.deleteAlert'),
-        icon: 'pi pi-exclamation-triangle',
-        accept: async () => {
-            const successful = await settingsStore.deleteAlert(alertUIDToDelete)
-            if (successful) emit('deleted', alertUIDToDelete)
-        },
-    })
+    const newMode = await settingsStore.duplicateMode(props.modeUID)
+    if (newMode != null) emit('added', newMode.uid)
+    emit('close')
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteAlert"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="duplicateMode"
+    >
+        <svg-icon
+            type="mdi"
+            class="outline-0 !cursor-pointer"
+            :path="mdiContentDuplicate"
+            :size="deviceStore.getREMSize(1.25)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.duplicate') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

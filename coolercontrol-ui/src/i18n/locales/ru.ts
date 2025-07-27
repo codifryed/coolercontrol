@@ -208,6 +208,8 @@ export default {
                 border: 'Цвет границы',
                 text: 'Цвет текста',
                 textSecondary: 'Цвет вторичного текста',
+                export: 'Экспорт темы',
+                import: 'Импорт темы',
             },
             tooltips: {
                 introduction: 'Запустить ознакомительный тур по приложению.',
@@ -285,6 +287,7 @@ export default {
             customSensors: 'Пользовательские датчики',
             modes: 'Режимы',
             alerts: 'Оповещения',
+            pinned: 'Закреплено',
             tooltips: {
                 delete: 'Удалить',
                 createMode: 'Создать режим из текущих настроек',
@@ -304,6 +307,13 @@ export default {
                 addCustomSensor: 'Добавить пользовательский датчик',
                 addFunction: 'Добавить функцию',
                 chooseColor: 'Выбрать цвет',
+                options: 'Дополнительные опции',
+                moveTop: 'Переместить наверх',
+                moveBottom: 'Переместить вниз',
+                disable: 'Отключить',
+                pin: 'Закрепить наверху',
+                unpin: 'Открепить',
+                profileApply: 'Применить профиль к вентиляторам',
             },
         },
         add: {
@@ -818,6 +828,20 @@ export default {
             },
             profile: {
                 willCreated: 'будет создан.',
+            },
+            profileApply: {
+                applyProfile: 'Применить профиль',
+                channelsApply: 'Каналы для применения профиля',
+                selectChannels: 'Выбрать каналы',
+                channelsTooltip:
+                    'Выберите один или несколько каналов для применения этого профиля.',
+            },
+            functionApply: {
+                applyFunction: 'Применить функцию',
+                profilesApply: 'Профили для применения функции',
+                selectProfiles: 'Выбрать профили',
+                profilesTooltip:
+                    'Выберите один или несколько профилей для применения этой функции.',
             },
             customSensor: {
                 new: 'Новый пользовательский датчик',

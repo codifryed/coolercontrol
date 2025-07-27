@@ -27,12 +27,30 @@ import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/model
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { computed } from 'vue'
 
 const settingsStore = useSettingsStore()
 const { getREMSize } = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
 
+const alertsList = computed(() => {
+    const alerts = []
+    for (const alert of settingsStore.alerts) {
+        alerts.push(alert)
+    }
+    const alertMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'alerts')
+    if (alertMenuOrder?.children?.length) {
+        alerts.sort((a: any, b: any) => {
+            const getIndex = (item: any) => {
+                const index = alertMenuOrder.children.indexOf(item.uid)
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            return getIndex(a) - getIndex(b)
+        })
+    }
+    return alerts
+})
 const onRowSelect = (event: DataTableRowSelectEvent) => {
     router.push({ name: 'alerts', params: { alertUID: event.data.uid } })
 }
@@ -51,7 +69,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                 <div class="flex flex-row">
                     <DataTable
                         class="w-[31rem]"
-                        :value="settingsStore.alerts"
+                        :value="alertsList"
                         selection-mode="single"
                         data-key="uid"
                         :meta-key-selection="false"

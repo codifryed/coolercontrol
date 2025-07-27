@@ -206,6 +206,8 @@ export default {
                 border: 'لون الحدود',
                 text: 'لون النص',
                 textSecondary: 'لون النص الثانوي',
+                export: 'تصدير السمة',
+                import: 'استيراد السمة',
             },
             tooltips: {
                 introduction: 'بدء جولة تعريفية للتطبيق.',
@@ -281,6 +283,7 @@ export default {
             customSensors: 'المستشعرات المخصصة',
             modes: 'الأوضاع',
             alerts: 'التنبيهات',
+            pinned: 'مثبت',
             tooltips: {
                 delete: 'حذف',
                 createMode: 'إنشاء وضع من الإعدادات الحالية',
@@ -300,6 +303,13 @@ export default {
                 addCustomSensor: 'إضافة مستشعر مخصص',
                 addFunction: 'إضافة وظيفة',
                 chooseColor: 'اختيار اللون',
+                options: 'خيارات إضافية',
+                moveTop: 'نقل إلى الأعلى',
+                moveBottom: 'نقل إلى الأسفل',
+                disable: 'تعطيل',
+                pin: 'تثبيت في الأعلى',
+                unpin: 'إلغاء التثبيت',
+                profileApply: 'تطبيق الملف الشخصي على المراوح',
             },
         },
         add: {
@@ -804,6 +814,18 @@ export default {
                 },
                 profile: {
                     willCreated: 'سيتم إنشاؤه.',
+                },
+                profileApply: {
+                    applyProfile: 'تطبيق الملف الشخصي',
+                    channelsApply: 'القنوات لتطبيق الملف الشخصي عليها',
+                    selectChannels: 'اختيار القنوات',
+                    channelsTooltip: 'اختر قناة واحدة أو أكثر لتطبيق هذا الملف الشخصي عليها.',
+                },
+                functionApply: {
+                    applyFunction: 'تطبيق الوظيفة',
+                    profilesApply: 'الملفات الشخصية لتطبيق الوظيفة عليها',
+                    selectProfiles: 'اختيار الملفات الشخصية',
+                    profilesTooltip: 'اختر ملف شخصي واحد أو أكثر لتطبيق هذه الوظيفة عليه.',
                 },
                 customSensor: {
                     new: 'مستشعر مخصص جديد',

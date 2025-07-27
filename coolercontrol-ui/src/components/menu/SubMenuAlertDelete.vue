@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
+import { mdiDeleteOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiDeleteOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -28,11 +28,12 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-    modeUID: UID
+    alertUID: UID
 }
 
 const emit = defineEmits<{
-    (e: 'deleted', modeUID: UID): void
+    (e: 'deleted', alertUID: UID): void
+    (e: 'close'): void
 }>()
 
 const props = defineProps<Props>()
@@ -42,33 +43,43 @@ const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const { t } = useI18n()
 
-const deleteMode = (): void => {
-    const modeUIDToDelete: UID = props.modeUID
-    const modeToDelete = settingsStore.modes.find((mode) => mode.uid === modeUIDToDelete)!
-
+const deleteAlert = (): void => {
+    const alertUIDToDelete: UID = props.alertUID
+    const alertIndex: number = settingsStore.alerts.findIndex(
+        (alert) => alert.uid === alertUIDToDelete,
+    )
+    if (alertIndex === -1) {
+        console.error('Alert not found for removal: ' + alertUIDToDelete)
+        emit('close')
+        return
+    }
+    const alertName = settingsStore.alerts[alertIndex].name
     confirm.require({
-        message: t('views.modes.deleteModeConfirm', {
-            name: modeToDelete.name,
-        }),
-        header: t('views.modes.deleteMode'),
+        message: t('views.alerts.deleteAlertConfirm', { name: alertName }),
+        header: t('views.alerts.deleteAlert'),
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
-            await settingsStore.deleteMode(modeUIDToDelete)
-            emit('deleted', modeUIDToDelete)
+            const successful = await settingsStore.deleteAlert(alertUIDToDelete)
+            if (successful) emit('deleted', alertUIDToDelete)
+            emit('close')
+        },
+        reject: () => {
+            emit('close')
         },
     })
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('layout.menu.tooltips.deleteMode') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteMode"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click.stop.prevent="deleteAlert"
+    >
+        <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+        <span class="ml-1.5">
+            {{ t('views.alerts.deleteAlert') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

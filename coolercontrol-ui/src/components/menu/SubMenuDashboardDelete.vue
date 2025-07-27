@@ -26,76 +26,68 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { Profile } from '@/models/Profile.ts'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-    functionUID: UID
+    dashboardUID: UID
 }
-
 const emit = defineEmits<{
-    (e: 'deleted', functionUID: UID): void
+    (e: 'deleted', dashboardUID: UID): void
 }>()
 
 const props = defineProps<Props>()
 
-const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
+const { t } = useI18n()
 
-const deleteFunction = (): void => {
-    const functionUIDToDelete = props.functionUID
-    const functionIndex: number = settingsStore.functions.findIndex(
-        (fun) => fun.uid === functionUIDToDelete,
+const deleteDashboard = (): void => {
+    const dashboardIndex: number = settingsStore.dashboards.findIndex(
+        (dashboard) => dashboard.uid === props.dashboardUID,
     )
-    if (functionIndex === -1) {
-        console.error('Function not found for removal: ' + functionUIDToDelete)
+    if (dashboardIndex === -1) {
+        console.error('Dashboard not found for removal: ', props.dashboardUID)
         return
     }
-    if (functionUIDToDelete === '0') {
-        return // can't delete default
-    }
-    const functionName = settingsStore.functions[functionIndex].name
-    const associatedProfiles: Array<Profile> = settingsStore.profiles.filter(
-        (p) => p.function_uid === functionUIDToDelete,
-    )
-    const deleteMessage: string =
-        associatedProfiles.length === 0
-            ? t('views.functions.deleteFunctionConfirm', { name: functionName })
-            : t('views.functions.deleteFunctionWithProfilesConfirm', {
-                  name: functionName,
-                  profiles: associatedProfiles.map((p) => p.name).join(', '),
-              })
     confirm.require({
-        message: deleteMessage,
-        header: t('views.functions.deleteFunction'),
+        message: t('views.dashboard.deleteDashboardConfirm', {
+            name: settingsStore.dashboards[dashboardIndex].name,
+        }),
+        header: t('views.dashboard.deleteDashboard'),
         icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
         accept: async () => {
-            await settingsStore.deleteFunction(functionUIDToDelete)
-            settingsStore.functions.splice(functionIndex, 1)
+            settingsStore.dashboards.splice(dashboardIndex, 1)
             toast.add({
                 severity: 'success',
                 summary: t('common.success'),
-                detail: t('views.functions.functionDeleted'),
+                detail: t('views.dashboard.dashboardDeleted'),
                 life: 3000,
             })
-            emit('deleted', functionUIDToDelete)
+            emit('deleted', props.dashboardUID)
         },
     })
 }
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: t('common.delete') }">
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteFunction"
-        >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click="deleteDashboard"
+        :disabled="settingsStore.dashboards.length < 2"
+    >
+        <svg-icon
+            class="outline-0 !cursor-pointer"
+            type="mdi"
+            :path="mdiDeleteOutline"
+            :size="deviceStore.getREMSize(1.5)"
+        />
+        <span class="ml-1.5">
+            {{ t('views.dashboard.deleteDashboard') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>

@@ -281,7 +281,7 @@ onMounted(() => {
                         </a>
                     </div>
                     <div
-                        class="h-[22rem] relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
+                        class="h-[32rem] relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
                     >
                         <pre
                             id="log-output"

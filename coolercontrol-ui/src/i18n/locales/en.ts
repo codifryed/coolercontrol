@@ -205,6 +205,8 @@ export default {
                 border: 'Border Color',
                 text: 'Text Color',
                 textSecondary: 'Secondary Text Color',
+                export: 'Export Theme',
+                import: 'Import Theme',
             },
             tooltips: {
                 introduction: 'Start the application introduction tour.',
@@ -282,6 +284,7 @@ export default {
             customSensors: 'Custom Sensors',
             modes: 'Modes',
             alerts: 'Alerts',
+            pinned: 'Pinned',
             tooltips: {
                 delete: 'Delete',
                 createMode: 'Create Mode from Current Settings',
@@ -301,6 +304,13 @@ export default {
                 addCustomSensor: 'Add Custom Sensor',
                 addFunction: 'Add Function',
                 chooseColor: 'Choose Color',
+                options: 'More Options',
+                moveTop: 'Move to Top',
+                moveBottom: 'Move to Bottom',
+                disable: 'Disable',
+                pin: 'Pin to Top',
+                unpin: 'Unpin',
+                profileApply: 'Apply Profile to fans',
             },
         },
         add: {
@@ -809,6 +819,18 @@ export default {
             },
             profile: {
                 willCreated: 'will be created.',
+            },
+            profileApply: {
+                applyProfile: 'Apply Profile',
+                channelsApply: 'Channels to Apply Profile to',
+                selectChannels: 'Select Channels',
+                channelsTooltip: 'Select one or more channels to apply this Profile to.',
+            },
+            functionApply: {
+                applyFunction: 'Apply Function',
+                profilesApply: 'Profiles to Apply Function to',
+                selectProfiles: 'Select Profiles',
+                profilesTooltip: 'Select one or more Profiles to apply this Function to.',
             },
             customSensor: {
                 new: 'New Custom Sensor',

@@ -210,6 +210,8 @@ export default {
                 border: 'Rahmenfarbe',
                 text: 'Textfarbe',
                 textSecondary: 'Sekundäre Textfarbe',
+                export: 'Theme exportieren',
+                import: 'Theme importieren',
             },
             tooltips: {
                 introduction: 'Die Einführungstour der Anwendung starten.',
@@ -288,6 +290,7 @@ export default {
             customSensors: 'Benutzerdefinierte Sensoren',
             modes: 'Modi',
             alerts: 'Warnungen',
+            pinned: 'Angeheftet',
             tooltips: {
                 delete: 'Löschen',
                 createMode: 'Modus aus aktuellen Einstellungen erstellen',
@@ -307,6 +310,13 @@ export default {
                 addCustomSensor: 'Benutzerdefinierten Sensor hinzufügen',
                 addFunction: 'Funktion hinzufügen',
                 chooseColor: 'Farbe wählen',
+                options: 'Weitere Optionen',
+                moveTop: 'An die Spitze verschieben',
+                moveBottom: 'An das Ende verschieben',
+                disable: 'Deaktivieren',
+                pin: 'An die Spitze anheften',
+                unpin: 'Loslassen',
+                profileApply: 'Profil auf Lüfter anwenden',
             },
         },
         add: {
@@ -836,6 +846,20 @@ export default {
             },
             profile: {
                 willCreated: 'wird erstellt.',
+            },
+            profileApply: {
+                applyProfile: 'Profil anwenden',
+                channelsApply: 'Kanäle für Profilanwendung',
+                selectChannels: 'Kanäle auswählen',
+                channelsTooltip:
+                    'Wählen Sie einen oder mehrere Kanäle aus, auf die dieses Profil angewendet werden soll.',
+            },
+            functionApply: {
+                applyFunction: 'Funktion anwenden',
+                profilesApply: 'Profile für Funktionsanwendung',
+                selectProfiles: 'Profile auswählen',
+                profilesTooltip:
+                    'Wählen Sie ein oder mehrere Profile aus, auf die diese Funktion angewendet werden soll.',
             },
             customSensor: {
                 new: 'Neuer benutzerdefinierter Sensor',

@@ -19,49 +19,34 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiHomeAnalytics } from '@mdi/js'
-import Button from 'primevue/button'
+import { mdiArrowCollapseDown } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { UID } from '@/models/Device.ts'
 import { useI18n } from 'vue-i18n'
+import Button from 'primevue/button'
 
-interface Props {
-    dashboardUID: UID
-}
-
-const props = defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'homeSet'): void
+    (e: 'moveBottom'): void
 }>()
 
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
 const { t } = useI18n()
-
-const setDashboardAsHome = (): void => {
-    settingsStore.homeDashboard = props.dashboardUID
-    emit('homeSet')
-}
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{
-            value: t('views.dashboard.setAsHome'),
-            disabled: props.dashboardUID === settingsStore.homeDashboard,
-        }"
-        :class="{ 'cursor-default': props.dashboardUID === settingsStore.homeDashboard }"
-        @click.stop.prevent
+    <Button
+        class="w-full !justify-start !rounded-lg border-none text-text-color-secondary h-12 !p-4 !px-7 hover:text-text-color hover:bg-surface-hover outline-none"
+        @click="() => emit('moveBottom')"
     >
-        <Button
-            class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click.stop.prevent="setDashboardAsHome"
-            :disabled="props.dashboardUID === settingsStore.homeDashboard"
-        >
-            <svg-icon type="mdi" :path="mdiHomeAnalytics" :size="deviceStore.getREMSize(1.5)" />
-        </Button>
-    </div>
+        <svg-icon
+            class="outline-0 !cursor-pointer"
+            type="mdi"
+            :path="mdiArrowCollapseDown"
+            :size="deviceStore.getREMSize(1.5)"
+        />
+        <span class="ml-1.5">
+            {{ t('layout.menu.tooltips.moveBottom') }}
+        </span>
+    </Button>
 </template>
 
 <style scoped lang="scss"></style>
