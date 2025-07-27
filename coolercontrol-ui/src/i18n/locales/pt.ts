@@ -205,6 +205,7 @@ export default {
             customSensors: 'Sensores Personalizados',
             modes: 'Modos',
             alerts: 'Alertas',
+            pinned: 'Fixado',
             tooltips: {
                 delete: 'Excluir',
                 createMode: 'Criar Modo a partir das Configurações Atuais',
@@ -224,6 +225,13 @@ export default {
                 addCustomSensor: 'Adicionar Sensor Personalizado',
                 addFunction: 'Adicionar Função',
                 chooseColor: 'Escolher Cor',
+                options: 'Mais Opções',
+                moveTop: 'Mover para o Topo',
+                moveBottom: 'Mover para Baixo',
+                disable: 'Desabilitar',
+                pin: 'Fixar no Topo',
+                unpin: 'Desfixar',
+                profileApply: 'Aplicar Perfil aos ventiladores',
             },
         },
         add: {
@@ -263,6 +271,8 @@ export default {
         border: 'Cor da Borda',
         text: 'Cor do Texto',
         textSecondary: 'Cor do Texto Secundário',
+        export: 'Exportar Tema',
+        import: 'Importar Tema',
     },
     tooltips: {
         introduction: 'Iniciar o tour de introdução do aplicativo.',
@@ -831,6 +841,18 @@ export default {
             },
             profile: {
                 willCreated: 'será criado.',
+            },
+            profileApply: {
+                applyProfile: 'Aplicar Perfil',
+                channelsApply: 'Canais para Aplicar Perfil',
+                selectChannels: 'Selecionar Canais',
+                channelsTooltip: 'Selecione um ou mais canais para aplicar este Perfil.',
+            },
+            functionApply: {
+                applyFunction: 'Aplicar Função',
+                profilesApply: 'Perfis para Aplicar Função',
+                selectProfiles: 'Selecionar Perfis',
+                profilesTooltip: 'Selecione um ou mais Perfis para aplicar esta Função.',
             },
             customSensor: {
                 new: 'Novo Sensor Personalizado',

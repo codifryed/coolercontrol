@@ -206,6 +206,8 @@ export default {
                 border: 'बॉर्डर रंग',
                 text: 'पाठ रंग',
                 textSecondary: 'माध्यमिक पाठ रंग',
+                export: 'थीम निर्यात करें',
+                import: 'थीम आयात करें',
             },
         },
         menu: {
@@ -216,6 +218,7 @@ export default {
             customSensors: 'कस्टम सेंसर',
             modes: 'मोड',
             alerts: 'अलर्ट',
+            pinned: 'Pinned',
             tooltips: {
                 delete: 'हटाएं',
                 createMode: 'वर्तमान सेटिंग्स से मोड बनाएं',
@@ -235,6 +238,13 @@ export default {
                 addCustomSensor: 'कस्टम सेंसर जोड़ें',
                 addFunction: 'फंक्शन जोड़ें',
                 chooseColor: 'रंग चुनें',
+                options: 'अधिक विकल्प',
+                moveTop: 'शीर्ष पर ले जाएं',
+                moveBottom: 'नीचे ले जाएं',
+                disable: 'अक्षम करें',
+                pin: 'शीर्ष पर पिन करें',
+                unpin: 'अनपिन करें',
+                profileApply: 'पंखों पर प्रोफाइल लागू करें',
             },
         },
         add: {
@@ -814,6 +824,18 @@ export default {
             },
             profile: {
                 willCreated: 'बनाई जाएगी।',
+            },
+            profileApply: {
+                applyProfile: 'प्रोफाइल लागू करें',
+                channelsApply: 'प्रोफाइल लागू करने के लिए चैनल',
+                selectChannels: 'चैनल चुनें',
+                channelsTooltip: 'इस प्रोफाइल को लागू करने के लिए एक या अधिक चैनल चुनें।',
+            },
+            functionApply: {
+                applyFunction: 'फंक्शन लागू करें',
+                profilesApply: 'फंक्शन लागू करने के लिए प्रोफाइल',
+                selectProfiles: 'प्रोफाइल चुनें',
+                profilesTooltip: 'इस फंक्शन को लागू करने के लिए एक या अधिक प्रोफाइल चुनें।',
             },
             customSensor: {
                 new: 'नया कस्टम सेंसर',

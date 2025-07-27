@@ -214,6 +214,8 @@ export default {
                 border: 'Couleur de la Bordure',
                 text: 'Couleur du Texte',
                 textSecondary: 'Couleur du Texte Secondaire',
+                export: 'Exporter le Thème',
+                import: 'Importer le Thème',
             },
             tooltips: {
                 introduction: "Commencer le tour d'introduction de l'application.",
@@ -294,6 +296,7 @@ export default {
             customSensors: 'Capteurs personnalisés',
             modes: 'Modes',
             alerts: 'Alertes',
+            pinned: 'Épinglé',
             tooltips: {
                 delete: 'Supprimer',
                 createMode: 'Créer un mode à partir des paramètres actuels',
@@ -313,6 +316,13 @@ export default {
                 addCustomSensor: 'Ajouter un capteur personnalisé',
                 addFunction: 'Ajouter une fonction',
                 chooseColor: 'Choisir une couleur',
+                options: "Plus d'Options",
+                moveTop: 'Déplacer en Haut',
+                moveBottom: 'Déplacer en Bas',
+                disable: 'Désactiver',
+                pin: 'Épingler en Haut',
+                unpin: 'Désépingler',
+                profileApply: 'Appliquer le Profil aux ventilateurs',
             },
         },
         add: {
@@ -833,6 +843,19 @@ export default {
             },
             profile: {
                 willCreated: 'sera créé.',
+            },
+            profileApply: {
+                applyProfile: 'Appliquer le Profil',
+                channelsApply: 'Canaux pour Appliquer le Profil',
+                selectChannels: 'Sélectionner les Canaux',
+                channelsTooltip: 'Sélectionnez un ou plusieurs canaux pour appliquer ce Profil.',
+            },
+            functionApply: {
+                applyFunction: 'Appliquer la Fonction',
+                profilesApply: 'Profils pour Appliquer la Fonction',
+                selectProfiles: 'Sélectionner les Profils',
+                profilesTooltip:
+                    'Sélectionnez un ou plusieurs Profils pour appliquer cette Fonction.',
             },
             customSensor: {
                 new: 'Nouveau Capteur Personnalisé',
