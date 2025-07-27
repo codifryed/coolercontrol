@@ -17,7 +17,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import concurrent
-import http
 import importlib.metadata
 import json
 import logging
@@ -30,6 +29,7 @@ import time
 import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import liquidctl
@@ -999,7 +999,7 @@ class DeviceService:
 #####################################################################
 
 
-class HTTPHandler(http.server.BaseHTTPRequestHandler):
+class HTTPHandler(BaseHTTPRequestHandler):
     server_version = "BasicHTTP/1.0"
     protocol_version = "HTTP/1.1"
 
@@ -1217,7 +1217,7 @@ def server_run(device_service: DeviceService) -> None:
         os.remove(SOCKET_ADDRESS)
     except OSError:
         pass
-    server = http.server.ThreadingHTTPServer(SOCKET_ADDRESS, HTTPHandler, False)
+    server = ThreadingHTTPServer(SOCKET_ADDRESS, HTTPHandler, False)
     server.log_level = log.getLogger().getEffectiveLevel()
     server.device_service = device_service
     server.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
