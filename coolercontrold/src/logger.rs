@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::repositories::liquidctl::liqctld_service;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
@@ -72,6 +73,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         get_xdg_desktop_info().await.unwrap_or_default(),
     );
     if cmd_args.version {
+        let _ = tokio::task::spawn_local(async { liqctld_service::verify_env() }).await;
         exit_successfully();
     }
     Ok(log_buf_handle)
