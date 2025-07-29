@@ -41,6 +41,10 @@ def main():
     """
     root_logger = log.getLogger("root")
     root_logger.setLevel(log.INFO)
+    formatter = log.Formatter("%(levelname)s%(message)s")
+    console_handler = log.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
     log.info(f"Python Version detected: {sys.version}")
     importlib.util.find_spec("liquidctl")
 

@@ -73,7 +73,7 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        if let Err(err) = tokio::task::spawn_blocking(liqctld_service::verify_env).await? {
+        if let Err(err) = tokio::task::spawn_local(liqctld_service::verify_env()).await? {
             let msg = format!(
                 "Python liquidctl system package not detected. If you want liquidctl device \
                 support, please make sure the liquidctl package is installed with your \
@@ -82,7 +82,7 @@ impl LiquidctlRepo {
             );
             return Err(InitError::PythonEnv { msg }.into());
         }
-        let service_handle = tokio::task::spawn_blocking(liqctld_service::run);
+        let service_handle = tokio::task::spawn_local(liqctld_service::run());
         // give the service a moment to come up and detect devices
         sleep(Duration::from_millis(300)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {

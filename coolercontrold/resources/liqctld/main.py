@@ -1258,6 +1258,10 @@ def setup_logging() -> None:
     root_logger.setLevel(log_level)
     liquidctl_logger = logging.getLogger("liquidctl")
     liquidctl_logger.setLevel(liquidctl_level)
+    formatter = log.Formatter("%(levelname)s%(message)s")
+    console_handler = log.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
 
 
 def main() -> None:
