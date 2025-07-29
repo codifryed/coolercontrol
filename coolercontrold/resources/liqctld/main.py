@@ -1266,6 +1266,9 @@ def setup_logging() -> None:
 
 def main() -> None:
     setup_logging()
+    # set the process name
+    with open(f'/proc/self/comm', 'w') as f:
+        f.write('coolercontrol-liqctld')
     log.info("Initializing liquidctl service...")
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
