@@ -43,7 +43,7 @@ use tokio::time::sleep;
 
 const LIQCTLD_MAX_POOL_SIZE: usize = 15;
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
-const LIQCTLD_SOCKET: &str = "/run/coolercontrol-liqctld.sock";
+const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
 pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
