@@ -73,7 +73,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         get_xdg_desktop_info().await.unwrap_or_default(),
     );
     if cmd_args.version {
-        let _ = tokio::task::spawn_local(liqctld_service::verify_env()).await;
+        let _ = liqctld_service::verify_env().await;
         exit_successfully();
     }
     Ok(log_buf_handle)

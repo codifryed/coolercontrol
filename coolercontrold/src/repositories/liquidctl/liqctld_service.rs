@@ -16,13 +16,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use anyhow::{anyhow, Result};
-use log::{debug, log};
+use log::{debug, log, warn};
 use std::collections::HashMap;
-use std::process::Stdio;
+use std::ops::Not;
+use std::process::{ExitStatus, Stdio};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio_stream::adapters::Merge;
 use tokio_stream::wrappers::LinesStream;
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
+
+const MAX_RETRIES: u32 = 3;
+const SHUTDOWN_TIMEOUT_SECS: u64 = 10;
 
 const PY_VERIFY: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -37,18 +46,26 @@ const PY_SERVICE: &[u8] = include_bytes!(concat!(
 /// run the `liqctld` service.
 pub async fn verify_env() -> Result<()> {
     debug!("Verifying Python environment...");
-    run_script(PY_VERIFY).await
+    run_python(PY_VERIFY, CancellationToken::new()).await
 }
 
 /// This function runs the `liqctld` service daemon.
-pub async fn run() -> Result<()> {
+pub async fn run(run_token: CancellationToken) -> Result<()> {
     debug!("Starting...");
-    run_script(PY_SERVICE).await?;
-    Ok(())
+    let mut tries = 0;
+    let mut result = run_python(PY_SERVICE, run_token.clone()).await;
+    while run_token.is_cancelled().not() && tries < MAX_RETRIES {
+        warn!("liqctld exited prematurely! Restarting...");
+        debug!("liqctld run result: {result:?}");
+        sleep(Duration::from_secs(2)).await;
+        result = run_python(PY_SERVICE, run_token.clone()).await;
+        tries += 1;
+    }
+    result
 }
 
 #[allow(unused_assignments)]
-async fn run_script(script: &[u8]) -> Result<()> {
+async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
     let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
     let mut child = Command::new("python3")
         .envs(default_env)
@@ -78,9 +95,54 @@ async fn run_script(script: &[u8]) -> Result<()> {
 
     let stdout_lines = LinesStream::new(BufReader::new(stdout).lines());
     let stderr_lines = LinesStream::new(BufReader::new(stderr).lines());
-    let mut merged_lines = StreamExt::merge(stdout_lines, stderr_lines);
-    // todo: possibly use tokio_select with cancel token: (that will probably stop logging before the process exits)
-    //  -- perhaps after the cancel token is triggered, we wait try_wait for a moment before killing the process
+    let merged_lines = StreamExt::merge(stdout_lines, stderr_lines);
+
+    let child_handle = watch_child(child, run_token);
+    process_log_output(merged_lines).await;
+    match child_handle.await? {
+        Ok(status) => match status.code() {
+            Some(0) => Ok(()),
+            Some(code) => Err(anyhow!("liqctld exited with a non-zero exit code: {code}")),
+            _ => Err(anyhow!("liqctld exited with an unknown exit code")),
+        },
+        Err(err) => Err(anyhow!("liqctld exited with an error: {err}")),
+    }
+}
+
+/// This function watches the `liqctld` service child process and returns
+/// its exit status when it exits or the cancel token is canceled.
+/// The child process is killed if it does not exit.
+fn watch_child(mut child: Child, run_token: CancellationToken) -> JoinHandle<Result<ExitStatus>> {
+    tokio::task::spawn_local(async move {
+        tokio::select! {
+            () = delayed_cancelled(run_token) => {
+                if let Ok(Some(status)) = child.try_wait() {
+                    Ok(status)
+                } else {
+                    let _ = child.kill().await;
+                    Err(anyhow!("Forced to kill liqctld child process"))
+                }
+            }
+            Ok(status) = child.wait() => Ok(status),
+            else => {Err(anyhow!("liqctld Child process exited unexpectedly!"))}
+        }
+    })
+}
+
+async fn delayed_cancelled(run_token: CancellationToken) {
+    run_token.cancelled().await;
+    // give the child process some time to exit before killing it
+    sleep(Duration::from_secs(SHUTDOWN_TIMEOUT_SECS)).await;
+}
+
+/// This function processes the output of the `liqctld` service child process and
+/// logs it at the appropriate log level with the rust logger.
+async fn process_log_output(
+    mut merged_lines: Merge<
+        LinesStream<BufReader<ChildStdout>>,
+        LinesStream<BufReader<ChildStderr>>,
+    >,
+) {
     let mut lvl = log::Level::Info;
     while let Some(unread_line) = merged_lines.next().await {
         let Ok(line) = unread_line else {
@@ -104,9 +166,6 @@ async fn run_script(script: &[u8]) -> Result<()> {
         };
         log!(target: "coolercontrold::liqctld", lvl, "{log_line}");
     }
-    let status = child.wait().await?;
-    debug!("liqctld Exit Status: {}", status.code().unwrap_or(-1));
-    Ok(())
 }
 
 #[cfg(test)]

@@ -44,13 +44,16 @@ use futures_util::future::join_all;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
+    liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
@@ -58,7 +61,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Rc<Config>) -> Result<Self> {
+    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -73,7 +76,7 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        if let Err(err) = tokio::task::spawn_local(liqctld_service::verify_env()).await? {
+        if let Err(err) = liqctld_service::verify_env().await {
             let msg = format!(
                 "Python liquidctl system package not detected. If you want liquidctl device \
                 support, please make sure the liquidctl package is installed with your \
@@ -82,7 +85,7 @@ impl LiquidctlRepo {
             );
             return Err(InitError::PythonEnv { msg }.into());
         }
-        let service_handle = tokio::task::spawn_local(liqctld_service::run());
+        let service_handle = tokio::task::spawn_local(liqctld_service::run(run_token));
         // give the service a moment to come up and detect devices
         sleep(Duration::from_millis(300)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
@@ -112,6 +115,7 @@ impl LiquidctlRepo {
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
+            liqctld_service_handle: RefCell::new(Some(service_handle)),
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -801,6 +805,13 @@ impl Repository for LiquidctlRepo {
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
             self.liqctld_client.post_quit().await?;
+            let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
+            if let Some(service_handle) = liqctld_service_handle {
+                // wait for the service to exit
+                if let Err(err) = service_handle.await {
+                    warn!("liqctld service did not shutdown properly: {err}");
+                }
+            }
             self.liqctld_client.shutdown();
         }
         info!("LIQUIDCTL Repository Shutdown");
