@@ -11,7 +11,7 @@ appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
 appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
-.PHONY: build build-ui build-source build-appimages build-liqctld-binary test clean install install-source uninstall \
+.PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
 		appimages bump release push-release validate-metadata
 
 # Release goals
@@ -28,7 +28,6 @@ build-ui:
 	@$(MAKE) -C $(ui_dir) build
 
 build-source: build
-	@$(MAKE) -C $(liqctld_dir) $@
 
 # parallelize with make -j3
 build-appimages: build-daemon build-liqctld-binary
@@ -45,10 +44,7 @@ build-ui-offline:
 	@$(MAKE) -C $(ui_dir) offline
 
 # parallelize with make -j4
-test: validate-metadata test-liqctld test-daemon test-ui test-qt
-
-test-liqctld:
-	@$(MAKE) -C $(liqctld_dir) test
+test: validate-metadata test-daemon test-ui test-qt
 
 test-daemon:
 	@$(MAKE) -C $(daemon_dir) test
@@ -59,10 +55,7 @@ test-ui:
 test-qt:
 	@$(MAKE) -C $(qt_dir) test
  
-ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-qt
-
-ci-test-liqctld:
-	@$(MAKE) -C $(liqctld_dir) ci-test
+ci-test: validate-metadata ci-test-daemon ci-test-ui ci-test-qt
 
 ci-test-daemon:
 	@$(MAKE) -C $(daemon_dir) ci-test
@@ -84,7 +77,6 @@ ci-fmt:
 	@./trunk fmt --all
 
 clean:
-	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(qt_dir) $@
@@ -95,17 +87,14 @@ install:
 	@$(MAKE) -C $(qt_dir) $@ 
 
 install-source: build-source install
-	@$(MAKE) -C $(liqctld_dir) $@
 	@install -Dm644 packaging/metadata/$(ap_id).desktop -t $(DESTDIR)/usr/local/share/applications/
 	@install -Dm644 packaging/metadata/$(ap_id).metainfo.xml -t $(DESTDIR)/usr/share/metainfo/
 	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/pixmaps/
 	@install -Dm644 packaging/metadata/$(ap_id).svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
 	@install -Dm644 packaging/metadata/$(ap_id)-symbolic.svg -t $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/
 	@install -Dm644 packaging/systemd/coolercontrold.service -t $(DESTDIR)/etc/systemd/system/
-	@install -Dm644 packaging/systemd/coolercontrol-liqctld.service -t $(DESTDIR)/etc/systemd/system/
 
 uninstall:
-	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
@@ -114,11 +103,9 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
 	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/$(ap_id)-symbolic.svg
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
-	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
 # helpful std development & testing targets
 # For testing these make targets require that a system package is already installed
-# (excludes building coolercontrol-liqctld due to python dep/install issues)
 
 # full clean release build of daemon and UI binaries:
 dev-build: clean build
