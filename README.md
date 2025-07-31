@@ -77,7 +77,7 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 CoolerControl is made up of several sub-packages:
 
 1. `coolercontrold` _(required)_ - The system service that handles controlling your hardware.
-3. `coolercontrol` _(optional)_ - the standalone Desktop Application. _(alternatively you can access
+2. `coolercontrol` _(optional)_ - the standalone Desktop Application. _(alternatively you can access
    the [Web UI](http://localhost:11987) in your browser)_
 
 _\*Note: You can control the daemon using its
