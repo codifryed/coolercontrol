@@ -8,27 +8,24 @@ export PYBUILD_DESTDIR_python3=debian/coolercontrol-liqctld
 export APP_ID=org.coolercontrol.CoolerControl
 
 %:
-	dh $@ --with python3 
+	dh $@
 
 override_dh_auto_configure:
 	dh_auto_configure
 	dh_auto_configure --buildsystem=cmake --sourcedirectory=coolercontrol
 
 override_dh_auto_build:
-	dh_auto_build --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
 	dh_auto_build --buildsystem=cmake --sourcedirectory=coolercontrol
 	dh_auto_build --sourcedirectory=coolercontrol-ui
 	dh_auto_build --sourcedirectory=coolercontrold
 
 override_dh_auto_test:
-	dh_auto_test --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
 	dh_auto_test --sourcedirectory=coolercontrol-ui
 	dh_auto_test --sourcedirectory=coolercontrold
 	@coolercontrold/target/release/coolercontrold --version
 	dh_auto_test --sourcedirectory=coolercontrol
 
 override_dh_auto_install:
-	dh_auto_install --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
 	dh_auto_install --sourcedirectory=coolercontrold
 	dh_auto_install --buildsystem=cmake --sourcedirectory=coolercontrol
 	@$(eval DESTDIR=$(CURDIR)/debian/tmp)
@@ -37,9 +34,7 @@ override_dh_auto_install:
 	@install -Dm 644 packaging/metadata/$(APP_ID)-symbolic.svg -t $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/
 	@install -Dm 644 packaging/metadata/$(APP_ID).png -t $(DESTDIR)/usr/share/icons/hicolor/256x256/apps/
 	@install -Dm 644 packaging/metadata/$(APP_ID).metainfo.xml -t  $(DESTDIR)/usr/share/metainfo/
-	@install -Dm 644 packaging/systemd/coolercontrol-liqctld.service -t $(DESTDIR)/lib/systemd/system/
 	@install -Dm 644 packaging/systemd/coolercontrold.service -t $(DESTDIR)/lib/systemd/system/
 
 override_dh_installsystemd:
-	@dh_installsystemd --name=coolercontrol-liqctld --restart-after-upgrade
 	@dh_installsystemd --name=coolercontrold --restart-after-upgrade
