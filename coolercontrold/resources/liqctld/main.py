@@ -1267,7 +1267,7 @@ def setup_logging() -> None:
 def main() -> None:
     setup_logging()
     # set the process name
-    with open(f"/proc/self/comm", "w") as f:
+    with open("/proc/self/comm", "w") as f:
         f.write("coolercontrol-liqctld")
     log.info("Initializing liquidctl service...")
     device_service = DeviceService()
