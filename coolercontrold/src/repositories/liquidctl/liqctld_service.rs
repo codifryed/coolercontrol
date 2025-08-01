@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use anyhow::{anyhow, Result};
-use log::{debug, log, warn};
+use log::{debug, info, log, warn};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::process::{ExitStatus, Stdio};
@@ -67,8 +67,16 @@ pub async fn run(run_token: CancellationToken) -> Result<()> {
 #[allow(unused_assignments)]
 async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
     let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
-    let mut child = Command::new("python3")
+    let (cmd, arg) = if let Ok(appdir) = std::env::var("APPDIR") {
+        // if run inside an AppImage, so we isolate the Python environment from the host
+        info!("Running liqctld inside an AppImage");
+        (format!("{appdir}/usr/bin/python3"), "-I")
+    } else {
+        ("python3".to_string(), "")
+    };
+    let mut child = Command::new(cmd)
         .envs(default_env)
+        .arg(arg)
         .stdin(Stdio::piped())
         .kill_on_drop(true)
         // allows us to better control the shutdown of the child process

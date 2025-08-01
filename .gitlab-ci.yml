@@ -185,7 +185,6 @@ build_appimages:
     name: 'CoolerControl_x86_64_AppImages_${CI_COMMIT_SHORT_SHA}'
     paths:
       - CoolerControlD-x86_64.AppImage
-      - CoolerControl-x86_64.AppImage
       - assets-built/coolercontrold
       - assets-built/coolercontrol
       - assets-built/coolercontrold-vendor.tzst
