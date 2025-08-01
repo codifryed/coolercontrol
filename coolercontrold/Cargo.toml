@@ -22,12 +22,12 @@ io_uring = ["dep:tokio-uring"]
 log = "0.4.27"
 env_logger = "0.11.8"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.41", features = [
+clap = { version = "4.5.42", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.98"
 derive_more = { version = "2.0.1", features = ["display", "error"] }
-tokio = { version = "1.46.1", default-features = false, features = [
+tokio = { version = "1.47.1", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -85,36 +85,36 @@ hyper = { version = "1.6.0", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.15", default-features = false, features = [
+hyper-util = { version = "0.1.16", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
 http-body-util = "0.1.3"
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
+serde_json = "1.0.142"
 zbus = { version = "5.9.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-sysinfo = { version = "0.36.0", default-features = false, features = [
+sysinfo = { version = "0.36.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.41", features = [
   "serde",
 ] } # We use timestamps in our status history
-strum = { version = "0.27.1", features = ["derive"] } # Enum -> String
+strum = { version = "0.27.2", features = ["derive"] } # Enum -> String
 regex = "1.11.1"
-cached = { version = "0.55.1", default-features = false, features = [
+cached = { version = "0.56.0", default-features = false, features = [
   "proc_macro",
   "ahash",
   "async",
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 const_format = "0.2.34" # allows combining string constants
-psutil = { version = "5.3.0", default-features = false, features = [
+psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
@@ -123,7 +123,7 @@ nu-glob = "=0.104.1"
 # our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
 sha2 = "0.10.9"
-toml_edit = "0.23.1"
+toml_edit = "0.23.2"
 nix = { version = "0.30.1", default-features = false, features = [
   "user",
   "signal",
@@ -161,7 +161,6 @@ uuid = { version = "1.17.0", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"
-#rstest = "0.15.0"  # possibility for the future
 
 [profile.release]
 strip = "symbols"
