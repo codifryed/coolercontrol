@@ -19,14 +19,14 @@ tested as part of that process.
 Requirements for `liqctld` are checked before the service is started, and the daemon will start
 without the required libraries if not found.
 
-### Runtime
+### Runtime - optional for liquidctl device support
 
 - A python3 interpreter >= 3.8
-- `liquidctl`
+- `liquidctl` Python system package
 
 ### Build
 
-- `python3-dev` is required for dynamic linking to the Python C API
+- None
 
 ## Installation
 
