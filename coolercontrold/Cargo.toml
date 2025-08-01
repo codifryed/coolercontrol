@@ -41,6 +41,10 @@ tokio = { version = "1.46.1", default-features = false, features = [
 ] }
 tokio-uring = { version = "0.5.0", optional = true }
 tokio-util = "0.7.15"
+tokio-stream = { version = "0.1.17", default-features = false, features = [
+  "sync",
+  "io-util",
+] }
 moro-local = "0.4.0"
 async-trait = "0.1.88"
 # Axum is held back. We need to adjust all paths for 0.8+ and test aide support:
@@ -77,9 +81,6 @@ mime = "0.3.17"
 # Held back due to Axum update above:
 axum_typed_multipart = "=0.14.0"
 tempfile = "3.20.0"
-tokio-stream = { version = "0.1.17", default-features = false, features = [
-  "sync",
-] }
 hyper = { version = "1.6.0", default-features = false, features = [
   "http1",
   "client",

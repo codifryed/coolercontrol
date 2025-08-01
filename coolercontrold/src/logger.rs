@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::repositories::liquidctl::liqctld_service;
 use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
@@ -45,7 +46,6 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
-    info!("Logging Level: {}", log::max_level());
     info!(
         "System Info:\n\
         CoolerControlD {VERSION}\n\
@@ -73,6 +73,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         get_xdg_desktop_info().await.unwrap_or_default(),
     );
     if cmd_args.version {
+        let _ = liqctld_service::verify_env().await;
         exit_successfully();
     }
     Ok(log_buf_handle)
@@ -328,6 +329,7 @@ pub struct LogBufHandle {
     msg_sender: mpsc::Sender<CCLogBufferMessage>,
     new_log_sender: broadcast::Sender<String>,
     cancel_token: CancellationToken,
+    runtime_handle: Handle,
 }
 
 impl LogBufHandle {
@@ -340,6 +342,7 @@ impl LogBufHandle {
             msg_sender,
             new_log_sender,
             cancel_token,
+            runtime_handle: Handle::current(),
         }
     }
 
@@ -400,10 +403,10 @@ impl std::io::Write for LogBufHandle {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let log_string = unsafe { from_utf8_unchecked(buf).to_owned() };
         // trick to enter the runtime context inside a non-async trait impl
-        let runtime_handle = Handle::current();
-        let _ = runtime_handle.enter();
+        // guard required in particular for python logging in separate threads
+        let _guard = self.runtime_handle.enter();
         let sender = self.msg_sender.clone();
-        runtime_handle.spawn(async move {
+        self.runtime_handle.spawn(async move {
             let _ = sender
                 .send(CCLogBufferMessage::Log { log: log_string })
                 .await;

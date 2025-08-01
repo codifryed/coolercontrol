@@ -10,7 +10,5 @@ output_logger="logger -et '${RC_SVCNAME}'"
 error_logger="logger -et '${RC_SVCNAME}' -p3"
 
 depend() {
-    after net coolercontrol-liqctld 
-    want coolercontrol-liqctld
     use logger
 }

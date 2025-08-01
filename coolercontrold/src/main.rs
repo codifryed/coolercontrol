@@ -170,7 +170,8 @@ fn main() -> Result<()> {
         admin::load_passwd().await?;
 
         pause_before_startup(&config).await?;
-        let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
+        let (repos, custom_sensors_repo) =
+            initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
         let engine = Rc::new(Engine::new(all_devices.clone(), &repos, config.clone()));
@@ -329,18 +330,22 @@ async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
 async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
+    run_token: CancellationToken,
 ) -> Result<(Repos, Rc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
     let mut repos = Repositories::default();
     let mut lc_locations = Vec::new();
     // liquidctl should be first
-    match init_liquidctl_repo(config.clone()).await {
+    match init_liquidctl_repo(config.clone(), run_token).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
             repos.liquidctl = Some(repo);
         }
-        Err(err) if err.downcast_ref() == Some(&InitError::LiqctldDisabled) => info!("{err}"),
-        Err(err) => warn!("Error initializing LIQUIDCTL Repo: {err}"),
+        Err(err) => match err.downcast_ref() {
+            Some(&InitError::LiqctldDisabled) => info!("{err}"),
+            Some(&InitError::PythonEnv { .. }) => warn!("{err}"),
+            _ => warn!("Error initializing LIQUIDCTL Repo: {err}"),
+        },
     }
     // init these concurrently:
     moro_local::async_scope!(|init_scope| {
@@ -373,8 +378,11 @@ async fn initialize_device_repos(
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
-async fn init_liquidctl_repo(config: Rc<Config>) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
-    let mut lc_repo = LiquidctlRepo::new(config).await?;
+async fn init_liquidctl_repo(
+    config: Rc<Config>,
+    run_token: CancellationToken,
+) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
+    let mut lc_repo = LiquidctlRepo::new(config, run_token).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations();

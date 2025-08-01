@@ -23,14 +23,7 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
-use std::time::Instant;
-
-use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
-use futures_util::future::join_all;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
-use regex::Regex;
+use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
@@ -39,17 +32,28 @@ use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
     DeviceResponse, LCStatus, LiqctldClient, LIQCTLD_CONNECTION_TRIES,
 };
+use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use futures_util::future::join_all;
+use heck::ToTitleCase;
+use log::{debug, error, info, trace, warn};
+use regex::Regex;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
+    liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
@@ -57,7 +61,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Rc<Config>) -> Result<Self> {
+    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -72,22 +76,46 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        info!("Attempting to connect to coolercontrol-liqctld...");
-        let liqctld_client = LiqctldClient::new(LIQCTLD_CONNECTION_TRIES)
-            .await
-            .map_err(|err| InitError::Connection {
-                msg: err.to_string(),
-            })?;
+        if let Err(err) = liqctld_service::verify_env().await {
+            let msg = format!(
+                "Python liquidctl system package not detected. If you want liquidctl device \
+                support, please make sure the liquidctl package is installed with your \
+                distribution's package manager. If not, you may disable liquidctl support \
+                to no longer see this message. {err}"
+            );
+            return Err(InitError::PythonEnv { msg }.into());
+        }
+        let service_handle = tokio::task::spawn_local(liqctld_service::run(run_token));
+        // give the service a moment to come up and detect devices
+        sleep(Duration::from_millis(300)).await;
+        let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
+            Ok(client) => client,
+            Err(err) => {
+                let err_msg = if service_handle.is_finished() {
+                    match service_handle.await {
+                        Ok(_) => {
+                            format!("liqctld service exited without error. Client error: {err}")
+                        }
+                        Err(service_err) => format!(
+                            "liqctld service exited with error: {service_err} ; Client error: {err}"
+                        ),
+                    }
+                } else {
+                    err.to_string()
+                };
+                return Err(InitError::Connection { msg: err_msg }.into());
+            }
+        };
         liqctld_client
             .handshake()
             .await
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),
             })?;
-        info!("Communication established with coolercontrol-liqctld.");
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
+            liqctld_service_handle: RefCell::new(Some(service_handle)),
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -512,10 +540,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen brightness {brightness} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen brightness {brightness} | {err}.");
             }
         }
         if let Some(orientation) = lcd_settings.orientation {
@@ -530,10 +555,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen orientation {orientation} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen orientation {orientation} | {err}.");
             }
         }
         if lcd_settings.mode == "image" {
@@ -552,9 +574,7 @@ impl LiquidctlRepo {
                     Some(image_file.clone()),
                 )
                 .await
-                .map_err(|err| {
-                    anyhow!("Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details. - {err}")
-                })?;
+                .map_err(|err| anyhow!("Setting lcd/screen 'image/gif' - {err}"))?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -565,9 +585,7 @@ impl LiquidctlRepo {
                 None,
             )
             .await
-            .map_err(|err| {
-                anyhow!("Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details. - {err}")
-            })?;
+            .map_err(|err| anyhow!("Setting lcd/screen 'liquid' mode - {err}"))?;
         }
         Ok(())
     }
@@ -787,6 +805,13 @@ impl Repository for LiquidctlRepo {
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
             self.liqctld_client.post_quit().await?;
+            let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
+            if let Some(service_handle) = liqctld_service_handle {
+                // wait for the service to exit
+                if let Err(err) = service_handle.await {
+                    warn!("liqctld service did not shutdown properly: {err}");
+                }
+            }
             self.liqctld_client.shutdown();
         }
         info!("LIQUIDCTL Repository Shutdown");

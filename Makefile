@@ -11,7 +11,7 @@ appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
 appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
-.PHONY: build build-ui build-source build-appimages build-liqctld-binary test clean install install-source uninstall \
+.PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
 		appimages bump release push-release validate-metadata
 
 # Release goals
@@ -28,13 +28,6 @@ build-ui:
 	@$(MAKE) -C $(ui_dir) build
 
 build-source: build
-	@$(MAKE) -C $(liqctld_dir) $@
-
-# parallelize with make -j3
-build-appimages: build-daemon build-liqctld-binary
-
-build-liqctld-binary:
-	@$(MAKE) -C $(liqctld_dir) build-binary
 
 build-offline: build-daemon-offline build-qt
 
@@ -45,10 +38,7 @@ build-ui-offline:
 	@$(MAKE) -C $(ui_dir) offline
 
 # parallelize with make -j4
-test: validate-metadata test-liqctld test-daemon test-ui test-qt
-
-test-liqctld:
-	@$(MAKE) -C $(liqctld_dir) test
+test: validate-metadata test-daemon test-ui test-qt
 
 test-daemon:
 	@$(MAKE) -C $(daemon_dir) test
@@ -59,10 +49,7 @@ test-ui:
 test-qt:
 	@$(MAKE) -C $(qt_dir) test
  
-ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-qt
-
-ci-test-liqctld:
-	@$(MAKE) -C $(liqctld_dir) ci-test
+ci-test: validate-metadata ci-test-daemon ci-test-ui ci-test-qt
 
 ci-test-daemon:
 	@$(MAKE) -C $(daemon_dir) ci-test
@@ -84,7 +71,6 @@ ci-fmt:
 	@./trunk fmt --all
 
 clean:
-	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(qt_dir) $@
@@ -95,17 +81,14 @@ install:
 	@$(MAKE) -C $(qt_dir) $@ 
 
 install-source: build-source install
-	@$(MAKE) -C $(liqctld_dir) $@
 	@install -Dm644 packaging/metadata/$(ap_id).desktop -t $(DESTDIR)/usr/local/share/applications/
 	@install -Dm644 packaging/metadata/$(ap_id).metainfo.xml -t $(DESTDIR)/usr/share/metainfo/
 	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/pixmaps/
 	@install -Dm644 packaging/metadata/$(ap_id).svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
 	@install -Dm644 packaging/metadata/$(ap_id)-symbolic.svg -t $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/
 	@install -Dm644 packaging/systemd/coolercontrold.service -t $(DESTDIR)/etc/systemd/system/
-	@install -Dm644 packaging/systemd/coolercontrol-liqctld.service -t $(DESTDIR)/etc/systemd/system/
 
 uninstall:
-	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
@@ -114,11 +97,9 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
 	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/$(ap_id)-symbolic.svg
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
-	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
 # helpful std development & testing targets
 # For testing these make targets require that a system package is already installed
-# (excludes building coolercontrol-liqctld due to python dep/install issues)
 
 # full clean release build of daemon and UI binaries:
 dev-build: clean build
@@ -162,29 +143,37 @@ assets-qt: build-qt
 # AppImages:
 ############################################################################################################################################
 
+build-appimages: build-daemon
+
 appimages: appimage-daemon
 
+#https://python-appimage.readthedocs.io/en/latest/
 appimage-daemon:
-	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
-	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
 	@$(RM) -f $(appimage_daemon_name)
 	@$(RM) -rf $(appimage_daemon_dir)
-	@mkdir $(appimage_daemon_dir)
-	@cp -rf coolercontrol-liqctld/liqctld.dist/. $(appimage_daemon_dir)
-	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)
+	@packaging/appimage/python3.* --appimage-extract
+	@squashfs-root/AppRun -s -m pip install --upgrade --no-warn-script-location liquidctl
+	@$(RM) -f squashfs-root/AppRun
+	@$(RM) -f squashfs-root/.DirIcon
+	@$(RM) -f squashfs-root/python.png
+	@$(RM) -f squashfs-root/python3.*.desktop
+	@mv squashfs-root $(appimage_daemon_dir)
+	@cp -f packaging/appimage/appimagetool-x86_64.appimage /tmp/
+	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.appimage
+	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)/usr/bin/
 	@mkdir -p $(appimage_daemon_dir)/usr/share/applications
 	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
-	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)
+	@ln -s usr/share/applications/org.coolercontrol.CoolerControlD.desktop $(appimage_daemon_dir)/coolercontrold.desktop
 	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrold.svg
 	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrold.png
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_daemon_dir)/coolercontrold.png
+	@ln -s usr/share/icons/hicolor/256x256/apps/coolercontrold.png $(appimage_daemon_dir)/coolercontrold.png
 	@mkdir -p $(appimage_daemon_dir)/usr/share/metainfo
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_daemon_dir)/usr/share/metainfo
-	@ln -s $(appimage_daemon_dir)/coolercontrold.png $(appimage_daemon_dir)/.DirIcon
-	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
-	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
+	@ln -s coolercontrold.png $(appimage_daemon_dir)/.DirIcon
+	@ln -s usr/bin/coolercontrold $(appimage_daemon_dir)/AppRun
+	@/tmp/appimagetool-x86_64.appimage -n --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
 
 # Release
