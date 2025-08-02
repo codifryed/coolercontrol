@@ -37,7 +37,7 @@ use tower_serve_static::ServeDir;
 static ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/resources/app");
 
 pub async fn handshake() -> impl IntoApiResponse {
-    Json(json!({"shake": true}))
+    Json(json!({"shake": true})).into_response()
 }
 
 pub fn web_app_service() -> ServeDir {
