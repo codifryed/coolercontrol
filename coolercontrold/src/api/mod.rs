@@ -386,8 +386,8 @@ fn create_app_state<'s>(
 }
 
 fn optional_layers(compression_layer: Option<CompressionLayer>, router: Router) -> Router {
-    if compression_layer.is_some() {
-        router.layer(compression_layer.unwrap())
+    if let Some(layer) = compression_layer {
+        router.layer(layer)
     } else {
         router
     }
