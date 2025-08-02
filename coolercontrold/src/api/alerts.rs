@@ -17,16 +17,13 @@
  */
 
 use crate::alerts::{Alert, AlertLog, AlertName, AlertState};
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, validate_name_string, AppState, CCError};
 use crate::device::UID;
 use crate::setting::ChannelSource;
-use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 /// Retrieves the persisted Alert list
 pub async fn get_all(
@@ -45,11 +42,9 @@ pub async fn get_all(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState { alert_handle, .. }): State<AppState>,
     Json(alert_dto): Json<AlertDto>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_alert(&alert_dto)?;
     alert_handle
         .create(Alert::from(alert_dto))
@@ -58,11 +53,9 @@ pub async fn create(
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState { alert_handle, .. }): State<AppState>,
     Json(alert_dto): Json<AlertDto>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_alert(&alert_dto)?;
     alert_handle
         .update(Alert::from(alert_dto))
@@ -72,10 +65,8 @@ pub async fn update(
 
 pub async fn delete(
     Path(path): Path<AlertPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { alert_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     alert_handle
         .delete(path.alert_uid)
         .await

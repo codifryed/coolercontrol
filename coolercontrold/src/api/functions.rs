@@ -16,15 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::setting::{Function, FunctionUID};
-use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 use super::validate_name_string;
 
@@ -55,37 +52,31 @@ pub async fn save_order(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState {
         function_handle, ..
     }): State<AppState>,
     Json(function): Json<Function>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_function(&function)?;
     function_handle.create(function).await.map_err(handle_error)
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState {
         function_handle, ..
     }): State<AppState>,
     Json(function): Json<Function>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_function(&function)?;
     function_handle.update(function).await.map_err(handle_error)
 }
 
 pub async fn delete(
     Path(path): Path<FunctionPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState {
         function_handle, ..
     }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     function_handle
         .delete(path.function_uid)
         .await

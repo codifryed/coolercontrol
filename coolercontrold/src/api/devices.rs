@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
 use crate::engine::processors::image;
@@ -35,7 +34,6 @@ use std::io::Read;
 use std::ops::Not;
 use std::str::FromStr;
 use tempfile::NamedTempFile;
-use tower_sessions::Session;
 
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
@@ -63,11 +61,9 @@ pub async fn device_settings_get(
 
 pub async fn device_setting_manual_modify(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(manual_request): Json<SettingManualRequest>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_manual(
             path.device_uid,
@@ -80,11 +76,9 @@ pub async fn device_setting_manual_modify(
 
 pub async fn device_setting_profile_modify(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(profile_uid_json): Json<SettingProfileUID>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_profile(
             path.device_uid,
@@ -97,11 +91,9 @@ pub async fn device_setting_profile_modify(
 
 pub async fn device_setting_lcd_modify(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(lcd_settings): Json<LcdSettings>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_lcd(path.device_uid, path.channel_name, lcd_settings)
         .await
@@ -126,10 +118,8 @@ pub async fn get_device_lcd_image(
 pub async fn update_device_setting_lcd_image(
     Path(path): Path<DeviceChannelPath>,
     State(AppState { device_handle, .. }): State<AppState>,
-    NoApi(session): NoApi<Session>,
     NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     let file_data = validate_form_images(&mut form)?;
     device_handle
         .device_image_update(
@@ -148,10 +138,8 @@ pub async fn update_device_setting_lcd_image(
 pub async fn process_device_lcd_images(
     Path(path): Path<DeviceChannelPath>,
     State(AppState { device_handle, .. }): State<AppState>,
-    NoApi(session): NoApi<Session>,
     NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
 ) -> Result<impl IntoApiResponse, CCError> {
-    verify_admin_permissions(&session).await?;
     let file_data = validate_form_images(&mut form)?;
     device_handle
         .device_image_process(path.device_uid, path.channel_name, file_data)
@@ -202,11 +190,9 @@ fn validate_form_images(
 
 pub async fn device_setting_lighting_modify(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(lighting_settings): Json<LightingSettings>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_lighting(path.device_uid, path.channel_name, lighting_settings)
         .await
@@ -215,11 +201,9 @@ pub async fn device_setting_lighting_modify(
 
 pub async fn device_setting_pwm_mode_modify(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(pwm_mode_json): Json<SettingPWMMode>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_pwm_mode(path.device_uid, path.channel_name, pwm_mode_json.pwm_mode)
         .await
@@ -228,10 +212,8 @@ pub async fn device_setting_pwm_mode_modify(
 
 pub async fn device_setting_reset(
     Path(path): Path<DeviceChannelPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .device_setting_reset(path.device_uid, path.channel_name)
         .await
@@ -252,11 +234,9 @@ pub async fn asetek_type_update(
 }
 
 pub async fn thinkpad_fan_control_modify(
-    NoApi(session): NoApi<Session>,
     State(AppState { device_handle, .. }): State<AppState>,
     Json(fan_control_request): Json<ThinkPadFanControlRequest>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     device_handle
         .thinkpad_fan_control(fan_control_request.enable)
         .await

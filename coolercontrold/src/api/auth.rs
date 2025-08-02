@@ -19,7 +19,8 @@ use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
 use anyhow::Result;
-use axum::extract::State;
+use axum::extract::{Request, State};
+use axum::middleware::Next;
 use axum_extra::TypedHeader;
 use derive_more::Display;
 use headers::authorization::Basic;
@@ -32,6 +33,27 @@ use tower_sessions::Session;
 const SESSION_USER_ID: &str = "CCAdmin";
 const SESSION_PERMISSIONS: &str = "permissions";
 const INVALID_MESSAGE: &str = "Invalid username or password.";
+
+/// This middleware function is used to verify if the user is logged in.
+/// If the user is not logged in, then the request is rejected.
+/// It should be used on all routes that require authentication.
+pub async fn auth_middleware(
+    session: Session,
+    request: Request,
+    next: Next,
+) -> impl IntoApiResponse {
+    let permission = session
+        .get::<Permission>(SESSION_PERMISSIONS)
+        .await
+        .unwrap_or(Some(Permission::Guest))
+        .unwrap_or(Permission::Guest);
+    match permission {
+        Permission::Admin => Ok(next.run(request).await),
+        Permission::Guest => Err(CCError::InvalidCredentials {
+            msg: "Invalid Credentials".to_string(),
+        }),
+    }
+}
 
 pub async fn login(
     NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
@@ -59,17 +81,14 @@ pub async fn login(
 }
 
 /// This endpoint is used to verify if the login session is still valid
-pub async fn verify_session(NoApi(session): NoApi<Session>) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
+pub async fn verify_session() -> Result<(), CCError> {
     Ok(())
 }
 
 pub async fn set_passwd(
     NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
-    NoApi(session): NoApi<Session>,
     State(AppState { auth_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     if auth_header.username() == SESSION_USER_ID && auth_header.password().is_empty().not() {
         auth_handle
             .save_passwd(auth_header.password().to_string())
@@ -84,20 +103,6 @@ pub async fn set_passwd(
 
 pub async fn logout(NoApi(session): NoApi<Session>) -> impl IntoApiResponse {
     session.clear().await;
-}
-
-pub async fn verify_admin_permissions(session: &Session) -> Result<(), CCError> {
-    let permission = session
-        .get::<Permission>(SESSION_PERMISSIONS)
-        .await
-        .unwrap_or(Some(Permission::Guest))
-        .unwrap_or(Permission::Guest);
-    match permission {
-        Permission::Admin => Ok(()),
-        Permission::Guest => Err(CCError::InvalidCredentials {
-            msg: "Invalid Credentials".to_string(),
-        }),
-    }
 }
 
 #[derive(Debug, Clone, Display, EnumString, Serialize, Deserialize)]

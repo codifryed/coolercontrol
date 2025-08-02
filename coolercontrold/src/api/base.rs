@@ -15,11 +15,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::openapi::OpenApi;
-use aide::NoApi;
 use anyhow::Result;
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -35,7 +33,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower_serve_static::ServeDir;
-use tower_sessions::Session;
 
 static ASSETS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/resources/app");
 
@@ -79,8 +76,7 @@ pub async fn logs(State(AppState { log_buf_handle, .. }): State<AppState>) -> im
     log_buf_handle.get_logs().await
 }
 
-pub async fn shutdown(NoApi(session): NoApi<Session>) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
+pub async fn shutdown() -> Result<(), CCError> {
     signal::kill(Pid::this(), Signal::SIGQUIT).map_err(|err| CCError::InternalError {
         msg: err.to_string(),
     })

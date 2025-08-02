@@ -16,15 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, validate_name_string, AppState, CCError};
 use crate::setting::{Profile, ProfileType, ProfileUID};
-use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 /// Retrieves the persisted Profile list
 pub async fn get_all(
@@ -49,31 +46,25 @@ pub async fn save_order(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
     Json(profile): Json<Profile>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
     profile_handle.create(profile).await.map_err(handle_error)
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
     Json(profile): Json<Profile>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
     profile_handle.update(profile).await.map_err(handle_error)
 }
 
 pub async fn delete(
     Path(path): Path<ProfilePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     profile_handle
         .delete(path.profile_uid)
         .await
