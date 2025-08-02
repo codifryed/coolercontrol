@@ -47,10 +47,10 @@ tokio-stream = { version = "0.1.17", default-features = false, features = [
 ] }
 moro-local = "0.4.0"
 async-trait = "0.1.88"
-# Axum is held back. We need to adjust all paths for 0.8+ and test aide support:
-axum = { version = "=0.7.9", features = ["multipart", "macros"] }
-# Axum-Extra held back as 0.10.0 has some breaking changes as well as Axum update above:
-axum-extra = { version = "=0.9.6", features = ["typed-header"] }
+axum = { version = "0.8.4", features = ["multipart", "macros"] }
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
+# This should follow the dependencies of axum version as well
+tower = { version = "0.5.2" }
 tower-http = { version = "0.6.6", features = [
   "timeout",
   "trace",
@@ -59,27 +59,27 @@ tower-http = { version = "0.6.6", features = [
   "normalize-path",
   "compression-full",
 ] }
-# Held back due to Axum update above:
-tower-sessions = { version = "=0.13.0", features = ["private"] }
+tower-sessions = { version = "0.14.0", features = ["private"] }
 # Our own fork which handles our specific use case:
-tower_governor = { git = "https://github.com/codifryed/tower-governor", features = [
+tower_governor = { git = "https://github.com/codifryed/tower-governor", branch = "0.7", features = [
   "axum",
   "tracing",
 ] }
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
-# 0.14.0 update for axum 0.8
-aide = { version = "=0.13.5", features = [
+aide = { version = "0.15.0", features = [
   "axum",
+  "axum-json",
   "axum-extra",
   "axum-multipart",
 ] }
 headers = "0.4.1"
-# >=0.9.0 w/ chrono04 doesn't look to be compatible with old aide/axum
-schemars = { version = "=0.8.22", features = ["chrono"] }
+# this needs to follow the aide version above (currently 0.9.0)
+schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
-# Held back due to Axum update above:
-axum_typed_multipart = "=0.14.0"
+axum_typed_multipart = "0.16.3"
+# possible openApi improvement, but doesn't work for us currently:
+#aide-axum-typed-multipart-2 = "0.16.0"
 tempfile = "3.20.0"
 hyper = { version = "1.6.0", default-features = false, features = [
   "http1",

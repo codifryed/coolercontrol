@@ -73,7 +73,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
                     .security_requirement("CookieAuth")
             }),
         )
-        .nest_service("/", base::web_app_service())
+        .fallback_service(base::web_app_service())
         ///////////////////////////////////////////////////////////////////////////////////////////
         .api_route(
             "/login",
@@ -134,7 +134,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings",
+            "/devices/{device_uid}/settings",
             get_with(devices::device_settings_get, |o| {
                 o.summary("All Device Settings")
                     .description(
@@ -146,7 +146,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/manual",
+            "/devices/{device_uid}/settings/{channel_name}/manual",
             put_with(devices::device_setting_manual_modify, |o| {
                 o.summary("Device Channel Manual")
                     .description("Applies a fan duty to a specific device channel.")
@@ -155,7 +155,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/profile",
+            "/devices/{device_uid}/settings/{channel_name}/profile",
             put_with(devices::device_setting_profile_modify, |o| {
                 o.summary("Device Channel Profile")
                     .description("Applies a Profile to a specific device channel.")
@@ -164,7 +164,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/lcd",
+            "/devices/{device_uid}/settings/{channel_name}/lcd",
             put_with(devices::device_setting_lcd_modify, |o| {
                 o.summary("Device Channel LCD")
                     .description("Applies LCD Settings to a specific device channel.")
@@ -173,7 +173,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/lcd/images",
+            "/devices/{device_uid}/settings/{channel_name}/lcd/images",
             get_with(devices::get_device_lcd_image, |o| {
                 o.summary("Retrieve Device Channel LCD")
                     .description("Retrieves the currently applied LCD Image file.")
@@ -195,7 +195,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/lighting",
+            "/devices/{device_uid}/settings/{channel_name}/lighting",
             put_with(devices::device_setting_lighting_modify, |o| {
                 o.summary("Device Channel Lighting")
                     .description("Applies Lighting Settings (RGB) to a specific device channel.")
@@ -204,7 +204,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/pwm",
+            "/devices/{device_uid}/settings/{channel_name}/pwm",
             put_with(devices::device_setting_pwm_mode_modify, |o| {
                 o.summary("Device Channel PWM Mode")
                     .description("Applies PWM Mode to a specific device channel.")
@@ -213,7 +213,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/settings/:channel_name/reset",
+            "/devices/{device_uid}/settings/{channel_name}/reset",
             put_with(devices::device_setting_reset, |o| {
                 o.summary("Device Channel Reset")
                     .description(
@@ -224,7 +224,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/devices/:device_uid/asetek690",
+            "/devices/{device_uid}/asetek690",
             patch_with(devices::asetek_type_update, |o| {
                 o.summary("Device AseTek690")
                     .description(
@@ -271,7 +271,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/profiles/:profile_uid",
+            "/profiles/{profile_uid}",
             delete_with(profiles::delete, |o| {
                 o.summary("Delete Profile")
                     .description("Deletes the Profile with the given Profile UID")
@@ -312,7 +312,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/functions/:function_uid",
+            "/functions/{function_uid}",
             delete_with(functions::delete, |o| {
                 o.summary("Delete Function")
                     .description("Deletes the Function with the given Function UID")
@@ -353,7 +353,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/custom-sensors/:custom_sensor_id",
+            "/custom-sensors/{custom_sensor_id}",
             get_with(custom_sensors::get, |o| {
                 o.summary("Retrieve Custom Sensor")
                     .description("Retrieves the Custom Sensor with the given Custom Sensor ID")
@@ -396,7 +396,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
                 }),
         )
         .api_route(
-            "/modes/:mode_uid",
+            "/modes/{mode_uid}",
             get_with(modes::get, |o| {
                 o.summary("Retrieve Mode")
                     .description("Retrieves the Mode with the given Mode UID")
@@ -410,7 +410,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
                 }),
         )
         .api_route(
-            "/modes/:mode_uid/duplicate",
+            "/modes/{mode_uid}/duplicate",
             post_with(modes::duplicate, |o| {
                 o.summary("Duplicate Mode")
                     .description(
@@ -422,7 +422,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/modes/:mode_uid/settings",
+            "/modes/{mode_uid}/settings",
             put_with(modes::update_mode_settings, |o| {
                 o.summary("Update Mode Device Settings")
                     .description(
@@ -444,7 +444,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             }),
         )
         .api_route(
-            "/modes-active/:mode_uid",
+            "/modes-active/{mode_uid}",
             post_with(modes::activate, |o| {
                 o.summary("Activate Mode")
                     .description(
@@ -488,7 +488,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
             })
         )
         .api_route(
-            "/settings/devices/:device_uid",
+            "/settings/devices/{device_uid}",
             get_with(settings::get_cc_device, |o| {
                 o.summary("CoolerControl Device Settings")
                     .description("Returns the current CoolerControl device settings for the given device UID.")
@@ -539,7 +539,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
                 }),
         )
         .api_route(
-            "/alerts/:alert_uid",
+            "/alerts/{alert_uid}",
             delete_with(alerts::delete, |o| {
                 o.summary("Delete Alert")
                     .description("Deletes the Alert with the given Alert UID")
