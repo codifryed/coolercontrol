@@ -91,10 +91,12 @@ export const useDaemonState = defineStore('daemonState', () => {
                 life: 4000,
             })
             const deviceStore = useDeviceStore()
+            // reloading the UI results in a better UX, especially when the daemon is restarted
+            deviceStore.reloadUI()
             // re-load the logs in case the daemon has restarted
-            await deviceStore.loadLogs()
+            // await deviceStore.loadLogs()
             // re-check if the session is valid, in case the daemon has restarted
-            await deviceStore.login()
+            // await deviceStore.login()
         }
         connected.value = isConnected
     }
