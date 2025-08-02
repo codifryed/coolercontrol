@@ -209,10 +209,10 @@ async fn create_api_server(
             // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
             optional_layers(compression_layer, router)
                 // Limits the size of the payload in bytes: (Max 50MB for image files)
-                .layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+                .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
                 // 2MB is the default payload limit:
-                .layer(DefaultBodyLimit::disable())
-                .layer(session_layer)
+                .route_layer(DefaultBodyLimit::disable())
+                .route_layer(session_layer)
                 .layer(cors_layer())
                 .layer((
                     TraceLayer::new_for_http(),
