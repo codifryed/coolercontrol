@@ -274,17 +274,49 @@ fn device_routes() -> ApiRouter<AppState> {
 }
 
 fn status_routes() -> ApiRouter<AppState> {
-    ApiRouter::new().api_route(
-        "/status",
-        post_with(status::retrieve, |o| {
-            o.summary("Retrieve Status")
-                .description(
-                    "Returns the status of all devices with the selected \
-                    filters from the request body",
-                )
-                .tag("status")
-        }),
-    )
+    ApiRouter::new()
+        .api_route(
+            "/status",
+            post_with(status::retrieve, |o| {
+                o.summary("Retrieve Status")
+                    .description(
+                        "Returns the status of all devices and their channels,with the \
+                        selected filters from the request body. This endpoint has the most \
+                        options available for retrieving all statuses.",
+                    )
+                    .tag("status")
+            })
+            .get_with(status::get_all, |o| {
+                o.summary("Retrieve Status")
+                    .description(
+                        "Returns the status of all devices and their channels, returning \
+                        only the most recent status by default.",
+                    )
+                    .tag("status")
+            }),
+        )
+        .api_route(
+            "/status/{device_uid}",
+            get_with(status::get_device, |o| {
+                o.summary("Retrieve Device Status")
+                    .description(
+                        "Returns the status of all channels for a specific device, \
+                        returning only the most recent status by default.",
+                    )
+                    .tag("status")
+            }),
+        )
+        .api_route(
+            "/status/{device_uid}/channels/{channel_name}",
+            get_with(status::get_device_channel, |o| {
+                o.summary("Retrieve Device Channel Status")
+                    .description(
+                        "Returns the status of a specific channel for a specific device, \
+                        returning only the most recent status by default.",
+                    )
+                    .tag("status")
+            }),
+        )
 }
 
 fn profile_routes() -> ApiRouter<AppState> {
