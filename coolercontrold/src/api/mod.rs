@@ -201,9 +201,8 @@ async fn create_api_server(
 
     // The NormalizePathLayer needs to be before the router layer.
     let normalized_router = NormalizePathLayer::trim_trailing_slash()
-        // .layer(service_layers);
         .layer(
-            // would like to use ServiceBuilder, but there are issues with getting all our
+            // Would like to use ServiceBuilder, but there are issues with getting all our
             // layers to work together properly.
             // Layers are processed bottom to top: (last is first in the chain)
             // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
