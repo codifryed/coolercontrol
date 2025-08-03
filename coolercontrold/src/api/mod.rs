@@ -46,10 +46,10 @@ use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::rejection::JsonRejection;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json, Router};
+use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
 use derive_more::{Display, Error};
 use log::{debug, info, warn};
@@ -63,6 +63,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio_util::sync::CancellationToken;
+use tower::Layer;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::GovernorLayer;
 use tower_http::compression::CompressionLayer;
@@ -79,6 +80,7 @@ const API_SERVER_PORT_DEFAULT: Port = 11987;
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_RATE_BURST: u32 = 50;
 const API_RATE_REQ_PER_SEC: u64 = 10;
+const API_TIMEOUT_SECS: u64 = 30;
 
 type Port = u16;
 
@@ -117,7 +119,11 @@ pub async fn start_server<'s>(
         ));
     }
 
-    let compress_enabled = config.get_settings()?.compress;
+    let compression_layer = if config.get_settings()?.compress {
+        Some(CompressionLayer::new())
+    } else {
+        None
+    };
     let app_state = create_app_state(
         all_devices,
         repos,
@@ -156,8 +162,8 @@ pub async fn start_server<'s>(
         main_scope.spawn(create_api_server(
             SocketAddr::from(ipv4),
             app_state.clone(),
-            compress_enabled,
             session_layer.clone(),
+            compression_layer.clone(),
             governor_layer.clone(),
             cancel_token.clone(),
         ));
@@ -166,8 +172,8 @@ pub async fn start_server<'s>(
         main_scope.spawn(create_api_server(
             SocketAddr::from(ipv6),
             app_state,
-            compress_enabled,
             session_layer,
+            compression_layer,
             governor_layer,
             cancel_token,
         ));
@@ -178,12 +184,12 @@ pub async fn start_server<'s>(
 async fn create_api_server(
     addr: SocketAddr,
     app_state: AppState,
-    compress_enabled: bool,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    compression_layer: Option<CompressionLayer>,
     governor_layer: GovernorLayer,
     cancel_token: CancellationToken,
 ) -> Result<()> {
-    aide::gen::on_error(|error| {
+    aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
     });
     let mut open_api = OpenApi::default();
@@ -192,22 +198,31 @@ async fn create_api_server(
         .layer(Extension(Arc::new(open_api)));
     let listener = TcpListener::bind(addr).await?;
     info!("API bound to address: {addr}");
+
+    // The NormalizePathLayer needs to be before the router layer.
+    let normalized_router = NormalizePathLayer::trim_trailing_slash()
+        // .layer(service_layers);
+        .layer(
+            // would like to use ServiceBuilder, but there are issues with getting all our
+            // layers to work together properly.
+            // Layers are processed bottom to top: (last is first in the chain)
+            // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
+            optional_layers(compression_layer, router)
+                // Limits the size of the payload in bytes: (Max 50MB for image files)
+                .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+                // 2MB is the default payload limit:
+                .route_layer(DefaultBodyLimit::disable())
+                .route_layer(session_layer)
+                .layer(cors_layer())
+                .layer((
+                    TraceLayer::new_for_http(),
+                    TimeoutLayer::new(Duration::from_secs(API_TIMEOUT_SECS)),
+                ))
+                .layer(governor_layer),
+        );
     axum::serve(
         listener,
-        optional_layers(compress_enabled, router)
-            .layer(cors_layer())
-            .layer(NormalizePathLayer::trim_trailing_slash())
-            .layer(session_layer)
-            .layer(governor_layer)
-            .layer((
-                TraceLayer::new_for_http(),
-                TimeoutLayer::new(Duration::from_secs(30)),
-            ))
-            // 2MB is the default payload limit:
-            .layer(DefaultBodyLimit::disable())
-            // Limits the size of the payload in bytes: (Max 50MB for image files)
-            .layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
-            .into_make_service(),
+        ServiceExt::<Request>::into_make_service(normalized_router),
     )
     .with_graceful_shutdown(async move { cancel_token.cancelled().await })
     .await?;
@@ -370,9 +385,9 @@ fn create_app_state<'s>(
     }
 }
 
-fn optional_layers(compress_enabled: bool, router: Router) -> Router {
-    if compress_enabled {
-        router.layer(CompressionLayer::new())
+fn optional_layers(compression_layer: Option<CompressionLayer>, router: Router) -> Router {
+    if let Some(layer) = compression_layer {
+        router.layer(layer)
     } else {
         router
     }
@@ -668,14 +683,14 @@ impl OperationOutput for CCError {
     type Inner = ();
 
     fn operation_response(
-        _ctx: &mut aide::gen::GenContext,
+        _ctx: &mut aide::generate::GenContext,
         _operation: &mut aide::openapi::Operation,
     ) -> Option<aide::openapi::Response> {
         Some(aide::openapi::Response::default())
     }
 
     fn inferred_responses(
-        ctx: &mut aide::gen::GenContext,
+        ctx: &mut aide::generate::GenContext,
         operation: &mut aide::openapi::Operation,
     ) -> Vec<(Option<u16>, aide::openapi::Response)> {
         if let Some(res) = Self::operation_response(ctx, operation) {

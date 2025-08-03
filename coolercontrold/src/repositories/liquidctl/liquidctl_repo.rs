@@ -528,6 +528,20 @@ impl LiquidctlRepo {
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
         // We set several settings at once for lcd/screen settings
+        // We first start with re-initializing the device, as this helps clear LCD related settings
+        // and gives more consistent results when applying images.
+        let start_lcd_settings_apply = Instant::now();
+        self.liqctld_client
+            .initialize_device(&device_data.type_index, None)
+            .await
+            .map(|_| ()) // ignore successful result
+            .map_err(|err| {
+                anyhow!(
+                    "Error on LCD initialization for LIQUIDCTL Device #{}: {} - {err}",
+                    device_data.type_index,
+                    device_data.uid
+                )
+            })?;
         if let Some(brightness) = lcd_settings.brightness {
             if let Err(err) = self
                 .send_screen_request(
@@ -587,6 +601,10 @@ impl LiquidctlRepo {
             .await
             .map_err(|err| anyhow!("Setting lcd/screen 'liquid' mode - {err}"))?;
         }
+        trace!(
+            "Time taken to apply all LIQUIDCTL IMAGE LCD settings: {:?}",
+            start_lcd_settings_apply.elapsed()
+        );
         Ok(())
     }
 

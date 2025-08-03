@@ -721,7 +721,7 @@ class DeviceService:
             raise LiqctldException(
                 HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
             )
-        log.info(
+        log.debug(
             f"Initializing Liquidctl device #{device_id} with arguments: {init_args}"
         )
         try:

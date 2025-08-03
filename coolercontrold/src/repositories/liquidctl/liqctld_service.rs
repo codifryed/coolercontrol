@@ -72,7 +72,7 @@ async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
         info!("Running liqctld inside an AppImage");
         (format!("{appdir}/usr/bin/python3"), "-I")
     } else {
-        ("python3".to_string(), "")
+        ("python3".to_string(), "-q")
     };
     let mut child = Command::new(cmd)
         .envs(default_env)
