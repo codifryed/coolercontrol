@@ -71,6 +71,16 @@ export class Profile {
     temp_source?: ProfileTempSource
 
     /**
+     * The minimum temp for this profile
+     */
+    temp_min?: number
+
+    /**
+     * The maximum temp for this profile
+     */
+    temp_max?: number
+
+    /**
      * The function UID to apply to this profile
      */
     function_uid: UID = '0'
