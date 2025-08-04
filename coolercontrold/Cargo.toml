@@ -47,7 +47,7 @@ tokio-stream = { version = "0.1.17", default-features = false, features = [
 ] }
 moro-local = "0.4.0"
 async-trait = "0.1.88"
-axum = { version = "0.8.4", features = ["multipart", "macros"] }
+axum = { version = "0.8.4", features = ["multipart", "macros", "query"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.2" }
@@ -71,6 +71,7 @@ aide = { version = "0.15.0", features = [
   "axum",
   "axum-json",
   "axum-extra",
+  "axum-query",
   "axum-multipart",
 ] }
 headers = "0.4.1"

@@ -17,8 +17,9 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::api::status::DeviceStatusDto;
-use crate::device::Status;
+use crate::api::status::{DeviceChannelStatusDto, DeviceStatusDto};
+use crate::api::CCError;
+use crate::device::{ChannelName, Status, UID};
 use crate::repositories::repository::DeviceLock;
 use crate::AllDevices;
 use anyhow::Result;
@@ -48,6 +49,24 @@ enum StatusMessage {
     Since {
         since: DateTime<Local>,
         respond_to: oneshot::Sender<Result<Vec<DeviceStatusDto>>>,
+    },
+    AllDevice {
+        device_uid: UID,
+        respond_to: oneshot::Sender<Result<DeviceStatusDto>>,
+    },
+    RecentDevice {
+        device_uid: UID,
+        respond_to: oneshot::Sender<Result<DeviceStatusDto>>,
+    },
+    AllDeviceChannel {
+        device_uid: UID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<DeviceChannelStatusDto>>,
+    },
+    RecentDeviceChannel {
+        device_uid: UID,
+        channel_name: ChannelName,
+        respond_to: oneshot::Sender<Result<DeviceChannelStatusDto>>,
     },
 }
 
@@ -92,6 +111,72 @@ impl ApiActor<StatusMessage> for StatusActor {
                 }
                 let _ = respond_to.send(Ok(all_devices));
             }
+            StatusMessage::AllDevice {
+                device_uid,
+                respond_to,
+            } => {
+                for device_lock in self.all_devices.values() {
+                    if device_lock.borrow().uid == device_uid {
+                        let _ = respond_to.send(Ok(get_all_statuses(device_lock)));
+                        return;
+                    }
+                }
+                let _ = respond_to.send(Err(CCError::NotFound {
+                    msg: "Device not found".to_string(),
+                }
+                .into()));
+            }
+            StatusMessage::RecentDevice {
+                device_uid,
+                respond_to,
+            } => {
+                for device_lock in self.all_devices.values() {
+                    if device_lock.borrow().uid == device_uid {
+                        let _ = respond_to.send(Ok(get_most_recent_status(device_lock)));
+                        return;
+                    }
+                }
+                let _ = respond_to.send(Err(CCError::NotFound {
+                    msg: "Device not found".to_string(),
+                }
+                .into()));
+            }
+            StatusMessage::AllDeviceChannel {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                for device_lock in self.all_devices.values() {
+                    if device_lock.borrow().uid == device_uid {
+                        let _ = respond_to
+                            .send(Ok(get_all_statuses_for_channel(device_lock, &channel_name)));
+                        return;
+                    }
+                }
+                let _ = respond_to.send(Err(CCError::NotFound {
+                    msg: "Device not found".to_string(),
+                }
+                .into()));
+            }
+            StatusMessage::RecentDeviceChannel {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                for device_lock in self.all_devices.values() {
+                    if device_lock.borrow().uid == device_uid {
+                        let _ = respond_to.send(Ok(get_most_recent_status_for_channel(
+                            device_lock,
+                            &channel_name,
+                        )));
+                        return;
+                    }
+                }
+                let _ = respond_to.send(Err(CCError::NotFound {
+                    msg: "Device not found".to_string(),
+                }
+                .into()));
+            }
         }
     }
 }
@@ -132,6 +217,57 @@ fn get_most_recent_status(device_lock: &DeviceLock) -> DeviceStatusDto {
         uid: device.uid.clone(),
         status_history,
     }
+}
+
+fn get_all_statuses_for_channel(
+    device_lock: &DeviceLock,
+    channel_name: &ChannelName,
+) -> DeviceChannelStatusDto {
+    let device = device_lock.borrow();
+    let status_history = device
+        .status_history
+        .iter()
+        .map(|status| {
+            let mut filtered_status = Status {
+                timestamp: status.timestamp,
+                ..Default::default()
+            };
+            status
+                .temps
+                .iter()
+                .filter(|status| &status.name == channel_name)
+                .for_each(|status| {
+                    filtered_status.temps.push(status.clone());
+                });
+            status
+                .channels
+                .iter()
+                .filter(|status| &status.name == channel_name)
+                .for_each(|status| {
+                    filtered_status.channels.push(status.clone());
+                });
+            filtered_status
+        })
+        .collect();
+    DeviceChannelStatusDto { status_history }
+}
+
+fn get_most_recent_status_for_channel(
+    device_lock: &DeviceLock,
+    channel_name: &ChannelName,
+) -> DeviceChannelStatusDto {
+    let mut status_history: Vec<Status> = Vec::with_capacity(1);
+    let device = device_lock.borrow();
+    if let Some(mut most_recent_status) = device.status_current() {
+        most_recent_status
+            .channels
+            .retain(|status| &status.name == channel_name);
+        most_recent_status
+            .temps
+            .retain(|status| &status.name == channel_name);
+        status_history.push(most_recent_status);
+    }
+    DeviceChannelStatusDto { status_history }
 }
 
 #[derive(Clone)]
@@ -193,6 +329,56 @@ impl StatusHandle {
         let (tx, rx) = oneshot::channel();
         let msg = StatusMessage::Since {
             since,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn all_device(&self, device_uid: UID) -> Result<DeviceStatusDto> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StatusMessage::AllDevice {
+            device_uid,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn recent_device(&self, device_uid: UID) -> Result<DeviceStatusDto> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StatusMessage::RecentDevice {
+            device_uid,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn all_device_channel(
+        &self,
+        device_uid: UID,
+        channel_name: ChannelName,
+    ) -> Result<DeviceChannelStatusDto> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StatusMessage::AllDeviceChannel {
+            device_uid,
+            channel_name,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn recent_device_channel(
+        &self,
+        device_uid: UID,
+        channel_name: ChannelName,
+    ) -> Result<DeviceChannelStatusDto> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StatusMessage::RecentDeviceChannel {
+            device_uid,
+            channel_name,
             respond_to: tx,
         };
         let _ = self.sender.send(msg).await;
