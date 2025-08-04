@@ -202,6 +202,12 @@ pub struct Profile {
     /// The associated temperature source
     pub temp_source: Option<TempSource>,
 
+    /// The minimum temp for this profile
+    pub temp_min: Option<Temp>,
+
+    /// The maximum temp for this profile
+    pub temp_max: Option<Temp>,
+
     /// The function uid to apply to this profile
     pub function_uid: FunctionUID,
 
@@ -221,6 +227,8 @@ impl Default for Profile {
             speed_fixed: None,
             speed_profile: None,
             temp_source: None,
+            temp_min: None,
+            temp_max: None,
             function_uid: DEFAULT_FUNCTION_UID.to_string(),
             member_profile_uids: Vec::new(),
             mix_function_type: None,

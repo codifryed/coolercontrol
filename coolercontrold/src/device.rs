@@ -277,9 +277,9 @@ pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
     pub temps: HashMap<String, TempInfo>,
     pub lighting_speeds: Vec<String>,
-    /// The minimum temp to use for Profiles for this device
+    /// The absolute minimum temp to use for Profiles for this device
     pub temp_min: u8,
-    /// The maximum temp to use for Profiles for this device
+    /// The absolute maximum temp to use for Profiles for this device
     pub temp_max: u8,
     pub profile_max_length: u8,
     pub profile_min_length: u8,
@@ -297,8 +297,8 @@ impl Default for DeviceInfo {
             channels: HashMap::new(),
             temps: HashMap::new(),
             lighting_speeds: vec![],
-            temp_min: 20,
-            temp_max: 100,
+            temp_min: 0,
+            temp_max: 150,
             profile_max_length: 17, // reasonable default, one control point every 5 degrees for 20-100
             profile_min_length: 2,
             model: None,

@@ -599,6 +599,30 @@ impl Config {
         Ok(temp_source)
     }
 
+    fn get_temp_min(setting_table: &Table) -> Result<Option<f64>> {
+        let temp_min = if let Some(temp_value) = setting_table.get("temp_min") {
+            let temp: f64 = temp_value
+                .as_float()
+                .with_context(|| "temp_min should be a float")?;
+            Some(temp.clamp(0., 100.))
+        } else {
+            None
+        };
+        Ok(temp_min)
+    }
+
+    fn get_temp_max(setting_table: &Table) -> Result<Option<f64>> {
+        let temp_max = if let Some(temp_value) = setting_table.get("temp_max") {
+            let temp: f64 = temp_value
+                .as_float()
+                .with_context(|| "temp_max should be a float")?;
+            Some(temp.clamp(0., 200.))
+        } else {
+            None
+        };
+        Ok(temp_max)
+    }
+
     fn get_carousel(setting_table: &Table) -> Result<Option<LcdCarouselSettings>> {
         let carousel = if let Some(value) = setting_table.get("carousel") {
             let carousel_table = value
@@ -1101,6 +1125,8 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(profile_table)?;
                 let speed_profile = Self::get_speed_profile(profile_table)?;
                 let temp_source = Self::get_temp_source(profile_table)?;
+                let temp_min = Self::get_temp_min(profile_table)?;
+                let temp_max = Self::get_temp_max(profile_table)?;
                 let temp_function_default_uid_value = Item::Value(Value::String(Formatted::new(
                     DEFAULT_FUNCTION_UID.to_string(),
                 )));
@@ -1119,6 +1145,8 @@ impl Config {
                     speed_fixed,
                     speed_profile,
                     temp_source,
+                    temp_min,
+                    temp_max,
                     function_uid,
                     member_profile_uids,
                     mix_function_type,
@@ -1265,6 +1293,16 @@ impl Config {
                 Item::Value(Value::String(Formatted::new(temp_source.device_uid)));
         } else {
             profile_table["temp_source"] = Item::None;
+        }
+        if let Some(temp_min) = profile.temp_min {
+            profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
+        } else {
+            profile_table["temp_min"] = Item::None;
+        }
+        if let Some(temp_max) = profile.temp_max {
+            profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
+        } else {
+            profile_table["temp_max"] = Item::None;
         }
         profile_table["function_uid"] =
             Item::Value(Value::String(Formatted::new(profile.function_uid)));
