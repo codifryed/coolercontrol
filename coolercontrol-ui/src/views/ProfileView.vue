@@ -407,7 +407,7 @@ const option = {
         padding: [0, 5, 1, 7],
         transitionDuration: 0.0,
         formatter: function (params: any) {
-            return params.data.value[1].toFixed(0) + '% ' + params.data.value[0].toFixed(1) + '°'
+            return +params.data.value[0].toFixed(1) + '°C ' + params.data.value[1].toFixed(0) + '%'
         },
     },
     grid: {
