@@ -1411,9 +1411,9 @@ impl Config {
                         .try_into()
                         .ok()
                         .with_context(|| "duty_minimum should be an integer between 1 and 99")?;
-                    duty_minimum_raw.clamp(2, 99)
+                    duty_minimum_raw.clamp(1, 99)
                 } else {
-                    2
+                    1
                 };
                 let duty_maximum: u8 = if let Some(duty_maximum_value) =
                     function_table.get("duty_maximum")
