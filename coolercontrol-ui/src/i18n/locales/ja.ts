@@ -558,6 +558,8 @@ export default {
             tempSourceRequired: 'グラフプロファイルには温度ソースが必要です。',
             memberProfilesRequired:
                 'ミックスプロファイルには少なくとも2つのメンバープロファイルが必要です。',
+            minProfileTemp: '最小プロファイル温度',
+            maxProfileTemp: '最大プロファイル温度',
         },
         controls: {
             viewType: 'ビュータイプ',

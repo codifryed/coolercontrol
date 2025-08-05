@@ -67,7 +67,7 @@ import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
 import Select from 'primevue/select'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
@@ -97,7 +97,6 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const toast = useToast()
 const confirm = useConfirm()
-const router = useRouter()
 const { t } = useI18n()
 
 const contextIsDirty: Ref<boolean> = ref(false)
@@ -245,8 +244,10 @@ const defaultSymbolSize: number = deviceStore.getREMSize(1.0)
 const defaultSymbolColor: string = colors.themeColors.bg_two
 const selectedSymbolSize: number = deviceStore.getREMSize(1.25)
 const selectedSymbolColor: string = colors.themeColors.accent
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
+const graphTempMinLimit: number = 0
+const graphTempMaxLimit: number = 150
+const axisXTempMin: Ref<number> = ref(currentProfile.value.temp_min ?? 0)
+const axisXTempMax: Ref<number> = ref(currentProfile.value.temp_max ?? 100)
 const dutyMin: number = 0
 const dutyMax: number = 100
 let firstTimeChoosingTemp: boolean = true
@@ -282,8 +283,8 @@ const defaultDataValues = (): Array<PointData> => {
                 ? 5
                 : selectedTempSource.profileMaxLength
         const temps = lineSpace(
-            selectedTempSource.tempMin,
-            selectedTempSource.tempMax,
+            Math.max(selectedTempSource.tempMin, axisXTempMin.value),
+            Math.min(selectedTempSource.tempMax, axisXTempMax.value),
             profileLength,
             1,
         )
@@ -339,8 +340,8 @@ const markAreaData: [
         xAxis: number
     }[],
 ] = [
-    [{ xAxis: axisXTempMin }, { xAxis: axisXTempMin }],
-    [{ xAxis: axisXTempMax }, { xAxis: axisXTempMax }],
+    [{ xAxis: axisXTempMin.value }, { xAxis: axisXTempMin.value }],
+    [{ xAxis: axisXTempMax.value }, { xAxis: axisXTempMax.value }],
 ]
 
 const graphicData: GraphicComponentLooseOption[] = []
@@ -368,30 +369,9 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
-const functionTitle = (): string => {
-    let title = `${t('views.profiles.appliedFunction')}: ${chosenFunction.value.name}`
-    if (deviceStore.isSafariWebKit()) {
-        // add some extra length for WebKit to keep default function text all linkable
-        title = title + '                          '
-    }
-    return title
-}
 const option = {
     title: {
         show: false,
-        text: functionTitle(),
-        link: chosenFunction.value.uid !== '0' ? '' : undefined,
-        target: 'self',
-        top: '5%',
-        left: '5%',
-        textStyle: {
-            color: colors.themeColors.text_color,
-            fontStyle: 'italic',
-            fontSize: '1.2rem',
-            textShadowColor: colors.themeColors.bg_one,
-            textShadowBlur: 10,
-        },
-        triggerEvent: chosenFunction.value.uid !== '0',
     },
     tooltip: {
         position: 'top',
@@ -407,25 +387,25 @@ const option = {
         padding: [0, 5, 1, 7],
         transitionDuration: 0.0,
         formatter: function (params: any) {
-            return params.data.value[1].toFixed(0) + '% ' + params.data.value[0].toFixed(1) + '°'
+            return +params.data.value[0].toFixed(1) + '°C ' + params.data.value[1].toFixed(0) + '%'
         },
     },
     grid: {
         show: false,
         top: deviceStore.getREMSize(0.7),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
     xAxis: {
-        min: axisXTempMin,
-        max: axisXTempMax,
+        min: axisXTempMin.value,
+        max: axisXTempMax.value,
         type: 'value',
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}° ',
+            formatter: '{value}°C ',
         },
         axisLine: {
             lineStyle: {
@@ -607,26 +587,63 @@ const setGraphData = () => {
         firstTimeChoosingTemp = false
     } else {
         // force points to all fit into the new limits:
-        data[0].value[0] = selectedTempSource!.tempMin
-        data[data.length - 1].value[0] = selectedTempSource!.tempMax
+        data[0].value[0] = Math.max(selectedTempSource!.tempMin, axisXTempMin.value)
+        data[data.length - 1].value[0] = Math.min(selectedTempSource!.tempMax, axisXTempMax.value)
         for (let i = 1; i < data.length - 1; i++) {
             controlPointMotionForTempX(data[i].value[0], i)
         }
     }
-    // set xAxis min and max to +/- 10 from new limits: (semi-zoom)
-    if (selectedTempSource!.tempMin > axisXTempMin + 5) {
+    // set xAxis min and max to +/- 5 from new limits: (semi-zoom)
+    if (
+        currentProfile.value.temp_min == null &&
+        selectedTempSource!.tempMin > axisXTempMin.value + 5
+    ) {
+        axisXTempMin.value = selectedTempSource!.tempMin - 5
         option.xAxis.min = selectedTempSource!.tempMin - 5
-    } else {
-        option.xAxis.min = axisXTempMin
+    } else if (
+        currentProfile.value.temp_min == null &&
+        currentProfile.value.speed_profile.length > 0
+    ) {
+        // No Axis range set, but speed profile exists: use current data range
+        axisXTempMin.value = currentProfile.value.speed_profile[0][0]
+        option.xAxis.min = currentProfile.value.speed_profile[0][0]
+    } else if (currentProfile.value.temp_min != null) {
+        // reset axis range:
+        const minTemp = Math.max(currentProfile.value.temp_min, graphTempMinLimit)
+        option.xAxis.min = minTemp
+        axisXTempMin.value = minTemp
     }
-    if (selectedTempSource!.tempMax < axisXTempMax - 5) {
-        option.xAxis.max = selectedTempSource!.tempMax + 5
-    } else {
-        option.xAxis.max = axisXTempMax
+    if (
+        currentProfile.value.temp_max == null &&
+        selectedTempSource!.tempMax < axisXTempMax.value - 5
+    ) {
+        const maxTemp = Math.min(selectedTempSource!.tempMax + 5, 100)
+        axisXTempMax.value = maxTemp
+        option.xAxis.max = maxTemp
+    } else if (
+        currentProfile.value.temp_max == null &&
+        currentProfile.value.speed_profile.length > 0
+    ) {
+        // No Axis range set, but speed profile exists: use current data range
+        const maxTemp = Math.min(
+            currentProfile.value.speed_profile[currentProfile.value.speed_profile.length - 1][0] +
+                5,
+            100,
+        )
+        axisXTempMax.value = maxTemp
+        option.xAxis.max = maxTemp
+    } else if (currentProfile.value.temp_max != null) {
+        // reset axis range:
+        const maxTemp = Math.min(currentProfile.value.temp_max, graphTempMaxLimit)
+        option.xAxis.max = maxTemp
+        axisXTempMax.value = maxTemp
     }
     // set limited Mark Area
-    markAreaData[0] = [{ xAxis: axisXTempMin }, { xAxis: selectedTempSource!.tempMin }]
-    markAreaData[1] = [{ xAxis: selectedTempSource!.tempMax }, { xAxis: axisXTempMax }]
+    markAreaData[0] = [{ xAxis: axisXTempMin.value }, { xAxis: selectedTempSource!.tempMin }]
+    markAreaData[1] = [
+        { xAxis: Math.min(selectedTempSource!.tempMax, 100) },
+        { xAxis: axisXTempMax.value },
+    ]
     setTempSourceTemp()
     // @ts-ignore
     option.series[1].lineStyle.color = selectedTempSource.color
@@ -694,9 +711,6 @@ watch(chosenTemp, () => {
     controlGraph.value?.setOption(option)
 })
 watch(chosenFunction, () => {
-    option.title.text = functionTitle()
-    option.title.triggerEvent = chosenFunction.value.uid !== '0'
-    option.title.link = chosenFunction.value.uid !== '0' ? '' : undefined
     setFunctionGraphData()
     // needed as the graphics get a bit lost for some reason after ^:
     createGraphicDataFromPointData()
@@ -751,14 +765,18 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
     // We use 1 whole degree of separation between points so point index works perfect:
-    const minActivePosition = selectedTempSource!.tempMin + selectedPointIndex
+    const minActivePosition =
+        Math.max(selectedTempSource!.tempMin, axisXTempMin.value) + selectedPointIndex
+    const maxActivePosition =
+        Math.min(selectedTempSource!.tempMax, axisXTempMax.value) -
+        (data.length - (selectedPointIndex + 1))
     if (selectedPointIndex === 0) {
-        data[selectedPointIndex].value[0] = minActivePosition
-        return // starting point is horizontally fixed
+        // starting point is horizontally fixed
+        posX = minActivePosition
     } else if (selectedPointIndex === data.length - 1) {
-        return // last point is horizontally fixed
+        // final point is horizontally fixed
+        posX = maxActivePosition
     }
-    const maxActivePosition = selectedTempSource!.tempMax - (data.length - (selectedPointIndex + 1))
     if (posX < minActivePosition) {
         posX = minActivePosition
     } else if (posX > maxActivePosition) {
@@ -834,7 +852,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
     controlPointMotionForDutyY(posXY[1], dataIndex)
     controlGraph.value?.setOption({
         series: [
-            { id: 'a', data: data },
+            { id: 'a', data: data, markArea: { data: markAreaData } },
             { id: 'line-area', data: data },
         ],
         graphic: data
@@ -844,6 +862,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
                 type: 'circle',
                 position: controlGraph.value?.convertToPixel('grid', item.value),
             })),
+        xAxis: { min: axisXTempMin.value, max: axisXTempMax.value },
     })
 }
 
@@ -938,8 +957,8 @@ const createGraphicDataFromPointData = () => {
                     (this as any).y,
                 ]) as [number, number]) ?? [0, 0]
                 if (
-                    posX < axisXTempMin ||
-                    posX > axisXTempMax ||
+                    posX < axisXTempMin.value ||
+                    posX > axisXTempMax.value ||
                     posY < dutyMin ||
                     posY > dutyMax
                 ) {
@@ -979,31 +998,17 @@ const createGraphicDataFromPointData = () => {
     )
 }
 
-// todo: delete later - looks like with the v-if logic, we no longer need the boolean
-// let draggableGraphicsCreated: boolean = false
 const createDraggableGraphics = (): void => {
     // Add shadow circles (which is not visible) to enable drag.
-    // if (draggableGraphicsCreated) {
-    //     return // we only need to do this once, AFTER the graph is drawn and visible
-    // }
     createGraphicDataFromPointData()
     controlGraph.value?.setOption({ graphic: graphicData })
-    // draggableGraphicsCreated = true
 }
 
 const addPointToLine = (params: any) => {
-    if (params.target?.style?.text === option.title.text) {
-        // handle click on Function Title in graph:
-        if (chosenFunction.value.uid === '0') {
-            return
-        }
-        router.push({ name: 'functions', params: { functionUID: chosenFunction.value.uid } })
-        return
-    } else if (params.target?.type !== 'ec-polyline') {
+    if (params.target?.type !== 'ec-polyline') {
         return
     }
     if (data.length >= selectedTempSource!.profileMaxLength) {
-        // todo: actually profile length belongs to the channel/duty device being set.
         //  (We'll have to convert the points ourselves to the proper points per device)
         return
     }
@@ -1012,6 +1017,8 @@ const addPointToLine = (params: any) => {
         params.offsetX,
         params.offsetY,
     ]) as [number, number]) ?? [0, 0]
+    // Clamp duty to min/max (with hi-res graphs, sometimes it went out of max bounds)
+    posXY[1] = Math.min(Math.max(posXY[1], dutyMin), dutyMax)
     let indexToInsertAt = 1
     for (const [i, point] of data.entries()) {
         if (point.value[0] > posXY[0]) {
@@ -1080,16 +1087,26 @@ const showGraph = computed(() => {
         chosenTemp.value != null
     if (shouldShow) {
         setTimeout(() => {
-            const resizeObserver = new ResizeObserver((_) => {
-                controlGraph.value?.setOption({
-                    graphic: data.map(function (item, _dataIndex) {
-                        return {
-                            type: 'circle',
-                            position: controlGraph.value?.convertToPixel('grid', item.value),
-                        }
-                    }),
-                })
-            })
+            // debounce because we need to wait for the graph to be rendered
+            const resizeObserver = new ResizeObserver(
+                _.debounce(
+                    () => {
+                        controlGraph.value?.setOption({
+                            graphic: data.map(function (item, _dataIndex) {
+                                return {
+                                    type: 'circle',
+                                    position: controlGraph.value?.convertToPixel(
+                                        'grid',
+                                        item.value,
+                                    ),
+                                }
+                            }),
+                        })
+                    },
+                    200,
+                    { leading: false },
+                ),
+            )
             resizeObserver.observe(controlGraph.value?.$el)
             createDraggableGraphics() // we need to create AFTER the element is visible and rendered
         }, 500) // due to graph resizing, we really need a substantial delay on creation
@@ -1113,24 +1130,47 @@ const mixProfileKeys: Ref<string> = computed(() =>
     chosenMemberProfiles.value.map((p) => p.uid).join(':'),
 )
 
-const inputNumberTempMin = (): number => {
+const inputNumberTempMin = computed((): number => {
     if (selectedTempSource == null) {
-        return axisXTempMin
+        return axisXTempMin.value
     }
-    return selectedTempSource.tempMin + (selectedPointIndex.value ?? 0)
-}
+    // one degree of separation between points
+    return (
+        Math.max(selectedTempSource.tempMin, axisXTempMin.value) + (selectedPointIndex.value ?? 0)
+    )
+})
 
-const inputNumberTempMax = (): number => {
+const inputNumberTempMax = computed((): number => {
     if (selectedTempSource == null) {
-        return axisXTempMax
+        return axisXTempMax.value
     }
     if (selectedPointIndex.value === 0) {
-        return selectedTempSource.tempMin // starting point is horizontally fixed
+        // return selectedTempSource.tempMin // starting point is horizontally fixed
+        return Math.max(selectedTempSource.tempMin, axisXTempMin.value) // starting point is horizontally fixed
     } else if (selectedPointIndex.value === data.length - 1) {
-        return selectedTempSource.tempMax // last point is horizontally fixed
+        return Math.min(selectedTempSource.tempMax, axisXTempMax.value) // last point is horizontally fixed
     }
-    return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
-}
+    return (
+        Math.min(selectedTempSource.tempMax, axisXTempMax.value) -
+        (data.length - 1 - (selectedPointIndex.value ?? 0))
+    )
+})
+
+const inputAxisMinNumberMin = computed((): number => {
+    return graphTempMinLimit
+})
+
+const inputAxisMinNumberMax = computed((): number => {
+    return Math.min(graphTempMaxLimit, axisXTempMax.value - 20)
+})
+
+const inputAxisMaxNumberMin = computed((): number => {
+    return Math.max(graphTempMinLimit, axisXTempMin.value + 20)
+})
+
+const inputAxisMaxNumberMax = computed((): number => {
+    return graphTempMaxLimit
+})
 
 // const editFunctionEnabled = () => {
 //     return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
@@ -1150,6 +1190,8 @@ const saveProfileState = async () => {
         currentProfile.value.speed_fixed = selectedDuty.value
         currentProfile.value.speed_profile.length = 0
         currentProfile.value.temp_source = undefined
+        currentProfile.value.temp_min = undefined
+        currentProfile.value.temp_max = undefined
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
@@ -1175,6 +1217,8 @@ const saveProfileState = async () => {
             selectedTempSource.tempName,
             selectedTempSource.deviceUID,
         )
+        currentProfile.value.temp_min = axisXTempMin.value
+        currentProfile.value.temp_max = axisXTempMax.value
         currentProfile.value.function_uid = chosenFunction.value.uid
         currentProfile.value.speed_fixed = undefined
         currentProfile.value.member_profile_uids.length = 0
@@ -1192,6 +1236,8 @@ const saveProfileState = async () => {
         currentProfile.value.speed_fixed = undefined
         currentProfile.value.speed_profile.length = 0
         currentProfile.value.temp_source = undefined
+        currentProfile.value.temp_min = undefined
+        currentProfile.value.temp_max = undefined
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids = chosenMemberProfiles.value.map((p) => p.uid)
         currentProfile.value.mix_function_type = chosenProfileMixFunction.value
@@ -1218,9 +1264,9 @@ const saveProfileState = async () => {
 const tempScrolled = (event: WheelEvent): void => {
     if (selectedTemp.value == null) return
     if (event.deltaY < 0) {
-        if (selectedTemp.value < inputNumberTempMax()) selectedTemp.value += 1
+        if (selectedTemp.value < inputNumberTempMax.value) selectedTemp.value += 1
     } else {
-        if (selectedTemp.value > inputNumberTempMin()) selectedTemp.value -= 1
+        if (selectedTemp.value > inputNumberTempMin.value) selectedTemp.value -= 1
     }
 }
 const dutyScrolled = (event: WheelEvent): void => {
@@ -1294,10 +1340,10 @@ const updateResponsiveGraphHeight = (): void => {
     if (graphEl != null && controlPanel != null) {
         const panelHeight = controlPanel.getBoundingClientRect().height
         if (panelHeight > 56) {
-            // 4rem
-            graphEl.style.height = `max(calc(100vh - (${panelHeight}px + 0.5rem)), 20rem)`
+            graphEl.style.height = `max(calc(100vh - (${panelHeight}px + 4.5rem)), 20rem)`
         } else {
-            graphEl.style.height = 'max(calc(100vh - 4rem), 20rem)'
+            // 4rem panel height + 4rem for duty/temp bar
+            graphEl.style.height = 'max(calc(100vh - 8rem), 20rem)'
         }
     }
 }
@@ -1354,9 +1400,65 @@ onMounted(async () => {
     watch([selectedType, chosenTemp], () => {
         setTimeout(updateResponsiveGraphHeight)
     })
+    watch(axisXTempMin, (newValue: number) => {
+        option.xAxis.min = newValue
+        markAreaData[0] = [{ xAxis: newValue }, { xAxis: selectedTempSource!.tempMin }]
+        afterPointDragging(0, [Math.max(selectedTempSource!.tempMin, newValue), data[0].value[1]])
+        if (selectedPointIndex.value != null) {
+            setTempAndDutyValues(selectedPointIndex.value)
+        }
+        // The calculation for the new graphic points is done before the Axis is updated,
+        // so we need to update the graphic points after that here.
+        // We could update the axis first, and then update the graphic points, but
+        // it doesn't have as smooth an animation.
+        controlGraph.value?.setOption({
+            graphic: data
+                .slice(0, data.length - 1) // no graphic for ending point
+                .map((item, dataIndex) => ({
+                    id: dataIndex,
+                    type: 'circle',
+                    position: controlGraph.value?.convertToPixel('grid', item.value),
+                })),
+        })
+    })
+    watch(axisXTempMax, (newValue: number) => {
+        option.xAxis.max = newValue
+        markAreaData[1] = [
+            { xAxis: Math.min(selectedTempSource!.tempMax, 100) },
+            { xAxis: newValue },
+        ]
+        afterPointDragging(data.length - 1, [
+            Math.min(selectedTempSource!.tempMax, newValue),
+            data[data.length - 1].value[1],
+        ])
+        if (selectedPointIndex.value != null) {
+            setTempAndDutyValues(selectedPointIndex.value)
+        }
+        // The calculation for the new graphic points is done before the Axis is updated,
+        // so we need to update the graphic points after that here.
+        // We could update the axis first, and then update the graphic points, but
+        // it doesn't have as smooth an animation.
+        controlGraph.value?.setOption({
+            graphic: data
+                .slice(0, data.length - 1) // no graphic for ending point
+                .map((item, dataIndex) => ({
+                    id: dataIndex,
+                    type: 'circle',
+                    position: controlGraph.value?.convertToPixel('grid', item.value),
+                })),
+        })
+    })
 
     watch(
-        [chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction, selectedType],
+        [
+            chosenMemberProfiles,
+            chosenTemp,
+            chosenFunction,
+            chosenProfileMixFunction,
+            selectedType,
+            axisXTempMin,
+            axisXTempMax,
+        ],
         () => {
             contextIsDirty.value = true
         },
@@ -1405,68 +1507,6 @@ onUnmounted(() => {
                 />
             </div>
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-wrap justify-end">
-                <div
-                    class="p-2 flex leading-none items-center"
-                    v-tooltip.bottom="t('views.profiles.graphProfileMouseActions')"
-                >
-                    <svg-icon
-                        type="mdi"
-                        :path="mdiInformationSlabCircleOutline"
-                        :size="deviceStore.getREMSize(1.25)"
-                    />
-                </div>
-                <div class="p-2 pr-1 flex flex-row">
-                    <InputNumber
-                        :placeholder="t('common.duty')"
-                        v-model="selectedDuty"
-                        inputId="selected-duty"
-                        mode="decimal"
-                        class="duty-input w-full"
-                        :suffix="` ${t('common.percentUnit')}`"
-                        showButtons
-                        :min="dutyMin"
-                        :max="dutyMax"
-                        :disabled="selectedPointIndex == null && !showDutyKnob"
-                        :use-grouping="false"
-                        :step="1"
-                        button-layout="horizontal"
-                        :input-style="{ width: '5rem' }"
-                        v-tooltip.bottom="t('views.profiles.selectedPointDuty')"
-                    >
-                        <template #incrementicon>
-                            <span class="pi pi-plus" />
-                        </template>
-                        <template #decrementicon>
-                            <span class="pi pi-minus" />
-                        </template>
-                    </InputNumber>
-                    <InputNumber
-                        :placeholder="t('common.temperature')"
-                        v-model="selectedTemp"
-                        inputId="selected-temp"
-                        mode="decimal"
-                        class="temp-input w-full ml-3"
-                        :suffix="` ${t('common.tempUnit')}`"
-                        showButtons
-                        :min="inputNumberTempMin()"
-                        :max="inputNumberTempMax()"
-                        :disabled="selectedPointIndex == null && !showDutyKnob"
-                        :use-grouping="false"
-                        :step="0.1"
-                        :min-fraction-digits="1"
-                        :max-fraction-digits="1"
-                        button-layout="horizontal"
-                        :input-style="{ width: '5rem' }"
-                        v-tooltip.bottom="t('views.profiles.selectedPointTemp')"
-                    >
-                        <template #incrementicon>
-                            <span class="pi pi-plus" />
-                        </template>
-                        <template #decrementicon>
-                            <span class="pi pi-minus" />
-                        </template>
-                    </InputNumber>
-                </div>
                 <div class="p-2 pr-1">
                     <Select
                         v-model="chosenFunction"
@@ -1584,6 +1624,119 @@ onUnmounted(() => {
         </div>
     </div>
     <!-- The UI Display: -->
+    <div v-if="showGraph" class="flex">
+        <div class="flex flex-row justify-between mt-4 w-full">
+            <InputNumber
+                :placeholder="t('components.axisOptions.min')"
+                v-model="axisXTempMin"
+                mode="decimal"
+                class="h-11 mx-4"
+                :suffix="` ${t('common.tempUnit')}`"
+                showButtons
+                :min="inputAxisMinNumberMin"
+                :max="inputAxisMinNumberMax"
+                :use-grouping="false"
+                :step="5"
+                button-layout="horizontal"
+                :input-style="{ width: '5rem' }"
+                :disabled="selectedTempSource == null"
+                v-tooltip.right="t('views.profiles.minProfileTemp')"
+            >
+                <template #incrementicon>
+                    <span class="pi pi-plus" />
+                </template>
+                <template #decrementicon>
+                    <span class="pi pi-minus" />
+                </template>
+            </InputNumber>
+            <div class="flex flex-row">
+                <InputNumber
+                    :placeholder="t('common.duty')"
+                    v-model="selectedDuty"
+                    inputId="selected-duty"
+                    mode="decimal"
+                    class="duty-input h-11"
+                    :suffix="` ${t('common.percentUnit')}`"
+                    showButtons
+                    :min="dutyMin"
+                    :max="dutyMax"
+                    :disabled="selectedPointIndex == null"
+                    :use-grouping="false"
+                    :step="1"
+                    button-layout="horizontal"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
+                >
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+                <div
+                    class="p-2 mx-4 leading-none items-center"
+                    v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
+                >
+                    <svg-icon
+                        type="mdi"
+                        class="h-7"
+                        :path="mdiInformationSlabCircleOutline"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                </div>
+                <InputNumber
+                    :placeholder="t('common.temperature')"
+                    v-model="selectedTemp"
+                    inputId="selected-temp"
+                    mode="decimal"
+                    class="temp-input h-11"
+                    :suffix="` ${t('common.tempUnit')}`"
+                    showButtons
+                    :min="inputNumberTempMin"
+                    :max="inputNumberTempMax"
+                    :disabled="selectedPointIndex == null"
+                    :use-grouping="false"
+                    :step="0.1"
+                    :min-fraction-digits="1"
+                    :max-fraction-digits="1"
+                    button-layout="horizontal"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
+                >
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+            </div>
+            <InputNumber
+                :placeholder="t('components.axisOptions.max')"
+                v-model="axisXTempMax"
+                mode="decimal"
+                class="h-11 mx-4"
+                :suffix="` ${t('common.tempUnit')}`"
+                showButtons
+                :min="inputAxisMaxNumberMin"
+                :max="inputAxisMaxNumberMax"
+                :use-grouping="false"
+                :step="5"
+                button-layout="horizontal"
+                :input-style="{ width: '5rem' }"
+                :disabled="selectedTempSource == null"
+                v-tooltip.left="t('views.profiles.maxProfileTemp')"
+            >
+                <template #incrementicon>
+                    <span class="pi pi-plus" />
+                </template>
+                <template #decrementicon>
+                    <span class="pi pi-minus" />
+                </template>
+            </InputNumber>
+        </div>
+    </div>
     <div id="profile-display" class="flex flex-col h-full">
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
             {{ t('views.profiles.systemDefault') }}
@@ -1625,7 +1778,7 @@ onUnmounted(() => {
 #control-graph {
     overflow: hidden;
     // This is adjusted dynamically on resize with js above
-    height: max(calc(100vh - 4rem), 20rem);
+    height: max(calc(100vh - 8rem), 20rem);
     //width: max(calc(90vw - 17rem), 30rem);
 }
 

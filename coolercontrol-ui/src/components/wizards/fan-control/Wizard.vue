@@ -51,6 +51,8 @@ const newProfileName: Ref<string> = ref('')
 const newProfileType: Ref<ProfileType> = ref(ProfileType.Graph)
 const newTempSource: Ref<ProfileTempSource | undefined> = ref()
 const newSpeedProfile: Ref<Array<[number, number]>> = ref([])
+const newTempMin: Ref<number | undefined> = ref()
+const newTempMax: Ref<number | undefined> = ref()
 const selectedFunctionUID: Ref<UID> = ref('0') // Default Function as default
 const newFunction: Ref<Function | undefined> = ref()
 
@@ -128,9 +130,13 @@ const setFunctionUID = (funUID: UID): void => {
         v-else-if="currentStep === 9"
         @next-step="(step: number) => (currentStep = step)"
         @speed-profile="(speedProfile: Array<[number, number]>) => (newSpeedProfile = speedProfile)"
+        @temp-min="(tempMin: number) => (newTempMin = tempMin)"
+        @temp-max="(tempMax: number) => (newTempMax = tempMax)"
         :name="newProfileName"
         :temp-source="newTempSource!"
         :speed-profile="newSpeedProfile"
+        :temp-min="newTempMin"
+        :temp-max="newTempMax"
     />
     <ChooseFunctionAction
         v-else-if="currentStep === 10"
@@ -160,6 +166,8 @@ const setFunctionUID = (funUID: UID): void => {
         :name="newProfileName"
         :temp-source="newTempSource!"
         :speed-profile="newSpeedProfile"
+        :temp-min="newTempMin"
+        :temp-max="newTempMax"
         :function-u-i-d="selectedFunctionUID"
         :new-function="newFunction"
     />

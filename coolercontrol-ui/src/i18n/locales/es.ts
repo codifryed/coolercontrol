@@ -521,6 +521,8 @@ export default {
             tempSourceRequired: 'Se requiere una Fuente de Temperatura para un Perfil Gráfico.',
             memberProfilesRequired:
                 'Se requieren al menos 2 Perfiles Miembros para un Perfil de Mezcla.',
+            minProfileTemp: 'Temperatura Mínima del Perfil',
+            maxProfileTemp: 'Temperatura Máxima del Perfil',
         },
         controls: {
             viewType: 'Tipo de Vista',

@@ -456,7 +456,7 @@ impl GpuNVidia {
                 None,
                 DeviceInfo {
                     temps: temp_infos,
-                    temp_max: 100,
+                    temp_max: 150,
                     channels: channel_infos,
                     driver_info: DriverInfo {
                         drv_type: DriverType::NVML,
@@ -891,7 +891,7 @@ impl GpuNVidia {
                         None,
                         DeviceInfo {
                             temps,
-                            temp_max: 100,
+                            temp_max: 150,
                             channels,
                             driver_info: DriverInfo {
                                 drv_type: DriverType::NvidiaCLI,

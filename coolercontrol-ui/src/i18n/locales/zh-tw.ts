@@ -431,6 +431,8 @@ export default {
             profileUpdateError: '嘗試更新此設定檔時發生錯誤',
             tempSourceRequired: '圖表設定檔需要溫度來源。',
             memberProfilesRequired: '混合設定檔至少需要2個成員設定檔。',
+            minProfileTemp: '最小設定檔溫度',
+            maxProfileTemp: '最大設定檔溫度',
         },
         customSensors: {
             newSensor: '新傳感器',

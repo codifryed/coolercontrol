@@ -430,6 +430,8 @@ export default {
             profileUpdateError: '尝试更新此配置文件时发生错误',
             tempSourceRequired: '图表配置文件需要配置温度源。',
             memberProfilesRequired: '混合配置文件至少需要2个成员配置文件。',
+            minProfileTemp: '最小配置文件温度',
+            maxProfileTemp: '最大配置文件温度',
         },
         customSensors: {
             newSensor: '新传感器',

@@ -519,6 +519,8 @@ export default {
             tempSourceRequired: 'Для графического профиля требуется источник температуры.',
             memberProfilesRequired:
                 'Для смешанного профиля требуется как минимум 2 профиля-участника.',
+            minProfileTemp: 'Минимальная температура профиля',
+            maxProfileTemp: 'Максимальная температура профиля',
         },
         controls: {
             viewType: 'Тип отображения',

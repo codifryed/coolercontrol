@@ -497,7 +497,7 @@ impl GpuAMD {
                 fan_curve_info.temperature_range.end().to_owned(),
             )
         } else {
-            (0, 100) // Standard Defaults
+            (0, 150) // Standard Defaults
         }
     }
 

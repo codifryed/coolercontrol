@@ -517,7 +517,7 @@ impl Repository for CustomSensorsRepo {
             DeviceInfo {
                 temps: temp_infos,
                 temp_min: 0,
-                temp_max: 100,
+                temp_max: 150,
                 profile_max_length: 21,
                 driver_info: DriverInfo {
                     drv_type: DriverType::CoolerControl,

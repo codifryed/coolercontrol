@@ -222,7 +222,7 @@ impl HwmonRepo {
                 temps,
                 channels,
                 temp_min: 0,
-                temp_max: 100,
+                temp_max: 150,
                 profile_max_length: 21,
                 model: driver.model.clone(),
                 thinkpad_fan_control,

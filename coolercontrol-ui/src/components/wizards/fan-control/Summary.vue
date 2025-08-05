@@ -40,6 +40,8 @@ interface Props {
     // type: ProfileType // At this point type is always ProfileTypeGraph.
     tempSource: ProfileTempSource
     speedProfile: Array<[number, number]>
+    tempMin?: number
+    tempMax?: number
     functionUID: UID
     newFunction: Function | undefined
 }
@@ -100,6 +102,8 @@ const saveProfileAndFunction = async (): Promise<void> => {
     const newProfile = new Profile(props.name, ProfileType.Graph)
     newProfile.temp_source = props.tempSource
     newProfile.speed_profile = props.speedProfile
+    newProfile.temp_min = props.tempMin
+    newProfile.temp_max = props.tempMax
     newProfile.function_uid = createNewFunction ? props.newFunction!.uid : props.functionUID
     settingsStore.profiles.push(newProfile)
     const profileSuccess = await settingsStore.saveProfile(newProfile.uid)
