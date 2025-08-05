@@ -74,6 +74,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Mode Created',
             modeDuplicated: 'Mode Duplicated',
@@ -773,8 +774,8 @@ export default {
             max: 'Max',
             min: 'Min',
             dutyTemperature: 'Duty / Temperature',
-            rpmMhz: 'rpm / Mhz',
-            krpmGhz: 'krpm / Ghz',
+            rpmMhz: 'rpm / MHz',
+            krpmGhz: 'krpm / GHz',
             watts: 'watts',
         },
         sensorTable: {

@@ -30,6 +30,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 echarts.use([
     GridComponent,
@@ -53,6 +54,7 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const router = useRouter()
+const { t } = useI18n()
 
 // set min & max dependent of temp source range:
 let currentAxisTempMin = 0
@@ -181,7 +183,7 @@ const option = {
         show: false,
         top: deviceStore.getREMSize(0.5),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
@@ -192,7 +194,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}°',
+            formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
             lineStyle: {
@@ -215,7 +217,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}%',
+            formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
             lineStyle: {
@@ -258,7 +260,7 @@ const option = {
                     color: getDeviceDutyLineColor(),
                     formatter: (params: any): string => {
                         if (params.value == null) return ''
-                        return Number(params.value).toFixed(0) + '%'
+                        return Number(params.value).toFixed(0) + t('common.percentUnit')
                     },
                     shadowColor: colors.themeColors.bg_one,
                     shadowBlur: 10,

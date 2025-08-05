@@ -638,9 +638,7 @@ onUnmounted(() => {
                                         :style="{ color: slotProps.option.lineColor }"
                                     />{{ slotProps.option.tempFrontendName }}
                                 </div>
-                                <div>
-                                    {{ slotProps.option.temp + ' °' }}
-                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
                             </div>
                         </template>
                     </Listbox>

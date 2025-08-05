@@ -507,9 +507,9 @@ onUnmounted(() => {
                                             v-model="settingsStore.frequencyPrecision"
                                             size="large"
                                             :active-value="1000"
-                                            active-text="Ghz"
+                                            :active-text="t('common.ghzAbbr')"
                                             :inactive-value="1"
-                                            inactive-text="Mhz"
+                                            :inactive-text="t('common.mhzAbbr')"
                                             style="--el-switch-off-color: rgb(var(--colors-accent))"
                                         />
                                     </td>

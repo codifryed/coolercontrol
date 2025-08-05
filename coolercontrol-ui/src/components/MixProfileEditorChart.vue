@@ -34,6 +34,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
 import { ProfileMixFunctionType, Profile, FunctionType } from '@/models/Profile'
+import { useI18n } from 'vue-i18n'
 
 echarts.use([
     GridComponent,
@@ -56,6 +57,7 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
+const { t } = useI18n()
 
 //--------------------------------------------------------------------------------------------------
 
@@ -150,7 +152,7 @@ const option = {
         show: false,
         top: deviceStore.getREMSize(0.75),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
@@ -161,7 +163,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}° ',
+            formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
             lineStyle: {
@@ -184,7 +186,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}%',
+            formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
             lineStyle: {
