@@ -55,19 +55,24 @@ const colors = useThemeColorsStore()
 const router = useRouter()
 
 // set min & max dependent of temp source range:
-let currentTempSourceMin = 0
-let currentTempSourceMax = 100
+let currentAxisTempMin = 0
+let currentAxisTempMax = 100
 for (const device of deviceStore.allDevices()) {
     if (device.uid === props.profile.temp_source?.device_uid) {
         if (device.info == null) {
             break
         }
-        currentTempSourceMin = device.info!.temp_min
-        currentTempSourceMax = device.info!.temp_max
+        currentAxisTempMin = device.info!.temp_min
+        currentAxisTempMax = device.info!.temp_max
     }
 }
-const axisXTempMin: number = currentTempSourceMin
-const axisXTempMax: number = currentTempSourceMax
+if (props.profile.temp_max != null && currentAxisTempMax > 100) {
+    currentAxisTempMax = Math.min(currentAxisTempMax, props.profile.temp_max)
+} else if (props.profile.temp_max == null && currentAxisTempMax > 100) {
+    currentAxisTempMax = 100
+}
+const axisXTempMin: number = currentAxisTempMin
+const axisXTempMax: number = currentAxisTempMax
 const dutyMin: number = 0
 const dutyMax: number = 100
 
@@ -371,6 +376,9 @@ const setGraphData = () => {
     tempLineData[1].value = [temp, dutyMax]
     graphLineData.length = 0
     if (props.profile.speed_profile.length > 1) {
+        if (props.profile.speed_profile[0][0] > axisXTempMin) {
+            graphLineData.push({ value: [axisXTempMin, props.profile.speed_profile[0][1]] })
+        }
         for (const point of props.profile.speed_profile) {
             graphLineData.push({ value: point })
         }
