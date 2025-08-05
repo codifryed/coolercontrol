@@ -511,6 +511,8 @@ export default {
             profileUpdateError: 'حدث خطأ أثناء محاولة تحديث ملف التعريف هذا',
             tempSourceRequired: 'مصدر درجة الحرارة مطلوب لملف التعريف البياني.',
             memberProfilesRequired: 'مطلوب على الأقل 2 من ملفات التعريف الأعضاء لملف تعريف المزج.',
+            minProfileTemp: 'أدنى درجة حرارة ملف التعريف',
+            maxProfileTemp: 'أقصى درجة حرارة ملف التعريف',
         },
         controls: {
             viewType: 'نوع العرض',

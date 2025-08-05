@@ -463,6 +463,8 @@ export default {
             profileUpdateError: 'इस प्रोफ़ाइल को अपडेट करने का प्रयास करते समय एक त्रुटि हुई',
             tempSourceRequired: 'ग्राफ़ प्रोफ़ाइल के लिए एक तापमान स्रोत आवश्यक है।',
             memberProfilesRequired: 'मिक्स प्रोफ़ाइल के लिए कम से कम 2 सदस्य प्रोफ़ाइल आवश्यक हैं।',
+            minProfileTemp: 'न्यूनतम प्रोफ़ाइल तापमान',
+            maxProfileTemp: 'अधिकतम प्रोफ़ाइल तापमान',
         },
         devices: {
             detectionIssues: 'पहचान समस्याएं? देखें',

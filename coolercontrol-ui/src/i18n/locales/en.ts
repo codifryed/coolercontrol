@@ -514,6 +514,8 @@ export default {
             profileUpdateError: 'There was an error attempting to update this Profile',
             tempSourceRequired: 'A Temp Source is required for a Graph Profile.',
             memberProfilesRequired: 'At least 2 Member Profiles are required for a Mix Profile.',
+            minProfileTemp: 'Minimum Profile Temperature',
+            maxProfileTemp: 'Maximum Profile Temperature',
         },
         controls: {
             viewType: 'View Type',

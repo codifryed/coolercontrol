@@ -531,6 +531,8 @@ export default {
                 'Une erreur est survenue lors de la tentative de mise à jour de ce profil',
             tempSourceRequired: 'Une source de température est requise pour un profil graphique.',
             memberProfilesRequired: 'Au moins 2 profils membres sont requis pour un profil mixte.',
+            minProfileTemp: 'Température de Profil Minimum',
+            maxProfileTemp: 'Température de Profil Maximum',
         },
         controls: {
             viewType: 'Type de Vue',
