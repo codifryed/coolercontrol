@@ -47,9 +47,10 @@ import VChart from 'vue-echarts'
 import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
 import { storeToRefs } from 'pinia'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
-import { onMounted, onUnmounted, ref, Ref, watch, type WatchStopHandle } from 'vue'
+import { computed, onMounted, onUnmounted, ref, Ref, watch, type WatchStopHandle } from 'vue'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
+import _ from 'lodash'
 
 echarts.use([
     GridComponent,
@@ -68,12 +69,16 @@ interface Props {
     name: string
     tempSource: ProfileTempSource
     speedProfile: Array<[number, number]>
+    tempMin?: number
+    tempMax?: number
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'nextStep', step: number): void
     (e: 'speedProfile', speedProfile: Array<[number, number]>): void
+    (e: 'tempMin', tempMin: number): void
+    (e: 'tempMax', tempMax: number): void
 }>()
 
 const { t } = useI18n()
@@ -199,8 +204,10 @@ const defaultSymbolSize: number = deviceStore.getREMSize(1.0)
 const defaultSymbolColor: string = colors.themeColors.bg_two
 const selectedSymbolSize: number = deviceStore.getREMSize(1.25)
 const selectedSymbolColor: string = colors.themeColors.accent
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
+const graphTempMinLimit: number = 0
+const graphTempMaxLimit: number = 150
+const axisXTempMin: Ref<number> = ref(props.tempMin ?? currentProfile.value.temp_min ?? 0)
+const axisXTempMax: Ref<number> = ref(props.tempMax ?? currentProfile.value.temp_max ?? 100)
 const dutyMin: number = 0
 const dutyMax: number = 100
 let firstTimeChoosingTemp: boolean = true
@@ -236,8 +243,8 @@ const defaultDataValues = (): Array<PointData> => {
                 ? 5
                 : selectedTempSource.profileMaxLength
         const temps = lineSpace(
-            selectedTempSource.tempMin,
-            selectedTempSource.tempMax,
+            Math.max(selectedTempSource.tempMin, axisXTempMin.value),
+            Math.min(selectedTempSource.tempMax, axisXTempMax.value),
             profileLength,
             1,
         )
@@ -293,8 +300,8 @@ const markAreaData: [
         xAxis: number
     }[],
 ] = [
-    [{ xAxis: axisXTempMin }, { xAxis: axisXTempMin }],
-    [{ xAxis: axisXTempMax }, { xAxis: axisXTempMax }],
+    [{ xAxis: axisXTempMin.value }, { xAxis: axisXTempMin.value }],
+    [{ xAxis: axisXTempMax.value }, { xAxis: axisXTempMax.value }],
 ]
 
 const graphicData: GraphicComponentLooseOption[] = []
@@ -347,18 +354,18 @@ const option = {
         show: false,
         top: deviceStore.getREMSize(0.7),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
     xAxis: {
-        min: axisXTempMin,
-        max: axisXTempMax,
+        min: axisXTempMin.value,
+        max: axisXTempMax.value,
         type: 'value',
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}° ',
+            formatter: '{value}°C ',
         },
         axisLine: {
             lineStyle: {
@@ -540,26 +547,63 @@ const setGraphData = () => {
         firstTimeChoosingTemp = false
     } else {
         // force points to all fit into the new limits:
-        data[0].value[0] = selectedTempSource!.tempMin
-        data[data.length - 1].value[0] = selectedTempSource!.tempMax
+        data[0].value[0] = Math.max(selectedTempSource!.tempMin, axisXTempMin.value)
+        data[data.length - 1].value[0] = Math.min(selectedTempSource!.tempMax, axisXTempMax.value)
         for (let i = 1; i < data.length - 1; i++) {
             controlPointMotionForTempX(data[i].value[0], i)
         }
     }
-    // set xAxis min and max to +/- 10 from new limits: (semi-zoom)
-    if (selectedTempSource!.tempMin > axisXTempMin + 5) {
+    // set xAxis min and max to +/- 5 from new limits: (semi-zoom)
+    if (
+        currentProfile.value.temp_min == null &&
+        selectedTempSource!.tempMin > axisXTempMin.value + 5
+    ) {
+        axisXTempMin.value = selectedTempSource!.tempMin - 5
         option.xAxis.min = selectedTempSource!.tempMin - 5
-    } else {
-        option.xAxis.min = axisXTempMin
+    } else if (
+        currentProfile.value.temp_min == null &&
+        currentProfile.value.speed_profile.length > 0
+    ) {
+        // No Axis range set, but speed profile exists: use current data range
+        axisXTempMin.value = currentProfile.value.speed_profile[0][0]
+        option.xAxis.min = currentProfile.value.speed_profile[0][0]
+    } else if (currentProfile.value.temp_min != null) {
+        // reset axis range:
+        const minTemp = Math.max(currentProfile.value.temp_min, graphTempMinLimit)
+        option.xAxis.min = minTemp
+        axisXTempMin.value = minTemp
     }
-    if (selectedTempSource!.tempMax < axisXTempMax - 5) {
-        option.xAxis.max = selectedTempSource!.tempMax + 5
-    } else {
-        option.xAxis.max = axisXTempMax
+    if (
+        currentProfile.value.temp_max == null &&
+        selectedTempSource!.tempMax < axisXTempMax.value - 5
+    ) {
+        const maxTemp = Math.min(selectedTempSource!.tempMax + 5, 100)
+        axisXTempMax.value = maxTemp
+        option.xAxis.max = maxTemp
+    } else if (
+        currentProfile.value.temp_max == null &&
+        currentProfile.value.speed_profile.length > 0
+    ) {
+        // No Axis range set, but speed profile exists: use current data range
+        const maxTemp = Math.min(
+            currentProfile.value.speed_profile[currentProfile.value.speed_profile.length - 1][0] +
+                5,
+            100,
+        )
+        axisXTempMax.value = maxTemp
+        option.xAxis.max = maxTemp
+    } else if (currentProfile.value.temp_max != null) {
+        // reset axis range:
+        const maxTemp = Math.min(currentProfile.value.temp_max, graphTempMaxLimit)
+        option.xAxis.max = maxTemp
+        axisXTempMax.value = maxTemp
     }
     // set limited Mark Area
-    markAreaData[0] = [{ xAxis: axisXTempMin }, { xAxis: selectedTempSource!.tempMin }]
-    markAreaData[1] = [{ xAxis: selectedTempSource!.tempMax }, { xAxis: axisXTempMax }]
+    markAreaData[0] = [{ xAxis: axisXTempMin.value }, { xAxis: selectedTempSource!.tempMin }]
+    markAreaData[1] = [
+        { xAxis: Math.min(selectedTempSource!.tempMax, 100) },
+        { xAxis: axisXTempMax.value },
+    ]
     setTempSourceTemp()
     // @ts-ignore
     option.series[1].lineStyle.color = selectedTempSource.color
@@ -665,14 +709,18 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
     // We use 1 whole degree of separation between points so point index works perfect:
-    const minActivePosition = selectedTempSource!.tempMin + selectedPointIndex
+    const minActivePosition =
+        Math.max(selectedTempSource!.tempMin, axisXTempMin.value) + selectedPointIndex
+    const maxActivePosition =
+        Math.min(selectedTempSource!.tempMax, axisXTempMax.value) -
+        (data.length - (selectedPointIndex + 1))
     if (selectedPointIndex === 0) {
-        data[selectedPointIndex].value[0] = minActivePosition
-        return // starting point is horizontally fixed
+        // starting point is horizontally fixed
+        posX = minActivePosition
     } else if (selectedPointIndex === data.length - 1) {
-        return // last point is horizontally fixed
+        // final point is horizontally fixed
+        posX = maxActivePosition
     }
-    const maxActivePosition = selectedTempSource!.tempMax - (data.length - (selectedPointIndex + 1))
     if (posX < minActivePosition) {
         posX = minActivePosition
     } else if (posX > maxActivePosition) {
@@ -746,7 +794,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
     controlPointMotionForDutyY(posXY[1], dataIndex)
     controlGraph.value?.setOption({
         series: [
-            { id: 'a', data: data },
+            { id: 'a', data: data, markArea: { data: markAreaData } },
             { id: 'line-area', data: data },
         ],
         graphic: data
@@ -756,6 +804,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
                 type: 'circle',
                 position: controlGraph.value?.convertToPixel('grid', item.value),
             })),
+        xAxis: { min: axisXTempMin.value, max: axisXTempMax.value },
     })
 }
 
@@ -850,8 +899,8 @@ const createGraphicDataFromPointData = () => {
                     (this as any).y,
                 ]) as [number, number]) ?? [0, 0]
                 if (
-                    posX < axisXTempMin ||
-                    posX > axisXTempMax ||
+                    posX < axisXTempMin.value ||
+                    posX > axisXTempMax.value ||
                     posY < dutyMin ||
                     posY > dutyMax
                 ) {
@@ -893,12 +942,8 @@ const createGraphicDataFromPointData = () => {
 
 const createDraggableGraphics = (): void => {
     // Add shadow circles (which is not visible) to enable drag.
-    // if (draggableGraphicsCreated) {
-    //     return // we only need to do this once, AFTER the graph is drawn and visible
-    // }
     createGraphicDataFromPointData()
     controlGraph.value?.setOption({ graphic: graphicData })
-    // draggableGraphicsCreated = true
 }
 
 const addPointToLine = (params: any) => {
@@ -914,6 +959,8 @@ const addPointToLine = (params: any) => {
         params.offsetX,
         params.offsetY,
     ]) as [number, number]) ?? [0, 0]
+    // Clamp duty to min/max (with hi-res graphs, sometimes it went out of max bounds)
+    posXY[1] = Math.min(Math.max(posXY[1], dutyMin), dutyMax)
     let indexToInsertAt = 1
     for (const [i, point] of data.entries()) {
         if (point.value[0] > posXY[0]) {
@@ -975,38 +1022,67 @@ const deletePointFromLine = (params: any) => {
 
 // We show the graph always and right away
 setTimeout(() => {
-    const resizeObserver = new ResizeObserver((_) => {
-        controlGraph.value?.setOption({
-            graphic: data.map(function (item, _dataIndex) {
-                return {
-                    type: 'circle',
-                    position: controlGraph.value?.convertToPixel('grid', item.value),
-                }
-            }),
-        })
-    })
+    // debounce because we need to wait for the graph to be rendered
+    const resizeObserver = new ResizeObserver(
+        _.debounce(
+            () => {
+                controlGraph.value?.setOption({
+                    graphic: data.map(function (item, _dataIndex) {
+                        return {
+                            type: 'circle',
+                            position: controlGraph.value?.convertToPixel('grid', item.value),
+                        }
+                    }),
+                })
+            },
+            200,
+            { leading: false },
+        ),
+    )
     resizeObserver.observe(controlGraph.value?.$el)
     createDraggableGraphics() // we need to create AFTER the element is visible and rendered
 }, 500) // due to graph resizing, we really need a substantial delay on creation
 
-const inputNumberTempMin = (): number => {
+const inputNumberTempMin = computed((): number => {
     if (selectedTempSource == null) {
-        return axisXTempMin
+        return axisXTempMin.value
     }
-    return selectedTempSource.tempMin + (selectedPointIndex.value ?? 0)
-}
+    // one degree of separation between points
+    return (
+        Math.max(selectedTempSource.tempMin, axisXTempMin.value) + (selectedPointIndex.value ?? 0)
+    )
+})
 
-const inputNumberTempMax = (): number => {
+const inputNumberTempMax = computed((): number => {
     if (selectedTempSource == null) {
-        return axisXTempMax
+        return axisXTempMax.value
     }
     if (selectedPointIndex.value === 0) {
-        return selectedTempSource.tempMin // starting point is horizontally fixed
+        return Math.max(selectedTempSource.tempMin, axisXTempMin.value) // starting point is horizontally fixed
     } else if (selectedPointIndex.value === data.length - 1) {
-        return selectedTempSource.tempMax // last point is horizontally fixed
+        return Math.min(selectedTempSource.tempMax, axisXTempMax.value) // last point is horizontally fixed
     }
-    return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
-}
+    return (
+        Math.min(selectedTempSource.tempMax, axisXTempMax.value) -
+        (data.length - 1 - (selectedPointIndex.value ?? 0))
+    )
+})
+
+const inputAxisMinNumberMin = computed((): number => {
+    return graphTempMinLimit
+})
+
+const inputAxisMinNumberMax = computed((): number => {
+    return Math.min(graphTempMaxLimit, axisXTempMax.value - 20)
+})
+
+const inputAxisMaxNumberMin = computed((): number => {
+    return Math.max(graphTempMinLimit, axisXTempMin.value + 20)
+})
+
+const inputAxisMaxNumberMax = computed((): number => {
+    return graphTempMaxLimit
+})
 
 const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('control-graph-wiz')
@@ -1015,9 +1091,9 @@ const updateResponsiveGraphHeight = (): void => {
         const panelHeight = controlPanel.getBoundingClientRect().height
         if (panelHeight > 56) {
             // 4rem
-            graphEl.style.height = `max(calc(80vh - (${panelHeight}px + 0.5rem)), 20rem)`
+            graphEl.style.height = `max(calc(80vh - (${panelHeight}px + 4.5rem)), 20rem)`
         } else {
-            graphEl.style.height = 'max(calc(80vh - 6rem), 20rem)'
+            graphEl.style.height = 'max(calc(80vh - 10rem), 20rem)'
         }
     }
 }
@@ -1052,6 +1128,55 @@ onMounted(async () => {
     // handle the graphics on graph resize & zoom
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
+
+    watch(axisXTempMin, (newValue: number) => {
+        option.xAxis.min = newValue
+        markAreaData[0] = [{ xAxis: newValue }, { xAxis: selectedTempSource!.tempMin }]
+        afterPointDragging(0, [Math.max(selectedTempSource!.tempMin, newValue), data[0].value[1]])
+        if (selectedPointIndex.value != null) {
+            setTempAndDutyValues(selectedPointIndex.value)
+        }
+        // The calculation for the new graphic points is done before the Axis is updated,
+        // so we need to update the graphic points after that here.
+        // We could update the axis first, and then update the graphic points, but
+        // it doesn't have as smooth an animation.
+        controlGraph.value?.setOption({
+            graphic: data
+                .slice(0, data.length - 1) // no graphic for ending point
+                .map((item, dataIndex) => ({
+                    id: dataIndex,
+                    type: 'circle',
+                    position: controlGraph.value?.convertToPixel('grid', item.value),
+                })),
+        })
+    })
+    watch(axisXTempMax, (newValue: number) => {
+        option.xAxis.max = newValue
+        markAreaData[1] = [
+            { xAxis: Math.min(selectedTempSource!.tempMax, 100) },
+            { xAxis: newValue },
+        ]
+        afterPointDragging(data.length - 1, [
+            Math.min(selectedTempSource!.tempMax, newValue),
+            data[data.length - 1].value[1],
+        ])
+        if (selectedPointIndex.value != null) {
+            setTempAndDutyValues(selectedPointIndex.value)
+        }
+        // The calculation for the new graphic points is done before the Axis is updated,
+        // so we need to update the graphic points after that here.
+        // We could update the axis first, and then update the graphic points, but
+        // it doesn't have as smooth an animation.
+        controlGraph.value?.setOption({
+            graphic: data
+                .slice(0, data.length - 1) // no graphic for ending point
+                .map((item, dataIndex) => ({
+                    id: dataIndex,
+                    type: 'circle',
+                    position: controlGraph.value?.convertToPixel('grid', item.value),
+                })),
+        })
+    })
 })
 onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
@@ -1064,6 +1189,8 @@ const nextStep = () => {
         speedProfile.push(pointData.value)
     }
     emit('speedProfile', speedProfile)
+    emit('tempMin', axisXTempMin.value)
+    emit('tempMax', axisXTempMax.value)
     emit('nextStep', 10)
 }
 </script>
@@ -1084,14 +1211,29 @@ const nextStep = () => {
             />
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 8)">
-                <svg-icon
-                    class="outline-0"
-                    type="mdi"
-                    :path="mdiArrowLeft"
-                    :size="deviceStore.getREMSize(1.5)"
-                />
-            </Button>
+            <InputNumber
+                :placeholder="t('components.axisOptions.min')"
+                v-model="axisXTempMin"
+                mode="decimal"
+                class="h-11"
+                :suffix="` ${t('common.tempUnit')}`"
+                showButtons
+                :min="inputAxisMinNumberMin"
+                :max="inputAxisMinNumberMax"
+                :use-grouping="false"
+                :step="5"
+                button-layout="horizontal"
+                :input-style="{ width: '5rem' }"
+                :disabled="selectedTempSource == null"
+                v-tooltip.top="t('views.profiles.minProfileTemp')"
+            >
+                <template #incrementicon>
+                    <span class="pi pi-plus" />
+                </template>
+                <template #decrementicon>
+                    <span class="pi pi-minus" />
+                </template>
+            </InputNumber>
             <div class="flex flex-row">
                 <InputNumber
                     :placeholder="t('common.duty')"
@@ -1136,8 +1278,8 @@ const nextStep = () => {
                     class="temp-input h-11"
                     :suffix="` ${t('common.tempUnit')}`"
                     showButtons
-                    :min="inputNumberTempMin()"
-                    :max="inputNumberTempMax()"
+                    :min="inputNumberTempMin"
+                    :max="inputNumberTempMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
                     :step="0.1"
@@ -1155,6 +1297,39 @@ const nextStep = () => {
                     </template>
                 </InputNumber>
             </div>
+            <InputNumber
+                :placeholder="t('components.axisOptions.max')"
+                v-model="axisXTempMax"
+                mode="decimal"
+                class="h-11"
+                :suffix="` ${t('common.tempUnit')}`"
+                showButtons
+                :min="inputAxisMaxNumberMin"
+                :max="inputAxisMaxNumberMax"
+                :use-grouping="false"
+                :step="5"
+                button-layout="horizontal"
+                :input-style="{ width: '5rem' }"
+                :disabled="selectedTempSource == null"
+                v-tooltip.top="t('views.profiles.maxProfileTemp')"
+            >
+                <template #incrementicon>
+                    <span class="pi pi-plus" />
+                </template>
+                <template #decrementicon>
+                    <span class="pi pi-minus" />
+                </template>
+            </InputNumber>
+        </div>
+        <div class="flex flex-row justify-between mt-4">
+            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 8)">
+                <svg-icon
+                    class="outline-0"
+                    type="mdi"
+                    :path="mdiArrowLeft"
+                    :size="deviceStore.getREMSize(1.5)"
+                />
+            </Button>
             <Button class="w-24 bg-bg-one" :label="t('common.next')" @click="nextStep" />
         </div>
     </div>

@@ -46,6 +46,8 @@ interface Props {
     mixFunction?: ProfileMixFunctionType
     tempSource?: ProfileTempSource
     speedProfile: Array<[number, number]>
+    tempMin?: number
+    tempMax?: number
     functionUID: UID
     newFunction?: Function
 }
@@ -104,6 +106,8 @@ const saveProfileAndFunction = async (): Promise<void> => {
     newProfile.mix_function_type = props.mixFunction
     newProfile.temp_source = props.tempSource
     newProfile.speed_profile = props.speedProfile
+    newProfile.temp_min = props.tempMin
+    newProfile.temp_max = props.tempMax
     newProfile.function_uid = createNewFunction ? props.newFunction!.uid : props.functionUID
     settingsStore.profiles.push(newProfile)
     const profileSuccess = await settingsStore.saveProfile(newProfile.uid)
@@ -129,6 +133,11 @@ const saveProfileAndFunction = async (): Promise<void> => {
         query: { key: uuidV4() },
     })
 }
+
+const back = (): void => {
+    const backStep = props.type !== ProfileType.Graph ? 3 : 10
+    emit('nextStep', backStep)
+}
 </script>
 
 <template>
@@ -152,7 +161,7 @@ const saveProfileAndFunction = async (): Promise<void> => {
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="back">
                 <svg-icon
                     class="outline-0"
                     type="mdi"
