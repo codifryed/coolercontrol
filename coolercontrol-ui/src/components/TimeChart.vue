@@ -33,9 +33,11 @@ import {
     tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
+import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 // const yCrosshair = computed(
 //     () =>
 //         `${settingsStore.systemOverviewOptions.timeChartLineScale}px solid color-mix(in srgb, var(--primary-color) 30%, transparent)`,
@@ -423,7 +425,7 @@ const uOptions: uPlot.Options = {
         },
         {
             scale: SCALE_KEY_PERCENT,
-            label: '%  /  °C',
+            label: `${t('common.percentUnit')}  /  ${t('common.tempUnit')}`,
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
             labelFont: `sans-serif`,
@@ -454,7 +456,10 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: settingsStore.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
+            label:
+                settingsStore.frequencyPrecision === 1
+                    ? t('components.axisOptions.rpmMhz')
+                    : t('components.axisOptions.krpmGhz'),
             labelGap: settingsStore.frequencyPrecision === 1 ? deviceStore.getREMSize(1.0) : 0,
             labelSize:
                 settingsStore.frequencyPrecision === 1
@@ -517,7 +522,7 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_WATTS,
-            label: 'watts',
+            label: t('components.axisOptions.watts'),
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
             labelFont: `sans-serif`,
@@ -654,7 +659,7 @@ const uOptions: uPlot.Options = {
         },
     },
     plugins: [
-        tooltipPlugin(allDevicesLineProperties),
+        tooltipPlugin(allDevicesLineProperties, t),
         columnHighlightPlugin(),
         mouseWheelZoomPlugin(),
     ],

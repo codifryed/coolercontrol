@@ -261,14 +261,14 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
     switch (metric) {
         case ChannelMetric.Duty:
         case ChannelMetric.Load:
-            return ' %'
+            return ` ${t('common.percentUnit')}`
         case ChannelMetric.RPM:
             return ` ${t('common.rpmAbbr')}`
         case ChannelMetric.Freq:
             return ` ${t('common.mhzAbbr')}`
         case ChannelMetric.Temp:
         default:
-            return ' °'
+            return ` ${t('common.tempUnit')}`
     }
 }
 
@@ -562,7 +562,7 @@ onMounted(async () => {
                                         :max="10"
                                         :step="0.5"
                                         :min-fraction-digits="1"
-                                        :suffix="'s'"
+                                        :suffix="' s'"
                                         button-layout="horizontal"
                                         :input-style="{ width: '8rem' }"
                                         :disabled="chosenChannelSource == null"

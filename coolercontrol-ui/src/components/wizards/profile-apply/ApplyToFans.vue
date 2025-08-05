@@ -144,14 +144,14 @@ const valueSuffix = (metric: ChannelMetric | undefined): string => {
     switch (metric) {
         case ChannelMetric.Duty:
         case ChannelMetric.Load:
-            return ' %'
+            return ` ${t('common.percentUnit')}`
         case ChannelMetric.RPM:
             return ` ${t('common.rpmAbbr')}`
         case ChannelMetric.Freq:
             return ` ${t('common.mhzAbbr')}`
         case ChannelMetric.Temp:
         default:
-            return ' °'
+            return ` ${t('common.tempUnit')}`
     }
 }
 

@@ -387,7 +387,13 @@ const option = {
         padding: [0, 5, 1, 7],
         transitionDuration: 0.0,
         formatter: function (params: any) {
-            return +params.data.value[0].toFixed(1) + '°C ' + params.data.value[1].toFixed(0) + '%'
+            return (
+                params.data.value[0].toFixed(1) +
+                t('common.tempUnit') +
+                ' ' +
+                params.data.value[1].toFixed(0) +
+                t('common.percentUnit')
+            )
         },
     },
     grid: {
@@ -405,7 +411,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}°C ',
+            formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
             lineStyle: {
@@ -429,7 +435,7 @@ const option = {
         cursor: 'no-drop',
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}%',
+            formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
             lineStyle: {
@@ -1556,9 +1562,7 @@ onUnmounted(() => {
                                         :style="{ color: slotProps.option.lineColor }"
                                     />{{ slotProps.option.tempFrontendName }}
                                 </div>
-                                <div>
-                                    {{ slotProps.option.temp + ' °' }}
-                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
                             </div>
                         </template>
                     </Select>

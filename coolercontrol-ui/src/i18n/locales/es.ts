@@ -783,8 +783,8 @@ export default {
             max: 'Máx',
             min: 'Mín',
             dutyTemperature: 'Ciclo / Temperatura',
-            rpmMhz: 'rpm / Mhz',
-            krpmGhz: 'krpm / Ghz',
+            rpmMhz: 'rpm / MHz',
+            krpmGhz: 'krpm / GHz',
             watts: 'vatios',
         },
         sensorTable: {

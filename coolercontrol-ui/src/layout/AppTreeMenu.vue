@@ -1122,7 +1122,9 @@ onUnmounted(() => {
                         >
                             <div v-if="childItem.temp != null" class="items-end tree-data">
                                 {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.temp }}
-                                <span>°&nbsp;&nbsp;&nbsp;</span>
+                                <span style="font-size: 0.8rem" class="align-text-top"
+                                    >°C&nbsp;</span
+                                >
                             </div>
                             <div v-else-if="childItem.freq != null" class="items-end tree-data">
                                 {{
@@ -1131,8 +1133,8 @@ onUnmounted(() => {
                                             .freq!,
                                     )
                                 }}
-                                <span style="font-size: 0.62rem">
-                                    {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
+                                <span style="font-size: 0.55rem">
+                                    {{ settingsStore.frequencyPrecision === 1 ? 'MHz' : 'GHz' }}
                                 </span>
                             </div>
                             <div v-else-if="childItem.watts != null" class="items-end tree-data">
@@ -1146,14 +1148,14 @@ onUnmounted(() => {
                                 class="content-end tree-data"
                             >
                                 {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.duty }}
-                                <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                             </div>
                             <div
                                 v-else-if="childItem.rpm != null && childItem.duty == null"
                                 class="items-end tree-data"
                             >
                                 {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.rpm }}
-                                <span style="font-size: 0.7rem">rpm</span>
+                                <span style="font-size: 0.65rem">rpm</span>
                             </div>
                             <div
                                 v-else-if="childItem.duty != null && childItem.rpm != null"
@@ -1164,14 +1166,14 @@ onUnmounted(() => {
                                         deviceChannelValues(childItem.deviceUID, childItem.name)!
                                             .duty
                                     }}
-                                    <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                    <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                                 </span>
                                 <span :class="{ 'mt-0.5': childItem.isControllable }">
                                     {{
                                         deviceChannelValues(childItem.deviceUID, childItem.name)!
                                             .rpm
                                     }}
-                                    <span style="font-size: 0.7rem">rpm</span>
+                                    <span style="font-size: 0.65rem">rpm</span>
                                 </span>
                             </div>
                         </div>
@@ -1690,7 +1692,9 @@ onUnmounted(() => {
                                         deviceChannelValues(childItem.deviceUID, childItem.name)!
                                             .temp
                                     }}
-                                    <span>°&nbsp;&nbsp;&nbsp;</span>
+                                    <span style="font-size: 0.8rem" class="align-text-top"
+                                        >°C&nbsp;</span
+                                    >
                                 </div>
                                 <div v-else-if="childItem.freq != null" class="items-end tree-data">
                                     {{
@@ -1701,8 +1705,8 @@ onUnmounted(() => {
                                             )!.freq!,
                                         )
                                     }}
-                                    <span style="font-size: 0.62rem">
-                                        {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
+                                    <span style="font-size: 0.55rem">
+                                        {{ settingsStore.frequencyPrecision === 1 ? 'MHz' : 'GHz' }}
                                     </span>
                                 </div>
                                 <div
@@ -1723,7 +1727,7 @@ onUnmounted(() => {
                                         deviceChannelValues(childItem.deviceUID, childItem.name)!
                                             .duty
                                     }}
-                                    <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                    <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                                 </div>
                                 <div
                                     v-else-if="childItem.rpm != null && childItem.duty == null"
@@ -1733,7 +1737,7 @@ onUnmounted(() => {
                                         deviceChannelValues(childItem.deviceUID, childItem.name)!
                                             .rpm
                                     }}
-                                    <span style="font-size: 0.7rem">rpm</span>
+                                    <span style="font-size: 0.65rem">rpm</span>
                                 </div>
                                 <div
                                     v-else-if="childItem.duty != null && childItem.rpm != null"
@@ -1746,7 +1750,7 @@ onUnmounted(() => {
                                                 childItem.name,
                                             )!.duty
                                         }}
-                                        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                        <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                                     </span>
                                     <span :class="{ 'mt-0.5': childItem.isControllable }">
                                         {{
@@ -1755,7 +1759,7 @@ onUnmounted(() => {
                                                 childItem.name,
                                             )!.rpm
                                         }}
-                                        <span style="font-size: 0.7rem">rpm</span>
+                                        <span style="font-size: 0.65rem">rpm</span>
                                     </span>
                                 </div>
                             </div>

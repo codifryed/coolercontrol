@@ -325,18 +325,21 @@ const format = (value: number, dataType: DataType): string => {
 }
 const suffix = (dataType: DataType): string => {
     switch (dataType) {
+        // todo: translations?
         case DataType.TEMP:
-            return ' °'
+            return ` ${t('common.tempUnit')}`
         case DataType.DUTY:
-            return ' %'
+            return ` ${t('common.percentUnit')}`
         case DataType.RPM:
-            return ' rpm'
+            return ` ${t('common.rpmAbbr')}`
         case DataType.FREQ:
-            return settingsStore.frequencyPrecision === 1 ? ' Mhz' : ' Ghz'
+            return settingsStore.frequencyPrecision === 1
+                ? ` ${t('common.mhzAbbr')}`
+                : ` ${t('common.ghzAbbr')}`
         case DataType.WATTS:
-            return ' W'
+            return ` ${t('common.wattAbbr')}`
         default:
-            return ' %'
+            return ` ${t('common.percentUnit')}`
     }
 }
 const suffixStyle = (dataType: DataType): string => {

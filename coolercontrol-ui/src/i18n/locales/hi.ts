@@ -778,8 +778,8 @@ export default {
             max: 'अधिकतम',
             min: 'न्यूनतम',
             dutyTemperature: 'ड्यूटी / तापमान',
-            rpmMhz: 'rpm / Mhz',
-            krpmGhz: 'krpm / Ghz',
+            rpmMhz: 'rpm / MHz',
+            krpmGhz: 'krpm / GHz',
             watts: 'वाट',
         },
         sensorTable: {
