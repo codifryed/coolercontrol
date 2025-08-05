@@ -59,8 +59,35 @@ const colors = useThemeColorsStore()
 
 //--------------------------------------------------------------------------------------------------
 
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
+// Graph is completely redrawn on profile-member change
+let currentAxisTempMin = 0
+let currentAxisTempMax = 100
+let profileTempMin = 50
+let profileTempMax = 50
+for (const profile of props.profiles) {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === profile.temp_source?.device_uid) {
+            if (device.info == null) {
+                break
+            }
+            currentAxisTempMin = Math.min(currentAxisTempMin, device.info!.temp_min)
+            currentAxisTempMax = Math.max(currentAxisTempMax, device.info!.temp_max)
+        }
+    }
+    if (profile.temp_min != null) {
+        profileTempMin = Math.min(profileTempMin, profile.temp_min)
+    }
+    if (profile.temp_max != null) {
+        profileTempMax = Math.max(profileTempMax, profile.temp_max)
+    }
+}
+if (profileTempMax > 50 && currentAxisTempMax > 100) {
+    currentAxisTempMax = Math.min(currentAxisTempMax, profileTempMax)
+} else if (profileTempMax == 50 && currentAxisTempMax > 100) {
+    currentAxisTempMax = 100
+}
+const axisXTempMin: number = currentAxisTempMin
+const axisXTempMax: number = currentAxisTempMax
 const dutyMin: number = 0
 const dutyMax: number = 100
 
@@ -400,8 +427,16 @@ const setGraphData = (profileIndex: number) => {
     graphLineData[profileIndex].length = 0
     const profile = props.profiles[profileIndex]
     if (profile.speed_profile.length > 1) {
+        const firstPoint = profile.speed_profile[0]
+        if (firstPoint[0] > axisXTempMin) {
+            graphLineData[profileIndex].push({ value: [axisXTempMin, firstPoint[1]] })
+        }
         for (const point of profile.speed_profile) {
             graphLineData[profileIndex].push({ value: point })
+        }
+        const lastPoint = profile.speed_profile[profile.speed_profile.length - 1]
+        if (lastPoint[0] < axisXTempMax) {
+            graphLineData[profileIndex].push({ value: [axisXTempMax, lastPoint[1]] })
         }
     }
 }
