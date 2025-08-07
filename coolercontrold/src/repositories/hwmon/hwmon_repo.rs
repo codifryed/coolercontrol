@@ -334,7 +334,7 @@ impl HwmonRepo {
         type_index: TypeIndex,
         driver_name: &str,
         channel_name: &str,
-    ) -> Result<SemaphorePermit> {
+    ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
             () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
