@@ -41,7 +41,7 @@ use crate::{cc_fs, VERSION};
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
 
-type CustomSensors = Rc<RefCell<Vec<CustomSensor>>>;
+type CustomSensors = RefCell<Vec<CustomSensor>>;
 
 /// A Repository for Custom Sensors defined by the user
 pub struct CustomSensorsRepo {
@@ -62,7 +62,7 @@ impl CustomSensorsRepo {
             config,
             custom_sensor_device: None,
             all_devices,
-            sensors: Rc::new(RefCell::new(Vec::new())),
+            sensors: RefCell::new(Vec::new()),
         }
     }
 
