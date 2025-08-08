@@ -1030,7 +1030,10 @@ export default class DaemonClient {
         try {
             const response = await this.getClient().get('/custom-sensors')
             this.logDaemonResponse(response, 'Get Custom Sensors')
-            return (response.data as Array<object>).map((sensor) =>
+            if (response.data.custom_sensors == null) {
+                throw new Error('custom_sensors is not present')
+            }
+            return (response.data.custom_sensors as Array<object>).map((sensor) =>
                 plainToInstance(CustomSensor, sensor),
             )
         } catch (err) {
