@@ -108,6 +108,7 @@ if (!customSensorsDeviceUID) {
 }
 const deviceSettings = settingsStore.allUIDeviceSettings.get(customSensorsDeviceUID)!
 
+const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
 const collectCustomSensor = async (): Promise<CustomSensor> => {
     if (shouldCreateSensor) {
         const newSensorNumber =
@@ -116,10 +117,10 @@ const collectCustomSensor = async (): Promise<CustomSensor> => {
                 : customSensorIdNumbers[customSensorIdNumbers.length - 1] + 1
         return new CustomSensor(`sensor${newSensorNumber}`)
     } else {
-        const foundSensor = await settingsStore.getCustomSensor(props.customSensorID!)
+        const foundSensor = customSensors.find((cs) => cs.id === props.customSensorID)
         if (foundSensor == undefined) {
             throw new Error(
-                `Illegal State: Could not find Custom Sensor with ID: ${props.customSensorID}`,
+                `Illegal State: Could not find Custom Sensor with ID: ${props.customSensorID} in ${customSensors}`,
             )
         }
         return foundSensor
@@ -162,23 +163,14 @@ const viewTypeOptions = [...$enum(ChannelViewType).keys()]
 const tempSources: Ref<Array<AvailableTempSources>> = ref([])
 const fillTempSources = async (): Promise<void> => {
     tempSources.value.length = 0
-    // const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
     for (const device of deviceStore.allDevices()) {
-        if (
-            device.status.temps.length === 0 ||
-            device.info == undefined ||
-            device.type === DeviceType.CUSTOM_SENSORS
-        ) {
+        if (device.status.temps.length === 0 || device.info == undefined) {
             continue
         }
-        // todo: if this is requested in the future, but requires quite a bit of work to make sure
-        //   it works correctly in the backend
-        // if (
-        //     device.type === DeviceType.CUSTOM_SENSORS &&
-        //     customSensors.find((cs) => cs.cs_type === CustomSensorType.File) === undefined
-        // ) {
-        //     continue // only include file based sensors if there are any
-        // }
+        if (device.type === DeviceType.CUSTOM_SENSORS && customSensor.parents.length > 0) {
+            // skip custom sensors if it has parents/is a child - it can not also be a parent
+            continue
+        }
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         const deviceSource: AvailableTempSources = {
             deviceUID: device.uid,
@@ -190,14 +182,20 @@ const fillTempSources = async (): Promise<void> => {
             temps: [],
         }
         for (const temp of device.status.temps) {
-            // if (
-            //     device.type === DeviceType.CUSTOM_SENSORS &&
-            //     customSensors.find(
-            //         (cs) => cs.id === temp.name && cs.cs_type === CustomSensorType.Mix,
-            //     ) !== undefined
-            // ) {
-            //     continue
-            // }
+            if (device.type === DeviceType.CUSTOM_SENSORS) {
+                if (temp.name === customSensor.id) {
+                    // Cannot have itself as a temp source
+                    continue
+                }
+                const associatedCustomSensor = customSensors.find((cs) => cs.id === temp.name)
+                if (associatedCustomSensor == null) {
+                    console.error('Could not find associated Custom Sensor by: ', temp.name)
+                    continue
+                } else if (associatedCustomSensor.children.length > 0) {
+                    // If the 'potential child' custom sensor IS a parent/HAS children = do NOT show
+                    continue
+                }
+            }
             deviceSource.temps.push({
                 deviceUID: device.uid,
                 tempName: temp.name,

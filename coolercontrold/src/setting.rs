@@ -336,11 +336,41 @@ pub struct CustomTempSourceData {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
-    pub id: String,
+    pub id: TempName,
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
     pub file_path: Option<PathBuf>,
+
+    /// The Custom Sensor's children, if any.
+    ///
+    /// Each Custom Sensor is either a child, parent, or standalone, not a combination of those.
+    /// Custom Sensors are limited to 1 level of hierarchy. This removes the possibility
+    /// of circular references.
+    ///
+    /// The children and parents vectors are managed and filled internally. For GET endpoints,
+    /// they provide this information for clients. For POST or PUT endpoints,
+    /// any values here are essentially ignored.
+    #[serde(default)]
+    pub children: Vec<TempName>,
+
+    /// The Custom Sensor's parents, if any. See `children` for more details.
+    #[serde(default)]
+    pub parents: Vec<TempName>,
+}
+
+impl Default for CustomSensor {
+    fn default() -> Self {
+        Self {
+            id: "default".to_string(),
+            cs_type: CustomSensorType::File,
+            mix_function: CustomSensorMixFunctionType::Min,
+            sources: Vec::new(),
+            file_path: None,
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
 }
 
 /// A source for displaying sensor data that is related to a particular channel.

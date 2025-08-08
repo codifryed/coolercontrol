@@ -1724,6 +1724,8 @@ impl Config {
                     mix_function,
                     sources,
                     file_path,
+                    children: vec![],
+                    parents: vec![],
                 };
                 custom_sensors.push(custom_sensor);
             }

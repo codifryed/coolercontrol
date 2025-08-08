@@ -29,6 +29,9 @@ export class CustomSensor {
     @Type(() => CustomTempSourceData)
     sources: Array<CustomTempSourceData>
 
+    children: Array<string> = []
+    parents: Array<string> = []
+
     file_path?: string
 
     constructor(
