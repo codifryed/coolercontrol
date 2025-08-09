@@ -100,6 +100,7 @@ if (!customSensorsDeviceUID) {
     throw new Error('Illegal State: Could not find Custom Sensor Device')
 }
 
+const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
 const createNewCustomSensor = (): CustomSensor => {
     const newSensorNumber =
         customSensorIdNumbers.length === 0
@@ -113,6 +114,7 @@ const customSensor: CustomSensor =
 const sensorName: Ref<string> = ref(customSensor.id)
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
+const selectedOffset: Ref<number> = ref(customSensor.offset ?? 0)
 
 // Generate options with localized display names
 const sensorTypeOptions = computed(() => {
@@ -130,27 +132,20 @@ const mixFunctionTypeOptions = computed(() => {
 })
 
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
+const chosenOffsetTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const tempSources: Ref<Array<AvailableTempSources>> = ref([])
 const fillTempSources = (): void => {
     tempSources.value.length = 0
-    // const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
     for (const device of deviceStore.allDevices()) {
-        if (
-            device.status.temps.length === 0 ||
-            device.info == undefined ||
-            device.type === DeviceType.CUSTOM_SENSORS
-        ) {
+        if (device.status.temps.length === 0 || device.info == undefined) {
             continue
         }
-        // todo: if this is requested in the future, but requires quite a bit of work to make sure
-        //   it works correctly in the backend
-        // if (
-        //     device.type === DeviceType.CUSTOM_SENSORS &&
-        //     customSensors.find((cs) => cs.cs_type === CustomSensorType.File) === undefined
-        // ) {
-        //     continue // only include file based sensors if there are any
-        // }
+        // New Custom Sensors can't be parents, but we check for it anyway for future safety
+        if (device.type === DeviceType.CUSTOM_SENSORS && customSensor.parents.length > 0) {
+            // skip custom sensors if it has parents/is a child - it can not also be a parent
+            continue
+        }
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         const deviceSource: AvailableTempSources = {
             deviceUID: device.uid,
@@ -162,14 +157,20 @@ const fillTempSources = (): void => {
             temps: [],
         }
         for (const temp of device.status.temps) {
-            // if (
-            //     device.type === DeviceType.CUSTOM_SENSORS &&
-            //     customSensors.find(
-            //         (cs) => cs.id === temp.name && cs.cs_type === CustomSensorType.Mix,
-            //     ) !== undefined
-            // ) {
-            //     continue
-            // }
+            if (device.type === DeviceType.CUSTOM_SENSORS) {
+                if (temp.name === customSensor.id) {
+                    // Cannot have itself as a temp source
+                    continue
+                }
+                const associatedCustomSensor = customSensors.find((cs) => cs.id === temp.name)
+                if (associatedCustomSensor == null) {
+                    console.error('Could not find associated Custom Sensor by: ', temp.name)
+                    continue
+                } else if (associatedCustomSensor.children.length > 0) {
+                    // If the 'potential child' custom sensor IS a parent/HAS children = do NOT show
+                    continue
+                }
+            }
             deviceSource.temps.push({
                 deviceUID: device.uid,
                 tempName: temp.name,
@@ -208,15 +209,37 @@ const nextStep = async (): Promise<void> => {
     customSensor.mix_function = selectedMixFunction.value
     const tempSources: Array<CustomTempSourceData> = []
     if (customSensor.cs_type === CustomSensorType.File) {
+        customSensor.offset = undefined
         customSensor.file_path = filePath.value
     } else if (customSensor.cs_type === CustomSensorType.Mix) {
+        if (chosenTempSources.value == null || chosenTempSources.value.length === 0) {
+            console.error('No temp sources selected')
+            return
+        }
         customSensor.file_path = undefined
+        customSensor.offset = undefined
         chosenTempSources.value.forEach((tempSource) =>
             tempSources.push(
                 new CustomTempSourceData(
                     new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
                     tempSource.weight,
                 ),
+            ),
+        )
+    } else if (customSensor.cs_type === CustomSensorType.Offset) {
+        if (chosenOffsetTempSource.value == null) {
+            console.error('No offset temp source selected')
+            return
+        }
+        customSensor.file_path = undefined
+        customSensor.offset = selectedOffset.value
+        tempSources.push(
+            new CustomTempSourceData(
+                new CustomSensorTempSource(
+                    chosenOffsetTempSource.value.deviceUID,
+                    chosenOffsetTempSource.value.tempName,
+                ),
+                chosenOffsetTempSource.value.weight,
             ),
         )
     }
@@ -354,6 +377,30 @@ onMounted(async () => {
                     v-html="t('views.customSensors.filePathTooltip')"
                 />
             </div>
+            <div v-if="selectedSensorType === CustomSensorType.Offset" class="flex flex-col mt-1">
+                <small class="ml-3 mb-1 font-light text-sm">
+                    {{ t('views.customSensors.offset') }}
+                </small>
+                <InputNumber
+                    v-model="selectedOffset"
+                    show-buttons
+                    :min="-100"
+                    :max="100"
+                    button-layout="horizontal"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.right="{
+                        escape: false,
+                        value: t('views.customSensors.offsetTooltip'),
+                    }"
+                >
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+            </div>
             <div
                 v-if="selectedSensorType === CustomSensorType.Mix"
                 class="flex flex-col mt-0 w-full"
@@ -447,6 +494,58 @@ onMounted(async () => {
                     </DataTable>
                 </div>
             </div>
+            <div
+                v-if="selectedSensorType === CustomSensorType.Offset"
+                class="flex flex-col mt-0 w-full"
+            >
+                <div class="w-full">
+                    <small class="ml-3 font-light text-sm">
+                        {{ t('views.customSensors.tempSource') }}
+                    </small>
+                    <Select
+                        v-model="chosenOffsetTempSource"
+                        :options="tempSources"
+                        class="w-full h-11 bg-bg-one items-center"
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        :filter-placeholder="t('common.search')"
+                        :invalid="chosenOffsetTempSource == null"
+                        scroll-height="40rem"
+                        dropdown-icon="pi pi-microchip"
+                        :placeholder="t('views.customSensors.tempSource')"
+                        v-tooltip.bottom="{
+                            escape: false,
+                            value: t('views.customSensors.tempSourcesTooltip'),
+                        }"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            </div>
+                        </template>
+                    </Select>
+                </div>
+            </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
             <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />
@@ -457,7 +556,8 @@ onMounted(async () => {
                     nameInvalid ||
                     (selectedSensorType === CustomSensorType.Mix &&
                         chosenTempSources.length === 0) ||
-                    (selectedSensorType === CustomSensorType.File && !filePath)
+                    (selectedSensorType === CustomSensorType.File && !filePath) ||
+                    (selectedSensorType === CustomSensorType.Offset && selectedOffset == null)
                 "
                 @click="nextStep"
             />

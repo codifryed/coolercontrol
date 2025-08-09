@@ -389,8 +389,12 @@ export default {
             browse: 'Durchsuchen',
             browseCustomSensorFile: 'Nach einer benutzerdefinierten Sensordatei suchen',
             tempSources: 'Temp-Quellen',
+            tempSource: 'Temp-Quelle',
             tempSourcesTooltip:
-                'Temperaturquellen, die in der Mix-Funktion verwendet werden sollen<br/><i>Hinweis: Sie können ein Mix-Profil verwenden, um mehrere<br/>benutzerdefinierte Sensoren zu kombinieren.</i>',
+                'Temperaturquellen, die in der Mischfunktion verwendet werden sollen<br/><i>Hinweis: Beim Kombinieren mehrerer benutzerdefinierter Sensoren sind nur direkte Eltern-Kind-Beziehungen erlaubt.<br/>Verwenden Sie Mix-Profile für komplexere Setups.</i>',
+            offset: 'Versatz',
+            offsetTooltip:
+                'Geben Sie einen negativen oder positiven Versatz ein, der auf den Quellsensor angewendet wird.<br/><i>Hinweis: Der Endwert wird auf normale Temperaturbereiche begrenzt.</i>',
             tempWeights: 'Temp-Gewichtungen',
             tempWeightsTooltip: 'Die individuelle Gewichtung jeder ausgewählten Temperaturquelle.',
             tempName: 'Temp-Name',
@@ -956,6 +960,7 @@ export default {
             sensorType: {
                 mix: 'Mix',
                 file: 'Datei',
+                offset: 'Versatz',
             },
             mixFunctionType: {
                 min: 'Minimum',

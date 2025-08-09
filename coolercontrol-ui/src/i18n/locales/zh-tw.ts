@@ -447,8 +447,12 @@ export default {
             browse: '瀏覽',
             browseCustomSensorFile: '瀏覽自定義傳感器文件',
             tempSources: '溫度源',
+            tempSource: '溫度源',
             tempSourcesTooltip:
-                '要在混合函數中使用的溫度源<br/><i>注意：您可以使用混合設定檔來組合多個<br/>自定義傳感器。</i>',
+                '在混合函數中使用的溫度源<br/><i>注意：當組合多個自定義傳感器時，只允許直接的父子關係。<br/>較為複雜的設定請使用混合設定檔。</i>',
+            offset: '偏移量',
+            offsetTooltip:
+                '輸入要套用至來源傳感器的負值或正值偏移量。<br/><i>注意：最終數值將被限制在正常的溫度範圍內。</i>',
             tempWeights: '溫度權重',
             tempWeightsTooltip: '每個選定溫度源的各自權重。',
             tempName: '溫度名稱',
@@ -909,6 +913,7 @@ export default {
             sensorType: {
                 mix: '混合',
                 file: '文件',
+                offset: '偏移',
             },
             mixFunctionType: {
                 min: '最小值',

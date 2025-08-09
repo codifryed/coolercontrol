@@ -426,8 +426,12 @@ export default {
             browse: 'ブラウズ',
             browseCustomSensorFile: 'カスタムセンサーファイルを参照',
             tempSources: '温度ソース',
+            tempSource: '温度ソース',
             tempSourcesTooltip:
-                'ミックス関数で使用する温度ソース<br/><i>注：ミックスプロファイルを使用して複数の<br/>カスタムセンサーを組み合わせることができます。</i>',
+                'ミックス機能で使用する温度ソース<br/><i>注: 複数のカスタムセンサーを組み合わせる場合、許可されるのは直接の親子関係のみです。<br/>より複雑な構成にはミックスプロファイルを使用してください。</i>',
+            offset: 'オフセット',
+            offsetTooltip:
+                'ソースセンサーに適用する負または正のオフセット値を入力してください。<br/><i>注: 最終的な値は通常の温度範囲に制限されます。</i>',
             tempWeights: '温度の重み',
             tempWeightsTooltip: '選択した各温度ソースの個々の重み。',
             tempName: '温度名',
@@ -940,6 +944,7 @@ export default {
             sensorType: {
                 mix: 'ミックス',
                 file: 'ファイル',
+                offset: 'オフセット',
             },
             mixFunctionType: {
                 min: '最小',

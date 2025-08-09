@@ -25,9 +25,13 @@ export class CustomSensor {
 
     cs_type: CustomSensorType
     mix_function: CustomSensorMixFunctionType
+    offset?: number
 
     @Type(() => CustomTempSourceData)
     sources: Array<CustomTempSourceData>
+
+    children: Array<string> = []
+    parents: Array<string> = []
 
     file_path?: string
 
@@ -49,6 +53,7 @@ export class CustomSensor {
 export enum CustomSensorType {
     Mix = 'Mix',
     File = 'File',
+    Offset = 'Offset',
 }
 
 export enum CustomSensorMixFunctionType {
@@ -71,6 +76,8 @@ export function getCustomSensorTypeDisplayName(type: CustomSensorType): string {
             return t('models.customSensor.sensorType.mix')
         case CustomSensorType.File:
             return t('models.customSensor.sensorType.file')
+        case CustomSensorType.Offset:
+            return t('models.customSensor.sensorType.offset')
         default:
             return String(type)
     }
