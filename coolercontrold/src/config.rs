@@ -1718,12 +1718,25 @@ impl Config {
                 } else {
                     None
                 };
+                let offset = if let Some(offset_value) = c_sensor_table.get("offset") {
+                    let offset_raw: i8 = offset_value
+                        .as_integer()
+                        .with_context(|| "offset should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| "offset must be a value between -100 and 100")?;
+                    let offset = offset_raw.clamp(-100, 100);
+                    Some(offset)
+                } else {
+                    None
+                };
                 let custom_sensor = CustomSensor {
                     id,
                     cs_type,
                     mix_function,
                     sources,
                     file_path,
+                    offset,
                     children: vec![],
                     parents: vec![],
                 };
@@ -1907,6 +1920,11 @@ impl Config {
             )));
         } else {
             cs_table["file_path"] = Item::None;
+        }
+        if let Some(offset) = custom_sensor.offset {
+            cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
+        } else {
+            cs_table["offset"] = Item::None;
         }
     }
 }

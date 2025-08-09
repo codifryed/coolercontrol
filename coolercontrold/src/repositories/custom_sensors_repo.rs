@@ -31,13 +31,13 @@ use tokio::time::Instant;
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{
-    Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, TempInfo, TempName, TempStatus,
-    UID,
+    Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, Temp, TempInfo, TempName,
+    TempStatus, UID,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomSensorType, LcdSettings, LightingSettings,
-    TempSource,
+    Offset, TempSource,
 };
 use crate::{cc_fs, VERSION};
 
@@ -229,9 +229,9 @@ impl CustomSensorsRepo {
             .status_history
             .clone();
         match sensor.cs_type {
-            CustomSensorType::Mix => {
+            CustomSensorType::Mix | CustomSensorType::Offset => {
                 for (index, status) in status_history.iter_mut().enumerate() {
-                    let temp_status = self.process_custom_sensor_data_mix_indexed(sensor, index)?;
+                    let temp_status = self.process_custom_sensor_data_indexed(sensor, index)?;
                     status.temps.push(temp_status);
                 }
             }
@@ -273,7 +273,7 @@ impl CustomSensorsRepo {
     ///   point in time.
     ///
     /// Returns: a `Result<TempStatus>`.
-    fn process_custom_sensor_data_mix_indexed(
+    fn process_custom_sensor_data_indexed(
         &self,
         sensor: &CustomSensor,
         index: usize,
@@ -318,11 +318,29 @@ impl CustomSensorsRepo {
                 sensor.id
             );
         }
-        let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
-        Ok(TempStatus {
-            name: sensor.id.clone(),
-            temp: custom_temp,
-        })
+        match sensor.cs_type {
+            CustomSensorType::Mix => {
+                let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
+                Ok(TempStatus {
+                    name: sensor.id.clone(),
+                    temp: custom_temp,
+                })
+            }
+            CustomSensorType::Offset => {
+                let custom_temp = Self::process_offset_temp_data(sensor.offset, &temp_data);
+                Ok(TempStatus {
+                    name: sensor.id.clone(),
+                    temp: custom_temp,
+                })
+            }
+            CustomSensorType::File => Err(CCError::InternalError {
+                msg: format!(
+                    "Indexed processing triggered for Invalid sensor type: {}",
+                    sensor.cs_type
+                ),
+            }
+            .into()),
+        }
     }
 
     /// The function processes current sensor data by mixing the current temperature values from
@@ -334,23 +352,17 @@ impl CustomSensorsRepo {
     ///   `CustomSensor` object.
     ///
     /// Returns: an `TempStatus`
-    fn process_custom_sensor_data_mix_current(&self, sensor: &CustomSensor) -> TempStatus {
+    fn process_custom_sensor_data_current(
+        &self,
+        sensor: &CustomSensor,
+        custom_temps: &[TempStatus],
+    ) -> TempStatus {
         let mut temp_data = Vec::new();
         for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
-            let some_temp_source = if temp_source.device_uid == self.device_uid {
-                self.custom_sensor_device.as_ref()
-            } else {
-                self.all_devices.get(&temp_source.device_uid)
-            };
-            let Some(temp_source_device) = some_temp_source else {
+            let Ok(some_temp) = self.get_temp_source_temp(temp_source, custom_temps) else {
                 continue;
             };
-            let some_temp = temp_source_device
-                .borrow()
-                .status_history
-                .back()
-                .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
             if some_temp.is_none() {
                 error!(
                     "Temp not found for Custom Sensor: {}:{}",
@@ -373,11 +385,57 @@ impl CustomSensorsRepo {
                 sensor.id
             );
         }
-        let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
-        TempStatus {
-            name: sensor.id.clone(),
-            temp: custom_temp,
+        match sensor.cs_type {
+            CustomSensorType::Mix => {
+                let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
+                TempStatus {
+                    name: sensor.id.clone(),
+                    temp: custom_temp,
+                }
+            }
+            CustomSensorType::Offset => {
+                let custom_temp = Self::process_offset_temp_data(sensor.offset, &temp_data);
+                TempStatus {
+                    name: sensor.id.clone(),
+                    temp: custom_temp,
+                }
+            }
+            CustomSensorType::File => {
+                debug!(
+                    "Indexed processing triggered for Invalid sensor type: {}",
+                    sensor.cs_type
+                );
+                TempStatus {
+                    name: sensor.id.clone(),
+                    temp: 0.,
+                }
+            }
         }
+    }
+
+    /// Retrieves the temperature value from a specified `TempSource`.
+    /// Also handles retrieving the recently created temperature from child custom sensors.
+    fn get_temp_source_temp(
+        &self,
+        temp_source: &TempSource,
+        custom_temps: &[TempStatus],
+    ) -> Result<Option<Temp>> {
+        if temp_source.device_uid == self.device_uid {
+            // parents get the child's status from the recent push to custom_temps
+            return Ok(custom_temps
+                .iter()
+                .find(|temp| temp.name == temp_source.temp_name)
+                .map(|temp| temp.temp));
+        }
+        let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
+            // missing/removed devices are simply skipped
+            return Err(anyhow!("Device not found"));
+        };
+        Ok(temp_source_device
+            .borrow()
+            .status_history
+            .back()
+            .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status)))
     }
 
     fn get_temp_from_status(temp_source_name: &str, status: &Status) -> Option<f64> {
@@ -454,6 +512,15 @@ impl CustomSensorsRepo {
                 },
             )
             .temp
+    }
+
+    /// Returns the temp data with an offset applied, or 0 if not present.
+    /// Also clamps the result to a readable temp, between 0 and 150.
+    fn process_offset_temp_data(offset: Option<Offset>, temp_data: &[TempData]) -> f64 {
+        if offset.is_none() || temp_data.is_empty() {
+            return 0.;
+        }
+        (temp_data[0].temp + Temp::from(offset.unwrap())).clamp(0.0, 150.0)
     }
 
     async fn process_custom_sensor_data_file_current(sensor: &CustomSensor) -> TempStatus {
@@ -550,6 +617,15 @@ impl CustomSensorsRepo {
             return Err(CCError::UserError {
                 msg: format!(
                     "Custom Sensor File types should not have temp sources: {sensor_id}",
+                    sensor_id = custom_sensor.id
+                ),
+            }
+            .into());
+        }
+        if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.sources.len() != 1 {
+            return Err(CCError::UserError {
+                msg: format!(
+                    "Custom Sensor Offset types should have only one temp source: {sensor_id}",
                     sensor_id = custom_sensor.id
                 ),
             }
@@ -747,8 +823,9 @@ impl Repository for CustomSensorsRepo {
             .iter()
             .filter(|s| s.children.is_empty()) // not parents
             .for_each(|sensor| match sensor.cs_type {
-                CustomSensorType::Mix => {
-                    let temp_status = self.process_custom_sensor_data_mix_current(sensor);
+                CustomSensorType::Mix | CustomSensorType::Offset => {
+                    let temp_status =
+                        self.process_custom_sensor_data_current(sensor, &custom_temps);
                     custom_temps.push(temp_status);
                 }
                 CustomSensorType::File => {
@@ -765,8 +842,9 @@ impl Repository for CustomSensorsRepo {
             .iter()
             .filter(|s| s.children.is_empty().not()) // parents
             .for_each(|sensor| match sensor.cs_type {
-                CustomSensorType::Mix => {
-                    let temp_status = self.process_custom_sensor_data_mix_current(sensor);
+                CustomSensorType::Mix | CustomSensorType::Offset => {
+                    let temp_status =
+                        self.process_custom_sensor_data_current(sensor, &custom_temps);
                     custom_temps.push(temp_status);
                 }
                 // Parent sensors can not be File types

@@ -36,6 +36,7 @@ pub type R = u8;
 pub type G = u8;
 pub type B = u8;
 type Weight = u8;
+pub type Offset = i8;
 
 pub const DEFAULT_PROFILE_UID: &str = "0";
 pub const DEFAULT_FUNCTION_UID: &str = "0";
@@ -316,6 +317,7 @@ impl Default for ProfileMixFunctionType {
 pub enum CustomSensorType {
     Mix,
     File,
+    Offset,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
@@ -341,6 +343,7 @@ pub struct CustomSensor {
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
     pub file_path: Option<PathBuf>,
+    pub offset: Option<Offset>,
 
     /// The Custom Sensor's children, if any.
     ///
@@ -367,6 +370,7 @@ impl Default for CustomSensor {
             mix_function: CustomSensorMixFunctionType::Min,
             sources: Vec::new(),
             file_path: None,
+            offset: None,
             children: Vec::new(),
             parents: Vec::new(),
         }

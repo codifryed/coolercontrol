@@ -135,6 +135,20 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
         invalid_msg = Some("Custom Sensor File type must have a file path".to_string());
     } else if custom_sensor.cs_type == CustomSensorType::File && !custom_sensor.sources.is_empty() {
         invalid_msg = Some("Custom Sensor File type should not have sources".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.offset.is_none() {
+        invalid_msg = Some("Custom Sensor Offset type must have an offset".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset
+        && custom_sensor.offset.unwrap() < -100
+    {
+        invalid_msg = Some("Custom Sensor Offset type offset cannot be less than -100".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset
+        && custom_sensor.offset.unwrap() > 100
+    {
+        invalid_msg =
+            Some("Custom Sensor Offset type offset cannot be greater than 100".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.sources.len() != 1
+    {
+        invalid_msg = Some("Custom Sensor Offset type must have exactly 1 temp source".to_string());
     }
     if let Some(msg) = invalid_msg {
         Err(CCError::UserError { msg })

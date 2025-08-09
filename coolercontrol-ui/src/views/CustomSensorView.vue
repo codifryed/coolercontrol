@@ -137,6 +137,7 @@ const isUserName: boolean =
 const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
+const selectedOffset: Ref<number> = ref(customSensor.offset ?? 0)
 
 // Generate options with localized display names
 const sensorTypeOptions = computed(() => {
@@ -154,6 +155,7 @@ const mixFunctionTypeOptions = computed(() => {
 })
 
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
+const chosenOffsetTempSource: Ref<AvailableTemp | undefined> = ref(undefined)
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
 const chosenViewType: Ref<ChannelViewType> = ref(
     deviceSettings.sensorsAndChannels.get(customSensor.id)?.viewType ?? ChannelViewType.Control,
@@ -214,6 +216,9 @@ const fillTempSources = async (): Promise<void> => {
 await fillTempSources()
 const fillChosenTempSources = () => {
     chosenTempSources.value.length = 0
+    if (selectedSensorType.value !== CustomSensorType.Mix) {
+        return
+    }
     for (const customTempSourceData of customSensor.sources) {
         for (const availableTempSource of tempSources.value) {
             if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
@@ -229,20 +234,62 @@ const fillChosenTempSources = () => {
 }
 fillChosenTempSources()
 
+const fillChosenOffsetTempSource = () => {
+    chosenOffsetTempSource.value = undefined
+    if (selectedSensorType.value !== CustomSensorType.Offset) {
+        return
+    }
+    for (const customTempSourceData of customSensor.sources) {
+        for (const availableTempSource of tempSources.value) {
+            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+                for (const availableTemp of availableTempSource.temps) {
+                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                        availableTemp.weight = customTempSourceData.weight
+                        chosenOffsetTempSource.value = availableTemp
+                    }
+                }
+            }
+        }
+    }
+}
+fillChosenOffsetTempSource()
+
 const saveSensor = async (): Promise<void> => {
     customSensor.cs_type = selectedSensorType.value
     customSensor.mix_function = selectedMixFunction.value
     const tempSources: Array<CustomTempSourceData> = []
     if (customSensor.cs_type === CustomSensorType.File) {
+        customSensor.offset = undefined
         customSensor.file_path = filePath.value
     } else if (customSensor.cs_type === CustomSensorType.Mix) {
+        if (chosenTempSources.value == null || chosenTempSources.value.length === 0) {
+            console.error('No temp sources selected')
+            return
+        }
         customSensor.file_path = undefined
+        customSensor.offset = undefined
         chosenTempSources.value.forEach((tempSource) =>
             tempSources.push(
                 new CustomTempSourceData(
                     new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
                     tempSource.weight,
                 ),
+            ),
+        )
+    } else if (customSensor.cs_type === CustomSensorType.Offset) {
+        if (chosenOffsetTempSource.value == null) {
+            console.error('No offset temp source selected')
+            return
+        }
+        customSensor.file_path = undefined
+        customSensor.offset = selectedOffset.value
+        tempSources.push(
+            new CustomTempSourceData(
+                new CustomSensorTempSource(
+                    chosenOffsetTempSource.value.deviceUID,
+                    chosenOffsetTempSource.value.tempName,
+                ),
+                chosenOffsetTempSource.value.weight,
             ),
         )
     }
@@ -368,6 +415,17 @@ const fileBrowse = async (): Promise<void> => {
     filePath.value = await ipc.filePathDialog(t('views.customSensors.selectCustomSensorFile'))
 }
 
+const saveButtonDisabled = (): boolean => {
+    return (
+        chosenViewType.value !== ChannelViewType.Control ||
+        (selectedSensorType.value === CustomSensorType.Mix &&
+            chosenTempSources.value.length === 0) ||
+        (selectedSensorType.value === CustomSensorType.Offset &&
+            chosenOffsetTempSource.value == null) ||
+        (selectedSensorType.value === CustomSensorType.File && filePath.value === null)
+    )
+}
+
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
         updateTemps()
@@ -377,9 +435,19 @@ onMounted(async () => {
         fillChosenTempSources()
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true })()
     })
-    watch([selectedSensorType, selectedMixFunction, filePath, chosenTempSources], () => {
-        contextIsDirty.value = true
-    })
+    watch(
+        [
+            selectedSensorType,
+            selectedMixFunction,
+            filePath,
+            chosenTempSources,
+            selectedOffset,
+            chosenOffsetTempSource,
+        ],
+        () => {
+            contextIsDirty.value = true
+        },
+    )
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
 
@@ -464,7 +532,7 @@ onMounted(async () => {
                     :class="{ 'animate-pulse-fast': contextIsDirty }"
                     :label="t('common.save')"
                     v-tooltip.bottom="t('views.customSensors.saveCustomSensor')"
-                    :disabled="chosenViewType !== ChannelViewType.Control"
+                    :disabled="saveButtonDisabled()"
                     @click="saveSensor"
                 >
                     <svg-icon
@@ -482,23 +550,6 @@ onMounted(async () => {
         style="--scrollbar-size: 10px"
     >
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
-            <!--            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">-->
-            <!--                Sensor Name-->
-            <!--            </small>-->
-            <!--            <div class="mt-1">-->
-            <!--                <InputText-->
-            <!--                    ref="inputArea"-->
-            <!--                    id="name"-->
-            <!--                    v-model="sensorName"-->
-            <!--                    class="w-96"-->
-            <!--                    @keydown.enter="saveSensor"-->
-            <!--                    :placeholder="sensorID"-->
-            <!--                    v-tooltip.right="'Sensor Name'"-->
-            <!--                />-->
-            <!--            </div>-->
-            <!--            <small class="ml-2 mb-4 font-light text-xs" id="rename-help">-->
-            <!--                A blank name will use the system default.-->
-            <!--            </small>-->
             <div class="w-full flex flex-col lg:flex-row">
                 <div class="mt-0 mr-4 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
@@ -511,7 +562,7 @@ onMounted(async () => {
                         checkmark
                         :placeholder="t('views.customSensors.type')"
                         list-style="max-height: 100%"
-                        v-tooltip.right="t('views.customSensors.sensorType')"
+                        v-tooltip.bottom="t('views.customSensors.sensorType')"
                         @change="changeSensorType"
                         option-label="label"
                         option-value="value"
@@ -533,6 +584,36 @@ onMounted(async () => {
                         option-label="label"
                         option-value="value"
                     />
+                </div>
+                <div
+                    v-if="selectedSensorType === CustomSensorType.Offset"
+                    class="flex flex-col mt-1 w-96 mb-28"
+                >
+                    <small class="ml-3 mb-1 font-light text-sm text-text-color-secondary">
+                        {{ t('views.customSensors.offset') }}
+                    </small>
+                    <div
+                        class="rounded-lg bg-bg-two p-3 flex justify-center"
+                        v-tooltip.right="{
+                            escape: false,
+                            value: t('views.customSensors.offsetTooltip'),
+                        }"
+                    >
+                        <InputNumber
+                            v-model="selectedOffset"
+                            show-buttons
+                            :min="-100"
+                            :max="100"
+                            button-layout="horizontal"
+                        >
+                            <template #incrementicon>
+                                <span class="pi pi-plus" />
+                            </template>
+                            <template #decrementicon>
+                                <span class="pi pi-minus" />
+                            </template>
+                        </InputNumber>
+                    </div>
                 </div>
                 <div
                     v-else-if="selectedSensorType === CustomSensorType.File"
@@ -586,7 +667,7 @@ onMounted(async () => {
                         option-group-children="temps"
                         :filter-placeholder="t('common.search')"
                         list-style="max-height: 100%"
-                        :invalid="chosenTempSources.length === 0"
+                        :invalid="chosenTempSources == null || chosenTempSources.length === 0"
                         v-tooltip.right="{
                             escape: false,
                             value: t('views.customSensors.tempSourcesTooltip'),
@@ -657,6 +738,57 @@ onMounted(async () => {
                             </template>
                         </Column>
                     </DataTable>
+                </div>
+            </div>
+            <!--Need a separate model for single-selection temp source-->
+            <div
+                v-if="selectedSensorType === CustomSensorType.Offset"
+                class="flex flex-col lg:flex-row mt-0 w-full"
+            >
+                <div class="w-96 mr-4">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        {{ t('views.customSensors.tempSource') }}
+                    </small>
+                    <Listbox
+                        v-model="chosenOffsetTempSource"
+                        class="w-full mt-1"
+                        :options="tempSources"
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        :filter-placeholder="t('common.search')"
+                        list-style="max-height: 100%"
+                        :invalid="chosenOffsetTempSource == null"
+                        v-tooltip.right="{
+                            escape: false,
+                            value: t('views.customSensors.tempSourcesTooltip'),
+                        }"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
+                            </div>
+                        </template>
+                    </Listbox>
                 </div>
             </div>
         </ScrollAreaViewport>
