@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::device::{Duty, Temp};
 use std::collections::VecDeque;
 
 /// Sort, cleanup, and set safety levels for the given profile[(temp, duty)].
@@ -26,11 +27,11 @@ use std::collections::VecDeque;
 ///   - only the first profile step with duty=100% is kept
 #[allow(clippy::float_cmp)]
 pub fn normalize_profile(
-    profile: &[(f64, u8)],
-    critical_temp: f64,
-    max_duty_value: u8,
-) -> Vec<(f64, u8)> {
-    let mut sorted_profile: VecDeque<(f64, u8)> = profile.iter().copied().collect();
+    profile: &[(Temp, Duty)],
+    critical_temp: Temp,
+    max_duty_value: Duty,
+) -> Vec<(Temp, Duty)> {
+    let mut sorted_profile: VecDeque<(Temp, Duty)> = profile.iter().copied().collect();
     sorted_profile.push_back((critical_temp, max_duty_value));
     sorted_profile
         .make_contiguous()
@@ -62,15 +63,18 @@ pub fn normalize_profile(
     normalized_profile
 }
 
-/// Interpolate duty from a given temp and profile(temp, duty)
-/// profile must be normalized first for this function to work as expected
-/// Returned duty is rounded to the nearest integer
+/// Interpolate duty from a given temp and profile(temp, duty).
+/// profile must be normalized first for this function to work as expected (Temp always increasing).
+/// Returned duty is rounded to the nearest integer.
+///
+/// This is a custom interpolation function that is designed for our use case.
+/// Other interpolation libraries benched are not near as efficient as this.
 #[allow(
     clippy::float_cmp,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
+pub fn interpolate_profile(normalized_profile: &[(Temp, Duty)], temp: Temp) -> Duty {
     let mut step_below = &normalized_profile[0];
     let mut step_above = normalized_profile.last().unwrap();
     for step in normalized_profile {
@@ -157,4 +161,25 @@ mod tests {
             assert_eq!(interpolate_profile(&given.0, given.1), expected);
         }
     }
+
+    #[test]
+    fn interpolate_negative_profile_test() {
+        let given_expected = vec![
+            ((vec![(20f64, 50u8), (50.0, 70), (60.0, 20)], 33.), 59u8),
+            ((vec![(10.0, 50), (20.0, 30), (30.0, 80)], 20.), 30),
+            ((vec![(20.0, 50), (50.0, 30)], 51.), 30),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_profile(&given.0, given.1), expected);
+        }
+    }
+
+    // #[bench]
+    // fn bench_interpolate_profile(b: &mut test::Bencher) {
+    //     let given = (
+    //         vec![(20f64, 50u8), (50.0, 70), (60.0, 100)],
+    //         33.,
+    //     );
+    //     b.iter(|| black_box(interpolate_profile(&given.0, given.1)));
+    // }
 }
