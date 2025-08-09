@@ -383,8 +383,12 @@ export default {
             browse: 'Browse',
             browseCustomSensorFile: 'Browse for a custom sensor file',
             tempSources: 'Temp Sources',
+            tempSource: 'Temp Source',
             tempSourcesTooltip:
-                'Temperature sources to be used in the mix function<br/><i>Note: You can use a Mix Profile to combine multiple<br/>Customer Sensors.</i>',
+                'Temperature sources to be used in the mix function<br/><i>Note: Only direct parent-child relationships are allowed<br/>when combining multiple Custom Sensors.<br/>Use Mix Profiles for more complex setups.</i>',
+            offset: 'Offset Amount',
+            offsetTooltip:
+                'Enter the negative or positive offset amount to<br/>apply to the source sensor.<br/><i>Note: The final value will is limited to<br/>normal temperature ranges.</i>',
             tempWeights: 'Temp Weights',
             tempWeightsTooltip: 'The individual weight of each selected temperature source.',
             tempName: 'Temp Name',
@@ -934,6 +938,7 @@ export default {
             sensorType: {
                 mix: 'Mix',
                 file: 'File',
+                offset: 'Offset',
             },
             mixFunctionType: {
                 min: 'Minimum',

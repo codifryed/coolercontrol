@@ -1,4 +1,4 @@
-﻿/*
+/*
  * CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2021-2025  Guy Boldon and contributors
  *
@@ -446,8 +446,12 @@ export default {
             browse: '浏览',
             browseCustomSensorFile: '浏览自定义传感器文件',
             tempSources: '温度源',
+            tempSource: '温度源',
             tempSourcesTooltip:
-                '要在混合函数中使用的温度源<br/><i>注意：您可以使用混合配置文件来组合多个<br/>自定义传感器。</i>',
+                '在混合函数中使用的温度源<br/><i>注意：当组合多个自定义传感器时，只允许直接的父子关系。<br/>更复杂的配置请使用混合配置文件。</i>',
+            offset: '偏移量',
+            offsetTooltip:
+                '输入要应用于源传感器的负或正偏移量。<br/><i>注意：最终值会被限制在正常的温度范围内。</i>',
             tempWeights: '温度权重',
             tempWeightsTooltip: '每个选定温度源的各自权重。',
             tempName: '温度名称',
@@ -909,6 +913,7 @@ export default {
             sensorType: {
                 mix: '混合',
                 file: '文件',
+                offset: '偏移',
             },
             mixFunctionType: {
                 min: '最小值',

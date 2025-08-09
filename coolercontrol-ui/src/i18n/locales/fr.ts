@@ -396,8 +396,12 @@ export default {
             browse: 'Parcourir',
             browseCustomSensorFile: 'Parcourir pour un fichier de capteur personnalisé',
             tempSources: 'Sources de Température',
+            tempSource: 'Source de Température',
             tempSourcesTooltip:
-                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : Vous pouvez utiliser un Profil de Mélange pour combiner plusieurs<br/>Capteurs Personnalisés.</i>',
+                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            offset: 'Décalage',
+            offsetTooltip:
+                'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
             tempWeights: 'Poids des Températures',
             tempWeightsTooltip: 'Le poids individuel de chaque source de température sélectionnée.',
             tempName: 'Nom de la Température',
@@ -959,6 +963,7 @@ export default {
             sensorType: {
                 mix: 'Mélange',
                 file: 'Fichier',
+                offset: 'Décalage',
             },
             mixFunctionType: {
                 min: 'Minimum',

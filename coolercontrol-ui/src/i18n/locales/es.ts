@@ -388,8 +388,12 @@ export default {
             browse: 'Explorar',
             browseCustomSensorFile: 'Explorar un archivo de sensor personalizado',
             tempSources: 'Fuentes de Temperatura',
+            tempSource: 'Fuente de Temperatura',
             tempSourcesTooltip:
-                'Fuentes de temperatura a utilizar en la función de mezcla<br/><i>Nota: Puede usar un Perfil de Mezcla para combinar múltiples<br/>Sensores Personalizados.</i>',
+                'Fuentes de temperatura que se usarán en la función de mezcla<br/><i>Nota: Al combinar varios Sensores Personalizados solo se permiten relaciones directas de padre e hijo.<br/>Use Perfiles de Mezcla para configuraciones más complejas.</i>',
+            offset: 'Desplazamiento',
+            offsetTooltip:
+                'Introduzca un desplazamiento negativo o positivo que se aplicará al sensor de origen.<br/><i>Nota: El valor final se limita a rangos normales de temperatura.</i>',
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'El peso individual de cada fuente de temperatura seleccionada.',
             tempName: 'Nombre de Temperatura',
@@ -944,6 +948,7 @@ export default {
             sensorType: {
                 mix: 'Mezcla',
                 file: 'Archivo',
+                offset: 'Desplazamiento',
             },
             mixFunctionType: {
                 min: 'Mínimo',
