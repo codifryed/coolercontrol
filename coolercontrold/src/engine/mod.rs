@@ -51,7 +51,6 @@ impl DeviceChannelProfileSetting {
             DeviceChannelProfileSetting::Mix { device_uid, .. }
             | DeviceChannelProfileSetting::Graph { device_uid, .. }
             | DeviceChannelProfileSetting::Overlay { device_uid, .. } => device_uid,
-
         }
     }
 
