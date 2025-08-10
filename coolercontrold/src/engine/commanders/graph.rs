@@ -59,6 +59,8 @@ pub struct GraphProfileCommander {
         RefCell<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
     config: Rc<Config>,
     processors: ProcessorCollection,
+    /// The last calculated Option<Duty> for each Graph Profile.
+    /// This allows other Profiles to use the output of a Graph Profile.
     pub process_output_cache: RefCell<HashMap<ProfileUID, Option<Duty>>>,
 }
 
@@ -196,6 +198,9 @@ impl GraphProfileCommander {
                 continue;
             };
             for device_channel in device_channels {
+                // We only apply Graph Profiles directly applied to fan channels, as we
+                // can also schedule Overlay Member Profiles and Mix Member Profiles,
+                // which need to be handled properly upstream.
                 if let DeviceChannelProfileSetting::Graph {
                     device_uid,
                     channel_name,
@@ -232,6 +237,8 @@ impl GraphProfileCommander {
         .return_processed_duty()
     }
 
+    /// Sets the speed of a device. This is normally called by the `update_speeds` method
+    /// from various Commanders. This keeps this logic in one place.
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
