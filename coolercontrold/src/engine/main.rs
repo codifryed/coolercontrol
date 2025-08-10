@@ -26,6 +26,7 @@ use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStat
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::LcdCommander;
 use crate::engine::commanders::mix::MixProfileCommander;
+use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
@@ -52,6 +53,7 @@ pub struct Engine {
     config: Rc<Config>,
     graph_commander: Rc<GraphProfileCommander>,
     mix_commander: Rc<MixProfileCommander>,
+    overlay_commander: Rc<OverlayProfileCommander>,
     pub lcd_commander: Rc<LcdCommander>,
 }
 
@@ -77,6 +79,10 @@ impl Engine {
             config.clone(),
         ));
         let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
+        let overlay_commander = Rc::new(OverlayProfileCommander::new(
+            Rc::clone(&graph_commander),
+            Rc::clone(&mix_commander),
+        ));
         let lcd_commander = Rc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
@@ -87,6 +93,7 @@ impl Engine {
             config,
             graph_commander,
             mix_commander,
+            overlay_commander,
             lcd_commander,
         }
     }
@@ -204,6 +211,10 @@ impl Engine {
             }
             ProfileType::Mix => {
                 self.set_mix_profile(device_uid, channel_name, &profile)
+                    .await
+            }
+            ProfileType::Overlay => {
+                self.set_overlay_profile(device_uid, channel_name, &profile)
                     .await
             }
         }
@@ -339,8 +350,14 @@ impl Engine {
                     self.graph_commander
                         .clear_channel_setting(device_uid, channel_name);
                 })?;
-            self.mix_commander
-                .schedule_setting(device_uid, channel_name, profile, member_profiles)
+            self.mix_commander.schedule_setting(
+                DeviceChannelProfileSetting::Mix {
+                    device_uid: device_uid.clone(),
+                    channel_name: channel_name.to_string(),
+                },
+                profile,
+                member_profiles,
+            )
         } else {
             Err(anyhow!(
                 "Device Control not enabled for this device: {device_uid}"
@@ -348,6 +365,80 @@ impl Engine {
         }
     }
 
+    async fn set_overlay_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
+        if profile.member_profile_uids.len() != 1 {
+            return Err(anyhow!("Overlay Profile should one member profile"));
+        }
+        if profile.offset_profile.is_none() {
+            return Err(anyhow!("Overlay Profile should have an offset profile"));
+        }
+        if profile.offset_profile.as_ref().unwrap().is_empty() {
+            return Err(anyhow!(
+                "Overlay Profile offset profiles should have at least one duty/offset pair"
+            ));
+        }
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
+        let speed_options = device_lock
+            .borrow()
+            .info
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .speed_options
+            .clone()
+            .with_context(|| "Looking for Channel Speed Options")?;
+        let member_profile = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .find(|p| profile.member_profile_uids.contains(&p.uid))
+            .ok_or(anyhow!("Overlay Member Profile should be present"))?;
+        let member_profile_members = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .filter(|p| member_profile.member_profile_uids.contains(&p.uid))
+            .collect::<Vec<Profile>>();
+        if member_profile_members.len() != member_profile.member_profile_uids.len() {
+            return Err(anyhow!("All Member Profiles should be present"));
+        }
+        if speed_options.fixed_enabled {
+            // This could potentially take significant time for slow devices:
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await
+                .inspect_err(|err| {
+                    error!(
+                        "Failed to enable manual control for Overlay Profile: {}. \
+                        Profile scheduling has been disabled for {channel_name} | {err}",
+                        profile.name
+                    );
+                    self.mix_commander
+                        .clear_channel_setting(device_uid, channel_name);
+                    self.graph_commander
+                        .clear_channel_setting(device_uid, channel_name);
+                })?;
+            self.overlay_commander.schedule_setting(
+                DeviceChannelProfileSetting::Overlay {
+                    device_uid: device_uid.clone(),
+                    channel_name: channel_name.to_string(),
+                },
+                profile,
+                member_profile,
+                member_profile_members,
+            )
+        } else {
+            Err(anyhow!(
+                "Device Control not enabled for this device: {device_uid}"
+            ))
+        }
+    }
     /// Handles applying LCD Settings for all `LcdModes`.
     pub async fn set_lcd(
         &self,
@@ -555,6 +646,8 @@ impl Engine {
     pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
+                self.overlay_commander
+                    .clear_channel_setting(device_uid, channel_name);
                 self.mix_commander
                     .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
@@ -572,12 +665,15 @@ impl Engine {
     pub fn process_scheduled_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
         let start = Instant::now();
         self.graph_commander.process_all_profiles();
+        self.mix_commander.process_all_profiles();
+        self.overlay_commander.process_all_profiles();
         trace!(
             "Processing time taken for all profiles: {:?}",
             start.elapsed()
         );
         self.graph_commander.update_speeds(scope);
         self.mix_commander.update_speeds(scope);
+        self.overlay_commander.update_speeds(scope);
         trace!("Update and Processing time taken: {:?}", start.elapsed());
     }
 
@@ -640,6 +736,17 @@ impl Engine {
                     && profile.member_profile_uids.contains(profile_uid)
             })
             .collect::<Vec<_>>();
+        let affected_overlay_profiles = self
+            .config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Overlay
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+            .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
@@ -657,6 +764,14 @@ impl Engine {
                         .any(|p| &p.uid == setting_profile_uid)
                     {
                         // otherwise, IF the device channel setting contains an affected Mix Profile
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    } else if affected_overlay_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        // otherwise, IF the device channel setting contains an affected Overlay Profile
                         self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
                             .await
                             .ok();
@@ -679,6 +794,22 @@ impl Engine {
                     && profile.member_profile_uids.contains(profile_uid)
             })
             .collect::<Vec<_>>();
+        if self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .any(|profile| {
+                profile.p_type == ProfileType::Overlay
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+        {
+            return Err(CCError::UserError {
+                msg: "In use by an Overlay Profile. Please remove from the overlay profile first"
+                    .to_string(),
+            }
+            .into());
+        }
         if affected_mix_profiles
             .iter()
             .any(|p| p.member_profile_uids.len() < 2)

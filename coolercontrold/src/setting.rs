@@ -217,6 +217,11 @@ pub struct Profile {
 
     /// The function to mix the members with if this is a Mix Profile
     pub mix_function_type: Option<ProfileMixFunctionType>,
+
+    #[allow(clippy::struct_field_names)]
+    /// The graph offset to apply to the associated member profile
+    /// This can also be used as a static offset when there is only one duty/offset pair.
+    pub offset_profile: Option<Vec<(Duty, Offset)>>,
 }
 
 impl Default for Profile {
@@ -233,6 +238,7 @@ impl Default for Profile {
             function_uid: DEFAULT_FUNCTION_UID.to_string(),
             member_profile_uids: Vec::new(),
             mix_function_type: None,
+            offset_profile: None,
         }
     }
 }
@@ -243,6 +249,7 @@ pub enum ProfileType {
     Fixed,
     Graph,
     Mix,
+    Overlay,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
