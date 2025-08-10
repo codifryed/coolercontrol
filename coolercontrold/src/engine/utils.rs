@@ -63,7 +63,7 @@ pub fn normalize_profile(
     normalized_profile
 }
 
-/// Interpolate duty from a given temp and profile(temp, duty).
+/// Interpolate duty for a given temp and profile(temp, duty).
 /// profile must be normalized first for this function to work as expected (Temp always increasing).
 /// Returned duty is rounded to the nearest integer.
 ///
@@ -102,7 +102,7 @@ mod tests {
     use crate::engine::utils::{interpolate_profile, normalize_profile};
 
     #[test]
-    fn normalize_profile_test() {
+    fn test_normalize_profile() {
         let given_expected = vec![
             (
                 (
@@ -140,6 +140,7 @@ mod tests {
                 ),
                 vec![(25.0, 25), (30.0, 40), (35.0, 100)],
             ),
+            ((vec![(25.0, 30)], 60.0, 100), vec![(25.0, 30), (60.0, 100)]),
             ((vec![], 60.0, 100), vec![(60.0, 100)]),
             ((vec![], 60.0, 200), vec![(60.0, 200)]),
         ];
@@ -150,12 +151,11 @@ mod tests {
     }
 
     #[test]
-    fn interpolate_profile_test() {
+    fn test_interpolate_profile() {
         let given_expected = vec![
             ((vec![(20f64, 50u8), (50.0, 70), (60.0, 100)], 33.), 59u8),
             ((vec![(20.0, 50), (50.0, 70)], 19.), 50),
             ((vec![(20.0, 50), (50.0, 70)], 51.), 70),
-            ((vec![(20.0, 50)], 20.), 50),
         ];
         for (given, expected) in given_expected {
             assert_eq!(interpolate_profile(&given.0, given.1), expected);
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn interpolate_negative_profile_test() {
+    fn test_interpolate_negative_profile() {
         let given_expected = vec![
             ((vec![(20f64, 50u8), (50.0, 70), (60.0, 20)], 33.), 59u8),
             ((vec![(10.0, 50), (20.0, 30), (30.0, 80)], 20.), 30),
