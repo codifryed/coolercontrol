@@ -1655,21 +1655,23 @@ onUnmounted(() => {
             </InputNumber>
             <div class="flex flex-row">
                 <InputNumber
-                    :placeholder="t('common.duty')"
-                    v-model="selectedDuty"
-                    inputId="selected-duty"
+                    :placeholder="t('common.temperature')"
+                    v-model="selectedTemp"
+                    inputId="selected-temp"
                     mode="decimal"
-                    class="duty-input h-11"
-                    :suffix="` ${t('common.percentUnit')}`"
+                    class="temp-input h-11"
+                    :suffix="` ${t('common.tempUnit')}`"
                     showButtons
-                    :min="dutyMin"
-                    :max="dutyMax"
+                    :min="inputNumberTempMin"
+                    :max="inputNumberTempMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="1"
+                    :step="0.1"
+                    :min-fraction-digits="1"
+                    :max-fraction-digits="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
+                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1690,23 +1692,21 @@ onUnmounted(() => {
                     />
                 </div>
                 <InputNumber
-                    :placeholder="t('common.temperature')"
-                    v-model="selectedTemp"
-                    inputId="selected-temp"
+                    :placeholder="t('common.duty')"
+                    v-model="selectedDuty"
+                    inputId="selected-duty"
                     mode="decimal"
-                    class="temp-input h-11"
-                    :suffix="` ${t('common.tempUnit')}`"
+                    class="duty-input h-11"
+                    :suffix="` ${t('common.percentUnit')}`"
                     showButtons
-                    :min="inputNumberTempMin"
-                    :max="inputNumberTempMax"
+                    :min="dutyMin"
+                    :max="dutyMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="0.1"
-                    :min-fraction-digits="1"
-                    :max-fraction-digits="1"
+                    :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
+                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1749,7 +1749,7 @@ onUnmounted(() => {
             v-else-if="showDutyKnob"
             v-model="selectedDuty"
             class="duty-knob-input m-2 w-full h-full flex justify-center"
-            :value-template="(value) => `${value}%`"
+            :value-template="(value) => `${value}${t('common.percentUnit')}`"
             :min="dutyMin"
             :max="dutyMax"
             :step="1"
