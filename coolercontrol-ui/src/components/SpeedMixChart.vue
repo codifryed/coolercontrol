@@ -167,7 +167,7 @@ const calcSmoothness = (profileIndex: number): number => {
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 0.0
     } else {
-        return 0.3
+        return 0.1
     }
 }
 const calcLineShadowColor = (profileIndex: number): string => {

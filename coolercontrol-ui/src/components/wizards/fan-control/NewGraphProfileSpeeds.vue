@@ -630,8 +630,8 @@ const setFunctionGraphData = (): void => {
         option.series[0].lineStyle.shadowColor = colors.themeColors.bg_one
         option.series[0].lineStyle.shadowBlur = 10
     } else {
-        option.series[0].smooth = 0.3
-        option.series[2].smooth = 0.3
+        option.series[0].smooth = 0.1
+        option.series[2].smooth = 0.1
         // @ts-ignore
         option.series[0].lineStyle.shadowColor = colors.themeColors.accent
         // size of the blur around the line:
