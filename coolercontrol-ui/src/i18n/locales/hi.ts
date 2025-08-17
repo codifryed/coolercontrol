@@ -949,6 +949,7 @@ export default {
                 min: 'न्यूनतम',
                 max: 'अधिकतम',
                 avg: 'औसत',
+                diff: 'अंतर',
             },
         },
         customSensor: {

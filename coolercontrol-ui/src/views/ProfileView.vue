@@ -1188,7 +1188,10 @@ const showStaticOffsetKnob = computed(() => {
 })
 
 const showMixChart = computed(
-    () => selectedType.value != null && selectedType.value === ProfileType.Mix,
+    () =>
+        selectedType.value != null &&
+        selectedType.value === ProfileType.Mix &&
+        chosenMemberProfiles.value.length > 1,
 )
 const showOverlayChart = computed(
     () =>

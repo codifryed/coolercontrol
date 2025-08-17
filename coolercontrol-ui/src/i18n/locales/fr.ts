@@ -970,6 +970,7 @@ export default {
                 min: 'Minimum',
                 max: 'Maximum',
                 avg: 'Moyenne',
+                diff: 'Différence',
             },
         },
         customSensor: {

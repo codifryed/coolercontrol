@@ -19,7 +19,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::ops::{Div, Not};
+use std::ops::{Div, Not, Sub};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
@@ -258,7 +258,7 @@ impl MixProfileCommander {
     }
 
     /// This function expects a non-empty `member_values` vector
-    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn apply_mix_function(member_values: &[&Duty], mix_function: ProfileMixFunctionType) -> Duty {
         // Since the member functions manage their own thresholds and the safety latch should
         //  kick off about the same time for all of them, we don't check thresholds here.
@@ -270,6 +270,12 @@ impl MixProfileCommander {
                 .map(|d| **d as usize)
                 .sum::<usize>()
                 .div(member_values.len()) as Duty,
+            ProfileMixFunctionType::Diff => member_values
+                .iter()
+                .map(|d| **d as isize)
+                .reduce(Sub::sub)
+                .unwrap_or_default()
+                .clamp(0, 100) as Duty,
         }
     }
 
@@ -353,5 +359,21 @@ mod tests {
         let mix_function = ProfileMixFunctionType::Avg;
         let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 122);
+    }
+
+    #[test]
+    fn apply_mix_function_test_diff() {
+        let member_values = vec![&50, &20];
+        let mix_function = ProfileMixFunctionType::Diff;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 30);
+    }
+
+    #[test]
+    fn apply_mix_function_test_diff_neg() {
+        let member_values = vec![&20, &50];
+        let mix_function = ProfileMixFunctionType::Diff;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 0);
     }
 }
