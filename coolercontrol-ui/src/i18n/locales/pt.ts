@@ -63,6 +63,7 @@ export default {
         logout: 'Sair',
         temperature: 'Temperatura',
         duty: 'Velocidade',
+        offset: 'Deslocamento',
         stay: 'Permanecer',
         discard: 'Descartar',
         blankNameResetDefault: 'Um nome em branco irá redefini-lo para o padrão do sistema.',
@@ -446,7 +447,7 @@ export default {
             newProfile: 'Novo Perfil',
             tooltip: {
                 profileType:
-                    'Tipo de Perfil:<br/>- Padrão: Mantém as configurações atuais do dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventilador personalizável<br/>- Mistura: Combina múltiplos perfis',
+                    'Tipos de Perfil:<br/>- Padrão: Mantém as configurações atuais do dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventoinha personalizável<br/>- Mistura: Combina vários perfis<br/>- Sobreposição: aplica um deslocamento à saída de um perfil existente',
             },
             profileDeleted: 'Perfil Excluído',
             profileDuplicated: 'Perfil Duplicado',
@@ -460,6 +461,16 @@ export default {
                 'Pelo menos 2 Perfis Membros são necessários para um Perfil de Mistura.',
             minProfileTemp: 'Temperatura Mínima do Perfil',
             maxProfileTemp: 'Temperatura Máxima do Perfil',
+            staticOffset: 'Deslocamento Estático',
+            offsetType: 'Tipo de Deslocamento',
+            offsetTypeStatic: 'Deslocamento Estático',
+            offsetTypeGraph: 'Deslocamento Gráfico',
+            baseProfile: 'Perfil Base',
+            baseProfileRequired: 'Um Perfil Base é necessário para um Perfil de Sobreposição.',
+            selectedPointOutputDuty: 'Velocidade de Saída do Perfil no Ponto Selecionado',
+            selectedPointOffset: 'Deslocamento de Velocidade no Ponto Selecionado',
+            profileOutputDuty: 'Velocidade de Saída do Perfil',
+            offsetDuty: 'Velocidade de Deslocamento',
         },
         controls: {
             viewType: 'Tipo de Visualização',
@@ -833,6 +844,7 @@ export default {
                 selectSpeed: 'Selecione sua velocidade',
                 newMixProfile: 'Novo Perfil de Mistura',
                 newGraphProfile: 'Novo Perfil de Gráfico',
+                newOverlayProfile: 'Novo Perfil de Sobreposição',
                 functionFor: 'Escolha uma Função para ser aplicada a',
                 functionDescription:
                     'As funções permitem que você controle ainda mais como a saída do Perfil é aplicada.',
@@ -937,6 +949,7 @@ export default {
                 fixed: 'Fixo',
                 graph: 'Gráfico',
                 mix: 'Mistura',
+                overlay: 'Sobreposição',
             },
             functionType: {
                 identity: 'Identidade',

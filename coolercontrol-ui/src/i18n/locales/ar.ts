@@ -63,6 +63,7 @@ export default {
         logout: 'تسجيل الخروج',
         temperature: 'درجة الحرارة',
         duty: 'مستوى الأداء',
+        offset: 'الإزاحة',
         stay: 'البقاء',
         discard: 'تجاهل',
         blankNameResetDefault: 'اسم فارغ سيعيد تعيينه إلى الإعداد الافتراضي للنظام.',
@@ -504,7 +505,7 @@ export default {
             newProfile: 'ملف تعريف جديد',
             tooltip: {
                 profileType:
-                    'نوع ملف التعريف:<br/>- افتراضي: يحتفظ بإعدادات الجهاز الحالية<br/>&nbsp;&nbsp;(BIOS/البرامج الثابتة)<br/>- ثابت: يحدد سرعة ثابتة<br/>- رسم بياني: منحنى مروحة قابل للتخصيص<br/>- مزيج: يجمع بين ملفات تعريف متعددة',
+                    'أنواع ملفات التعريف:<br/>- الافتراضي: يحتفظ بإعدادات الجهاز الحالية<br/>&nbsp;&nbsp;(BIOS/البرامج الثابتة)<br/>- ثابت: يعيّن سرعة ثابتة<br/>- بياني: منحنى مروحة قابل للتخصيص<br/>- مزيج: يدمج عدة ملفات تعريف<br/>- تراكب: يطبق إزاحة على خرج ملف تعريف موجود',
             },
             profileDeleted: 'تم حذف ملف التعريف',
             profileDuplicated: 'تم تكرار ملف التعريف',
@@ -517,6 +518,16 @@ export default {
             memberProfilesRequired: 'مطلوب على الأقل 2 من ملفات التعريف الأعضاء لملف تعريف المزج.',
             minProfileTemp: 'أدنى درجة حرارة ملف التعريف',
             maxProfileTemp: 'أقصى درجة حرارة ملف التعريف',
+            staticOffset: 'إزاحة ثابتة',
+            offsetType: 'نوع الإزاحة',
+            offsetTypeStatic: 'إزاحة ثابتة',
+            offsetTypeGraph: 'إزاحة من الرسم البياني',
+            baseProfile: 'ملف التعريف الأساسي',
+            baseProfileRequired: 'مطلوب ملف تعريف أساسي لملف تعريف التراكب.',
+            selectedPointOutputDuty: 'قوة خرج ملف التعريف للنقطة المحددة',
+            selectedPointOffset: 'قوة إزاحة النقطة المحددة',
+            profileOutputDuty: 'قوة خرج ملف التعريف',
+            offsetDuty: 'قوة الإزاحة',
         },
         controls: {
             viewType: 'نوع العرض',
@@ -806,6 +817,7 @@ export default {
                     selectSpeed: 'اختر سرعتك',
                     newMixProfile: 'ملف تعريف جديد',
                     newGraphProfile: 'ملف تعريف الرسم البياني الجديد',
+                    newOverlayProfile: 'ملف تعريف تراكب جديد',
                     functionFor: 'اختر وظيفة سيتم تطبيقها على',
                     functionDescription:
                         'تتيح لك الوظائف مزيدًا من التحكم في كيفية تطبيق مخرجات الملف الشخصي.',
@@ -917,6 +929,7 @@ export default {
                 fixed: 'ثابت',
                 graph: 'رسم بياني',
                 mix: 'مزيج',
+                overlay: 'تراكب',
             },
             functionType: {
                 identity: 'هوية',
