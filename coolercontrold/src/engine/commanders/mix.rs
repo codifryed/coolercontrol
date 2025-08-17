@@ -145,7 +145,7 @@ impl MixProfileCommander {
     }
 
     /// This method processes all scheduled profiles and updates the output cache.
-    /// This should be called very early, right after the GraphProfileCommander processes,
+    /// This should be called very early, right after the `GraphProfileCommander` processes,
     /// and only once per update cycle.
     pub fn process_all_profiles(&self) {
         self.update_last_applied_duties();

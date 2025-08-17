@@ -79,8 +79,8 @@ impl OverlayProfileCommander {
         // Clear the channel setting in case another overlay profile is already scheduled:
         self.clear_channel_setting(device_channel.device_uid(), device_channel.channel_name());
         let normalized_overlay_setting =
-            Self::normalize_overlay_setting(overlay_profile, &member_profile);
-        self.schedule_member_profiles(&device_channel, &member_profile, member_profile_members)?;
+            Self::normalize_overlay_setting(overlay_profile, member_profile);
+        self.schedule_member_profiles(&device_channel, member_profile, member_profile_members)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) =
             settings_lock.remove(&normalized_overlay_setting)

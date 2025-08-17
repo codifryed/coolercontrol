@@ -504,7 +504,7 @@ impl GpuAMD {
     /// If `FanCurve` is present, we check if fan control is enabled, otherwise it must use
     /// the standard pwm sysfs interface (pre-RDNA3).
     fn get_fan_is_controllable(fan_curve_info: Option<&FanCurveInfo>) -> bool {
-        fan_curve_info.map_or(true, |fan_curve_info| fan_curve_info.changeable)
+        fan_curve_info.is_none_or(|fan_curve_info| fan_curve_info.changeable)
     }
 
     async fn get_driver_locations(base_path: &Path) -> Vec<String> {
