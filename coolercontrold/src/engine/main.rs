@@ -430,7 +430,7 @@ impl Engine {
                     channel_name: channel_name.to_string(),
                 },
                 profile,
-                member_profile,
+                &member_profile,
                 member_profile_members,
             )
         } else {

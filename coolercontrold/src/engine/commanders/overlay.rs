@@ -58,7 +58,7 @@ impl OverlayProfileCommander {
         &self,
         device_channel: DeviceChannelProfileSetting,
         overlay_profile: &OverlayProfile,
-        member_profile: Profile,
+        member_profile: &Profile,
         member_profile_members: Vec<Profile>,
     ) -> anyhow::Result<()> {
         if overlay_profile.p_type != ProfileType::Overlay {
@@ -71,9 +71,9 @@ impl OverlayProfileCommander {
                 "Offset Profile must be present for an Overlay Profile"
             ));
         }
-        if overlay_profile.offset_profile.as_ref().unwrap().len() != 1 {
+        if overlay_profile.offset_profile.as_ref().unwrap().is_empty() {
             return Err(anyhow!(
-                "Overlay Profile offset profiles should have at one duty/offset pair"
+                "Overlay Profile offset profiles should have at least one duty/offset pair"
             ));
         }
         // Clear the channel setting in case another overlay profile is already scheduled:
