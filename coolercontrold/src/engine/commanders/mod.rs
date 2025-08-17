@@ -19,3 +19,4 @@
 pub mod graph;
 pub mod lcd;
 pub mod mix;
+pub mod overlay;

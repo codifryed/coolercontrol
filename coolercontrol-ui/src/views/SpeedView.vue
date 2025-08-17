@@ -28,6 +28,7 @@ import Button from 'primevue/button'
 import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
 import SpeedGraphChart from '@/components/SpeedGraphChart.vue'
 import SpeedMixChart from '@/components/SpeedMixChart.vue'
+import SpeedOverlayChart from '@/components/SpeedOverlayChart.vue'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
@@ -567,6 +568,19 @@ onUnmounted(() => {
                 :current-sensor-name="props.channelName"
                 :key="
                     'mix' + componentKey + props.deviceUID + props.channelName + selectedProfile.uid
+                "
+            />
+            <SpeedOverlayChart
+                v-else-if="selectedProfile.p_type === ProfileType.Overlay"
+                :profile="selectedProfile"
+                :current-device-u-i-d="props.deviceUID"
+                :current-sensor-name="props.channelName"
+                :key="
+                    'overlay' +
+                    componentKey +
+                    props.deviceUID +
+                    props.channelName +
+                    selectedProfile.uid
                 "
             />
         </div>

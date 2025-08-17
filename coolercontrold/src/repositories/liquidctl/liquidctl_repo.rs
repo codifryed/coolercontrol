@@ -129,15 +129,12 @@ impl LiquidctlRepo {
         let poll_rate = self.config.get_settings()?.poll_rate;
 
         for device_response in devices_response.devices {
-            let driver_type = match self.map_driver_type(&device_response) {
-                None => {
-                    info!(
+            let Some(driver_type) = self.map_driver_type(&device_response) else {
+                info!(
                         "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
                         device_response.device_type
                     );
-                    continue;
-                }
-                Some(d_type) => d_type,
+                continue;
             };
             self.preloaded_statuses
                 .borrow_mut()
@@ -836,8 +833,8 @@ impl Repository for LiquidctlRepo {
         Ok(())
     }
 
-    /// On LiquidCtl devices, reset basically does nothing with the device itself.
-    /// All internal CoolerControl processes for this device channel are reset though.
+    /// On `LiquidCtl` devices, reset basically does nothing with the device itself.
+    /// All internal `CoolerControl` processes for this device channel are reset though.
     async fn apply_setting_reset(&self, _: &UID, _: &str) -> Result<()> {
         Ok(())
     }

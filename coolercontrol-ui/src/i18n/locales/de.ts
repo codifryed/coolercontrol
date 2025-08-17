@@ -63,6 +63,7 @@ export default {
         logout: 'Abmelden',
         temperature: 'Temperatur',
         duty: 'Leistung',
+        offset: 'Versatz',
         stay: 'Bleiben',
         discard: 'Verwerfen',
         blankNameResetDefault: 'Ein leerer Name setzt den Wert auf den Systemstandard zurück.',
@@ -516,7 +517,7 @@ export default {
             newProfile: 'Neues Profil',
             tooltip: {
                 profileType:
-                    'Profiltyp:<br/>- Standard: Behält aktuelle Geräteeinstellungen bei<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Stellt eine konstante Geschwindigkeit ein<br/>- Grafik: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile',
+                    'Profiltypen:<br/>- Standard: Beibehaltung der aktuellen Geräteeinstellungen<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
             },
             profileDeleted: 'Profil gelöscht',
             profileDuplicated: 'Profil dupliziert',
@@ -531,6 +532,16 @@ export default {
                 'Für ein Mischprofil sind mindestens 2 Mitgliedsprofile erforderlich.',
             minProfileTemp: 'Minimale Profiltemperatur',
             maxProfileTemp: 'Maximale Profiltemperatur',
+            staticOffset: 'Statischer Versatz',
+            offsetType: 'Versatztyp',
+            offsetTypeStatic: 'Statischer Versatz',
+            offsetTypeGraph: 'Graph-Versatz',
+            baseProfile: 'Basisprofil',
+            baseProfileRequired: 'Für ein Overlay-Profil ist ein Basisprofil erforderlich.',
+            selectedPointOutputDuty: 'Ausgabeleistung des Profils am ausgewählten Punkt',
+            selectedPointOffset: 'Versatzleistung am ausgewählten Punkt',
+            profileOutputDuty: 'Profil-Ausgabeleistung',
+            offsetDuty: 'Versatzleistung',
         },
         controls: {
             viewType: 'Ansichtstyp',
@@ -838,6 +849,7 @@ export default {
                 selectSpeed: 'Wählen Sie Ihre Geschwindigkeit',
                 newMixProfile: 'Neues Mix-Profil',
                 newGraphProfile: 'Neues Graph-Profil',
+                newOverlayProfile: 'Neues Overlay-Profil',
                 functionFor: 'Wählen Sie eine anzuwendende Funktion aus',
                 functionDescription:
                     'Funktionen ermöglichen es Ihnen, weiter zu steuern, wie das Profil-Output angewendet wird.',
@@ -944,6 +956,7 @@ export default {
                 fixed: 'Fest',
                 graph: 'Graph',
                 mix: 'Mix',
+                overlay: 'Overlay',
             },
             functionType: {
                 identity: 'Identität',

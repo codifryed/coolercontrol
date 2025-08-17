@@ -72,6 +72,9 @@ const nextStep = () => {
         case ProfileType.Graph:
             emit('nextStep', 8)
             break
+        case ProfileType.Overlay:
+            emit('nextStep', 100)
+            break
     }
 }
 </script>

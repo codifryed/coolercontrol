@@ -63,6 +63,7 @@ export default {
         logout: 'लॉग आउट',
         temperature: 'तापमान',
         duty: 'कार्यभार',
+        offset: 'ऑफ़सेट',
         stay: 'रहें',
         discard: 'त्यागें',
         blankNameResetDefault: 'खाली नाम इसे सिस्टम डिफ़ॉल्ट पर रीसेट कर देगा।',
@@ -218,7 +219,7 @@ export default {
             customSensors: 'कस्टम सेंसर',
             modes: 'मोड',
             alerts: 'अलर्ट',
-            pinned: 'Pinned',
+            pinned: 'पिन किया गया',
             tooltips: {
                 delete: 'हटाएं',
                 createMode: 'वर्तमान सेटिंग्स से मोड बनाएं',
@@ -452,7 +453,7 @@ export default {
             newProfile: 'नई प्रोफ़ाइल',
             tooltip: {
                 profileType:
-                    'प्रोफ़ाइल प्रकार:<br/>- डिफ़ॉल्ट: वर्तमान डिवाइस सेटिंग्स बनाए रखता है<br/>&nbsp;&nbsp;(BIOS/फर्मवेयर)<br/>- निश्चित: एक स्थिर गति सेट करता है<br/>- ग्राफ़: अनुकूलन योग्य पंखा कर्व<br/>- मिक्स: कई प्रोफ़ाइल को जोड़ता है',
+                    'प्रोफ़ाइल प्रकार:<br/>- डिफ़ॉल्ट: वर्तमान डिवाइस सेटिंग्स बनाए रखता है<br/>&nbsp;&nbsp;(BIOS/फर्मवेयर)<br/>- फिक्स्ड: स्थिर गति सेट करता है<br/>- ग्राफ़: अनुकूलन योग्य फ़ैन कर्व<br/>- मिक्स: कई प्रोफ़ाइलों को संयोजित करता है<br/>- ओवरले: मौजूदा प्रोफ़ाइल के आउटपुट पर ऑफ़सेट लागू करता है',
             },
             profileDeleted: 'प्रोफ़ाइल हटाई गई',
             profileDuplicated: 'प्रोफ़ाइल डुप्लिकेट की गई',
@@ -465,6 +466,16 @@ export default {
             memberProfilesRequired: 'मिक्स प्रोफ़ाइल के लिए कम से कम 2 सदस्य प्रोफ़ाइल आवश्यक हैं।',
             minProfileTemp: 'न्यूनतम प्रोफ़ाइल तापमान',
             maxProfileTemp: 'अधिकतम प्रोफ़ाइल तापमान',
+            staticOffset: 'स्थिर ऑफ़सेट',
+            offsetType: 'ऑफ़सेट प्रकार',
+            offsetTypeStatic: 'स्थिर ऑफ़सेट',
+            offsetTypeGraph: 'ग्राफ़ ऑफ़सेट',
+            baseProfile: 'आधार प्रोफ़ाइल',
+            baseProfileRequired: 'ओवरले प्रोफ़ाइल के लिए एक आधार प्रोफ़ाइल आवश्यक है।',
+            selectedPointOutputDuty: 'चयनित बिंदु पर प्रोफ़ाइल आउटपुट कार्यभार',
+            selectedPointOffset: 'चयनित बिंदु ऑफ़सेट कार्यभार',
+            profileOutputDuty: 'प्रोफ़ाइल आउटपुट कार्यभार',
+            offsetDuty: 'ऑफ़सेट कार्यभार',
         },
         devices: {
             detectionIssues: 'पहचान समस्याएं? देखें',
@@ -816,6 +827,7 @@ export default {
                 selectSpeed: 'अपनी गति चुनें',
                 newMixProfile: 'नई मिक्स प्रोफ़ाइल',
                 newGraphProfile: 'नई ग्राफ़ प्रोफ़ाइल',
+                newOverlayProfile: 'नई ओवरले प्रोफ़ाइल',
                 functionFor: 'लागू करने के लिए एक फ़ंक्शन चुनें',
                 functionDescription:
                     'फ़ंक्शन आपको प्रोफ़ाइल आउटपुट कैसे लागू किया जाता है इस पर अतिरिक्त नियंत्रण की अनुमति देते हैं।',
@@ -926,6 +938,7 @@ export default {
                 fixed: 'निश्चित',
                 graph: 'ग्राफ',
                 mix: 'मिक्स',
+                overlay: 'ओवरले',
             },
             functionType: {
                 identity: 'पहचान',

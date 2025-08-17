@@ -63,6 +63,7 @@ export default {
         logout: 'Logout',
         temperature: 'Temp',
         duty: 'Duty',
+        offset: 'Offset',
         stay: 'Stay',
         discard: 'Discard',
         blankNameResetDefault: 'A blank name will reset it to the system default.',
@@ -508,7 +509,7 @@ export default {
             newProfile: 'New Profile',
             tooltip: {
                 profileType:
-                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
+                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles<br/>- Overlay: offset the output of an existing profile',
             },
             profileDeleted: 'Profile Deleted',
             profileDuplicated: 'Profile Duplicated',
@@ -521,6 +522,16 @@ export default {
             memberProfilesRequired: 'At least 2 Member Profiles are required for a Mix Profile.',
             minProfileTemp: 'Minimum Profile Temperature',
             maxProfileTemp: 'Maximum Profile Temperature',
+            staticOffset: 'Static Offset',
+            offsetType: 'Offset Type',
+            offsetTypeStatic: 'Static Offset',
+            offsetTypeGraph: 'Graph Offset',
+            baseProfile: 'Base Profile',
+            baseProfileRequired: 'A Base Profile is required for an Overlay Profile.',
+            selectedPointOutputDuty: 'Selected Point Profile Output Duty',
+            selectedPointOffset: 'Selected Point Offset Duty',
+            profileOutputDuty: 'Profile Output Duty',
+            offsetDuty: 'Offset Duty',
         },
         controls: {
             viewType: 'View Type',
@@ -812,6 +823,7 @@ export default {
                 selectSpeed: 'Select your speed',
                 newMixProfile: 'New Mix Profile',
                 newGraphProfile: 'New Graph Profile',
+                newOverlayProfile: 'New Overlay Profile',
                 functionFor: 'Choose a Function to be applied to',
                 functionDescription:
                     'Functions allow you to further control how Profile output is applied.',
@@ -922,6 +934,7 @@ export default {
                 fixed: 'Fixed',
                 graph: 'Graph',
                 mix: 'Mix',
+                overlay: 'Overlay',
             },
             functionType: {
                 identity: 'Identity',

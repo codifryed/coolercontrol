@@ -31,13 +31,13 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::UID;
+use crate::device::{Duty, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
-    LcdCarouselSettings, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
+    LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile, ProfileMixFunctionType,
     ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
@@ -523,6 +523,43 @@ impl Config {
             None
         };
         Ok(mix_function_type)
+    }
+
+    fn get_offset_profile(setting_table: &Table) -> Result<Option<Vec<(Duty, Offset)>>> {
+        let offset_profile = if let Some(value) = setting_table.get("offset_profile") {
+            let mut duty_offset_pairs = Vec::new();
+            let pairs = value
+                .as_array()
+                .with_context(|| "pairs should be an array")?;
+            for pair_value in pairs {
+                let pair_array = pair_value
+                    .as_array()
+                    .with_context(|| "profile pairs should be an array")?;
+                let duty: Duty = pair_array
+                    .get(0)
+                    .with_context(|| "Graph Offsets must be pairs")?
+                    .as_integer()
+                    .with_context(|| "Graph Offset Duties must be integers")?
+                    .try_into()
+                    .ok()
+                    .with_context(|| "Graph Offset Duties must be values between 0-100")?;
+                let duty = duty.clamp(0, 100);
+                let offset: Offset = pair_array
+                    .get(1)
+                    .with_context(|| "Graph Offsets must be pairs")?
+                    .as_integer()
+                    .with_context(|| "Graph Offset Offsets must be integers")?
+                    .try_into()
+                    .ok()
+                    .with_context(|| "Graph Offset Offsets must be values between -100 and 100")?;
+                let offset = offset.clamp(-100, 100);
+                duty_offset_pairs.push((duty, offset));
+            }
+            Some(duty_offset_pairs)
+        } else {
+            None
+        };
+        Ok(offset_profile)
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
@@ -1138,6 +1175,7 @@ impl Config {
                     .to_string();
                 let member_profile_uids = Self::get_profile_uids(profile_table)?;
                 let mix_function_type = Self::get_mix_function_type(profile_table)?;
+                let offset_profile = Self::get_offset_profile(profile_table)?;
                 let profile = Profile {
                     uid,
                     p_type,
@@ -1150,6 +1188,7 @@ impl Config {
                     function_uid,
                     member_profile_uids,
                     mix_function_type,
+                    offset_profile,
                 };
                 profiles.push(profile);
             }
@@ -1322,6 +1361,18 @@ impl Config {
                 Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
         } else {
             profile_table["mix_function_type"] = Item::None;
+        }
+        if let Some(offset_profile) = profile.offset_profile {
+            let mut array = toml_edit::Array::new();
+            for (duty, offset) in offset_profile {
+                let mut pair_array = toml_edit::Array::new();
+                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+                pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
+                array.push(pair_array);
+            }
+            profile_table["offset_profile"] = Item::Value(Value::Array(array));
+        } else {
+            profile_table["offset_profile"] = Item::None;
         }
     }
 

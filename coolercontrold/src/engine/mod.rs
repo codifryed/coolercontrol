@@ -39,20 +39,26 @@ pub enum DeviceChannelProfileSetting {
         device_uid: DeviceUID,
         channel_name: ChannelName,
     },
+    Overlay {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    },
 }
 
 impl DeviceChannelProfileSetting {
     pub fn device_uid(&self) -> &DeviceUID {
         match self {
             DeviceChannelProfileSetting::Mix { device_uid, .. }
-            | DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
+            | DeviceChannelProfileSetting::Graph { device_uid, .. }
+            | DeviceChannelProfileSetting::Overlay { device_uid, .. } => device_uid,
         }
     }
 
     pub fn channel_name(&self) -> &ChannelName {
         match self {
             DeviceChannelProfileSetting::Mix { channel_name, .. }
-            | DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
+            | DeviceChannelProfileSetting::Graph { channel_name, .. }
+            | DeviceChannelProfileSetting::Overlay { channel_name, .. } => channel_name,
         }
     }
 }

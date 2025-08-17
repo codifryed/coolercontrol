@@ -63,6 +63,7 @@ export default {
         logout: 'Déconnexion',
         temperature: 'Température',
         duty: 'Puissance',
+        offset: 'Décalage',
         stay: 'Rester',
         discard: 'Abandonner',
         blankNameResetDefault: 'Un nom vide réinitialisera à la valeur système par défaut.',
@@ -523,7 +524,7 @@ export default {
             newProfile: 'Nouveau profil',
             tooltip: {
                 profileType:
-                    'Type de profil :<br/>- Par défaut : Conserve les paramètres actuels du périphérique<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe : Définit une vitesse constante<br/>- Graphique : Courbe de ventilateur personnalisable<br/>- Mixte : Combine plusieurs profils',
+                    "Types de profils:<br/>- Par défaut: conserve les paramètres actuels de l'appareil<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
             },
             profileDeleted: 'Profil supprimé',
             profileDuplicated: 'Profil dupliqué',
@@ -537,6 +538,16 @@ export default {
             memberProfilesRequired: 'Au moins 2 profils membres sont requis pour un profil mixte.',
             minProfileTemp: 'Température de Profil Minimum',
             maxProfileTemp: 'Température de Profil Maximum',
+            staticOffset: 'Décalage statique',
+            offsetType: 'Type de décalage',
+            offsetTypeStatic: 'Décalage statique',
+            offsetTypeGraph: 'Décalage du graphique',
+            baseProfile: 'Profil de base',
+            baseProfileRequired: 'Un profil de base est requis pour un profil de superposition.',
+            selectedPointOutputDuty: 'Puissance de sortie du profil au point sélectionné',
+            selectedPointOffset: 'Puissance de décalage du point sélectionné',
+            profileOutputDuty: 'Puissance de sortie du profil',
+            offsetDuty: 'Puissance de décalage',
         },
         controls: {
             viewType: 'Type de Vue',
@@ -835,6 +846,7 @@ export default {
                 selectSpeed: 'Sélectionnez votre vitesse',
                 newMixProfile: 'Nouveau profil de mélange',
                 newGraphProfile: 'Nouveau profil graphique',
+                newOverlayProfile: 'Nouveau profil de superposition',
                 functionFor: 'Choisissez une fonction à appliquer à',
                 functionDescription:
                     'Les fonctions vous permettent de contrôler davantage la façon dont la sortie du profil est appliquée.',
@@ -947,6 +959,7 @@ export default {
                 fixed: 'Fixe',
                 graph: 'Graphique',
                 mix: 'Mélange',
+                overlay: 'Superposition',
             },
             functionType: {
                 identity: 'Identité',

@@ -71,6 +71,7 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
+import OverlayProfileEditorChart from '@/components/OverlayProfileEditorChart.vue'
 
 echarts.use([
     GridComponent,
@@ -221,21 +222,55 @@ const memberProfileOptions: Ref<Array<Profile>> = computed(() =>
         (profile) => profile.uid !== props.profileUID && profile.p_type === ProfileType.Graph,
     ),
 )
+const offsetMemberProfileOptions: Ref<Array<Profile>> = computed(() =>
+    settingsStore.profiles.filter(
+        (profile) =>
+            profile.uid !== props.profileUID &&
+            (profile.p_type === ProfileType.Graph || profile.p_type === ProfileType.Mix),
+    ),
+)
 const chosenMemberProfiles: Ref<Array<Profile>> = ref(
     currentProfile.value.member_profile_uids.map(
         (uid) => settingsStore.profiles.find((profile) => profile.uid === uid)!,
     ),
+)
+const chosenOverlayMemberProfile: Ref<Profile | undefined> = ref(
+    currentProfile.value.member_profile_uids.length != 1
+        ? undefined
+        : settingsStore.profiles.find(
+              (profile) => profile.uid === currentProfile.value.member_profile_uids[0],
+          ),
 )
 const chosenProfileMixFunction: Ref<ProfileMixFunctionType> = ref(
     currentProfile.value.mix_function_type != null
         ? currentProfile.value.mix_function_type
         : ProfileMixFunctionType.Max,
 )
+const chosenOverlayOffsetType: Ref<string> = ref(
+    currentProfile.value.offset_profile == null || currentProfile.value.offset_profile.length < 2
+        ? 'static'
+        : 'graph',
+)
+const overlayOffsetTypeOptions: Array<{ value: string; label: string }> = [
+    {
+        value: 'static',
+        label: t('views.profiles.offsetTypeStatic'),
+    },
+    {
+        value: 'graph',
+        label: t('views.profiles.offsetTypeGraph'),
+    },
+]
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
+const selectedStaticOffset: Ref<number | undefined> = ref()
+const selectedGraphOffset: Ref<Array<[number, number]>> = ref([])
 const selectedPointIndex: Ref<number | undefined> = ref()
 const selectedTempSourceTemp: Ref<number | undefined> = ref()
 const knobSize: Ref<number> = ref(100)
+if (currentProfile.value.offset_profile != null && currentProfile.value.offset_profile.length > 1) {
+    selectedGraphOffset.value = currentProfile.value.offset_profile
+}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
@@ -250,7 +285,12 @@ const axisXTempMin: Ref<number> = ref(currentProfile.value.temp_min ?? 0)
 const axisXTempMax: Ref<number> = ref(currentProfile.value.temp_max ?? 100)
 const dutyMin: number = 0
 const dutyMax: number = 100
+const offsetMin: number = -100
+const offsetMax: number = 100
 let firstTimeChoosingTemp: boolean = true
+const staticOffsetPrefix = computed(() =>
+    selectedStaticOffset.value != null && selectedStaticOffset.value > 0 ? '+' : '',
+)
 
 interface PointData {
     value: [number, number]
@@ -457,6 +497,7 @@ const option = {
             xAxisIndex: 0,
             filterMode: 'none',
             preventDefaultMouseMove: false,
+            throttle: 25,
         },
     ],
     // @ts-ignore
@@ -670,8 +711,8 @@ const setFunctionGraphData = (): void => {
         option.series[0].lineStyle.shadowColor = colors.themeColors.bg_one
         option.series[0].lineStyle.shadowBlur = 10
     } else {
-        option.series[0].smooth = 0.3
-        option.series[2].smooth = 0.3
+        option.series[0].smooth = 0.1
+        option.series[2].smooth = 0.1
         // @ts-ignore
         option.series[0].lineStyle.shadowColor = colors.themeColors.accent
         // size of the blur around the line:
@@ -1128,9 +1169,32 @@ const showDutyKnob = computed(() => {
     }
     return shouldShow
 })
+const showStaticOffsetKnob = computed(() => {
+    const shouldShow =
+        selectedType.value != null &&
+        selectedType.value === ProfileType.Overlay &&
+        chosenOverlayOffsetType.value === 'static'
+    if (shouldShow) {
+        if (
+            currentProfile.value.offset_profile != null &&
+            currentProfile.value.offset_profile.length === 1
+        ) {
+            selectedStaticOffset.value = currentProfile.value.offset_profile[0][1]
+        } else {
+            selectedStaticOffset.value = 0
+        }
+    }
+    return shouldShow
+})
 
 const showMixChart = computed(
     () => selectedType.value != null && selectedType.value === ProfileType.Mix,
+)
+const showOverlayChart = computed(
+    () =>
+        selectedType.value != null &&
+        selectedType.value === ProfileType.Overlay &&
+        chosenOverlayMemberProfile.value != null,
 )
 const mixProfileKeys: Ref<string> = computed(() =>
     chosenMemberProfiles.value.map((p) => p.uid).join(':'),
@@ -1201,6 +1265,7 @@ const saveProfileState = async () => {
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
+        currentProfile.value.offset_profile.length = 0
     } else if (currentProfile.value.p_type === ProfileType.Graph) {
         if (selectedTempSource === undefined) {
             tempSourceInvalid.value = true
@@ -1229,6 +1294,7 @@ const saveProfileState = async () => {
         currentProfile.value.speed_fixed = undefined
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
+        currentProfile.value.offset_profile.length = 0
     } else if (currentProfile.value.p_type === ProfileType.Mix) {
         if (chosenMemberProfiles.value.length < 2) {
             toast.add({
@@ -1247,6 +1313,36 @@ const saveProfileState = async () => {
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids = chosenMemberProfiles.value.map((p) => p.uid)
         currentProfile.value.mix_function_type = chosenProfileMixFunction.value
+        currentProfile.value.offset_profile.length = 0
+    } else if (currentProfile.value.p_type === ProfileType.Overlay) {
+        if (chosenOverlayMemberProfile.value == null) {
+            console.error('Overlay member profile can not be empty')
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: t('views.profiles.baseProfileRequired'),
+                life: 4000,
+            })
+            return
+        }
+        currentProfile.value.speed_fixed = undefined
+        currentProfile.value.speed_profile.length = 0
+        currentProfile.value.temp_source = undefined
+        currentProfile.value.temp_min = undefined
+        currentProfile.value.temp_max = undefined
+        currentProfile.value.function_uid = '0' // default function
+        currentProfile.value.member_profile_uids = [chosenOverlayMemberProfile.value.uid]
+        currentProfile.value.mix_function_type = undefined
+        const offsetProfile: Array<[number, number]> = []
+        if (chosenOverlayOffsetType.value === 'static') {
+            // static offset uses a single profile point
+            offsetProfile.push([50, selectedStaticOffset.value ?? 0])
+        } else {
+            for (const point of selectedGraphOffset.value) {
+                offsetProfile.push(point)
+            }
+        }
+        currentProfile.value.offset_profile = offsetProfile
     }
     const successful = await settingsStore.updateProfile(currentProfile.value.uid)
     if (successful) {
@@ -1464,6 +1560,10 @@ onMounted(async () => {
             selectedType,
             axisXTempMin,
             axisXTempMax,
+            chosenOverlayOffsetType,
+            chosenOverlayMemberProfile,
+            selectedStaticOffset,
+            selectedGraphOffset,
         ],
         () => {
             contextIsDirty.value = true
@@ -1510,6 +1610,56 @@ onUnmounted(() => {
                     dropdown-icon="pi pi-chart-line"
                     v-tooltip.bottom="t('views.profiles.profilesToMix')"
                     :invalid="chosenMemberProfiles.length < 2"
+                />
+            </div>
+            <div v-else-if="selectedType === ProfileType.Overlay" class="p-2 pr-0 flex flex-row">
+                <InputNumber
+                    v-if="chosenOverlayOffsetType === 'static'"
+                    :placeholder="t('common.offset')"
+                    v-model="selectedStaticOffset"
+                    mode="decimal"
+                    class="w-full h-[2.375rem] mr-3"
+                    :suffix="` ${t('common.percentUnit')}`"
+                    :prefix="staticOffsetPrefix"
+                    showButtons
+                    :min="offsetMin"
+                    :max="offsetMax"
+                    :use-grouping="false"
+                    :step="1"
+                    button-layout="horizontal"
+                    :input-style="{ width: '5rem' }"
+                    :disabled="chosenOverlayMemberProfile == null"
+                    v-tooltip.bottom="t('views.profiles.staticOffset')"
+                >
+                    <template #incrementicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+                <Select
+                    v-model="chosenOverlayOffsetType"
+                    :options="overlayOffsetTypeOptions"
+                    option-label="label"
+                    option-value="value"
+                    :placeholder="t('views.profiles.offsetType')"
+                    class="max-w-48 mr-3"
+                    checkmark
+                    dropdown-icon="pi pi-sliders-v"
+                    scroll-height="40rem"
+                    v-tooltip.bottom="t('views.profiles.offsetType')"
+                />
+                <Select
+                    v-model="chosenOverlayMemberProfile"
+                    :options="offsetMemberProfileOptions"
+                    option-label="name"
+                    :placeholder="t('views.profiles.baseProfile')"
+                    class="max-w-48"
+                    scroll-height="40rem"
+                    dropdown-icon="pi pi-chart-line"
+                    :invalid="chosenOverlayMemberProfile == null"
+                    v-tooltip.bottom="t('views.profiles.baseProfile')"
                 />
             </div>
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-wrap justify-end">
@@ -1601,7 +1751,7 @@ onUnmounted(() => {
                     option-label="label"
                     option-value="value"
                     :placeholder="t('views.profiles.profileType')"
-                    class="w-24 h-[2.375rem] mr-3"
+                    class="w-[6.5rem] h-[2.375rem] mr-3"
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"
                     checkmark
@@ -1655,21 +1805,23 @@ onUnmounted(() => {
             </InputNumber>
             <div class="flex flex-row">
                 <InputNumber
-                    :placeholder="t('common.duty')"
-                    v-model="selectedDuty"
-                    inputId="selected-duty"
+                    :placeholder="t('common.temperature')"
+                    v-model="selectedTemp"
+                    inputId="selected-temp"
                     mode="decimal"
-                    class="duty-input h-11"
-                    :suffix="` ${t('common.percentUnit')}`"
+                    class="temp-input h-11"
+                    :suffix="` ${t('common.tempUnit')}`"
                     showButtons
-                    :min="dutyMin"
-                    :max="dutyMax"
+                    :min="inputNumberTempMin"
+                    :max="inputNumberTempMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="1"
+                    :step="0.1"
+                    :min-fraction-digits="1"
+                    :max-fraction-digits="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
+                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1690,23 +1842,21 @@ onUnmounted(() => {
                     />
                 </div>
                 <InputNumber
-                    :placeholder="t('common.temperature')"
-                    v-model="selectedTemp"
-                    inputId="selected-temp"
+                    :placeholder="t('common.duty')"
+                    v-model="selectedDuty"
+                    inputId="selected-duty"
                     mode="decimal"
-                    class="temp-input h-11"
-                    :suffix="` ${t('common.tempUnit')}`"
+                    class="duty-input h-11"
+                    :suffix="` ${t('common.percentUnit')}`"
                     showButtons
-                    :min="inputNumberTempMin"
-                    :max="inputNumberTempMax"
+                    :min="dutyMin"
+                    :max="dutyMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="0.1"
-                    :min-fraction-digits="1"
-                    :max-fraction-digits="1"
+                    :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
+                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1749,7 +1899,7 @@ onUnmounted(() => {
             v-else-if="showDutyKnob"
             v-model="selectedDuty"
             class="duty-knob-input m-2 w-full h-full flex justify-center"
-            :value-template="(value) => `${value}%`"
+            :value-template="(value) => `${value}${t('common.percentUnit')}`"
             :min="dutyMin"
             :max="dutyMax"
             :step="1"
@@ -1774,6 +1924,28 @@ onUnmounted(() => {
             :profiles="chosenMemberProfiles"
             :mixFunctionType="chosenProfileMixFunction"
             :key="mixProfileKeys"
+        />
+        <Knob
+            v-else-if="showStaticOffsetKnob"
+            v-model="selectedStaticOffset"
+            class="m-2 w-full h-full flex justify-center"
+            :value-template="
+                (value) =>
+                    value > 0
+                        ? `+${value}${t('common.percentUnit')}`
+                        : `${value}${t('common.percentUnit')}`
+            "
+            :min="offsetMin"
+            :max="offsetMax"
+            :step="1"
+            :stroke-width="deviceStore.getREMSize(0.75)"
+            :size="knobSize"
+            :disabled="chosenOverlayMemberProfile == null"
+        />
+        <OverlayProfileEditorChart
+            v-else-if="showOverlayChart"
+            :profile-u-i-d="currentProfile.uid"
+            @changed="(points) => (selectedGraphOffset = points)"
         />
     </div>
 </template>

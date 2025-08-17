@@ -46,6 +46,7 @@ interface Props {
     mixFunction?: ProfileMixFunctionType
     tempSource?: ProfileTempSource
     speedProfile: Array<[number, number]>
+    offsetProfile: Array<[number, number]>
     tempMin?: number
     tempMax?: number
     functionUID: UID
@@ -106,6 +107,7 @@ const saveProfileAndFunction = async (): Promise<void> => {
     newProfile.mix_function_type = props.mixFunction
     newProfile.temp_source = props.tempSource
     newProfile.speed_profile = props.speedProfile
+    newProfile.offset_profile = props.offsetProfile
     newProfile.temp_min = props.tempMin
     newProfile.temp_max = props.tempMax
     newProfile.function_uid = createNewFunction ? props.newFunction!.uid : props.functionUID

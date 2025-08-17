@@ -36,6 +36,8 @@ import NewFunction from '@/components/wizards/fan-control/NewFunction.vue'
 import ChooseFunctionAction from '@/components/wizards/fan-control/ChooseFunctionAction.vue'
 import ExistingFunction from '@/components/wizards/fan-control/ExistingFunction.vue'
 import Summary from '@/components/wizards/fan-control/Summary.vue'
+import NewOverlayProfileBaseProfile from '@/components/wizards/fan-control/NewOverlayProfileBaseProfile.vue'
+import NewOverlayProfileSpeeds from '@/components/wizards/fan-control/NewOverlayProfileSpeeds.vue'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const closeDialog = () => {
@@ -51,6 +53,8 @@ const newProfileName: Ref<string> = ref('')
 const newProfileType: Ref<ProfileType> = ref(ProfileType.Graph)
 const newTempSource: Ref<ProfileTempSource | undefined> = ref()
 const newSpeedProfile: Ref<Array<[number, number]>> = ref([])
+const newMemberProfileIds: Ref<Array<UID>> = ref([])
+const newOffsetProfile: Ref<Array<[number, number]>> = ref([])
 const newTempMin: Ref<number | undefined> = ref()
 const newTempMax: Ref<number | undefined> = ref()
 const selectedFunctionUID: Ref<UID> = ref('0') // Default Function as default
@@ -157,6 +161,26 @@ const setFunctionUID = (funUID: UID): void => {
         @function-u-i-d="setFunctionUID"
         :selected-function-u-i-d="selectedFunctionUID"
     />
+    <NewOverlayProfileBaseProfile
+        v-else-if="currentStep === 100"
+        @next-step="(step: number) => (currentStep = step)"
+        @member-ids="(memberIds: Array<UID>) => (newMemberProfileIds = memberIds)"
+        @offset-profile="
+            (offsetProfile: Array<[number, number]>) => (newOffsetProfile = offsetProfile)
+        "
+        :name="newProfileName"
+        :member-ids="newMemberProfileIds"
+        :offset-profile="newOffsetProfile"
+    />
+    <NewOverlayProfileSpeeds
+        v-else-if="currentStep === 101"
+        @next-step="(step: number) => (currentStep = step)"
+        @offset-profile="
+            (offsetProfile: Array<[number, number]>) => (newOffsetProfile = offsetProfile)
+        "
+        :name="newProfileName"
+        :offset-profile="newOffsetProfile"
+    />
     <Summary
         v-else-if="currentStep === 13"
         @next-step="(step: number) => (currentStep = step)"
@@ -164,12 +188,15 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :name="newProfileName"
+        :type="newProfileType"
         :temp-source="newTempSource!"
         :speed-profile="newSpeedProfile"
         :temp-min="newTempMin"
         :temp-max="newTempMax"
         :function-u-i-d="selectedFunctionUID"
         :new-function="newFunction"
+        :member-profile-ids="newMemberProfileIds"
+        :offset-profile="newOffsetProfile"
     />
 </template>
 

@@ -23,14 +23,13 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { FunctionType, Profile } from '@/models/Profile'
+import { FunctionType, Profile, ProfileType } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { Ref, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 echarts.use([
@@ -54,16 +53,26 @@ const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
-const router = useRouter()
 const { t } = useI18n()
 
 const dutyMin: number = 0
 const dutyMax: number = 100
+const baseProfile: Profile | undefined = settingsStore.profiles.find((profile) =>
+    props.profile.member_profile_uids.includes(profile.uid),
+)
+if (baseProfile == null) console.error('Base profile not found')
 const memberProfiles: Ref<Array<Profile>> = ref(
     settingsStore.profiles.filter((profile) =>
         props.profile.member_profile_uids.includes(profile.uid),
     ),
 )
+if (baseProfile!.p_type === ProfileType.Mix) {
+    // member profiles are either the Overlay Profile's base profile,
+    // or if the base profile is a Mix Profile, we draw the members are that of the Mix profile.
+    memberProfiles.value = settingsStore.profiles.filter((profile) =>
+        baseProfile!.member_profile_uids.includes(profile.uid),
+    )
+}
 let currentAxisTempMin = 0
 let currentAxisTempMax = 100
 let profileTempMin = 50
@@ -102,9 +111,11 @@ const deviceDutyLineData: [LineData, LineData] = [{ value: [] }, { value: [] }]
 // @ts-ignore
 const tempLineData: [[LineData, LineData]] = []
 const graphLineData: Array<Array<LineData>> = []
+const graphOffsetLineData: Array<Array<LineData>> = []
 for (let i = 0; i < memberProfiles.value.length; i++) {
     tempLineData.push([{ value: [] }, { value: [] }])
     graphLineData.push([])
+    graphOffsetLineData.push([])
 }
 
 const getDeviceDutyLineColor = (): string => {
@@ -126,16 +137,6 @@ const getTempLineColor = (profileIndex: number): string => {
         colors.themeColors.yellow
     )
 }
-// todo: this could be useful later:
-// const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): string => {
-//     const color: string = getTempLineColor(profileIndex)
-//     if (color.startsWith('rgb(')) {
-//         const decimalAlpha = parseInt(hexAlpha, 16) / 255
-//         return color.replace('rgb', 'rgba').replace(')', `,${decimalAlpha})`)
-//     } else {
-//         return `${color}${hexAlpha}`
-//     }
-// }
 
 const getDuty = (): number => {
     return Number(
@@ -189,32 +190,76 @@ const calcLineShadowSize = (profileIndex: number): number => {
     }
 }
 
-const profileTitle = (): string => {
-    let title = `Applied Profile: ${props.profile.name}`
-    if (deviceStore.isSafariWebKit()) {
-        // add some extra length for WebKit to keep default profile text all linkable
-        title = title + '                      '
+/**
+ * This function interpolates an offset profile to a given duty and outputs the calculated offset
+ * It is direct port of the Rust function in the backend.
+ */
+const interpolate_offset_profile = (offset_profile: [number, number][], duty: number): number => {
+    let step_below = offset_profile[0]
+    let step_above = offset_profile[offset_profile.length - 1]
+    for (const step of offset_profile) {
+        if (step[0] <= duty) {
+            step_below = step
+        }
+        if (step[0] >= duty) {
+            step_above = step
+            break
+        }
     }
-    return title
+    if (step_below[0] === step_above[0]) {
+        return step_below[1] // temp matches exactly, no duty calculation needed
+    }
+    const step_below_duty = step_below[0]
+    const step_below_offset = step_below[1]
+    const step_above_duty = step_above[0]
+    const step_above_offset = step_above[1]
+    // no rounding to make sure we have smooth point transitions
+    return (
+        step_below_offset +
+        ((duty - step_below_duty) / (step_above_duty - step_below_duty)) *
+            (step_above_offset - step_below_offset)
+    )
 }
+const calcDutyFromBaseProfileDuty = (baseProfileDuty: number): number => {
+    const offset = interpolate_offset_profile(props.profile.offset_profile, baseProfileDuty)
+    // we don't limit the duty here because we need to show the near-real interpolation simulation
+    return baseProfileDuty + offset
+}
+
+/**
+ * This function interpolates a speed profile to a given temperature and outputs the calculated duty
+ * It is direct port of the Rust function in the backend.
+ */
+const interpolate_profile = (speed_profile: [number, number][], temp: number): number => {
+    let step_below = speed_profile[0]
+    let step_above = speed_profile[speed_profile.length - 1]
+    for (const step of speed_profile) {
+        if (step[0] <= temp) {
+            step_below = step
+        }
+        if (step[0] >= temp) {
+            step_above = step
+            break
+        }
+    }
+    if (step_below[0] === step_above[0]) {
+        return step_below[1] // temp matches exactly, no duty calculation needed
+    }
+    const step_below_temp = step_below[0]
+    const step_below_duty = step_below[1]
+    const step_above_temp = step_above[0]
+    const step_above_duty = step_above[1]
+    // no rounding to make sure we have smooth point transitions
+    return (
+        step_below_duty +
+        ((temp - step_below_temp) / (step_above_temp - step_below_temp)) *
+            (step_above_duty - step_below_duty)
+    )
+}
+
 const option = {
     title: {
-        // probably no longer needed due to the control wizard:
         show: false,
-        text: profileTitle(),
-        link: props.profile.uid !== '0' ? '' : undefined,
-        target: 'self',
-        top: '5%',
-        left: '5%',
-        textStyle: {
-            color: colors.themeColors.text_color,
-            fontStyle: 'italic',
-            fontSize: '1.2rem',
-            textShadowColor: colors.themeColors.bg_one,
-            textShadowBlur: 10,
-        },
-        triggerEvent: props.profile.uid !== '0',
-        // z: 0,
     },
     grid: {
         show: false,
@@ -329,7 +374,11 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
             smooth: calcSmoothness(i),
             symbol: 'none',
             lineStyle: {
-                color: getTempLineColor(i),
+                color: colors.convertColorToRGBA(
+                    getTempLineColor(i),
+                    memberProfiles.value.length > 1 ? 0.05 : 0.25,
+                ),
+                // color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.5),
                 cap: 'round',
                 shadowColor: calcLineShadowColor(i),
@@ -338,25 +387,50 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
             emphasis: {
                 disabled: true,
             },
-            areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                    {
-                        offset: 0,
-                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.2),
-                    },
-                    {
-                        offset: 1,
-                        color: colors.convertColorToRGBA(getTempLineColor(i), 0.0),
-                    },
-                ]),
-                opacity: 1.0,
-            },
             data: graphLineData[i],
             z: 1,
             silent: true,
         },
     )
 }
+
+// offset line(s)
+for (let i = 0; i < memberProfiles.value.length; i++) {
+    // @ts-ignore
+    option.series.push({
+        id: 'offsetLine' + i,
+        type: 'line',
+        smooth: calcSmoothness(i),
+        symbol: 'none',
+        lineStyle: {
+            color: getTempLineColor(i),
+            width: deviceStore.getREMSize(0.5),
+            cap: 'round',
+            shadowColor: calcLineShadowColor(i),
+            shadowBlur: calcLineShadowSize(i),
+        },
+        emphasis: {
+            disabled: true,
+        },
+        areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                {
+                    offset: 0,
+                    color: colors.convertColorToRGBA(getTempLineColor(i), 0.2),
+                },
+                {
+                    offset: 1,
+                    color: colors.convertColorToRGBA(getTempLineColor(i), 0.0),
+                },
+            ]),
+            opacity: 1.0,
+        },
+        data: graphOffsetLineData[i],
+        z: 1,
+        silent: true,
+    })
+}
+
 // @ts-ignore
 option.series.push({
     id: 'dutyLine',
@@ -435,6 +509,56 @@ const setGraphData = (profileIndex: number) => {
 for (let i = 0; i < memberProfiles.value.length; i++) {
     setGraphData(i)
 }
+const setGraphOffsetData = (profileIndex: number) => {
+    graphOffsetLineData[profileIndex].length = 0
+    const profile = memberProfiles.value[profileIndex]
+    if (
+        profile.speed_profile.length > 1 &&
+        props.profile.offset_profile != null &&
+        props.profile.offset_profile.length > 0
+    ) {
+        if (props.profile.offset_profile.length > 1) {
+            // for graph offsets we need to calculate every signle duty point, as the duty can go
+            // up and down outside the original speed profile points
+            let currentTemp = axisXTempMin
+            while (currentTemp < axisXTempMax) {
+                graphOffsetLineData[profileIndex].push({
+                    value: [
+                        currentTemp,
+                        calcDutyFromBaseProfileDuty(
+                            interpolate_profile(profile.speed_profile, currentTemp),
+                        ),
+                    ],
+                })
+                currentTemp += 0.1
+            }
+            return
+        }
+        const firstPoint = profile.speed_profile[0]
+        if (firstPoint[0] > axisXTempMin) {
+            graphOffsetLineData[profileIndex].push({
+                value: [axisXTempMin, calcDutyFromBaseProfileDuty(firstPoint[1])],
+            })
+        }
+        // We calculate the offset profile based on the base profile's speed profile and allow it
+        // to go out of bounds. This is by far the easiest way to draw a realistic offset line
+        // and keep using line smoothing.
+        profile.speed_profile.forEach((point) => {
+            graphOffsetLineData[profileIndex].push({
+                value: [point[0], calcDutyFromBaseProfileDuty(point[1])],
+            })
+        })
+        const lastPoint = profile.speed_profile[profile.speed_profile.length - 1]
+        if (lastPoint[0] < axisXTempMax) {
+            graphOffsetLineData[profileIndex].push({
+                value: [axisXTempMax, calcDutyFromBaseProfileDuty(lastPoint[1])],
+            })
+        }
+    }
+}
+for (let i = 0; i < memberProfiles.value.length; i++) {
+    setGraphOffsetData(i)
+}
 
 const setDutyData = (): number => {
     const duty = getDuty()
@@ -444,21 +568,11 @@ const setDutyData = (): number => {
 }
 setDutyData()
 
-const handleGraphClick = (params: any): void => {
-    if (params.target?.style?.text === option.title.text) {
-        if (props.profile.uid == '0') {
-            return
-        }
-        // handle click on Profile Title in graph:
-        router.push({ name: 'profiles', params: { profileUID: props.profile.uid } })
-    }
-}
-
-const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
+const overlayGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
     const duty = setDutyData()
-    mixGraph.value?.setOption({
+    overlayGraph.value?.setOption({
         series: [
             {
                 id: 'dutyLine',
@@ -474,7 +588,7 @@ watch(currentDeviceStatus, () => {
         const temp = getTemp(i)
         tempLineData[i][0].value = [temp, dutyMin]
         tempLineData[i][1].value = [temp, dutyMax]
-        mixGraph.value?.setOption({
+        overlayGraph.value?.setOption({
             series: [
                 {
                     id: 'tempLine' + i,
@@ -488,7 +602,7 @@ watch(currentDeviceStatus, () => {
 
 watch(settingsStore.allUIDeviceSettings, () => {
     const dutyLineColor = getDeviceDutyLineColor()
-    mixGraph.value?.setOption({
+    overlayGraph.value?.setOption({
         series: [
             {
                 id: 'dutyLine',
@@ -505,7 +619,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
         option.series[i * 2].markPoint.label.color = tempLineColor
         // @ts-ignore
         option.series[i * 2 + 1].lineStyle.color = tempLineColor
-        mixGraph.value?.setOption({
+        overlayGraph.value?.setOption({
             series: [
                 {
                     id: 'tempLine' + i,
@@ -538,11 +652,10 @@ watch(settingsStore.allUIDeviceSettings, () => {
     <v-chart
         id="control-graph"
         class="pt-6 pr-11 pl-4 pb-6"
-        ref="mixGraph"
+        ref="overlayGraph"
         :option="option"
         :autoresize="true"
         :manual-update="true"
-        @zr:click="handleGraphClick"
     />
 </template>
 

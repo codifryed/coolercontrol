@@ -63,6 +63,7 @@ export default {
         logout: 'ログアウト',
         temperature: '温度',
         duty: 'デューティ',
+        offset: 'オフセット',
         stay: '留まる',
         discard: '破棄',
         blankNameResetDefault: '空の名前を入力するとシステムのデフォルトにリセットされます。',
@@ -550,7 +551,7 @@ export default {
             newProfile: '新しいプロファイル',
             tooltip: {
                 profileType:
-                    'プロファイルタイプ：<br/>- デフォルト：現在のデバイス設定を保持<br/>&nbsp;&nbsp;（BIOS/ファームウェア）<br/>- 固定：一定速度を設定<br/>- グラフ：カスタマイズ可能なファンカーブ<br/>- ミックス：複数のプロファイルを組み合わせる',
+                    'プロファイル種類:<br/>- デフォルト: 現在のデバイス設定を保持<br/>&nbsp;&nbsp;(BIOS/ファームウェア)<br/>- 固定: 一定の速度を設定<br/>- グラフ: カスタマイズ可能なファンカーブ<br/>- ミックス: 複数のプロファイルを組み合わせる<br/>- オーバーレイ: 既存のプロファイルの出力にオフセットを適用',
             },
             profileDeleted: 'プロファイルが削除されました',
             profileDuplicated: 'プロファイルが複製されました',
@@ -564,6 +565,16 @@ export default {
                 'ミックスプロファイルには少なくとも2つのメンバープロファイルが必要です。',
             minProfileTemp: '最小プロファイル温度',
             maxProfileTemp: '最大プロファイル温度',
+            staticOffset: '静的オフセット',
+            offsetType: 'オフセットタイプ',
+            offsetTypeStatic: '静的オフセット',
+            offsetTypeGraph: 'グラフオフセット',
+            baseProfile: 'ベースプロファイル',
+            baseProfileRequired: 'オーバーレイプロファイルにはベースプロファイルが必要です。',
+            selectedPointOutputDuty: '選択ポイントのプロファイル出力デューティ',
+            selectedPointOffset: '選択ポイントのオフセットデューティ',
+            profileOutputDuty: 'プロファイル出力デューティ',
+            offsetDuty: 'オフセットデューティ',
         },
         controls: {
             viewType: 'ビュータイプ',
@@ -825,6 +836,7 @@ export default {
                 selectSpeed: '速度を選択してください',
                 newMixProfile: '新しいミックスプロファイル',
                 newGraphProfile: '新しいグラフプロファイル',
+                newOverlayProfile: '新しいオーバーレイプロファイル',
                 functionFor: '適用する機能を選択：',
                 functionDescription:
                     '機能を使用すると、プロファイル出力の適用方法をさらに制御できます。',
@@ -928,6 +940,7 @@ export default {
                 fixed: '固定',
                 graph: 'グラフ',
                 mix: 'ミックス',
+                overlay: 'オーバーレイ',
             },
             functionType: {
                 identity: 'アイデンティティ',

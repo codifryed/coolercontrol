@@ -417,6 +417,7 @@ const option = {
             xAxisIndex: 0,
             filterMode: 'none',
             preventDefaultMouseMove: false,
+            throttle: 25,
         },
     ],
     // @ts-ignore
@@ -630,8 +631,8 @@ const setFunctionGraphData = (): void => {
         option.series[0].lineStyle.shadowColor = colors.themeColors.bg_one
         option.series[0].lineStyle.shadowBlur = 10
     } else {
-        option.series[0].smooth = 0.3
-        option.series[2].smooth = 0.3
+        option.series[0].smooth = 0.1
+        option.series[2].smooth = 0.1
         // @ts-ignore
         option.series[0].lineStyle.shadowColor = colors.themeColors.accent
         // size of the blur around the line:
@@ -1090,6 +1091,31 @@ const inputAxisMaxNumberMax = computed((): number => {
     return graphTempMaxLimit
 })
 
+const tempScrolled = (event: WheelEvent): void => {
+    if (selectedTemp.value == null) return
+    if (event.deltaY < 0) {
+        if (selectedTemp.value < inputNumberTempMax.value) selectedTemp.value += 1
+    } else {
+        if (selectedTemp.value > inputNumberTempMin.value) selectedTemp.value -= 1
+    }
+}
+const dutyScrolled = (event: WheelEvent): void => {
+    if (selectedDuty.value == null) return
+    if (event.deltaY < 0) {
+        if (selectedDuty.value < dutyMax) selectedDuty.value += 1
+    } else {
+        if (selectedDuty.value > dutyMin) selectedDuty.value -= 1
+    }
+}
+//----------------------------------------------------------------------------------------------------------------------
+
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
+    // @ts-ignore
+    document?.querySelector('#selected-duty')?.addEventListener('wheel', dutyScrolled)
+}
+
 const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('control-graph-wiz')
     const controlPanel = document.getElementById('control-panel')
@@ -1134,6 +1160,7 @@ onMounted(async () => {
     // handle the graphics on graph resize & zoom
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
+    addScrollEventListeners()
 
     watch(axisXTempMin, (newValue: number) => {
         option.xAxis.min = newValue
@@ -1242,21 +1269,23 @@ const nextStep = () => {
             </InputNumber>
             <div class="flex flex-row">
                 <InputNumber
-                    :placeholder="t('common.duty')"
-                    v-model="selectedDuty"
-                    inputId="selected-duty"
+                    :placeholder="t('common.temperature')"
+                    v-model="selectedTemp"
+                    inputId="selected-temp"
                     mode="decimal"
-                    class="duty-input h-11"
-                    :suffix="` ${t('common.percentUnit')}`"
+                    class="temp-input h-11"
+                    :suffix="` ${t('common.tempUnit')}`"
                     showButtons
-                    :min="dutyMin"
-                    :max="dutyMax"
+                    :min="inputNumberTempMin"
+                    :max="inputNumberTempMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="1"
+                    :step="0.1"
+                    :min-fraction-digits="1"
+                    :max-fraction-digits="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.top="t('views.profiles.selectedPointDuty')"
+                    v-tooltip.top="t('views.profiles.selectedPointTemp')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />
@@ -1277,23 +1306,21 @@ const nextStep = () => {
                     />
                 </div>
                 <InputNumber
-                    :placeholder="t('common.temperature')"
-                    v-model="selectedTemp"
-                    inputId="selected-temp"
+                    :placeholder="t('common.duty')"
+                    v-model="selectedDuty"
+                    inputId="selected-duty"
                     mode="decimal"
-                    class="temp-input h-11"
-                    :suffix="` ${t('common.tempUnit')}`"
+                    class="duty-input h-11"
+                    :suffix="` ${t('common.percentUnit')}`"
                     showButtons
-                    :min="inputNumberTempMin"
-                    :max="inputNumberTempMax"
+                    :min="dutyMin"
+                    :max="dutyMax"
                     :disabled="selectedPointIndex == null"
                     :use-grouping="false"
-                    :step="0.1"
-                    :min-fraction-digits="1"
-                    :max-fraction-digits="1"
+                    :step="1"
                     button-layout="horizontal"
                     :input-style="{ width: '5rem' }"
-                    v-tooltip.top="t('views.profiles.selectedPointTemp')"
+                    v-tooltip.top="t('views.profiles.selectedPointDuty')"
                 >
                     <template #incrementicon>
                         <span class="pi pi-plus" />

@@ -95,6 +95,24 @@ export class Profile {
      */
     mix_function_type?: ProfileMixFunctionType
 
+    /**
+     * The graph offset to apply to the associated member profile
+     * This can also be used as a static offset when there is only one duty/offset pair.
+     */
+    @Transform(({ value }) => {
+        const profile: Array<[number, number]> | undefined = value
+        if (profile != null) {
+            for (const point of profile) {
+                // duty:
+                point[0] = Math.round(point[0])
+                // offset:
+                point[1] = Math.round(point[1])
+            }
+        }
+        return profile
+    })
+    offset_profile: Array<[number, number]> = []
+
     constructor(
         name: string,
         type: ProfileType,
@@ -103,6 +121,7 @@ export class Profile {
         speed_profile: Array<[number, number]> = [],
         member_profile_uids: Array<UID> = [],
         mix_function_type: ProfileMixFunctionType | undefined = undefined,
+        offset_profile: Array<[number, number]> = [],
     ) {
         this.name = name
         this.p_type = type
@@ -111,6 +130,7 @@ export class Profile {
         this.temp_source = temp_source
         this.member_profile_uids = member_profile_uids
         this.mix_function_type = mix_function_type
+        this.offset_profile = offset_profile
     }
 
     static createDefault(): Profile {
@@ -125,6 +145,7 @@ export enum ProfileType {
     Fixed = 'Fixed',
     Graph = 'Graph',
     Mix = 'Mix',
+    Overlay = 'Overlay',
 }
 
 /**
@@ -141,6 +162,8 @@ export function getProfileTypeDisplayName(type: ProfileType): string {
             return t('models.profile.profileType.graph')
         case ProfileType.Mix:
             return t('models.profile.profileType.mix')
+        case ProfileType.Overlay:
+            return t('models.profile.profileType.overlay')
         default:
             return type
     }
