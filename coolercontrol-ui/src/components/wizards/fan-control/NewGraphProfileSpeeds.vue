@@ -417,6 +417,7 @@ const option = {
             xAxisIndex: 0,
             filterMode: 'none',
             preventDefaultMouseMove: false,
+            throttle: 25,
         },
     ],
     // @ts-ignore
@@ -1090,6 +1091,31 @@ const inputAxisMaxNumberMax = computed((): number => {
     return graphTempMaxLimit
 })
 
+const tempScrolled = (event: WheelEvent): void => {
+    if (selectedTemp.value == null) return
+    if (event.deltaY < 0) {
+        if (selectedTemp.value < inputNumberTempMax.value) selectedTemp.value += 1
+    } else {
+        if (selectedTemp.value > inputNumberTempMin.value) selectedTemp.value -= 1
+    }
+}
+const dutyScrolled = (event: WheelEvent): void => {
+    if (selectedDuty.value == null) return
+    if (event.deltaY < 0) {
+        if (selectedDuty.value < dutyMax) selectedDuty.value += 1
+    } else {
+        if (selectedDuty.value > dutyMin) selectedDuty.value -= 1
+    }
+}
+//----------------------------------------------------------------------------------------------------------------------
+
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
+    // @ts-ignore
+    document?.querySelector('#selected-duty')?.addEventListener('wheel', dutyScrolled)
+}
+
 const updateResponsiveGraphHeight = (): void => {
     const graphEl = document.getElementById('control-graph-wiz')
     const controlPanel = document.getElementById('control-panel')
@@ -1134,6 +1160,7 @@ onMounted(async () => {
     // handle the graphics on graph resize & zoom
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
     window.addEventListener('resize', updatePosition)
+    addScrollEventListeners()
 
     watch(axisXTempMin, (newValue: number) => {
         option.xAxis.min = newValue

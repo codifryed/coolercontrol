@@ -208,6 +208,7 @@ const option = {
             xAxisIndex: 0,
             filterMode: 'none',
             preventDefaultMouseMove: false,
+            throttle: 25,
         },
     ],
     series: [],
