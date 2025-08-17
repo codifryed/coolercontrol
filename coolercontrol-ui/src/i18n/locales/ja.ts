@@ -951,6 +951,7 @@ export default {
                 min: '最小',
                 max: '最大',
                 avg: '平均',
+                diff: '差分',
             },
         },
         customSensor: {

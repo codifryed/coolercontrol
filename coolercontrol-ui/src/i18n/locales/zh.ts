@@ -920,6 +920,7 @@ export default {
                 min: '最小值',
                 max: '最大值',
                 avg: '平均值',
+                diff: '差值',
             },
         },
         customSensor: {

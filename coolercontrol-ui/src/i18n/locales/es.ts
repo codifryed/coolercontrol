@@ -955,6 +955,7 @@ export default {
                 min: 'Mínimo',
                 max: 'Máximo',
                 avg: 'Promedio',
+                diff: 'Diferencia',
             },
         },
         customSensor: {

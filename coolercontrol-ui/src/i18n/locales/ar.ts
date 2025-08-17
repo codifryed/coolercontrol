@@ -940,6 +940,7 @@ export default {
                 min: 'الحد الأدنى',
                 max: 'الحد الأقصى',
                 avg: 'متوسط',
+                diff: 'الفرق',
             },
         },
         customSensor: {

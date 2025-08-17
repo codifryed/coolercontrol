@@ -948,6 +948,7 @@ export default {
                 min: 'Минимум',
                 max: 'Максимум',
                 avg: 'Среднее',
+                diff: 'Разность',
             },
         },
         customSensor: {
