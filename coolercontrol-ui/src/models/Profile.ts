@@ -290,6 +290,7 @@ export enum ProfileMixFunctionType {
     Min = 'Min',
     Max = 'Max',
     Avg = 'Avg',
+    Diff = 'Diff',
 }
 
 /**
@@ -304,6 +305,8 @@ export function getProfileMixFunctionTypeDisplayName(type: ProfileMixFunctionTyp
             return t('models.profile.mixFunctionType.max')
         case ProfileMixFunctionType.Avg:
             return t('models.profile.mixFunctionType.avg')
+        case ProfileMixFunctionType.Diff:
+            return t('models.profile.mixFunctionType.diff')
         default:
             return type
     }

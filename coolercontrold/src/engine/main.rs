@@ -315,15 +315,8 @@ impl Engine {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profiles = self
-            .config
-            .get_profiles()
-            .await?
-            .into_iter()
-            .filter(|p| profile.member_profile_uids.contains(&p.uid))
-            .collect::<Vec<Profile>>();
-        if member_profiles.len() != profile.member_profile_uids.len() {
-            return Err(anyhow!("All Member Profiles should be present"));
-        }
+            .get_ordered_member_profiles(&profile.member_profile_uids)
+            .await?;
         let all_function_uids = self
             .config
             .get_functions()
@@ -400,15 +393,8 @@ impl Engine {
             .find(|p| profile.member_profile_uids.contains(&p.uid))
             .ok_or(anyhow!("Overlay Member Profile should be present"))?;
         let member_profile_members = self
-            .config
-            .get_profiles()
-            .await?
-            .into_iter()
-            .filter(|p| member_profile.member_profile_uids.contains(&p.uid))
-            .collect::<Vec<Profile>>();
-        if member_profile_members.len() != member_profile.member_profile_uids.len() {
-            return Err(anyhow!("All Member Profiles should be present"));
-        }
+            .get_ordered_member_profiles(&member_profile.member_profile_uids)
+            .await?;
         if speed_options.fixed_enabled {
             // This could potentially take significant time for slow devices:
             repo.apply_setting_manual_control(device_uid, channel_name)
@@ -726,27 +712,11 @@ impl Engine {
     /// the settings for those devices.
     pub async fn profile_updated(&self, profile_uid: &ProfileUID) {
         let affected_mix_profiles = self
-            .config
-            .get_profiles()
-            .await
-            .unwrap_or_else(|_| Vec::new())
-            .into_iter()
-            .filter(|profile| {
-                profile.p_type == ProfileType::Mix
-                    && profile.member_profile_uids.contains(profile_uid)
-            })
-            .collect::<Vec<_>>();
+            .get_profiles_affected_by(profile_uid, ProfileType::Mix)
+            .await;
         let affected_overlay_profiles = self
-            .config
-            .get_profiles()
-            .await
-            .unwrap_or_else(|_| Vec::new())
-            .into_iter()
-            .filter(|profile| {
-                profile.p_type == ProfileType::Overlay
-                    && profile.member_profile_uids.contains(profile_uid)
-            })
-            .collect::<Vec<_>>();
+            .get_profiles_affected_by(profile_uid, ProfileType::Overlay)
+            .await;
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
@@ -978,5 +948,42 @@ impl Engine {
         } else {
             Ok(())
         }
+    }
+
+    async fn get_ordered_member_profiles(
+        &self,
+        member_profile_uids: &Vec<UID>,
+    ) -> Result<Vec<Profile>> {
+        let mut all_profiles = self.config.get_profiles().await?;
+        let mut member_profiles = Vec::new();
+        for member_profile_uid in member_profile_uids {
+            let Some(index) = all_profiles
+                .iter()
+                .position(|m| &m.uid == member_profile_uid)
+            else {
+                return Err(anyhow!(
+                    "Member Profile UID: {member_profile_uid} could not be found!"
+                ));
+            };
+            member_profiles.push(all_profiles.swap_remove(index));
+        }
+        Ok(member_profiles)
+    }
+
+    async fn get_profiles_affected_by(
+        &self,
+        changed_profile_uid: &UID,
+        profile_type: ProfileType,
+    ) -> Vec<Profile> {
+        self.config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == profile_type
+                    && profile.member_profile_uids.contains(changed_profile_uid)
+            })
+            .collect::<Vec<_>>()
     }
 }

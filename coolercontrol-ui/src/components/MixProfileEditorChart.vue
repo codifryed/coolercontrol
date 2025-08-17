@@ -249,6 +249,9 @@ const calculateDuty = (): number => {
             return Math.max(...allDuties)
         case ProfileMixFunctionType.Min:
             return Math.min(...allDuties)
+        case ProfileMixFunctionType.Diff:
+            const diff = allDuties.reduce((a, b) => a - b)
+            return Math.max(Math.min(diff, 100), 0)
     }
 }
 

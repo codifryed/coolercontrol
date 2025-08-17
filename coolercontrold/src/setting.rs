@@ -312,6 +312,7 @@ pub enum ProfileMixFunctionType {
     Min,
     Max,
     Avg,
+    Diff,
 }
 
 impl Default for ProfileMixFunctionType {
