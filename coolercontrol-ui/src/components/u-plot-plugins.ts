@@ -31,6 +31,7 @@ export interface DeviceLineProperties {
 export const tooltipPlugin = (
     allDevicesLineProperties: Map<string, DeviceLineProperties>,
     t: any,
+    precisionRef: any,
 ) => {
     const tooltip = document.createElement('div')
     tooltip.className = 'u-plot-tooltip'
@@ -238,8 +239,7 @@ export const tooltipPlugin = (
                     suffix = t('common.percentUnit')
                     // @ts-ignore
                 } else if (series.label!.endsWith('freq')) {
-                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
-                    if (frequencyPrecision === 1) {
+                    if (precisionRef === 1) {
                         lineValue = seriesValue.toString()
                         suffix = t('common.mhzAbbr')
                     } else {
@@ -248,9 +248,8 @@ export const tooltipPlugin = (
                     }
                     // @ts-ignore
                 } else if (series.label!.endsWith('rpm')) {
-                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
                     suffix = t('common.rpmAbbr')
-                    lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                    lineValue = (seriesValue * precisionRef).toFixed(0)
                     // @ts-ignore
                 } else if (series.label!.endsWith('watts')) {
                     lineValue = seriesValue.toFixed(1)

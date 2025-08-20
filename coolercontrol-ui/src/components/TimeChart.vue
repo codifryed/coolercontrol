@@ -384,7 +384,7 @@ for (const lineName of uLineNames) {
     }
 }
 
-const hourFormat = settingsStore.time24 ? 'H' : 'h'
+const hourFormat = settingsStore.time24 ? 'HH' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
@@ -659,7 +659,7 @@ const uOptions: uPlot.Options = {
         },
     },
     plugins: [
-        tooltipPlugin(allDevicesLineProperties, t),
+        tooltipPlugin(allDevicesLineProperties, t, settingsStore.frequencyPrecision),
         columnHighlightPlugin(),
         mouseWheelZoomPlugin(),
     ],

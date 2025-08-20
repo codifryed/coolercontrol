@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, inject, ref } from 'vue'
+import { computed, defineAsyncComponent, inject, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
@@ -58,6 +58,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import hotkeys from 'hotkeys-js'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 const { t } = useI18n()
 const { getREMSize } = useDeviceStore()
@@ -65,6 +66,8 @@ const deviceStore = useDeviceStore()
 const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
+const dialog = useDialog()
+const shortcutsView = defineAsyncComponent(() => import('../components/ShortcutsView.vue'))
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
@@ -92,27 +95,52 @@ hotkeys('ctrl+i', () => {
     router.push({ name: 'app-info' })
     return false
 })
+
 hotkeys('ctrl+alt+1', () => {
     if (settingsStore.dashboards.length > 0) {
-        const dashboardUID = settingsStore.dashboards[0].uid
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 0
+                ? dashboardsMenuOrderItem.children[0]
+                : settingsStore.dashboards[0].uid
         router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
     }
 })
 hotkeys('ctrl+alt+2', () => {
     if (settingsStore.dashboards.length > 1) {
-        const dashboardUID = settingsStore.dashboards[1].uid
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 1
+                ? dashboardsMenuOrderItem.children[1]
+                : settingsStore.dashboards[1].uid
         router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
     }
 })
 hotkeys('ctrl+alt+3', () => {
     if (settingsStore.dashboards.length > 2) {
-        const dashboardUID = settingsStore.dashboards[2].uid
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 2
+                ? dashboardsMenuOrderItem.children[2]
+                : settingsStore.dashboards[2].uid
         router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
     }
 })
 hotkeys('ctrl+alt+4', () => {
     if (settingsStore.dashboards.length > 3) {
-        const dashboardUID = settingsStore.dashboards[3].uid
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 3
+                ? dashboardsMenuOrderItem.children[3]
+                : settingsStore.dashboards[3].uid
         router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
     }
 })
@@ -121,6 +149,25 @@ hotkeys('ctrl+left', () => {
 })
 hotkeys('ctrl+right', () => {
     emitter.emit('expand-side-menu')
+})
+let shortcutsDialogVisible = false
+hotkeys('ctrl+/, ctrl+shift+/', () => {
+    if (shortcutsDialogVisible) {
+        return
+    }
+    shortcutsDialogVisible = true
+    dialog.open(shortcutsView, {
+        props: {
+            header: t('views.shortcuts.shortcuts'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
+        onClose: () => {
+            shortcutsDialogVisible = false
+        },
+    })
 })
 const daemonBadgeSeverity = computed((): string => {
     switch (daemonState.status) {
