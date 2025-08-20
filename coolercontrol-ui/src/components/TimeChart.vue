@@ -659,7 +659,7 @@ const uOptions: uPlot.Options = {
         },
     },
     plugins: [
-        tooltipPlugin(allDevicesLineProperties, t),
+        tooltipPlugin(allDevicesLineProperties, t, settingsStore.frequencyPrecision),
         columnHighlightPlugin(),
         mouseWheelZoomPlugin(),
     ],
