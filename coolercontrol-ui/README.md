@@ -17,7 +17,7 @@ and processes are handled by the daemon.
 ## Requirements
 
 - make
-- nodejs >= 18.0.0
+- nodejs >= 22.0.0
 - npm
 
 ## Installation
@@ -58,7 +58,7 @@ make dev
   text/numbers.
 - `"primevue": "4.1.1"` breaks the original Primevue tailwind implementation that we have.
 - `"tailwindcss-primeui": "^0.4.0"` breaks our original Primevue tailwind implementation
-- `"@types/node": "^20.17.51"` for max compat with older distros
+- `"@types/node": "^22.17.2"` for compat with the current tsconfig node version
 - `"tailwindcss": "^3.4.17",` the upgrade to 4.x looks to be significant work
   - https://tailwindcss.com/docs/upgrade-guide
   - Looks like 4.0 only works for Chrome 111+
