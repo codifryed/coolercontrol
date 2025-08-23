@@ -977,10 +977,10 @@ const moveToBottom = (item: any, data: any): void => {
 
 const iconShouldSpin = (childItem: any): boolean => {
     if (childItem.icon != mdiFan) return false
-    if (childItem.duty != null) {
-        return Number(deviceChannelValues(childItem.deviceUID, childItem.name)!.duty) > 0
-    } else if (childItem.rpm != null) {
+    if (childItem.rpm != null) {
         return Number(deviceChannelValues(childItem.deviceUID, childItem.name)!.rpm) > 0
+    } else if (childItem.duty != null) {
+        return Number(deviceChannelValues(childItem.deviceUID, childItem.name)!.duty) > 0
     }
     return false
 }
