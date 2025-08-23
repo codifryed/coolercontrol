@@ -64,7 +64,6 @@ make dev
   - Looks like 4.0 only works for Chrome 111+
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
 - `"echarts": "^5.6.0"` vue-echarts currently requires <6.0.0
-- `"vue-tsc": "2.2.4"` > breaks some tests.
 
 ## Formatting
 
