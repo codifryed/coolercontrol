@@ -12,7 +12,7 @@ plugins:
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
   enabled:
-    - rust@1.82.0
+    - rust@1.86.0
     - go@1.21.0
     - node@22.16.0
     - python@3.10.8
@@ -30,8 +30,8 @@ lint:
     - oxipng@9.1.5
     - prettier@3.6.2
     - ruff@0.12.10
-    - rustfmt@1.82.0
-    - clippy@1.82.0
+    - rustfmt@1.86.0
+    - clippy@1.86.0
     - shellcheck@0.11.0
     - shfmt@3.6.0
     - taplo@0.10.0
