@@ -2,9 +2,9 @@
 name = "coolercontrold"
 version = "2.2.2"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
-edition = "2021"
+edition = "2024"
 # MSRV for all included libraries
-rust-version = "1.82"
+rust-version = "1.86"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
@@ -100,7 +100,7 @@ zbus = { version = "5.9.0", default-features = false, features = [
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-# >= 0.37.0 requires >Rust 1.82 (edition2024)
+# sysinfo 0.37.0 requires >Rust 1.88
 sysinfo = { version = "0.36.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
@@ -120,9 +120,7 @@ psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-# >=0.105.0 requires >Rust 1.82 (edition2024)
-# todo: test version requirements for upgrade:
-nu-glob = "=0.104.1"
+nu-glob = "0.106.1"
 # our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
 sha2 = "0.10.9"
@@ -134,9 +132,7 @@ nix = { version = "0.30.1", default-features = false, features = [
   "sched",
 ] }
 pciid-parser = "0.8.0"
-# 0.8.4 requires Rust > 1.81
-# todo: test version requirements for upgrade:
-libdrm_amdgpu_sys = { version = "=0.8.3", default-features = false, features = [
+libdrm_amdgpu_sys = { version = "0.8.8", default-features = false, features = [
   "dynamic_loading",
 ] }
 hashlink = "0.10.0"
