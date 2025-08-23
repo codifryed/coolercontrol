@@ -327,7 +327,7 @@ fn create_carousel_processed_image_directory() -> Result<()> {
 ///
 /// A `PathBuf` representing the path to the processed image.
 fn create_carousel_lcd_image_path(content_type: &Mime, image_hash: String) -> PathBuf {
-    let image_path = if content_type == &mime::IMAGE_GIF {
+    if content_type == &mime::IMAGE_GIF {
         Path::new(DEFAULT_CONFIG_DIR)
             .join(CAROUSEL_IMAGE_DIRECTORY)
             .join(image_hash + ".gif")
@@ -335,8 +335,7 @@ fn create_carousel_lcd_image_path(content_type: &Mime, image_hash: String) -> Pa
         Path::new(DEFAULT_CONFIG_DIR)
             .join(CAROUSEL_IMAGE_DIRECTORY)
             .join(image_hash + ".png")
-    };
-    image_path
+    }
 }
 
 /// Calculates the SHA256 digest of a file at the given path.
