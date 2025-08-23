@@ -20,10 +20,10 @@ ENV PYTHONFAULTHANDLER=1 \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.82.0
+    RUST_VERSION=1.86.0
 ENV PATH=/root/.cargo/bin:$PATH
 
-ENV NODE_MAJOR=18
+ENV NODE_MAJOR=22
 
 # install most deps beforehand to keep this pipeline fast:
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -66,7 +66,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME
 
-# needed until ubuntu updates to nodejs from v12 to v18
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
