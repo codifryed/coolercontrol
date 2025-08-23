@@ -11,11 +11,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
-ENV PYTHONFAULTHANDLER=1 \
-    PYTHONUNBUFFERED=1 \
+#ENV PYTHONFAULTHANDLER=1 \
+#    PYTHONUNBUFFERED=1 \
     # pip
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+#    PIP_DISABLE_PIP_VERSION_CHECK=on \
+#    PIP_DEFAULT_TIMEOUT=100
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
@@ -31,14 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # for standard appstream checks:
         #desktop-file-utils appstream-util \
         # rust
-        cargo \
+        #cargo \
         #jq \
         # python
-        python3-pip \
-        python3-venv \
+        #python3-pip \
+        #python3-venv \
         # needed deps for building liquidctl deps:
-        python3-dev \
-        libusb-1.0-0 \
+        #python3-dev \
+        liquidctl \
+        #libusb-1.0-0 \
         # build essentials:
         curl \
         git \
@@ -71,6 +72,6 @@ RUN mkdir -p /etc/apt/keyrings && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && apt-get install -y --no-install-recommends nodejs
 
-RUN pip3 install --upgrade pip
+#RUN pip3 install --upgrade pip
 
 RUN apt-get -y autoclean

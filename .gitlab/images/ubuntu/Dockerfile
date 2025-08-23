@@ -19,15 +19,15 @@ ENV NODE_MAJOR=22
 
 RUN apt update && apt install -y --no-install-recommends \
     # build-deps:
-    dh-python \
-    pybuild-plugin-pyproject \
-    python3-all \
-    python3-setuptools \
-    python3-build \
+    #dh-python \
+    #pybuild-plugin-pyproject \
+    #python3-all \
+    #python3-setuptools \
+    #python3-build \
     liquidctl \
-    python3-setproctitle \
-    python3-fastapi \
-    python3-uvicorn \
+    #python3-setproctitle \
+    #python3-fastapi \
+    #python3-uvicorn \
     # nodejs \
     # npm \
     # qt:

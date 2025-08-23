@@ -236,26 +236,25 @@ build_deb_bookworm_amd64:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     # build dependencies:
-    - >
-      apt-get -y install
-      dh-python
-      pybuild-plugin-pyproject
-      python3-all
-      python3-setuptools
-      python3-build
-      liquidctl
-      python3-setproctitle
-      python3-fastapi
-      python3-uvicorn
-      nodejs
-      npm
-      build-essential
-      cmake
-      qt6-base-dev
-      qt6-webengine-dev
-      qt6-webengine-dev-tools
-      libdrm-dev
-      cargo
+    #- >
+      #apt-get -y install liquidctl
+      #dh-python
+      #pybuild-plugin-pyproject
+      #python3-all
+      #python3-setuptools
+      #python3-build
+      #python3-setproctitle
+      #python3-fastapi
+      #python3-uvicorn
+      #nodejs
+      #npm
+      #build-essential
+      #cmake
+      #qt6-base-dev
+      #qt6-webengine-dev
+      #qt6-webengine-dev-tools
+      #libdrm-dev
+      #cargo
     - |
       python3 --version
       cargo --version
@@ -287,26 +286,25 @@ build_deb_bookworm_arm64:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     # build dependencies:
-    - >
-      apt-get -y install
-      dh-python
-      pybuild-plugin-pyproject
-      python3-all
-      python3-setuptools
-      python3-build
-      liquidctl
-      python3-setproctitle
-      python3-fastapi
-      python3-uvicorn
-      nodejs
-      npm
-      build-essential
-      cmake
-      qt6-base-dev
-      qt6-webengine-dev
-      qt6-webengine-dev-tools
-      libdrm-dev
-      cargo
+    #- >
+      #apt-get -y install liquidctl
+      #dh-python
+      #pybuild-plugin-pyproject
+      #python3-all
+      #python3-setuptools
+      #python3-build
+      #python3-setproctitle
+      #python3-fastapi
+      #python3-uvicorn
+      #nodejs
+      #npm
+      #build-essential
+      #cmake
+      #qt6-base-dev
+      #qt6-webengine-dev
+      #qt6-webengine-dev-tools
+      #libdrm-dev
+      #cargo
     - |
       python3 --version
       cargo --version
@@ -341,26 +339,25 @@ build_ubuntu:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
     - apt-get update
-    # install the build dependencies
-    - >
-      apt-get -y install
-      dh-python
-      pybuild-plugin-pyproject
-      python3-all
-      python3-setuptools
-      python3-build
-      liquidctl
-      python3-setproctitle
-      python3-fastapi
-      python3-uvicorn
-      nodejs
-      build-essential
-      cmake
-      qt6-base-dev
-      qt6-webengine-dev
-      qt6-webengine-dev-tools
-      libdrm-dev
-      cargo
+    # update the build dependencies
+    #- >
+      #apt-get -y install liquidctl
+      #dh-python
+      ##pybuild-plugin-pyproject
+      #python3-all
+      #python3-setuptools
+      #python3-build
+      #python3-setproctitle
+      #python3-fastapi
+      #python3-uvicorn
+      #nodejs
+      #build-essential
+      #cmake
+      #qt6-base-dev
+      #qt6-webengine-dev
+      #qt6-webengine-dev-tools
+      #libdrm-dev
+      #cargo
     - |
       python3 --version
       cargo --version
