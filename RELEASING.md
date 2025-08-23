@@ -5,7 +5,6 @@ our Makefile and some scripts. Each step must be completed successfully before m
 one.
 
 1. Update Changelog
-
    1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
    2. Add a new version
    3. Add necessary subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
@@ -13,13 +12,11 @@ one.
    4. Format changelog appropriately
 
 2. Update App Metadata
-
    1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
       1. with new Release version and date
       2. plus any changes to screenshots and/or description
 
 3. Update Packaging Settings
-
    1. Update
       `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`,`packaging/fedora/coolercontrol-liqctld.spec`
       1. Version near the top
@@ -28,7 +25,6 @@ one.
       1. Add a whole new section at the beginning with top version and changelog entry
 
 4. Create Release Tag and Commit and Build Release Artifacts
-
    1. Verify Milestone exists for the to-be-released version in GitLab
    2. All commits and tags are to be signed. Make sure your PGP keys are setup.
    3. In CoolerControl Repo run `make release`
@@ -44,14 +40,12 @@ one.
       8. create the next release milestone (can easily change the milestone name/version later)
 
 5. Update OpenAPI specification
-
    1. Update locally running daemon with a new version: `make dev-build && make dev-install`
    2. Run `cd openapi;./update.sh`
    3. Commit a new file to repo.
    4. Update Website with new `openapi.spec` file.
 
 6. NixOS Release
-
    1. You need Nix package manager setup on your system.
    2. Update the fork of the repo: https://github.com/NixOS/nixpkgs
    3. `cd nixpkgs`

@@ -1,6 +1,6 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
-docker_image_tag := v20
+docker_image_tag := v3
 ap_id := 'org.coolercontrol.CoolerControl'
 liqctld_dir := 'coolercontrol-liqctld'
 daemon_dir := 'coolercontrold'
@@ -48,6 +48,12 @@ test-ui:
 
 test-qt:
 	@$(MAKE) -C $(qt_dir) test
+
+# install any needed CI tools
+# Trunk needs: libxcrypt-compat on local system
+ci-install:
+	@./trunk install --ci
+	@cargo install gitlab-report --locked
  
 ci-test: validate-metadata ci-test-daemon ci-test-ui ci-test-qt
 
@@ -104,7 +110,7 @@ uninstall:
 # full clean release build of daemon and UI binaries:
 dev-build: clean build
 
-dev-test: clean validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
+dev-test: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
 # installs the release coolercontrold daemon and desktop app binaries: (need CC pre-installed)
 dev-install:
@@ -214,7 +220,7 @@ docker-arm64:
 
 docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
+	#@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)

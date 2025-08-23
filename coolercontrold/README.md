@@ -49,9 +49,8 @@ currently, and is something we might take advantage of in the future.
 - make
 - cargo/rust >= 1.81.0
 - libdrm-dev
-- python3-dev >= 3.8
 - To build the web assets:
-  - nodejs >= 18.0.0
+  - nodejs >= 22.0.0
   - npm
 
 ### Runtime

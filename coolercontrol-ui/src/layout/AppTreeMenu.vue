@@ -974,6 +974,17 @@ const moveToBottom = (item: any, data: any): void => {
     data.splice(data.indexOf(item), 1)
     data.push(item)
 }
+
+const iconShouldSpin = (childItem: any): boolean => {
+    if (childItem.icon != mdiFan) return false
+    if (childItem.rpm != null) {
+        return Number(deviceChannelValues(childItem.deviceUID, childItem.name)!.rpm) > 0
+    } else if (childItem.duty != null) {
+        return Number(deviceChannelValues(childItem.deviceUID, childItem.name)!.duty) > 0
+    }
+    return false
+}
+
 onMounted(async () => {
     // Listen for language change events, refresh menu
     window.addEventListener('language-changed', () => {
@@ -1086,6 +1097,7 @@ onUnmounted(() => {
                                 :class="{
                                     'text-accent': childItem.isActive,
                                     'text-error': childItem.alertIsActive,
+                                    'animate-spin-slow': iconShouldSpin(childItem),
                                 }"
                                 type="mdi"
                                 :path="childItem.icon ?? ''"
@@ -1648,6 +1660,7 @@ onUnmounted(() => {
                                     :class="{
                                         'text-accent': childItem.isActive,
                                         'text-error': childItem.alertIsActive,
+                                        'animate-spin-slow': iconShouldSpin(childItem),
                                     }"
                                     type="mdi"
                                     :path="childItem.icon ?? ''"
