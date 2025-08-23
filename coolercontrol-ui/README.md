@@ -65,8 +65,6 @@ make dev
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
 - `"echarts": "^5.6.0"` vue-echarts currently requires <6.0.0
 - `"vue-tsc": "2.2.4"` > breaks some tests.
-- `"@vitejs/plugin-legacy": "6.1.1"` and `"vite": "6.3.5"` and `"@vitejs/plugin-vue": "5.2.4"` , as
-  vite 7.0 requires Node 22+
 
 ## Formatting
 
