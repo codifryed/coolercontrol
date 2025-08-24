@@ -1138,7 +1138,7 @@ onUnmounted(() => {
                         </div>
                         <!-- Sensor Metrics -->
                         <div
-                            class="flex ml-2 mr-1 justify-end"
+                            class="flex ml-2 mr-1 justify-end select-none"
                             :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
                         >
                             <div v-if="childItem.temp != null" class="items-end tree-data">
@@ -1706,7 +1706,7 @@ onUnmounted(() => {
                             </div>
                             <!-- Sensor Metrics -->
                             <div
-                                class="flex ml-2 mr-1 justify-end"
+                                class="flex ml-2 mr-1 justify-end select-none"
                                 :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
                             >
                                 <div v-if="childItem.temp != null" class="items-end tree-data">
@@ -2061,6 +2061,8 @@ onUnmounted(() => {
     line-clamp: 1;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
+    // improves UX when dragging, as otherwise text is sometimes selected
+    user-select: none;
 }
 
 .tree-data {
