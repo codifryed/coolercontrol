@@ -164,6 +164,8 @@ impl Engine {
                     .clear_channel_setting(device_uid, channel_name);
                 self.graph_commander
                     .clear_channel_setting(device_uid, channel_name);
+                self.overlay_commander
+                    .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
@@ -449,7 +451,9 @@ impl Engine {
         }
         let result = if lcd_settings.mode == "temp" {
             if lcd_settings.temp_source.is_none() {
-                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"));
+                return Err(anyhow!(
+                    "A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"
+                ));
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
