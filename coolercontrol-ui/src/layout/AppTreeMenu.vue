@@ -677,13 +677,22 @@ const devicesTreeArray = (): any[] => {
 }
 
 createTreeMenu()
-const expandAllMenusByDefault = (): void => {
-    if (settingsStore.expandedMenuIds != null) {
-        return // settings already exist
+const expandMenusByDefault = (): void => {
+    if (settingsStore.expandedMenuIds == null || settingsStore.expandedMenuIds.length == 0) {
+        // First run/no settings, so expand all menus
+        settingsStore.expandedMenuIds = data.value.map((node: any) => node.id)
+        return
     }
-    settingsStore.expandedMenuIds = data.value.map((node: any) => node.id)
+    // Check if there are any newly added devices, and if so, add them to the expanded menu ids
+    const newDevices: Array<string> = data.value
+        .filter(
+            (node: any) =>
+                settingsStore.menuOrder.findIndex((menuOrder) => menuOrder.id === node.id) < 0,
+        )
+        .map((node: any) => node.id)
+    settingsStore.expandedMenuIds.push(...newDevices)
 }
-expandAllMenusByDefault()
+expandMenusByDefault()
 createPinnedMenu()
 
 const formatFrequency = (value: string): string =>
