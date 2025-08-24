@@ -43,7 +43,9 @@ use tokio::time::Instant;
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 pub const CPU_POWER_NAME: &str = "CPU Power";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
-const SINGLE_CPU_FREQ_NAME: &str = "CPU Freq";
+const SINGLE_CPU_FREQ_AVG_NAME: &str = "CPU Freq Avg";
+const SINGLE_CPU_FREQ_MAX_NAME: &str = "CPU Freq Max";
+const SINGLE_CPU_FREQ_MIN_NAME: &str = "CPU Freq Min";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority, and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&str; 4] = [
@@ -58,6 +60,13 @@ const CPUINFO_PATH: &str = "/proc/cpuinfo";
 // The ID of the actual physical CPU. On most systems, there is only one:
 type PhysicalID = u8;
 type ProcessorID = u16; // the logical processor ID
+
+#[derive(Default, Debug, PartialEq)]
+struct CpuFreqs {
+    min: Mhz,
+    max: Mhz,
+    avg: Mhz,
+}
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
@@ -279,7 +288,7 @@ impl CpuRepo {
 
     /// Collects the average frequency per Physical CPU.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    async fn collect_freq(cpuinfo_path: &Path) -> HashMap<PhysicalID, Mhz> {
+    async fn collect_freq(cpuinfo_path: &Path) -> HashMap<PhysicalID, CpuFreqs> {
         // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
         // cpuinfo not only will return which frequency belongs to which physical CPU,
         // which is important for CoolerControl's full multi-physical-cpu support,
@@ -290,10 +299,10 @@ impl CpuRepo {
         //  /sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq
         // But these have been reported to be significantly slower on some systems, and it's not
         // clear how to associate the frequency with the physical CPU on multi-cpu systems.
-        let mut cpu_avgs = HashMap::new();
-        let mut cpu_info_freqs: HashMap<PhysicalID, Vec<Mhz>> = HashMap::new();
+        let mut cpu_freqs = HashMap::new();
+        let mut cpu_info_freqs: HashMap<PhysicalID, Vec<f64>> = HashMap::new();
         let Ok(cpu_info) = cc_fs::read_txt(cpuinfo_path).await else {
-            return cpu_avgs;
+            return cpu_freqs;
         };
         let mut cpu_info_physical_id: PhysicalID = 0;
         let mut cpu_info_freq: f64 = 0.;
@@ -310,14 +319,14 @@ impl CpuRepo {
             };
             if key == "physical id" {
                 let Ok(phy_id) = value.parse() else {
-                    return cpu_avgs;
+                    return cpu_freqs;
                 };
                 cpu_info_physical_id = phy_id;
                 physical_id_present = true;
             }
             if key == "cpu MHz" {
                 let Ok(freq) = value.parse() else {
-                    return cpu_avgs;
+                    return cpu_freqs;
                 };
                 cpu_info_freq = freq;
                 freq_present = true;
@@ -327,30 +336,52 @@ impl CpuRepo {
                 cpu_info_freqs
                     .entry(cpu_info_physical_id)
                     .or_default()
-                    .push(cpu_info_freq.trunc() as Mhz);
+                    .push(cpu_info_freq);
                 physical_id_present = false;
                 freq_present = false;
             }
         }
         for (physical_id, freqs) in cpu_info_freqs {
-            let avg_freq = freqs.iter().sum::<Mhz>() / freqs.len() as Mhz;
-            cpu_avgs.insert(physical_id, avg_freq);
+            let min = freqs
+                .iter()
+                .min_by(|a, b| a.total_cmp(b))
+                .unwrap_or(&0.)
+                .round() as Mhz;
+            let max = freqs
+                .iter()
+                .max_by(|a, b| a.total_cmp(b))
+                .unwrap_or(&0.)
+                .round() as Mhz;
+            #[allow(clippy::cast_precision_loss)]
+            let avg = (freqs.iter().sum::<f64>() / freqs.len() as f64).round() as Mhz;
+            cpu_freqs.insert(physical_id, CpuFreqs { min, max, avg });
         }
-        cpu_avgs
+        cpu_freqs
     }
 
     fn get_status_from_freq_output(
         physical_id: PhysicalID,
-        channel_name: &str,
-        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
-    ) -> Option<ChannelStatus> {
-        cpu_freqs
-            .remove(&physical_id)
-            .map(|avg_freq| ChannelStatus {
-                name: channel_name.to_string(),
-                freq: Some(avg_freq),
-                ..Default::default()
-            })
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+    ) -> Option<Vec<ChannelStatus>> {
+        cpu_freqs.remove(&physical_id).map(|freqs| {
+            vec![
+                ChannelStatus {
+                    name: SINGLE_CPU_FREQ_AVG_NAME.to_string(),
+                    freq: Some(freqs.avg),
+                    ..Default::default()
+                },
+                ChannelStatus {
+                    name: SINGLE_CPU_FREQ_MAX_NAME.to_string(),
+                    freq: Some(freqs.max),
+                    ..Default::default()
+                },
+                ChannelStatus {
+                    name: SINGLE_CPU_FREQ_MIN_NAME.to_string(),
+                    freq: Some(freqs.min),
+                    ..Default::default()
+                },
+            ]
+        })
     }
 
     fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
@@ -372,19 +403,35 @@ impl CpuRepo {
 
     fn init_cpu_freq(
         physical_id: PhysicalID,
-        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
-    ) -> Result<HwmonChannelInfo> {
-        if Self::get_status_from_freq_output(physical_id, SINGLE_CPU_FREQ_NAME, cpu_freqs).is_none()
-        {
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+    ) -> Result<Vec<HwmonChannelInfo>> {
+        if Self::get_status_from_freq_output(physical_id, cpu_freqs).is_none() {
             Err(anyhow!("Error: no frequency found!"))
         } else {
-            Ok(HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Freq,
-                number: physical_id,
-                name: SINGLE_CPU_FREQ_NAME.to_string(),
-                label: Some(SINGLE_CPU_FREQ_NAME.to_string()),
-                ..Default::default()
-            })
+            Ok(vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    // This gives us a unique number for each frequency channel, also for multiple physical cpus
+                    number: physical_id * 64,
+                    name: SINGLE_CPU_FREQ_AVG_NAME.to_string(),
+                    label: Some(SINGLE_CPU_FREQ_AVG_NAME.to_string()),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    number: physical_id * 64 + 1,
+                    name: SINGLE_CPU_FREQ_MAX_NAME.to_string(),
+                    label: Some(SINGLE_CPU_FREQ_MAX_NAME.to_string()),
+                    ..Default::default()
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Freq,
+                    number: physical_id * 64 + 2,
+                    name: SINGLE_CPU_FREQ_MIN_NAME.to_string(),
+                    label: Some(SINGLE_CPU_FREQ_MIN_NAME.to_string()),
+                    ..Default::default()
+                },
+            ])
         }
     }
 
@@ -392,10 +439,11 @@ impl CpuRepo {
         &self,
         phys_cpu_id: PhysicalID,
         driver: &HwmonDriverInfo,
-        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
         init: bool,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
+        let mut contains_freq = false;
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
@@ -405,12 +453,8 @@ impl CpuRepo {
                     status_channels.push(load_status);
                 }
                 HwmonChannelType::Freq => {
-                    let Some(freq_status) =
-                        Self::get_status_from_freq_output(phys_cpu_id, &channel.name, cpu_freqs)
-                    else {
-                        continue;
-                    };
-                    status_channels.push(freq_status);
+                    // handle freqs all at once
+                    contains_freq = true;
                 }
                 HwmonChannelType::PowerCap => {
                     let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
@@ -433,6 +477,12 @@ impl CpuRepo {
                     status_channels.push(power_status);
                 }
                 _ => (),
+            }
+        }
+        if contains_freq {
+            // CPU Freq names never change, so if one exists, we add all 3
+            if let Some(freq_status) = Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs) {
+                status_channels.extend(freq_status);
             }
         }
         let temps = temps::extract_temp_statuses(driver)
@@ -545,7 +595,7 @@ impl CpuRepo {
                 }
                 if cpu_freqs.is_empty().not() {
                     match Self::init_cpu_freq(physical_id, &mut cpu_freqs) {
-                        Ok(freq) => channels.push(freq),
+                        Ok(freqs) => channels.extend(freqs),
                         Err(err) => {
                             error!("Error matching cpu frequencies to processors: {err}");
                         }
@@ -895,7 +945,7 @@ impl Repository for CpuRepo {
 mod tests {
     use crate::cc_fs;
     use crate::config::Config;
-    use crate::repositories::cpu_repo::CpuRepo;
+    use crate::repositories::cpu_repo::{CpuFreqs, CpuRepo};
     use serial_test::serial;
     use std::rc::Rc;
 
@@ -972,7 +1022,11 @@ mod tests {
             );
             assert_eq!(
                 result.get(&0),
-                Some(&3005),
+                Some(&CpuFreqs {
+                    avg: 3006,
+                    max: 4200,
+                    min: 1754,
+                }),
                 "collect_freq should have the correct average frequency"
             );
         });
@@ -1037,13 +1091,21 @@ mod tests {
             );
             assert_eq!(
                 result.get(&0),
-                Some(&3005),
-                "collect_freq should have the correct average frequency"
+                Some(&CpuFreqs {
+                    avg: 3006,
+                    max: 4200,
+                    min: 1754,
+                }),
+                "collect_freq should have the correct frequency"
             );
             assert_eq!(
                 result.get(&1),
-                Some(&818),
-                "collect_freq should have the correct average frequency"
+                Some(&CpuFreqs {
+                    avg: 819,
+                    max: 1754,
+                    min: 196,
+                }),
+                "collect_freq should have the correct frequency"
             );
         });
     }
@@ -1103,8 +1165,12 @@ mod tests {
             );
             assert_eq!(
                 result.get(&0),
-                Some(&799),
-                "collect_freq should have the correct average frequency"
+                Some(&CpuFreqs {
+                    avg: 800,
+                    max: 800,
+                    min: 800,
+                }),
+                "collect_freq should have the correct frequency"
             );
         });
     }
