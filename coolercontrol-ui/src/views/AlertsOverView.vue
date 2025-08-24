@@ -19,6 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiBellPlusOutline } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import DataTable, { DataTableRowSelectEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -27,12 +28,16 @@ import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/model
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
+import Button from 'primevue/button'
 
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { getREMSize } = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const alertsList = computed(() => {
     const alerts = []
@@ -63,9 +68,23 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
-                    t('layout.topbar.alerts')
-                }}</span>
+                <div class="flex w-96 items-center justify-between pr-2.5">
+                    <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                        t('layout.topbar.alerts')
+                    }}</span>
+                    <Button
+                        class="h-8 my-2"
+                        v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }"
+                        @click="emitter.emit('alert-add')"
+                    >
+                        <svg-icon
+                            class="outline-0"
+                            type="mdi"
+                            :path="mdiBellPlusOutline"
+                            :size="deviceStore.getREMSize(1.25)"
+                        />
+                    </Button>
+                </div>
                 <div class="flex flex-row">
                     <DataTable
                         class="w-[31rem]"
@@ -111,7 +130,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                 </div>
             </div>
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                <span class="pb-3 ml-1 font-semibold text-xl text-text-color">{{
                     t('views.alerts.alertLogs')
                 }}</span>
                 <DataTable
