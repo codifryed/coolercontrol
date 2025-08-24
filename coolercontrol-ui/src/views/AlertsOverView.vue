@@ -90,6 +90,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                         <Column field="state" :header="t('common.state')">
                             <template #body="slotProps">
                                 <span
+                                    class="underline"
                                     :class="{
                                         'text-error': slotProps.data.state === AlertState.Active,
                                         'text-success':
@@ -103,7 +104,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                         <Column
                             field="name"
                             :header="t('common.name')"
-                            body-class="w-full text-ellipsis"
+                            body-class="w-full text-ellipsis underline"
                         />
                     </DataTable>
                     <div class="w-full" />
@@ -130,6 +131,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                     <Column field="state" :header="t('common.state')">
                         <template #body="slotProps">
                             <span
+                                class="underline"
                                 :class="{
                                     'text-error': slotProps.data.state === AlertState.Active,
                                     'text-success': slotProps.data.state === AlertState.Inactive,
@@ -139,7 +141,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                             </span>
                         </template>
                     </Column>
-                    <Column field="name" :header="t('common.name')" />
+                    <Column field="name" :header="t('common.name')" body-class="underline" />
                     <Column
                         field="message"
                         :header="t('common.message')"
