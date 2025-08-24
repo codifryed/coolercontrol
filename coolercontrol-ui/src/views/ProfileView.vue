@@ -1268,7 +1268,7 @@ const saveProfileState = async () => {
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
-        currentProfile.value.offset_profile.length = 0
+        currentProfile.value.offset_profile = []
     } else if (currentProfile.value.p_type === ProfileType.Graph) {
         if (selectedTempSource === undefined) {
             tempSourceInvalid.value = true
@@ -1297,7 +1297,7 @@ const saveProfileState = async () => {
         currentProfile.value.speed_fixed = undefined
         currentProfile.value.member_profile_uids.length = 0
         currentProfile.value.mix_function_type = undefined
-        currentProfile.value.offset_profile.length = 0
+        currentProfile.value.offset_profile = []
     } else if (currentProfile.value.p_type === ProfileType.Mix) {
         if (chosenMemberProfiles.value.length < 2) {
             toast.add({
@@ -1316,7 +1316,7 @@ const saveProfileState = async () => {
         currentProfile.value.function_uid = '0' // default function
         currentProfile.value.member_profile_uids = chosenMemberProfiles.value.map((p) => p.uid)
         currentProfile.value.mix_function_type = chosenProfileMixFunction.value
-        currentProfile.value.offset_profile.length = 0
+        currentProfile.value.offset_profile = []
     } else if (currentProfile.value.p_type === ProfileType.Overlay) {
         if (chosenOverlayMemberProfile.value == null) {
             console.error('Overlay member profile can not be empty')
