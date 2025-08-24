@@ -452,10 +452,7 @@ impl CpuRepo {
                     };
                     status_channels.push(load_status);
                 }
-                HwmonChannelType::Freq => {
-                    // handle freqs all at once
-                    contains_freq = true;
-                }
+                HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
                     let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
                     let previous_joule_count = self
@@ -480,10 +477,7 @@ impl CpuRepo {
             }
         }
         if contains_freq {
-            // CPU Freq names never change, so if one exists, we add all 3
-            if let Some(freq_status) = Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs) {
-                status_channels.extend(freq_status);
-            }
+            Self::get_filtered_freqs(phys_cpu_id, driver, cpu_freqs, &mut status_channels);
         }
         let temps = temps::extract_temp_statuses(driver)
             .await
@@ -521,6 +515,28 @@ impl CpuRepo {
                             .filter(|_| channel_status.name == channel_name)
                     })
                     .unwrap_or_default();
+            }
+        }
+    }
+
+    /// Retrieves the CPU freqs and filters out the ones that are not enabled/present.
+    fn get_filtered_freqs(
+        phys_cpu_id: PhysicalID,
+        driver: &HwmonDriverInfo,
+        cpu_freqs: &mut HashMap<PhysicalID, CpuFreqs>,
+        status_channels: &mut Vec<ChannelStatus>,
+    ) {
+        let Some(mut freq_status) = Self::get_status_from_freq_output(phys_cpu_id, cpu_freqs)
+        else {
+            return;
+        };
+        for channel in &driver.channels {
+            if channel.hwmon_type == HwmonChannelType::Freq {
+                let Some(freq_index) = freq_status.iter().position(|s| s.name == channel.name)
+                else {
+                    continue;
+                };
+                status_channels.push(freq_status.swap_remove(freq_index));
             }
         }
     }
