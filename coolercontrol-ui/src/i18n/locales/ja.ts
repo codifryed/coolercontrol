@@ -690,6 +690,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'キーボードショートカット',
             home: 'ホーム',
             settings: '設定',
@@ -702,6 +703,7 @@ export default {
             controls: 'コントロール',
             sideMenuCollapse: 'サイドメニューを折りたたむ',
             sideMenuExpand: 'サイドメニューを展開',
+            fullScreen: '全画面',
         },
     },
     components: {

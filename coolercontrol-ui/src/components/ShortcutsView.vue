@@ -194,6 +194,16 @@ const { t } = useI18n()
                         }}</span>
                     </td>
                 </tr>
+                <tr>
+                    <td class="table-data text-end">
+                        {{ t('views.shortcuts.fullScreen') }}
+                    </td>
+                    <td class="table-data font-bold">
+                        <span class="border-border-one border-2 rounded-lg p-0.5">{{
+                            t('views.shortcuts.f11')
+                        }}</span>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>

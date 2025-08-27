@@ -661,6 +661,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: '鍵盤快速鍵',
             home: '首頁',
             settings: '設定',
@@ -673,6 +674,7 @@ export default {
             controls: '控制',
             sideMenuCollapse: '收合側邊選單',
             sideMenuExpand: '展開側邊選單',
+            fullScreen: '全螢幕',
         },
     },
     components: {

@@ -660,6 +660,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: '键盘快捷键',
             home: '主页',
             settings: '设置',
@@ -672,6 +673,7 @@ export default {
             controls: '控制',
             sideMenuCollapse: '折叠侧边菜单',
             sideMenuExpand: '展开侧边菜单',
+            fullScreen: '全屏',
         },
     },
     components: {

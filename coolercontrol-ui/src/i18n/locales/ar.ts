@@ -671,6 +671,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'اختصارات لوحة المفاتيح',
             home: 'الصفحة الرئيسية',
             settings: 'الإعدادات',
@@ -683,6 +684,7 @@ export default {
             controls: 'التحكمات',
             sideMenuCollapse: 'طي القائمة الجانبية',
             sideMenuExpand: 'توسيع القائمة الجانبية',
+            fullScreen: 'ملء الشاشة',
         },
     },
     components: {

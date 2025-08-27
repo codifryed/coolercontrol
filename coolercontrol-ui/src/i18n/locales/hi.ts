@@ -681,6 +681,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'कीबोर्ड शॉर्टकट्स',
             home: 'मुखपृष्ठ',
             settings: 'सेटिंग्स',
@@ -693,6 +694,7 @@ export default {
             controls: 'नियंत्रण',
             sideMenuCollapse: 'साइड मेनू संकुचित करें',
             sideMenuExpand: 'साइड मेनू विस्तारित करें',
+            fullScreen: 'पूर्ण स्क्रीन',
         },
     },
     components: {

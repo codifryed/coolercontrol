@@ -685,6 +685,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'Atajos de teclado',
             home: 'Inicio',
             settings: 'Ajustes',
@@ -697,6 +698,7 @@ export default {
             controls: 'Controles',
             sideMenuCollapse: 'Contraer menú lateral',
             sideMenuExpand: 'Expandir menú lateral',
+            fullScreen: 'Pantalla completa',
         },
     },
     components: {

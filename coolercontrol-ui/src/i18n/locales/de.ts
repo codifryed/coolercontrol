@@ -693,6 +693,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'Tastenkombinationen',
             home: 'Startseite',
             settings: 'Einstellungen',
@@ -705,6 +706,7 @@ export default {
             controls: 'Steuerungen',
             sideMenuCollapse: 'Seitenmenü einklappen',
             sideMenuExpand: 'Seitenmenü ausklappen',
+            fullScreen: 'Vollbild',
         },
     },
     daemon: {

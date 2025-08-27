@@ -673,6 +673,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'Atalhos de Teclado',
             home: 'Página Inicial',
             settings: 'Configurações',
@@ -685,6 +686,7 @@ export default {
             controls: 'Controles',
             sideMenuCollapse: 'Recolher menu lateral',
             sideMenuExpand: 'Expandir menu lateral',
+            fullScreen: 'Tela cheia',
         },
     },
     components: {

@@ -677,6 +677,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'Keyboard Shortcuts',
             home: 'Home Page',
             settings: 'Settings',
@@ -689,6 +690,7 @@ export default {
             controls: 'Controls',
             sideMenuCollapse: 'Collapse Side Menu',
             sideMenuExpand: 'Expand Side Menu',
+            fullScreen: 'Full Screen',
         },
     },
     components: {

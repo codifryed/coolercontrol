@@ -683,6 +683,7 @@ export default {
             two: '2',
             three: '3',
             four: '4',
+            f11: 'F11',
             viewShortcuts: 'Сочетания клавиш',
             home: 'Главная страница',
             settings: 'Настройки',
@@ -695,6 +696,7 @@ export default {
             controls: 'Управление',
             sideMenuCollapse: 'Свернуть боковое меню',
             sideMenuExpand: 'Развернуть боковое меню',
+            fullScreen: 'Полный экран',
         },
     },
     components: {
