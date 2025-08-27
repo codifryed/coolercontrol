@@ -456,7 +456,7 @@ const customSensorsTree = (): any => {
         for (const temp of device.status.temps) {
             sensorsChildren.push({
                 // This prefix is needed, as names are not unique across devices
-                id: `custom-sensors_${temp.name}`,
+                id: `${device.uid}_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
                 icon: mdiThermometer,
@@ -473,7 +473,8 @@ const customSensorsTree = (): any => {
             })
         }
         return {
-            id: 'custom-sensors',
+            // deviceUID is used to sort the menu items and custom-sensors has a deviceUID
+            id: deviceUID,
             label: t('layout.menu.customSensors'),
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
