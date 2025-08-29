@@ -68,26 +68,25 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
-                <div class="flex w-96 items-center justify-between pr-2.5">
-                    <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
-                        t('layout.topbar.alerts')
-                    }}</span>
-                    <Button
-                        class="h-8 my-2"
-                        v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }"
-                        @click="emitter.emit('alert-add')"
-                    >
-                        <svg-icon
-                            class="outline-0"
-                            type="mdi"
-                            :path="mdiBellPlusOutline"
-                            :size="deviceStore.getREMSize(1.25)"
-                        />
-                    </Button>
-                </div>
-                <div class="flex flex-row">
+                <div class="w-max">
+                    <div class="flex items-center justify-between">
+                        <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                            t('layout.topbar.alerts')
+                        }}</span>
+                        <Button
+                            class="h-8 my-2"
+                            v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }"
+                            @click="emitter.emit('alert-add')"
+                        >
+                            <svg-icon
+                                class="outline-0"
+                                type="mdi"
+                                :path="mdiBellPlusOutline"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                        </Button>
+                    </div>
                     <DataTable
-                        class="w-[31rem]"
                         :value="alertsList"
                         selection-mode="single"
                         data-key="uid"
@@ -126,7 +125,6 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                             body-class="w-full text-ellipsis underline"
                         />
                     </DataTable>
-                    <div class="w-full" />
                 </div>
             </div>
             <div class="mt-8 flex flex-col">
