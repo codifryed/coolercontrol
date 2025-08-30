@@ -482,6 +482,7 @@ export default {
             warmupGreaterThan: 'condition triggered longer than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
+            createFailAlert: 'Fail Alert',
         },
         profiles: {
             createProfile: 'Create Profile',

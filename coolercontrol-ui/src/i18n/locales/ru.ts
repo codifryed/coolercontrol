@@ -485,6 +485,7 @@ export default {
             warmupGreaterThan: 'состояние срабатывает дольше, чем',
             unsavedChanges: 'Есть несохраненные изменения в этом оповещении.',
             unsavedChangesHeader: 'Несохраненные изменения',
+            createFailAlert: 'Оповещение о неисправности',
         },
         profiles: {
             createProfile: 'Создать профиль',

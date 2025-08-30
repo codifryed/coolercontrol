@@ -394,6 +394,7 @@ export default {
             warmupGreaterThan: '條件觸發時間超過',
             unsavedChanges: '此警報有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
+            createFailAlert: '故障警報',
         },
         profiles: {
             createProfile: '建立設定檔',

@@ -420,6 +420,7 @@ export default {
             warmupGreaterThan: 'condição desencadeada durante mais tempo do que',
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',
             unsavedChangesHeader: 'Alterações Não Salvas',
+            createFailAlert: 'Alerta de Falha',
         },
         profiles: {
             createProfile: 'Criar Perfil',

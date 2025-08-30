@@ -487,6 +487,7 @@ export default {
             warmupGreaterThan: 'condición activada por más tiempo que',
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',
             unsavedChangesHeader: 'Cambios no guardados',
+            createFailAlert: 'Alerta de fallo',
         },
         profiles: {
             createProfile: 'Crear Perfil',

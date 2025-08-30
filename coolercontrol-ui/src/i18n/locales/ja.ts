@@ -524,6 +524,7 @@ export default {
             warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
+            createFailAlert: '故障アラート',
         },
         profiles: {
             createProfile: 'プロファイルを作成',

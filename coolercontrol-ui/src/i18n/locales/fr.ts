@@ -497,6 +497,7 @@ export default {
             warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
             unsavedChangesHeader: 'Changements non enregistrés',
+            createFailAlert: 'Alerte de panne',
         },
         profiles: {
             createProfile: 'Créer un profil',

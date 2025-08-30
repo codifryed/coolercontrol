@@ -100,6 +100,8 @@ import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
 import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
 import SubMenuAlertDuplicate from '@/components/menu/SubMenuAlertDuplicate.vue'
+import SubMenuAlertAddFail from '@/components/menu/SubMenuAlertAddFail.vue'
+import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
 
 interface Tree {
     [key: string]: any
@@ -215,6 +217,8 @@ enum SubMenu {
     FUNCTION_DELETE,
     ALERT_DUPLICATE,
     ALERT_DELETE,
+    ALERT_ADD_FAIL,
+    ALERT_ADD_TEMP,
     MOVE_BOTTOM,
 }
 
@@ -467,6 +471,7 @@ const customSensorsTree = (): any => {
                 subMenus: [
                     SubMenu.MOVE_TOP,
                     SubMenu.PIN,
+                    SubMenu.ALERT_ADD_TEMP,
                     SubMenu.CUSTOM_SENSOR_DELETE,
                     SubMenu.MOVE_BOTTOM,
                 ],
@@ -536,7 +541,13 @@ const devicesTreeArray = (): any[] => {
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 menus: [Menu.COLOR, Menu.RENAME],
-                subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.ALERT_ADD_TEMP,
+                    SubMenu.DISABLE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             })
         }
         for (const channel of device.status.channels) {
@@ -628,7 +639,16 @@ const devicesTreeArray = (): any[] => {
                     rpm: rpm,
                     isControllable: isControllable,
                     menus: [Menu.COLOR, Menu.RENAME, Menu.IS_CONTROLLABLE],
-                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
+                    subMenus:
+                        rpm != null
+                            ? [
+                                  SubMenu.MOVE_TOP,
+                                  SubMenu.PIN,
+                                  SubMenu.ALERT_ADD_FAIL,
+                                  SubMenu.DISABLE,
+                                  SubMenu.MOVE_BOTTOM,
+                              ]
+                            : [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -1417,6 +1437,18 @@ onUnmounted(() => {
                                                         moveToBottom(childItem, pinnedItems)
                                                     "
                                                 />
+                                                <sub-menu-alert-add-fail
+                                                    v-else-if="subMenu === SubMenu.ALERT_ADD_FAIL"
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :channel-name="childItem.name"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-alert-add-temp
+                                                    v-else-if="subMenu === SubMenu.ALERT_ADD_TEMP"
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :channel-name="childItem.name"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
                                             </li>
                                         </ul>
                                     </div>
@@ -2014,6 +2046,22 @@ onUnmounted(() => {
                                                         @moveBottom="
                                                             moveToBottom(childItem, item.children)
                                                         "
+                                                    />
+                                                    <sub-menu-alert-add-fail
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_ADD_FAIL
+                                                        "
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :channel-name="childItem.name"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-alert-add-temp
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_ADD_TEMP
+                                                        "
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :channel-name="childItem.name"
+                                                        @close="childItem.subMenuRef.hide()"
                                                     />
                                                 </li>
                                             </ul>

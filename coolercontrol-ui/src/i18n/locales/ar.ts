@@ -478,6 +478,7 @@ export default {
             warmupGreaterThan: 'حالة تم تشغيلها لفترة أطول من',
             unsavedChanges: 'هناك تغييرات غير محفوظة تم إجراؤها على هذا التنبيه.',
             unsavedChangesHeader: 'تغييرات غير محفوظة',
+            createFailAlert: 'تنبيه عطل',
         },
         profiles: {
             createProfile: 'إنشاء ملف تعريف',

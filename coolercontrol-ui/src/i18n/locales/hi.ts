@@ -426,6 +426,7 @@ export default {
             warmupGreaterThan: 'स्थिति लंबे समय तक ट्रिगर होती है',
             unsavedChanges: 'इस अलर्ट में असहेजे परिवर्तन हैं।',
             unsavedChangesHeader: 'असहेजे परिवर्तन',
+            createFailAlert: 'खराबी अलर्ट',
         },
         profiles: {
             createProfile: 'प्रोफ़ाइल बनाएँ',

@@ -31,7 +31,7 @@ const closeDialog = () => {
 }
 
 const currentStep: Ref<number> = ref(1)
-const newAlert: Ref<Alert | undefined> = ref()
+const newAlert: Ref<Alert | undefined> = ref(dialogRef.value.data.alert)
 </script>
 
 <template>

@@ -140,6 +140,19 @@ const fillChannelSources = (): void => {
     }
 }
 fillChannelSources()
+const fillChosenChannelSource = (): void => {
+    if (props.alert?.channel_source?.device_uid && props.alert?.channel_source?.channel_name) {
+        chosenChannelSource.value = channelSources.value
+            .find(
+                (deviceSource) =>
+                    deviceSource.deviceUID === props.alert?.channel_source?.device_uid,
+            )
+            ?.channels.find(
+                (channel) => channel.channelName === props.alert?.channel_source?.channel_name,
+            )
+    }
+}
+fillChosenChannelSource()
 const nextStep = async (): Promise<void> => {
     alert.max = chosenMax.value
     alert.min = chosenMin.value

@@ -393,6 +393,7 @@ export default {
             warmupGreaterThan: '条件触发时间超过',
             unsavedChanges: '此警报有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
+            createFailAlert: '故障警报',
         },
         profiles: {
             createProfile: '创建配置文件',

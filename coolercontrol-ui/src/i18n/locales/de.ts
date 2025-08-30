@@ -490,6 +490,7 @@ export default {
             warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
+            createFailAlert: 'Ausfallwarnung',
         },
         profiles: {
             createProfile: 'Profil erstellen',
