@@ -108,9 +108,13 @@ export const useDeviceStore = defineStore('device', () => {
         reloadUI()
     }
 
-    function reloadUI(): void {
+    function reloadUI(force: boolean = false): void {
         // When accessing the UI directly from the daemon, we need to refresh on the base URL.
-        window.location.reload()
+        if (force) {
+            window.location.replace(window.location.href)
+        } else {
+            window.location.reload()
+        }
     }
 
     function toTitleCase(str: string): string {

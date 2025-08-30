@@ -91,8 +91,8 @@ export const useDaemonState = defineStore('daemonState', () => {
                 life: 4000,
             })
             const deviceStore = useDeviceStore()
-            // reloading the UI results in a better UX, especially when the daemon is restarted
-            deviceStore.reloadUI()
+            // force-reloading the UI results in a better UX, especially when the daemon is restarted
+            deviceStore.reloadUI(true)
             // re-load the logs in case the daemon has restarted
             // await deviceStore.loadLogs()
             // re-check if the session is valid, in case the daemon has restarted

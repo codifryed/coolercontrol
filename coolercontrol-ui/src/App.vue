@@ -47,8 +47,6 @@ const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
-const reloadPage = () => window.location.reload()
-
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
 const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
 const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
@@ -591,7 +589,11 @@ onMounted(async () => {
             />
         </div>
         <template #footer>
-            <Button :label="t('common.retry')" icon="pi pi-refresh" @click="reloadPage" />
+            <Button
+                :label="t('common.retry')"
+                icon="pi pi-refresh"
+                @click="deviceStore.reloadUI()"
+            />
         </template>
     </Dialog>
     <VOnboardingWrapper
