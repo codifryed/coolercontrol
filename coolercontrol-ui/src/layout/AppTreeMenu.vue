@@ -102,6 +102,9 @@ import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
 import SubMenuAlertDuplicate from '@/components/menu/SubMenuAlertDuplicate.vue'
 import SubMenuAlertAddFail from '@/components/menu/SubMenuAlertAddFail.vue'
 import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
+import SubMenuDeviceColorPicker from '@/components/menu/SubMenuDeviceColorPicker.vue'
+import SubMenuEntityColorPicker from '@/components/menu/SubMenuEntityColorPicker.vue'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 
 interface Tree {
     [key: string]: any
@@ -109,6 +112,7 @@ interface Tree {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const colorStore = useThemeColorsStore()
 const router = useRouter()
 const route = useRoute()
 const daemonState = useDaemonState()
@@ -118,7 +122,8 @@ const { t } = useI18n()
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
 const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Ref<Color> => {
-    let color = ref('')
+    // blank color will use the theme's css
+    const color = ref('')
     if (
         deviceUID == null ||
         deviceUID.startsWith('Dashboards') ||
@@ -133,6 +138,60 @@ const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Re
                 ?.color ?? ''
     }
     return color
+}
+const deviceColor = (deviceUID: UID | undefined): Ref<Color> => {
+    // blank color will use the theme's css
+    const color = ref('')
+    if (deviceUID != null) {
+        if (settingsStore.allUIDeviceSettings.get(deviceUID) == null) {
+            return color
+        }
+        // default device color should be the theme's text color:
+        color.value =
+            settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor ??
+            colorStore.themeColors.text_color
+    }
+    return color
+}
+
+const entityColor = (entityID: string): Ref<Color> => {
+    const color = ref('')
+    const foundColorEntry = settingsStore.entityColors.find(
+        (entityColor) => entityColor[0] === entityID,
+    )
+    if (entityID === 'dashboards') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#FF7F00'
+    } else if (entityID === 'modes') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#7F00FF'
+    } else if (entityID === 'profiles') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#007FFF'
+    } else if (entityID === 'functions') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#7FFF00'
+    } else if (entityID === 'alerts') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#FF007F'
+    }
+    return color
+}
+const getIconColor = (item: any): Color => {
+    if (item.color != null) {
+        return item.color
+    }
+    if (item.name == null) {
+        if (item.deviceUID == null) {
+            return entityColor(item.id).value
+        } else {
+            return deviceColor(item.deviceUID).value
+        }
+    }
+    return deviceChannelColor(item.deviceUID, item.name).value
+}
+
+const getLabelColor = (item: any): Color => {
+    // this is only used for devices currently
+    if (item.name == null && item.deviceUID != null) {
+        return deviceColor(item.deviceUID).value
+    }
+    return ''
 }
 
 const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefined): number => {
@@ -204,6 +263,7 @@ enum Menu {
 enum SubMenu {
     MOVE_TOP,
     PIN,
+    COLOR,
     DISABLE,
     CUSTOM_SENSOR_DELETE,
     DASHBOARD_DUPLICATE,
@@ -286,10 +346,9 @@ const dashboardsTree = (): any => {
         id: 'dashboards',
         label: t('layout.menu.dashboards'),
         icon: mdiChartBoxMultipleOutline,
-        color: '#FF7F00',
         name: null, // devices should not have names
         menus: [Menu.DASHBOARD_INFO, Menu.DASHBOARD_ADD],
-        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.dashboards.map((dashboard) => {
             return {
                 id: dashboard.uid,
@@ -319,10 +378,9 @@ const modesTree = (): any => {
         id: 'modes',
         label: t('layout.menu.modes'),
         icon: mdiBookmarkMultipleOutline,
-        color: '#7F00FF',
         name: null, // devices should not have names
         menus: [Menu.MODE_INFO, Menu.MODE_ADD],
-        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
             const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
@@ -359,9 +417,8 @@ const profilesTree = (): any => {
         label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        color: '#007FFF',
         menus: [Menu.PROFILE_INFO, Menu.PROFILE_ADD],
-        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
@@ -390,10 +447,9 @@ const functionsTree = (): any => {
         id: 'functions',
         label: t('layout.menu.functions'),
         icon: mdiFlaskOutline,
-        color: '#7FFF00',
         name: null, // devices should not have names
         menus: [Menu.FUNCTION_INFO, Menu.FUNCTION_ADD],
-        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.functions
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
@@ -423,9 +479,8 @@ const alertsTree = (): any => {
         label: t('layout.menu.alerts'),
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
-        color: '#FF007F',
         menus: [Menu.ALERT_INFO, Menu.ALERT_ADD],
-        subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.alerts.map((alert) => {
             const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
             return {
@@ -485,7 +540,7 @@ const customSensorsTree = (): any => {
             name: null, // devices should not have names
             deviceUID: deviceUID,
             menus: [Menu.CUSTOM_SENSOR_INFO, Menu.CUSTOM_SENSOR_ADD],
-            subMenus: [SubMenu.MOVE_TOP, SubMenu.MOVE_BOTTOM],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
             children: sensorsChildren,
         }
     }
@@ -525,7 +580,7 @@ const devicesTreeArray = (): any[] => {
             deviceUID: device.uid,
             children: [],
             menus: [Menu.DEVICE_INFO, Menu.RENAME],
-            subMenus: [SubMenu.MOVE_TOP, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -1505,11 +1560,7 @@ onUnmounted(() => {
                                 class="mr-1.5 min-w-7 w-7"
                                 type="mdi"
                                 :path="item.icon"
-                                :style="{
-                                    color:
-                                        item.color ??
-                                        deviceChannelColor(item.deviceUID, item.name).value,
-                                }"
+                                :style="{ color: getIconColor(item) }"
                                 :size="
                                     deviceStore.getREMSize(
                                         deviceChannelIconSize(item.deviceUID, item.name),
@@ -1517,7 +1568,10 @@ onUnmounted(() => {
                                 "
                             />
                             <div class="flex flex-col overflow-hidden">
-                                <div class="tree-text leading-tight">
+                                <div
+                                    class="tree-text leading-tight"
+                                    :style="{ color: getLabelColor(item) }"
+                                >
                                     {{ item.label }}
                                 </div>
                                 <div></div>
@@ -1615,6 +1669,26 @@ onUnmounted(() => {
                                                 <sub-menu-move-top
                                                     v-if="subMenu === SubMenu.MOVE_TOP"
                                                     @moveTop="moveToTop(item, data)"
+                                                />
+                                                <sub-menu-device-color-picker
+                                                    v-else-if="
+                                                        subMenu === SubMenu.COLOR &&
+                                                        item.deviceUID != null
+                                                    "
+                                                    :device-u-i-d="item.deviceUID"
+                                                    :color="deviceColor(item.deviceUID).value"
+                                                    @open="setHoverMenuStatus"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-entity-color-picker
+                                                    v-else-if="
+                                                        subMenu === SubMenu.COLOR &&
+                                                        item.deviceUID == null
+                                                    "
+                                                    :entity-i-d="item.id"
+                                                    :color="entityColor(item.id).value"
+                                                    @open="setHoverMenuStatus"
+                                                    @close="item.subMenuRef.hide()"
                                                 />
                                                 <sub-menu-disable
                                                     v-else-if="subMenu === SubMenu.DISABLE"

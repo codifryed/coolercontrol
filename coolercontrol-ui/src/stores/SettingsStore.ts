@@ -129,6 +129,7 @@ export const useSettingsStore = defineStore('settings', () => {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     })
+    const entityColors: Ref<Array<[string, string]>> = ref([])
     const showOnboarding: Ref<boolean> = ref(true)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
@@ -226,6 +227,7 @@ export const useSettingsStore = defineStore('settings', () => {
         customTheme.borderOne = uiSettings.customTheme.borderOne
         customTheme.textColor = uiSettings.customTheme.textColor
         customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
+        entityColors.value = uiSettings.entityColors
         showOnboarding.value = uiSettings.showOnboarding
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
@@ -240,8 +242,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 const deviceSettings = allUIDeviceSettings.value.has(uid)
                     ? allUIDeviceSettings.value.get(uid)!
                     : new DeviceUISettings()
-                deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
                 deviceSettings.userName = deviceSettingsDto.userName
+                deviceSettings.userColor = deviceSettingsDto.userColor
                 if (
                     deviceSettingsDto.names.length !==
                     deviceSettingsDto.sensorAndChannelSettings.length
@@ -893,6 +895,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 mainMenuWidthRem,
                 frequencyPrecision,
                 customTheme,
+                entityColors.value,
                 showOnboarding,
             ],
             _.debounce(
@@ -903,8 +906,8 @@ export const useSettingsStore = defineStore('settings', () => {
                     for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
                         uiSettings.devices?.push(toRaw(uid))
                         const deviceSettingsDto = new DeviceUISettingsDTO()
-                        deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
                         deviceSettingsDto.userName = deviceSettings.userName
+                        deviceSettingsDto.userColor = deviceSettings.userColor
                         deviceSettings.sensorsAndChannels.forEach(
                             (sensorAndChannelSettings, name) => {
                                 deviceSettingsDto.names.push(name)
@@ -945,6 +948,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.customTheme.borderOne = customTheme.borderOne
                     uiSettings.customTheme.textColor = customTheme.textColor
                     uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
+                    uiSettings.entityColors = entityColors.value
                     uiSettings.showOnboarding = showOnboarding.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
@@ -1180,6 +1184,7 @@ export const useSettingsStore = defineStore('settings', () => {
         mainMenuWidthRem,
         frequencyPrecision,
         customTheme,
+        entityColors,
         showOnboarding,
         allDaemonDeviceSettings,
         ccSettings,

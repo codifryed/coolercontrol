@@ -54,6 +54,7 @@ export class UISettingsDTO {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
+    entityColors: Array<[string, string]> = []
     showOnboarding: boolean = true
 }
 
@@ -110,8 +111,8 @@ export const defaultCustomTheme: CustomThemeSettings = {
 }
 
 export class DeviceUISettingsDTO {
-    menuCollapsed: boolean = false
     userName?: string
+    userColor?: Color
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
@@ -128,12 +129,10 @@ export type AllDeviceSettings = Map<UID, DeviceUISettings>
  * A Device's Settings
  */
 export class DeviceUISettings {
-    /**
-     * Whether the main menu's Device entry is collapsed or not
-     */
-    menuCollapsed: boolean = false
     displayName: string = ''
     userName?: string
+    // An optional color for the device, default is the theme's text color:
+    userColor?: Color
 
     /**
      * A Map of Sensor and Channel Names to associated Settings.
