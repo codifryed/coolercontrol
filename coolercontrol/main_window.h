@@ -47,6 +47,8 @@ class MainWindow final : public QMainWindow {
  public slots:
   void forceQuit();
 
+  void forceRefresh() const;
+
   void reestablishDaemonConnection() const;
 
   void tryDaemonConnection() const;
@@ -61,6 +63,8 @@ class MainWindow final : public QMainWindow {
 
  signals:
   void forceQuitSignal();
+
+  void forceRefreshSignal();
 
   void daemonConnectionLost() const;
 

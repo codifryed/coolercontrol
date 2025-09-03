@@ -105,13 +105,24 @@ export const useDeviceStore = defineStore('device', () => {
             }
             s++
         }
-        reloadUI()
+        reloadUI(true)
     }
 
     function reloadUI(force: boolean = false): void {
-        // When accessing the UI directly from the daemon, we need to refresh on the base URL.
-        if (force) {
-            window.location.replace(window.location.href)
+        if (force && isQtApp()) {
+            // call force refresh in the Qt App, which will clear the cache and reload the UI
+            // @ts-ignore
+            const ipc = window.ipc
+            try {
+                ipc.forceRefresh()
+            } catch (_) {
+                // This will catch the very first time this logic is used and the Qt app
+                // hasn't been restarted yet. (delete later)
+                console.error(
+                    'Could not force refresh the UI. Please restart the desktop application.',
+                )
+                window.location.reload()
+            }
         } else {
             window.location.reload()
         }

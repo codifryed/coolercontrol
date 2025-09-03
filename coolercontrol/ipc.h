@@ -70,6 +70,8 @@ class IPC final : public QObject {
 
   void forceQuit() const;
 
+  void forceRefresh() const;
+
   void syncSettings() const;
 
   void loadFinished() const { emit webLoadFinished(); }
