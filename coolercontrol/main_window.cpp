@@ -255,15 +255,22 @@ void MainWindow::forceQuit() {
 }
 
 void MainWindow::forceRefresh() const {
+  qInfo() << "Forced UI refresh.";
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(
       m_profile, &QWebEngineProfile::clearHttpCacheCompleted, this,
       [this]() {
-        qInfo() << "Forced UI refresh.";
         m_uiLoadingStopped = false;
         m_view->load(getDaemonUrl());
       },
       Qt::SingleShotConnection);
   m_profile->clearHttpCache();
+#else
+  m_profile->clearHttpCache();
+  delay(200);
+  m_uiLoadingStopped = false;
+  m_view->load(getDaemonUrl());
+#endif
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
