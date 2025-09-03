@@ -139,6 +139,19 @@ provided templates. When submitting a bug
 are invaluable to determining the cause. If you have a general question, please join the
 [Discord](https://discord.gg/MbcgUFAfhV) channel where community members can also help.
 
+## Support CoolerControl
+
+Made for Linux, used 24/7 by me. CoolerControl started as the tool I needed for my own rigs and grew
+from there. If you’d like to help, your support goes straight into new features, integrations,
+maintenance, and a cup of coffee to power those late‑night coding sessions.
+
+<div>
+<!-- trunk-ignore-begin(markdownlint)-->
+<a href="https://ko-fi.com/codifryed"><img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
+<a href="https://github.com/sponsors/codifryed"><img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA"></a>
+<!-- trunk-ignore-end(markdownlint)-->
+</div>
+
 ## 🚀 Contributing
 
 :heart: CoolerControl is in need of help with the following areas:
