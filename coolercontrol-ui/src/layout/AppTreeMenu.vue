@@ -311,6 +311,9 @@ const createTreeMenu = (): void => {
                 menuItem.children.sort((a: any, b: any) => getIndex(a) - getIndex(b))
             }
         })
+        sortStoreProfiles()
+        sortStoreFunctions()
+        deviceStore.reSortDevicesByMenuOrder(true)
     }
     data.value.push(...result)
 }
@@ -319,7 +322,32 @@ const saveMenuOrderChanges = () => {
     settingsStore.menuOrder = data.value.map((item: any) => {
         return { id: item.id, children: item.children.map((child: any) => child.id) }
     })
+    sortStoreProfiles()
+    sortStoreFunctions()
+    deviceStore.reSortDevicesByMenuOrder()
 }
+
+const sortStoreProfiles = () => {
+    const profilesOrderItem = settingsStore.menuOrder.find((item) => item.id === 'profiles')
+    if (profilesOrderItem?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = profilesOrderItem.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        settingsStore.profiles.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
+}
+const sortStoreFunctions = () => {
+    const functionsOrderItem = settingsStore.menuOrder.find((item) => item.id === 'functions')
+    if (functionsOrderItem?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = functionsOrderItem.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        settingsStore.functions.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
+}
+
 const createPinnedMenu = (): void => {
     pinnedItems.value.length = 0
     if (settingsStore.pinnedIds.length > 0) {
