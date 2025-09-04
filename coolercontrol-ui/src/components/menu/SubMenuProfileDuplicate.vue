@@ -61,6 +61,11 @@ const duplicateProfile = async (): Promise<void> => {
         profileToDuplicate.member_profile_uids,
         profileToDuplicate.mix_function_type,
     )
+    // New Profile fields need to be handled here as well:
+    newProfile.function_uid = profileToDuplicate.function_uid
+    newProfile.temp_max = profileToDuplicate.temp_max
+    newProfile.temp_min = profileToDuplicate.temp_min
+    newProfile.offset_profile = profileToDuplicate.offset_profile
     settingsStore.profiles.push(newProfile)
     await settingsStore.saveProfile(newProfile.uid)
     toast.add({
