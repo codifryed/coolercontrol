@@ -294,27 +294,21 @@ const createTreeMenu = (): void => {
     result.push(...devicesTreeArray())
     if (settingsStore.menuOrder.length > 0) {
         // Sort main menu items
-        result.sort((a, b) => {
-            const getIndex = (item: any) => {
-                const index = settingsStore.menuOrder.findIndex(
-                    (menuItem) => menuItem.id === item.id,
-                )
-                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-            }
-            return getIndex(a) - getIndex(b)
-        })
+        const getRootIndex = (item: any) => {
+            const index = settingsStore.menuOrder.findIndex((menuItem) => menuItem.id === item.id)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        result.sort((a, b) => getRootIndex(a) - getRootIndex(b))
 
         // Sort children of each menu item
         result.forEach((menuItem) => {
             const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === menuItem.id)
             if (menuOrderItem?.children?.length) {
-                menuItem.children.sort((a: any, b: any) => {
-                    const getIndex = (item: any) => {
-                        const index = menuOrderItem.children.indexOf(item.id)
-                        return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-                    }
-                    return getIndex(a) - getIndex(b)
-                })
+                const getIndex = (item: any) => {
+                    const index = menuOrderItem.children.indexOf(item.id)
+                    return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                }
+                menuItem.children.sort((a: any, b: any) => getIndex(a) - getIndex(b))
             }
         })
     }

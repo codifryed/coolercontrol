@@ -199,13 +199,11 @@ const dashboardItems = computed(() => {
     }
     const dashboardMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'dashboards')
     if (dashboardMenuOrder?.children?.length) {
-        dashboardItems.sort((a: any, b: any) => {
-            const getIndex = (item: any) => {
-                const index = dashboardMenuOrder.children.indexOf(item.uid)
-                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-            }
-            return getIndex(a) - getIndex(b)
-        })
+        const getIndex = (item: any) => {
+            const index = dashboardMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        dashboardItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
     return dashboardItems
 })
@@ -231,13 +229,11 @@ const modesItems = computed(() => {
     }
     const modeMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'modes')
     if (modeMenuOrder?.children?.length) {
-        menuItems.sort((a: any, b: any) => {
-            const getIndex = (item: any) => {
-                const index = modeMenuOrder.children.indexOf(item.uid)
-                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-            }
-            return getIndex(a) - getIndex(b)
-        })
+        const getIndex = (item: any) => {
+            const index = modeMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        menuItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
     return menuItems
 })

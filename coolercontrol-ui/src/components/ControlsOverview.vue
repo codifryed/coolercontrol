@@ -233,15 +233,13 @@ const initWidgetData = () => {
         deviceControlData.value.push(deviceData)
         if (settingsStore.menuOrder.length > 0) {
             // Sort main menu items
-            deviceControlData.value.sort((a, b) => {
-                const getIndex = (device: DeviceControlData) => {
-                    const index = settingsStore.menuOrder.findIndex(
-                        (menuItem) => menuItem.id === device.deviceUID,
-                    )
-                    return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-                }
-                return getIndex(a) - getIndex(b)
-            })
+            const getIndex = (device: DeviceControlData) => {
+                const index = settingsStore.menuOrder.findIndex(
+                    (menuItem) => menuItem.id === device.deviceUID,
+                )
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            deviceControlData.value.sort((a, b) => getIndex(a) - getIndex(b))
 
             // Sort children of each menu item
             deviceControlData.value.forEach((device: DeviceControlData) => {
@@ -249,15 +247,13 @@ const initWidgetData = () => {
                     (item) => item.id === device.deviceUID,
                 )
                 if (menuOrderItem?.children?.length) {
-                    device.channelData.sort((a, b) => {
-                        const getIndex = (item: ChannelControlData) => {
-                            const index = menuOrderItem.children.indexOf(
-                                `${device.deviceUID}_${item.channelID}`,
-                            )
-                            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-                        }
-                        return getIndex(a) - getIndex(b)
-                    })
+                    const getIndex = (item: ChannelControlData) => {
+                        const index = menuOrderItem.children.indexOf(
+                            `${device.deviceUID}_${item.channelID}`,
+                        )
+                        return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                    }
+                    device.channelData.sort((a, b) => getIndex(a) - getIndex(b))
                 }
             })
         }

@@ -46,13 +46,11 @@ const alertsList = computed(() => {
     }
     const alertMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'alerts')
     if (alertMenuOrder?.children?.length) {
-        alerts.sort((a: any, b: any) => {
-            const getIndex = (item: any) => {
-                const index = alertMenuOrder.children.indexOf(item.uid)
-                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
-            }
-            return getIndex(a) - getIndex(b)
-        })
+        const getIndex = (item: any) => {
+            const index = alertMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        alerts.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
     return alerts
 })
