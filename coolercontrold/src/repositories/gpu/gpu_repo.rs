@@ -265,8 +265,7 @@ impl Repository for GpuRepo {
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         debug!(
-            "Applying GPU device: {} channel: {}; Resetting to Automatic fan control",
-            device_uid, channel_name
+            "Applying GPU device: {device_uid} channel: {channel_name}; Resetting to Automatic fan control"
         );
         let is_amd = self.gpus_amd.amd_driver_infos.contains_key(device_uid);
         if is_amd {
