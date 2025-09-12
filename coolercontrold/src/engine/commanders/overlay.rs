@@ -76,8 +76,6 @@ impl OverlayProfileCommander {
                 "Overlay Profile offset profiles should have at least one duty/offset pair"
             ));
         }
-        // Clear the channel setting in case another overlay profile is already scheduled:
-        self.clear_channel_setting(device_channel.device_uid(), device_channel.channel_name());
         let normalized_overlay_setting =
             Self::normalize_overlay_setting(overlay_profile, member_profile);
         self.schedule_member_profiles(&device_channel, member_profile, member_profile_members)?;
@@ -128,7 +126,9 @@ impl OverlayProfileCommander {
         Ok(())
     }
 
-    pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+    /// Calling the Overlay Profile Commander's `clear_channel_setting` will also clear
+    /// the channel setting for all Commanders under it (Mix and Graph).
+    pub fn clear_channel_setting_all_commanders(&self, device_uid: &UID, channel_name: &str) {
         let mut overlay_profile_to_remove: Option<Rc<NormalizedOverlayProfile>> = None;
         let device_channel = DeviceChannelProfileSetting::Overlay {
             device_uid: device_uid.clone(),
@@ -149,8 +149,7 @@ impl OverlayProfileCommander {
         }
         self.mix_commander
             .clear_channel_setting(device_uid, channel_name);
-        self.graph_commander
-            .clear_channel_setting(device_uid, channel_name);
+        // graph commander is cleared in the mix commander (cascade remove)
     }
 
     /// This method processes all scheduled profiles and updates the output cache.
@@ -174,9 +173,9 @@ impl OverlayProfileCommander {
             };
             let Some(member_output) = member_output_option else {
                 error!(
-                        "Overlay Profile calculation for {} skipped because of missing member output duty ",
-                        overlay_profile.profile_uid
-                    );
+                    "Overlay Profile calculation for {} skipped because of missing member output duty ",
+                    overlay_profile.profile_uid
+                );
                 // In very rare cases in the past, this was possible due to a race condition.
                 // This should no longer happen, but we avoid the panic anyway.
                 if let Some(cache) = output_cache_lock.get_mut(&overlay_profile.profile_uid) {
