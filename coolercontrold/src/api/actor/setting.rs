@@ -20,7 +20,7 @@ use crate::api::settings::{CoolerControlDeviceSettingsDto, CoolerControlSettings
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID};
-use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Setting};
+use crate::setting::{CCDeviceSettings, CoolerControlSettings, Setting};
 use crate::AllDevices;
 use anyhow::Result;
 use moro_local::Scope;
@@ -54,7 +54,7 @@ enum SettingMessage {
     },
     UpdateCCDevice {
         device_uid: DeviceUID,
-        update: CoolerControlDeviceSettings,
+        update: CCDeviceSettings,
         respond_to: oneshot::Sender<Result<()>>,
     },
     GetUI {
@@ -288,7 +288,7 @@ impl SettingHandle {
     pub async fn update_cc_device(
         &self,
         device_uid: DeviceUID,
-        update: CoolerControlDeviceSettings,
+        update: CCDeviceSettings,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = SettingMessage::UpdateCCDevice {

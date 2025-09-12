@@ -170,7 +170,7 @@ pub struct CoolerControlSettings {
 
 /// General Device Settings for `CoolerControl`
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-pub struct CoolerControlDeviceSettings {
+pub struct CCDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
     pub name: DeviceName,
 

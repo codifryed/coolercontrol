@@ -35,7 +35,7 @@ use crate::device::{Duty, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
+    CCDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
     LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile, ProfileMixFunctionType,
     ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
@@ -464,9 +464,7 @@ impl Config {
         Ok(devices_settings)
     }
 
-    pub fn get_all_cc_devices_settings(
-        &self,
-    ) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
+    pub fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, Option<CCDeviceSettings>>> {
         let mut devices_settings = HashMap::new();
         if let Some(device_table) = self.document.borrow()["settings"].as_table() {
             for (device_uid, _value) in device_table {
@@ -1044,10 +1042,7 @@ impl Config {
     /// This gets the `CoolerControl` settings for specific devices
     /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
-    pub fn get_cc_settings_for_device(
-        &self,
-        device_uid: &str,
-    ) -> Result<Option<CoolerControlDeviceSettings>> {
+    pub fn get_cc_settings_for_device(&self, device_uid: &str) -> Result<Option<CCDeviceSettings>> {
         if let Some(table_item) = self.document.borrow()["settings"].get(device_uid) {
             let device_settings_table = table_item
                 .as_table()
@@ -1082,7 +1077,7 @@ impl Config {
                 } else {
                     Vec::new()
                 };
-            Ok(Some(CoolerControlDeviceSettings {
+            Ok(Some(CCDeviceSettings {
                 name,
                 disable,
                 disable_channels,
@@ -1096,7 +1091,7 @@ impl Config {
     pub fn set_cc_settings_for_device(
         &self,
         device_uid: &str,
-        cc_device_settings: &CoolerControlDeviceSettings,
+        cc_device_settings: &CCDeviceSettings,
     ) {
         let mut doc = self.document.borrow_mut();
         let device_settings_table =

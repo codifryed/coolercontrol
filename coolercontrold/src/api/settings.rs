@@ -19,7 +19,7 @@
 use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
-use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
+use crate::setting::{CCDeviceSettings, CoolerControlSettings};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -75,7 +75,7 @@ pub async fn get_cc_device(
 pub async fn update_cc_device(
     Path(path): Path<DevicePath>,
     State(AppState { setting_handle, .. }): State<AppState>,
-    Json(cc_device_settings_request): Json<CoolerControlDeviceSettings>,
+    Json(cc_device_settings_request): Json<CCDeviceSettings>,
 ) -> Result<(), CCError> {
     setting_handle
         .update_cc_device(path.device_uid, cc_device_settings_request)
