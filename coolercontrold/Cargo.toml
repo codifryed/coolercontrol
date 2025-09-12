@@ -19,10 +19,10 @@ default = []
 io_uring = ["dep:tokio-uring"]
 
 [dependencies]
-log = "0.4.27"
+log = "0.4.28"
 env_logger = "0.11.8"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.45", features = [
+clap = { version = "4.5.47", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.99"
@@ -78,10 +78,10 @@ headers = "0.4.1"
 # this needs to follow the aide version above (currently 0.9.0)
 schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
-axum_typed_multipart = "0.16.3"
+axum_typed_multipart = "0.16.4"
 # possible openApi improvement, but doesn't work for us currently:
 #aide-axum-typed-multipart-2 = "0.16.0"
-tempfile = "3.21.0"
+tempfile = "3.22.0"
 hyper = { version = "1.7.0", default-features = false, features = [
   "http1",
   "client",
@@ -94,21 +94,21 @@ hyper-util = { version = "0.1.16", default-features = false, features = [
 http-body-util = "0.1.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
-zbus = { version = "5.9.0", default-features = false, features = [
+zbus = { version = "5.11.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
 # sysinfo 0.37.0 requires >Rust 1.88
-sysinfo = { version = "0.36.1", default-features = false, features = [
+sysinfo = { version = "=0.36.1", default-features = false, features = [
   "system",
 ] } # gets detailed system info
-chrono = { version = "0.4.41", features = [
+chrono = { version = "0.4.42", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.27.2", features = ["derive"] } # Enum -> String
-regex = "1.11.1"
+regex = "1.11.2"
 cached = { version = "0.56.0", default-features = false, features = [
   "proc_macro",
   "ahash",
@@ -120,7 +120,7 @@ psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.106.1"
+nu-glob = "0.107.0"
 # our own fork: (additional Nix support, etc.)
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
 sha2 = "0.10.9"
@@ -142,7 +142,7 @@ ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.6", default-features = false, features = [
+image = { version = "0.25.8", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",
@@ -157,10 +157,13 @@ gifski = { version = "1.34.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.52" # for gif processing
-uuid = { version = "1.18.0", features = ["v4"] }
+uuid = { version = "1.18.1", features = ["v4"] }
 
 [dev-dependencies]
 serial_test = "3.2.0"
+
+[profile.dev]
+debug = "line-tables-only"
 
 [profile.release]
 strip = "symbols"
