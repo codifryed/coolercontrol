@@ -378,11 +378,16 @@ const setGraphData = () => {
     tempLineData[1].value = [temp, dutyMax]
     graphLineData.length = 0
     if (props.profile.speed_profile.length > 1) {
-        if (props.profile.speed_profile[0][0] > axisXTempMin) {
-            graphLineData.push({ value: [axisXTempMin, props.profile.speed_profile[0][1]] })
+        const firstPoint = props.profile.speed_profile[0]
+        if (firstPoint[0] > axisXTempMin) {
+            graphLineData.push({ value: [axisXTempMin, firstPoint[1]] })
         }
         for (const point of props.profile.speed_profile) {
             graphLineData.push({ value: point })
+        }
+        const lastPoint = props.profile.speed_profile[props.profile.speed_profile.length - 1]
+        if (lastPoint[0] < axisXTempMax) {
+            graphLineData.push({ value: [axisXTempMax, lastPoint[1]] })
         }
     }
 }
