@@ -26,7 +26,7 @@ import { ChromePicker, CompactPicker } from 'vue-color'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Popover from 'primevue/popover'
-import { ref, Ref } from 'vue'
+import { nextTick, ref, Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
@@ -90,6 +90,15 @@ const popoverClose = (): void => {
     newColorApplied = false
     emit('open', false)
 }
+const handleRedIssue = (newColor: Color): void => {
+    // This fixes an issue with a component glitch due to full-red being at both the beginning
+    // and end of the UI color spectrum. This works around that issue by telling the component
+    // which end of the spectrum to go to.
+    if (newColor.toLowerCase() === '#ff0000') {
+        currentColor.value = '#ff0001'
+        nextTick(() => (currentColor.value = '#ff0000'))
+    }
+}
 </script>
 
 <template>
@@ -121,6 +130,7 @@ const popoverClose = (): void => {
                         v-model="currentColor"
                         class="!w-[32rem]"
                         :palette="settingsStore.predefinedColorOptions"
+                        @update:modelValue="handleRedIssue"
                     />
                 </div>
                 <div class="flex flex-row justify-between mt-4 w-full">
