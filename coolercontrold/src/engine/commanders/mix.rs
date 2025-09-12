@@ -76,8 +76,6 @@ impl MixProfileCommander {
         if member_profiles.is_empty() {
             return Err(anyhow!("Member profiles must be present for a Mix Profile"));
         }
-        // Clear the channel setting in case another mix profile is already scheduled:
-        self.clear_channel_setting(device_channel.device_uid(), device_channel.channel_name());
         let normalized_mix_setting = Self::normalize_mix_setting(mix_profile, &member_profiles);
         self.schedule_member_profiles(&device_channel, member_profiles)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();

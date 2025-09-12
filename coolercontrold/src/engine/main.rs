@@ -160,12 +160,8 @@ impl Engine {
     ) -> Result<()> {
         match self.get_device_repo(device_uid) {
             Ok((device_lock, repo)) => {
-                self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name);
-                self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name);
                 self.overlay_commander
-                    .clear_channel_setting(device_uid, channel_name);
+                    .clear_channel_setting_all_commanders(device_uid, channel_name);
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
@@ -258,16 +254,15 @@ impl Engine {
             .into_iter()
             .find(|f| f.uid == profile.function_uid)
             .with_context(|| "Function should be present")?;
-        self.mix_commander // clear any mix profile settings for this channel first:
-            .clear_channel_setting(device_uid, channel_name);
+        // clear any profile setting for this channel first:
+        self.overlay_commander
+            .clear_channel_setting_all_commanders(device_uid, channel_name);
         // For internal temps, if the device firmware supports speed profiles and settings
         // match, let's use it: (device firmwares only support Identity Functions)
         if speed_options.profiles_enabled
             && &temp_source.device_uid == device_uid
             && profile_function.f_type == FunctionType::Identity
         {
-            self.graph_commander
-                .clear_channel_setting(device_uid, channel_name);
             repo.apply_setting_speed_profile(
                 device_uid,
                 channel_name,
@@ -333,6 +328,9 @@ impl Engine {
             return Err(anyhow!("All Member Profile Functions should be present"));
         }
         if speed_options.fixed_enabled {
+            // clear any profile setting for this channel first:
+            self.overlay_commander
+                .clear_channel_setting_all_commanders(device_uid, channel_name);
             // This could potentially take significant time for slow devices:
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await
@@ -342,8 +340,6 @@ impl Engine {
                         Profile scheduling has been disabled for {channel_name} | {err}",
                         profile.name
                     );
-                    self.graph_commander
-                        .clear_channel_setting(device_uid, channel_name);
                 })?;
             self.mix_commander.schedule_setting(
                 DeviceChannelProfileSetting::Mix {
@@ -398,6 +394,9 @@ impl Engine {
             .get_ordered_member_profiles(&member_profile.member_profile_uids)
             .await?;
         if speed_options.fixed_enabled {
+            // clear any profile setting for this channel first:
+            self.overlay_commander
+                .clear_channel_setting_all_commanders(device_uid, channel_name);
             // This could potentially take significant time for slow devices:
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await
@@ -407,10 +406,6 @@ impl Engine {
                         Profile scheduling has been disabled for {channel_name} | {err}",
                         profile.name
                     );
-                    self.mix_commander
-                        .clear_channel_setting(device_uid, channel_name);
-                    self.graph_commander
-                        .clear_channel_setting(device_uid, channel_name);
                 })?;
             self.overlay_commander.schedule_setting(
                 DeviceChannelProfileSetting::Overlay {
@@ -637,11 +632,7 @@ impl Engine {
         match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
                 self.overlay_commander
-                    .clear_channel_setting(device_uid, channel_name);
-                self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name);
-                self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name);
+                    .clear_channel_setting_all_commanders(device_uid, channel_name);
                 self.lcd_commander
                     .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_reset(device_uid, channel_name).await
