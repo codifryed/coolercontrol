@@ -57,7 +57,6 @@ impl DeviceSupport for MsiAcpiEcSupport {
                         max_duty: 100,
                         auto_hw_curve: true,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },

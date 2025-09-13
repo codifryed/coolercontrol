@@ -311,7 +311,6 @@ impl GpuNVidia {
                             speed_options: Some(SpeedOptions {
                                 auto_hw_curve: false,
                                 fixed_enabled: true,
-                                manual_profiles_enabled: true,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -864,7 +863,6 @@ impl GpuNVidia {
                                 speed_options: Some(SpeedOptions {
                                     auto_hw_curve: false,
                                     fixed_enabled: has_xauth, // disable if xauth not found
-                                    manual_profiles_enabled: has_xauth,
                                     ..Default::default()
                                 }),
                                 ..Default::default()

@@ -270,9 +270,7 @@ impl Engine {
                 profile.speed_profile.as_ref().unwrap(),
             )
             .await
-        } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
-            || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
-        {
+        } else if speed_options.fixed_enabled {
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await?;
             self.graph_commander.schedule_setting(

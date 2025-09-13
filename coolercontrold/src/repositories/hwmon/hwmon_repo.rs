@@ -201,7 +201,6 @@ impl HwmonRepo {
                             speed_options: Some(SpeedOptions {
                                 auto_hw_curve: false,
                                 fixed_enabled: channel.pwm_writable,
-                                manual_profiles_enabled: channel.pwm_writable,
                                 ..Default::default()
                             }),
                             ..Default::default()

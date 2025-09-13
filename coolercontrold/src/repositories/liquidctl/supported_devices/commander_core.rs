@@ -50,7 +50,6 @@ impl DeviceSupport for CommanderCoreSupport {
                         max_duty: 100,
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },
@@ -73,7 +72,6 @@ impl DeviceSupport for CommanderCoreSupport {
                         max_duty: 100,
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },

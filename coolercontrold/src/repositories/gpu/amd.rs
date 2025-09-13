@@ -373,7 +373,6 @@ impl GpuAMD {
                             speed_options: Some(SpeedOptions {
                                 auto_hw_curve: false,
                                 fixed_enabled: fan_is_controllable,
-                                manual_profiles_enabled: fan_is_controllable,
                                 min_duty,
                                 max_duty,
                             }),

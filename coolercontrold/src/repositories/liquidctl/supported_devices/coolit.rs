@@ -50,7 +50,6 @@ impl DeviceSupport for CoolitSupport {
                     max_duty: 100,
                     auto_hw_curve: false,
                     fixed_enabled: false,
-                    manual_profiles_enabled: false,
                 }),
                 ..Default::default()
             },
@@ -63,7 +62,6 @@ impl DeviceSupport for CoolitSupport {
                     max_duty: 100,
                     auto_hw_curve: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             },
@@ -76,7 +74,6 @@ impl DeviceSupport for CoolitSupport {
                     max_duty: 100,
                     auto_hw_curve: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             },

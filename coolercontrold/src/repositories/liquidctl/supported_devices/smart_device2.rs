@@ -67,7 +67,6 @@ impl DeviceSupport for SmartDevice2Support {
                         max_duty: MAX_DUTY,
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: false, // no internal temp
                     }),
                     ..Default::default()
                 },

@@ -22,6 +22,5 @@ export class SpeedOptions {
         readonly max_duty: number = 100,
         readonly auto_hw_curve: boolean = false,
         readonly fixed_enabled: boolean = false,
-        readonly manual_profiles_enabled: boolean = false,
     ) {}
 }

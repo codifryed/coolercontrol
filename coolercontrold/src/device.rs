@@ -336,9 +336,6 @@ pub struct SpeedOptions {
 
     /// True if manual fan speed control is supported; if false, speeds are read-only (monitoring only).
     pub fixed_enabled: bool,
-    /// This enables software-profiles for device-internal temperatures
-    /// External temperatures must always be software-profiles and are not handled by this property
-    pub manual_profiles_enabled: bool,
 }
 
 impl Default for SpeedOptions {
@@ -348,7 +345,6 @@ impl Default for SpeedOptions {
             max_duty: 100,
             auto_hw_curve: false,
             fixed_enabled: true,
-            manual_profiles_enabled: false,
         }
     }
 }

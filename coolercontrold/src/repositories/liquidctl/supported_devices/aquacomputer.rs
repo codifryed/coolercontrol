@@ -49,7 +49,6 @@ impl DeviceSupport for AquaComputerSupport {
                         max_duty: 100,
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },

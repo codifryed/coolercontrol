@@ -62,7 +62,6 @@ impl DeviceSupport for H1V2Support {
                         max_duty: 100,
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: false, // no internal temp
                     }),
                     ..Default::default()
                 },

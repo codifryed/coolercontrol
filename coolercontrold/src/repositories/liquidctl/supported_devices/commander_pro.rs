@@ -50,7 +50,6 @@ impl DeviceSupport for CommanderProSupport {
                         // Internal profiles for the commander pro only work with RPMs! not duty %
                         auto_hw_curve: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 },
