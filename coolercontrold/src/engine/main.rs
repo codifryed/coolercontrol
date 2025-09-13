@@ -259,7 +259,7 @@ impl Engine {
             .clear_channel_setting_all_commanders(device_uid, channel_name);
         // For internal temps, if the device firmware supports speed profiles and settings
         // match, let's use it: (device firmwares only support Identity Functions)
-        if speed_options.profiles_enabled
+        if speed_options.auto_hw_curve
             && &temp_source.device_uid == device_uid
             && profile_function.f_type == FunctionType::Identity
         {

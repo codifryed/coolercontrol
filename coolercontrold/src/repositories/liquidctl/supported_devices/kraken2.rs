@@ -53,7 +53,7 @@ impl DeviceSupport for Kraken2Support {
                         speed_options: Some(SpeedOptions {
                             min_duty: 0,
                             max_duty: 100,
-                            profiles_enabled: supports_cooling_profiles,
+                            auto_hw_curve: supports_cooling_profiles,
                             fixed_enabled: true,
                             manual_profiles_enabled: true,
                         }),

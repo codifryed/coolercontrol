@@ -48,7 +48,7 @@ impl DeviceSupport for CommanderProSupport {
                         min_duty: 0,
                         max_duty: 100,
                         // Internal profiles for the commander pro only work with RPMs! not duty %
-                        profiles_enabled: false,
+                        auto_hw_curve: false,
                         fixed_enabled: true,
                         manual_profiles_enabled: true,
                     }),

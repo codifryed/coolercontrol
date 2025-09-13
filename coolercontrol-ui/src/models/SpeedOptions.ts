@@ -20,7 +20,7 @@ export class SpeedOptions {
     constructor(
         readonly min_duty: number = 0,
         readonly max_duty: number = 100,
-        readonly profiles_enabled: boolean = false,
+        readonly auto_hw_curve: boolean = false,
         readonly fixed_enabled: boolean = false,
         readonly manual_profiles_enabled: boolean = false,
     ) {}

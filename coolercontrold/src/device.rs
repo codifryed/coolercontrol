@@ -327,11 +327,14 @@ pub struct TempInfo {
 pub struct SpeedOptions {
     /// The minimum fan duty for this speed channel
     pub min_duty: Duty,
+
     /// The maximum fan duty for this speed channel
     pub max_duty: Duty,
-    /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
-    pub profiles_enabled: bool,
-    /// If this is false, it means the fans are not controllable, but viewable.
+
+    /// True if this channel supports a firmware-managed (on-device) fan curve.
+    pub auto_hw_curve: bool,
+
+    /// True if manual fan speed control is supported; if false, speeds are read-only (monitoring only).
     pub fixed_enabled: bool,
     /// This enables software-profiles for device-internal temperatures
     /// External temperatures must always be software-profiles and are not handled by this property
@@ -343,7 +346,7 @@ impl Default for SpeedOptions {
         SpeedOptions {
             min_duty: 0,
             max_duty: 100,
-            profiles_enabled: false,
+            auto_hw_curve: false,
             fixed_enabled: true,
             manual_profiles_enabled: false,
         }

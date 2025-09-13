@@ -199,7 +199,7 @@ impl HwmonRepo {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                profiles_enabled: false,
+                                auto_hw_curve: false,
                                 fixed_enabled: channel.pwm_writable,
                                 manual_profiles_enabled: channel.pwm_writable,
                                 ..Default::default()

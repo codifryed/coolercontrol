@@ -47,7 +47,7 @@ impl DeviceSupport for Legacy690LcSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 50,
                     max_duty: 100,
-                    profiles_enabled: false,
+                    auto_hw_curve: false,
                     fixed_enabled: true,
                     manual_profiles_enabled: true,
                 }),
@@ -60,7 +60,7 @@ impl DeviceSupport for Legacy690LcSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
-                    profiles_enabled: false,
+                    auto_hw_curve: false,
                     fixed_enabled: true,
                     manual_profiles_enabled: true,
                 }),
