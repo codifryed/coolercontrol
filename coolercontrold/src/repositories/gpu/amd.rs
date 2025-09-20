@@ -27,7 +27,7 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
-    DriverType, Duty, SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
+    DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
@@ -816,7 +816,7 @@ impl GpuAMD {
     pub async fn set_amd_fan_curve(
         &self,
         device_uid: &UID,
-        speed_profile: &[(f64, u8)],
+        speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
         let amd_driver_info = self
             .amd_driver_infos
@@ -853,16 +853,13 @@ impl GpuAMD {
     }
 
     /// Returns a sanitized fan curve with clamped values.
-    fn create_fan_curve(fan_curve_info: &FanCurveInfo, speed_profile: &[(f64, u8)]) -> FanCurve {
+    fn create_fan_curve(fan_curve_info: &FanCurveInfo, speed_profile: &[(Temp, Duty)]) -> FanCurve {
         let mut fan_curve = FanCurve::default();
         let fan_curve_length = fan_curve_info.fan_curve.points.len();
-        let included_point_indexes =
-            Self::determine_included_point_indexes(speed_profile.len(), fan_curve_length);
-        for (index, (temp, duty)) in speed_profile.iter().enumerate() {
-            if included_point_indexes.contains(&index).not() {
-                continue;
-            }
-            let clamped_duty = if fan_curve_info.speed_range.contains(duty) {
+        let capped_profile = Self::cap_speed_profile(speed_profile, fan_curve_length);
+        let capped_profile_length = capped_profile.len();
+        for (temp, duty) in capped_profile {
+            let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
                 duty
             } else {
                 debug!(
@@ -871,15 +868,15 @@ impl GpuAMD {
                     fan_curve_info.speed_range.start(),
                     fan_curve_info.speed_range.end(),
                 );
-                fan_curve_info
+                *fan_curve_info
                     .speed_range
                     .end()
-                    .min(fan_curve_info.speed_range.start().max(duty))
+                    .min(fan_curve_info.speed_range.start().max(&duty))
             };
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let temp_integer = temp.round() as u8;
+            let temp_integer = temp.round() as CurveTemp;
             let clamped_temp = if fan_curve_info.temperature_range.contains(&temp_integer) {
-                &temp_integer
+                temp_integer
             } else {
                 debug!(
                     "AMD GPU RDNA 3 - Only fan curve temps within range of {}C to {}C are allowed. \
@@ -887,54 +884,45 @@ impl GpuAMD {
                     fan_curve_info.temperature_range.start(),
                     fan_curve_info.temperature_range.end(),
                 );
-                fan_curve_info
+                *fan_curve_info
                     .temperature_range
                     .end()
                     .min(fan_curve_info.temperature_range.start().max(&temp_integer))
             };
-            fan_curve.points.push((*clamped_temp, *clamped_duty));
+            fan_curve.points.push((clamped_temp, clamped_duty));
         }
         let last_point = *fan_curve
             .points
             .last()
             .expect("Should be at least one point");
         // add any missing points:
-        for _ in speed_profile.len()..=fan_curve_length {
+        for _ in capped_profile_length..=fan_curve_length {
             fan_curve.points.push((last_point.0, last_point.1));
         }
         fan_curve
     }
 
-    /// Creates a list of indexes of the points that should be included in the fan curve.
+    /// Caps the speed profile to the max number of points allowed by the fan curve.
     ///
     /// If the speed profile is longer than the fan curve, we truncate the speed profile to the
     /// max number of points allowed by the fan curve. We keep the last point as reference for
     /// the fan curve, safety-wise, but allow setting it truncated.
-    ///
-    /// For speed profiles that are shorter than the fan curve, we include all points and
-    /// repeating the last point is done afterward.
-    fn determine_included_point_indexes(
-        speed_profile_length: usize,
+    fn cap_speed_profile(
+        speed_profile: &[(Temp, Duty)],
         fan_curve_length: usize,
-    ) -> Vec<usize> {
-        let mut included_point_indexes = Vec::new();
-        if speed_profile_length > fan_curve_length {
-            // take the first `fan_curve_length` points from the speed profile, excluding the last
-            for i in 0..(fan_curve_length - 1) {
-                included_point_indexes.push(i);
-            }
-            // add the last point to the included point indexes
-            included_point_indexes.push(fan_curve_length - 1);
+    ) -> Vec<(Temp, Duty)> {
+        let mut capped_profile = speed_profile.to_vec();
+        if capped_profile.len() > fan_curve_length {
             warn!(
                 "AMD GPU RDNA 3 - Max {fan_curve_length} fan curve points are allowed. \
-                Truncating speed profile with {speed_profile_length} points."
+                Truncating speed profile with {} points. Please adjust the \
+                Graph Profile to match the number of points allowed by the device fan curve.",
+                capped_profile.len()
             );
-        } else {
-            for i in 0..speed_profile_length {
-                included_point_indexes.push(i);
-            }
+            capped_profile.truncate(fan_curve_length - 1); // remove all but the last point
+            capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
         }
-        included_point_indexes
+        capped_profile
     }
 }
 

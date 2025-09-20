@@ -26,7 +26,9 @@ use std::string::ToString;
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
-use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
+use crate::device::{
+    ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -440,6 +442,17 @@ impl LiquidctlRepo {
         temp_source: &TempSource,
         profile: &[(f64, u8)],
     ) -> Result<()> {
+        let max_points = self
+            .devices
+            .get(&device_data.uid)
+            .map(|dev| dev.borrow().info.profile_max_length)
+            .with_context(|| {
+                format!(
+                    "Failed to get device info for {} to set internal speed profile",
+                    device_data.uid
+                )
+            })?;
+        let capped_profile = Self::cap_speed_profile(profile, max_points as usize);
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
         let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
             let temp_sensor_number: u8 = regex_temp_sensor_number
@@ -457,7 +470,7 @@ impl LiquidctlRepo {
             .put_speed_profile(
                 &device_data.type_index,
                 channel_name,
-                profile,
+                &capped_profile,
                 temperature_sensor,
             )
             .await
@@ -468,6 +481,26 @@ impl LiquidctlRepo {
                     device_data.uid
                 )
             })
+    }
+
+    /// Caps the speed profile to the max number of points allowed by the fan curve.
+    ///
+    /// If the speed profile is longer than the fan curve, we truncate the speed profile to the
+    /// max number of points allowed by the fan curve. We keep the last point as reference for
+    /// the fan curve, safety-wise, but allow setting it truncated.
+    fn cap_speed_profile(speed_profile: &[(Temp, Duty)], max_points: usize) -> Vec<(Temp, Duty)> {
+        let mut capped_profile = speed_profile.to_vec();
+        if capped_profile.len() > max_points {
+            warn!(
+                "Liquidctl Device - Max {max_points} fan curve points are allowed. \
+                Truncating speed profile with {} points. Please adjust the \
+                Graph Profile to match the number of points allowed by the device fan curve.",
+                capped_profile.len()
+            );
+            capped_profile.truncate(max_points - 1); // remove all but the last point
+            capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
+        }
+        capped_profile
     }
 
     async fn set_color(
