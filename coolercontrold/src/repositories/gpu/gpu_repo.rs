@@ -32,7 +32,7 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::repositories::gpu::amd::GpuAMD;
+use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
 use crate::repositories::gpu::nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -314,14 +314,40 @@ impl Repository for GpuRepo {
 
     async fn apply_setting_speed_profile(
         &self,
-        _device_uid: &UID,
-        _channel_name: &str,
-        _temp_source: &TempSource,
-        _speed_profile: &[(f64, u8)],
+        device_uid: &UID,
+        channel_name: &str,
+        temp_source: &TempSource,
+        speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        Err(anyhow!(
-            "Applying Speed Profiles are not supported for GPU devices"
-        ))
+        let is_supported = self
+            .gpus_amd
+            .amd_driver_infos
+            .get(device_uid)
+            .is_some_and(|infos| infos.fan_curve_info.is_some());
+        if is_supported.not() {
+            return Err(anyhow!(
+                "Applying Internal Profiler Error: device_uid: {device_uid}. Only AMD RNDA3/7000 series and newer GPU's support hardware fan curves."
+            ));
+        }
+        if &temp_source.device_uid != device_uid {
+            return Err(anyhow!(
+                "Applying Internal Profiler Error: temp_source device_uid: {} does not match this device.",
+                temp_source.device_uid
+            ));
+        }
+        if temp_source.temp_name != TEMP_FOR_FAN_CURVE {
+            return Err(anyhow!(
+                "Applying Internal Profiler Error: temp_source temp_name: {}. \
+                Only 'temp1' Edge temperature is supported for internal profiles.",
+                temp_source.temp_name
+            ));
+        }
+        debug!(
+            "Applying GPU device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
+        self.gpus_amd
+            .set_amd_fan_curve(device_uid, speed_profile)
+            .await
     }
 
     async fn apply_setting_lighting(

@@ -26,8 +26,8 @@ use std::rc::Rc;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
-    SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo,
+    DriverType, Duty, SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_POWER_NAME, GPU_TEMP_NAME,
@@ -42,6 +42,7 @@ use libdrm_amdgpu_sys::AMDGPU::GPU_INFO;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 
+pub const TEMP_FOR_FAN_CURVE: &str = "temp1";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const PP_OVERDRIVE_MASK: u64 = 0x4000;
 const PP_FEATURE_MASK_PATH: &str = "/sys/module/amdgpu/parameters/ppfeaturemask";
@@ -207,6 +208,7 @@ impl GpuAMD {
     /// Gets the PMFW (power management firmware) fan curve information.
     /// Note: if the device is in auto mode or no custom curve is used,
     /// all the curve points may be set to 0.
+    /// See: <https://docs.kernel.org/gpu/amdgpu/thermal.html#fan-curve>
     ///
     /// Only available on Navi3x (RDNA 3) or newer devices.
     async fn get_fan_curve_info(device_path: &Path) -> Result<FanCurveInfo> {
@@ -372,7 +374,7 @@ impl GpuAMD {
             for channel in &amd_driver.hwmon.channels {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
-                        let speed_settings = if supports_internal_profiles {
+                        let extension = if supports_internal_profiles {
                             Some(ChannelExtensionNames::AmdRdnaGpu)
                         } else {
                             None
@@ -380,7 +382,7 @@ impl GpuAMD {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                extension: speed_settings,
+                                extension,
                                 fixed_enabled: fan_is_controllable,
                                 min_duty,
                                 max_duty,
@@ -456,6 +458,10 @@ impl GpuAMD {
                     channels,
                     temp_min,
                     temp_max,
+                    profile_max_length: amd_driver
+                        .fan_curve_info
+                        .as_ref()
+                        .map_or(17, |fc| fc.fan_curve.points.len() as u8),
                     model: amd_driver.hwmon.model.clone(),
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
@@ -488,7 +494,7 @@ impl GpuAMD {
     fn get_min_max_duty(fan_curve_info: Option<&FanCurveInfo>) -> (Duty, Duty) {
         if let Some(fan_curve_info) = fan_curve_info {
             if fan_curve_info.zero_rpm.is_none() {
-                // otherwise we have full range
+                // otherwise we have full range and can use the standard defaults
                 return (
                     fan_curve_info.speed_range.start().to_owned(),
                     fan_curve_info.speed_range.end().to_owned(),
@@ -744,14 +750,33 @@ impl GpuAMD {
             .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
     }
 
+    async fn set_zero_rpm_stop_temp_lowest(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
+            return Ok(());
+        };
+        let lowest_temp = fan_curve_info.zero_rpm_stop_temp_range.start();
+        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{lowest_temp}\n"))
+            .await
+            .map_err(|err| {
+                anyhow!("Error applying {lowest_temp} to Zero RPM Stop Temperature: {err}")
+            })?;
+        cc_fs::write(&zero_rpm_stop_temp_path, b"c\n".to_vec())
+            .await
+            .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
+    }
+
     async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
-        for (i, (temp, duty)) in flat_curve.points.into_iter().enumerate() {
-            cc_fs::write_string(&fan_curve_info.path, format!("{i} {temp} {duty}\n"))
+        Self::set_fan_curve(flat_curve, &fan_curve_info.path).await
+    }
+
+    async fn set_fan_curve(fan_curve: FanCurve, fan_curve_path: &Path) -> Result<()> {
+        for (i, (temp, duty)) in fan_curve.points.into_iter().enumerate() {
+            cc_fs::write_string(&fan_curve_path, format!("{i} {temp} {duty}\n"))
                 .await
                 .map_err(|err| anyhow!("Error applying '{i} {temp} {duty}' to Fan Curve: {err}"))?;
         }
-        cc_fs::write(&fan_curve_info.path, b"c\n".to_vec())
+        cc_fs::write(&fan_curve_path, b"c\n".to_vec())
             .await
             .map_err(|err| anyhow!("Error committing Fan Curve changes: {err}"))
     }
@@ -785,19 +810,145 @@ impl GpuAMD {
         }
         new_fan_curve
     }
+
+    /// Applies a speed profile to the GPU's fan curve.
+    /// This is only supported on Navi3x (RDNA 3/7000 series) or newer devices.
+    pub async fn set_amd_fan_curve(
+        &self,
+        device_uid: &UID,
+        speed_profile: &[(f64, u8)],
+    ) -> Result<()> {
+        let amd_driver_info = self
+            .amd_driver_infos
+            .get(device_uid)
+            .with_context(|| "Hwmon Info should exist")?;
+        let Some(fan_curve_info) = &amd_driver_info.fan_curve_info else {
+            return Err(anyhow!(
+                "Applying Internal Profiler Error: device_uid: {device_uid}. \
+                Only AMD GPU's with fan curves are supported."
+            ));
+        };
+        if fan_curve_info.changeable.not() {
+            return Err(anyhow!(
+                "Applying Internal Profiler Error: PMFW Fan Curve control is present for this device, \
+                but not enabled. Please see the documentation about enabling this in the kernel."
+            ));
+        }
+        // if present enable Zero RPM with low stop temp
+        if fan_curve_info.zero_rpm.is_some() {
+            Self::set_zero_rpm(fan_curve_info, true).await?;
+            if fan_curve_info.zero_rpm_stop_temp.is_some() {
+                Self::set_zero_rpm_stop_temp_lowest(fan_curve_info).await?;
+            }
+        }
+        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile);
+        Self::set_fan_curve(fan_curve, &fan_curve_info.path)
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error settings PMFW fan curve of {speed_profile:?} on {} - {err}",
+                    amd_driver_info.hwmon.name
+                )
+            })
+    }
+
+    /// Returns a sanitized fan curve with clamped values.
+    fn create_fan_curve(fan_curve_info: &FanCurveInfo, speed_profile: &[(f64, u8)]) -> FanCurve {
+        let mut fan_curve = FanCurve::default();
+        let fan_curve_length = fan_curve_info.fan_curve.points.len();
+        let included_point_indexes =
+            Self::determine_included_point_indexes(speed_profile.len(), fan_curve_length);
+        for (index, (temp, duty)) in speed_profile.iter().enumerate() {
+            if included_point_indexes.contains(&index).not() {
+                continue;
+            }
+            let clamped_duty = if fan_curve_info.speed_range.contains(duty) {
+                duty
+            } else {
+                debug!(
+                    "AMD GPU RDNA 3 - Only fan duties within range of {}% to {}% are allowed. \
+                Clamping passed duty of {duty}% to nearest limit",
+                    fan_curve_info.speed_range.start(),
+                    fan_curve_info.speed_range.end(),
+                );
+                fan_curve_info
+                    .speed_range
+                    .end()
+                    .min(fan_curve_info.speed_range.start().max(duty))
+            };
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let temp_integer = temp.round() as u8;
+            let clamped_temp = if fan_curve_info.temperature_range.contains(&temp_integer) {
+                &temp_integer
+            } else {
+                debug!(
+                    "AMD GPU RDNA 3 - Only fan curve temps within range of {}C to {}C are allowed. \
+                Clamping passed temp of {temp_integer}% to nearest limit",
+                    fan_curve_info.temperature_range.start(),
+                    fan_curve_info.temperature_range.end(),
+                );
+                fan_curve_info
+                    .temperature_range
+                    .end()
+                    .min(fan_curve_info.temperature_range.start().max(&temp_integer))
+            };
+            fan_curve.points.push((*clamped_temp, *clamped_duty));
+        }
+        let last_point = *fan_curve
+            .points
+            .last()
+            .expect("Should be at least one point");
+        // add any missing points:
+        for _ in speed_profile.len()..=fan_curve_length {
+            fan_curve.points.push((last_point.0, last_point.1));
+        }
+        fan_curve
+    }
+
+    /// Creates a list of indexes of the points that should be included in the fan curve.
+    ///
+    /// If the speed profile is longer than the fan curve, we truncate the speed profile to the
+    /// max number of points allowed by the fan curve. We keep the last point as reference for
+    /// the fan curve, safety-wise, but allow setting it truncated.
+    ///
+    /// For speed profiles that are shorter than the fan curve, we include all points and
+    /// repeating the last point is done afterward.
+    fn determine_included_point_indexes(
+        speed_profile_length: usize,
+        fan_curve_length: usize,
+    ) -> Vec<usize> {
+        let mut included_point_indexes = Vec::new();
+        if speed_profile_length > fan_curve_length {
+            // take the first `fan_curve_length` points from the speed profile, excluding the last
+            for i in 0..(fan_curve_length - 1) {
+                included_point_indexes.push(i);
+            }
+            // add the last point to the included point indexes
+            included_point_indexes.push(fan_curve_length - 1);
+            warn!(
+                "AMD GPU RDNA 3 - Max {fan_curve_length} fan curve points are allowed. \
+                Truncating speed profile with {speed_profile_length} points."
+            );
+        } else {
+            for i in 0..speed_profile_length {
+                included_point_indexes.push(i);
+            }
+        }
+        included_point_indexes
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct AMDDriverInfo {
     pub hwmon: HwmonDriverInfo,
     device_path: PathBuf,
-    fan_curve_info: Option<FanCurveInfo>,
+    pub fan_curve_info: Option<FanCurveInfo>,
 }
 
 /// The PMFW (power management firmware) fan curve information.
 /// Only available on Navi3x (RDNA 3/7000 series) or newer devices.
 #[derive(Debug, Clone)]
-struct FanCurveInfo {
+pub struct FanCurveInfo {
     /// Fan curve points
     fan_curve: FanCurve,
 
