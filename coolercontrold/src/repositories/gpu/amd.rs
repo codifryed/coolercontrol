@@ -365,13 +365,22 @@ impl GpuAMD {
             let (min_duty, max_duty) = Self::get_min_max_duty(amd_driver.fan_curve_info.as_ref());
             let fan_is_controllable =
                 Self::get_fan_is_controllable(amd_driver.fan_curve_info.as_ref());
+            let supports_internal_profiles = amd_driver
+                .fan_curve_info
+                .as_ref()
+                .is_some_and(|fc| fc.changeable);
             for channel in &amd_driver.hwmon.channels {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
+                        let speed_settings = if supports_internal_profiles {
+                            Some(ChannelExtensionNames::AmdRdnaGpu)
+                        } else {
+                            None
+                        };
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                auto_hw_curve: false,
+                                extension: speed_settings,
                                 fixed_enabled: fan_is_controllable,
                                 min_duty,
                                 max_duty,
@@ -571,9 +580,8 @@ impl GpuAMD {
                     ..Default::default()
                 };
                 trace!(
-                    "Device: {} status updated: {:?}",
-                    amd_driver.hwmon.name,
-                    status
+                    "Device: {} status updated: {status:?}",
+                    amd_driver.hwmon.name
                 );
                 device_lock.borrow_mut().set_status(status);
             }

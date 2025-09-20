@@ -65,8 +65,8 @@ impl DeviceSupport for SmartDevice2Support {
                     speed_options: Some(SpeedOptions {
                         min_duty: MIN_DUTY,
                         max_duty: MAX_DUTY,
-                        auto_hw_curve: false,
                         fixed_enabled: true,
+                        extension: None,
                     }),
                     ..Default::default()
                 },

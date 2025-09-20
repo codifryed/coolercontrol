@@ -18,6 +18,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use strum::{Display, EnumString};
@@ -41,8 +42,10 @@ pub type Offset = i8;
 pub const DEFAULT_PROFILE_UID: &str = "0";
 pub const DEFAULT_FUNCTION_UID: &str = "0";
 
-/// Setting is a passed struct used to store applied Settings to a device channel
-/// Usually only one specific lighting or speed setting is applied at a time.
+/// Setting is used to store applied Settings to a device channel.
+/// These are the general core settings that apply to a wide range of device and channel types.
+/// Specialized settings are stored in `DeviceExtensions` and `ChannelExtensions`.
+/// Only one specific lighting or speed setting is applied to a specific channel at a time.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct Setting {
     pub channel_name: ChannelName,
@@ -168,7 +171,7 @@ pub struct CoolerControlSettings {
     pub drivetemp_suspend: bool,
 }
 
-/// General Device Settings for `CoolerControl`
+/// Device Specific settings that generally apply to how the application deals with the device.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CCDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
@@ -178,7 +181,37 @@ pub struct CCDeviceSettings {
     pub disable: bool,
 
     /// A list of channels to disable communication with.
+    /// #[deprecated(note = "Use `channel_settings` instead.")]
     pub disable_channels: Vec<ChannelName>,
+
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct CCChannelSettings {
+    pub label: Option<String>,
+
+    pub disabled: bool,
+
+    /// Specialized settings (extensions) that apply to a specific device channel.
+    pub extension: Option<ChannelExtensions>,
+}
+
+/// Device Channel specific settings
+/// This is used to store specialized settings (extensions) that apply to a specific device channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ChannelExtensions {
+    /// Whether to use the device channel's internal hardware fan curve functionality.
+    AutoHWCurve { auto_hw_curve_enabled: bool },
+
+    /// Whether to use the AMDGPU RDNA3/4 features.
+    /// It allows the device to run at zero RPM when the temperature is below a certain threshold.
+    AmdRdnaGpu {
+        /// Whether to use the internal HW Curve feature, instead of setting regular
+        /// flat curves. Using this reduces functionality.
+        hw_fan_curve_enabled: bool,
+    },
 }
 
 /// Profile Settings

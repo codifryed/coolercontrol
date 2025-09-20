@@ -331,11 +331,11 @@ pub struct SpeedOptions {
     /// The maximum fan duty for this speed channel
     pub max_duty: Duty,
 
-    /// True if this channel supports a firmware-managed (on-device) fan curve.
-    pub auto_hw_curve: bool,
-
     /// True if manual fan speed control is supported; if false, speeds are read-only (monitoring only).
     pub fixed_enabled: bool,
+
+    /// If present, then this channel has special settings that are applicable.
+    pub extension: Option<ChannelExtensionNames>,
 }
 
 impl Default for SpeedOptions {
@@ -343,10 +343,18 @@ impl Default for SpeedOptions {
         SpeedOptions {
             min_duty: 0,
             max_duty: 100,
-            auto_hw_curve: false,
             fixed_enabled: true,
+            extension: None,
         }
     }
+}
+
+/// Channel extension names that signal which `ChannelExtensions` are applicable
+/// for a particular device channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumString, JsonSchema)]
+pub enum ChannelExtensionNames {
+    AutoHWCurve,
+    AmdRdnaGpu,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]

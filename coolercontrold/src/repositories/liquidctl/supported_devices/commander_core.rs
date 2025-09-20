@@ -48,8 +48,8 @@ impl DeviceSupport for CommanderCoreSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 20,
                         max_duty: 100,
-                        auto_hw_curve: false,
                         fixed_enabled: true,
+                        extension: None,
                     }),
                     ..Default::default()
                 },
@@ -70,8 +70,8 @@ impl DeviceSupport for CommanderCoreSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
-                        auto_hw_curve: false,
                         fixed_enabled: true,
+                        extension: None,
                     }),
                     ..Default::default()
                 },

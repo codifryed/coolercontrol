@@ -681,7 +681,7 @@ impl LiquidctlRepo {
                         .await
                     {
                         error!("Error setting LCD screen to default upon shutdown: {err}");
-                    };
+                    }
                 }
             }
         }
@@ -855,10 +855,7 @@ impl Repository for LiquidctlRepo {
         speed_fixed: u8,
     ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}");
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
             .map_err(|err| {
@@ -876,10 +873,7 @@ impl Repository for LiquidctlRepo {
         temp_source: &TempSource,
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
-            device_uid, channel_name, speed_profile
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(
             &cached_device_data,
@@ -896,10 +890,7 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         lighting: &LightingSettings,
     ) -> Result<()> {
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; Lighting: {:?}",
-            device_uid, channel_name, lighting
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_color(&cached_device_data, channel_name, lighting)
             .await
@@ -911,10 +902,7 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; LCD: {:?}",
-            device_uid, channel_name, lcd
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; LCD: {lcd:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_screen(&cached_device_data, channel_name, lcd)
             .await

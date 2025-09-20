@@ -309,7 +309,6 @@ impl GpuNVidia {
                         ChannelInfo {
                             label: Some(fan_name.clone()),
                             speed_options: Some(SpeedOptions {
-                                auto_hw_curve: false,
                                 fixed_enabled: true,
                                 ..Default::default()
                             }),
@@ -861,7 +860,6 @@ impl GpuNVidia {
                             NVIDIA_FAN_NAME.to_string(),
                             ChannelInfo {
                                 speed_options: Some(SpeedOptions {
-                                    auto_hw_curve: false,
                                     fixed_enabled: has_xauth, // disable if xauth not found
                                     ..Default::default()
                                 }),

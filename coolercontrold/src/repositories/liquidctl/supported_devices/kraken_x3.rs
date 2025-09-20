@@ -18,7 +18,10 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -46,8 +49,8 @@ impl DeviceSupport for KrakenX3Support {
                 speed_options: Some(SpeedOptions {
                     min_duty: 20,
                     max_duty: 100,
-                    auto_hw_curve: true,
                     fixed_enabled: true,
+                    extension: Some(ChannelExtensionNames::AutoHWCurve),
                 }),
                 ..Default::default()
             },

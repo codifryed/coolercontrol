@@ -20,7 +20,12 @@ export class SpeedOptions {
     constructor(
         readonly min_duty: number = 0,
         readonly max_duty: number = 100,
-        readonly auto_hw_curve: boolean = false,
         readonly fixed_enabled: boolean = false,
+        readonly extension?: ChannelExtensionNames,
     ) {}
+}
+
+export enum ChannelExtensionNames {
+    AutoHWCurve = 'AutoHWCurve',
+    AmdRdnaGpu = 'AmdRdnaGpu',
 }

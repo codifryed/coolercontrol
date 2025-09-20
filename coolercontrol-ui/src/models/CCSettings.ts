@@ -17,7 +17,8 @@
  */
 
 import type { UID } from '@/models/Device'
-import { Type } from 'class-transformer'
+import { plainToInstance, Transform, Type } from 'class-transformer'
+import { ChannelInfo } from '@/models/ChannelInfo.ts'
 
 /**
  * General settings specific to CoolerControl
@@ -43,6 +44,20 @@ export class CoolerControlDeviceSettingsDTO {
     disable: boolean = false
     disable_channels: Array<string> = []
 
+    // We need a special transformer for this collection mapping to work
+    @Transform(
+        ({ value }) => {
+            const result: Map<string, ChannelInfo> = new Map()
+            const valueMap = new Map(Object.entries(value))
+            for (const [k, v] of valueMap) {
+                result.set(k, plainToInstance(ChannelInfo, v))
+            }
+            return result
+        },
+        { toClassOnly: true },
+    )
+    channel_settings: Map<string, CCChannelSettings> = new Map<string, CCChannelSettings>()
+
     constructor(uid: UID, name: string, disable_channels: Array<string> = []) {
         this.uid = uid
         this.name = name
@@ -53,4 +68,22 @@ export class CoolerControlDeviceSettingsDTO {
 export class CoolerControlAllDeviceSettingsDTO {
     @Type(() => CoolerControlDeviceSettingsDTO)
     devices: Array<CoolerControlDeviceSettingsDTO> = []
+}
+
+export class CCChannelSettings {
+    label?: string
+    disabled: boolean = false
+
+    // Specialized settings (extensions) that apply to a specific device channel.
+    extension?: ChannelExtensions
+}
+
+export class ChannelExtensions {
+    // Whether to use the device channel's internal hardware fan curve functionality.
+    auto_hw_curve_enabled?: boolean
+
+    // Whether to use the AMDGPU RDNA3/4 features.
+    // Whether to use the internal HW Curve feature, instead of setting regular
+    // flat curves. Using this reduces functionality.
+    hw_fan_curve_enabled?: boolean
 }

@@ -18,7 +18,10 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -47,14 +50,19 @@ impl DeviceSupport for Kraken2Support {
                 .unwrap_or(false);
             let speed_channels = vec!["fan".to_string(), "pump".to_string()];
             for speed_channel in speed_channels {
+                let settings_option = if supports_cooling_profiles {
+                    Some(ChannelExtensionNames::AutoHWCurve)
+                } else {
+                    None
+                };
                 channels.insert(
                     speed_channel.to_string(),
                     ChannelInfo {
                         speed_options: Some(SpeedOptions {
                             min_duty: 0,
                             max_duty: 100,
-                            auto_hw_curve: supports_cooling_profiles,
                             fixed_enabled: true,
+                            extension: settings_option,
                         }),
                         ..Default::default()
                     },
