@@ -264,7 +264,6 @@ const initTableData = () => {
         }
     }
     if (settingsStore.menuOrder.length > 0) {
-        console.log(settingsStore.menuOrder)
         deviceTableData.value.sort((a, b) => {
             const getDeviceIndex = (item: DeviceData) => {
                 const index = settingsStore.menuOrder.findIndex(
@@ -273,7 +272,7 @@ const initTableData = () => {
                 return index >= 0 ? index : Number.MAX_SAFE_INTEGER
             }
             const deviceCompare = getDeviceIndex(a) - getDeviceIndex(b)
-            // campare device position first, then channels
+            // compare device position first, then channels
             if (deviceCompare !== 0) return deviceCompare
 
             const deviceMenuOrderItem = settingsStore.menuOrder.find(
