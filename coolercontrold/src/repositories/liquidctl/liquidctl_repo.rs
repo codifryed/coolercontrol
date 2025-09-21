@@ -133,9 +133,9 @@ impl LiquidctlRepo {
         for device_response in devices_response.devices {
             let Some(driver_type) = self.map_driver_type(&device_response) else {
                 info!(
-                        "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
-                        device_response.device_type
-                    );
+                    "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
+                    device_response.device_type
+                );
                 continue;
             };
             self.preloaded_statuses
@@ -166,7 +166,7 @@ impl LiquidctlRepo {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             // remove disabled lighting and lcd channels:
             device
                 .info
@@ -180,7 +180,9 @@ impl LiquidctlRepo {
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if self.devices.is_empty() {
-            info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
+            info!(
+                "No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down."
+            );
             self.liqctld_client.post_quit().await?;
             self.liqctld_client.shutdown();
         }
@@ -888,7 +890,9 @@ impl Repository for LiquidctlRepo {
         speed_fixed: u8,
     ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
-        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}");
+        debug!(
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+        );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
             .map_err(|err| {
@@ -906,7 +910,9 @@ impl Repository for LiquidctlRepo {
         temp_source: &TempSource,
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}");
+        debug!(
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(
             &cached_device_data,
@@ -923,7 +929,9 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         lighting: &LightingSettings,
     ) -> Result<()> {
-        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}");
+        debug!(
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
+        );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_color(&cached_device_data, channel_name, lighting)
             .await

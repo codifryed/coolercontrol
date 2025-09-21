@@ -248,7 +248,7 @@ impl GpuNVidia {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             self.nvidia_nvml_load_enabled
                 .set(disabled_channels.contains(&GPU_LOAD_NAME.to_string()).not());
             let mut nvidia_temp_infos = Vec::new();
@@ -814,8 +814,8 @@ impl GpuNVidia {
                         );
                         continue;
                     }
-                    let disabled_channels =
-                        cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                    let disabled_channels = cc_device_setting
+                        .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
                     self.nvidia_smi_disabled_channels
                         .borrow_mut()
                         .insert(nv_status.index, disabled_channels.clone());

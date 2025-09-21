@@ -341,7 +341,7 @@ impl ModeController {
                 continue; // no need to apply if the setting is the same
             }
             if let Some(cc_settings) = &cc_device_settings {
-                if cc_settings.disable_channels.contains(channel_name) {
+                if cc_settings.get_disabled_channels().contains(channel_name) {
                     warn!(
                         "This Mode contains a Channel: {channel_name} that has been disabled. \
                         Please update your Mode to remove this channel."

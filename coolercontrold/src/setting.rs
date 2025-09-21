@@ -180,10 +180,7 @@ pub struct CCDeviceSettings {
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
 
-    /// A list of channels to disable communication with.
-    /// #[deprecated(note = "Use `channel_settings` instead.")]
-    pub disable_channels: Vec<ChannelName>,
-
+    /// A list of channels specific settings, including disable and extension settings.
     pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
 }
 
@@ -195,6 +192,18 @@ pub struct CCChannelSettings {
 
     /// Specialized settings (extensions) that apply to a specific device channel.
     pub extension: Option<ChannelExtensions>,
+}
+
+impl CCDeviceSettings {
+    pub fn get_disabled_channels(&self) -> Vec<ChannelName> {
+        self.channel_settings
+            .iter()
+            .filter_map(|(channel_name, channel_settings)| {
+                channel_settings.disabled.then_some(channel_name)
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 /// Device Channel specific settings

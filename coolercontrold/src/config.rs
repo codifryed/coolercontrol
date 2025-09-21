@@ -35,10 +35,11 @@ use crate::device::{Duty, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CCDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
-    LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile, ProfileMixFunctionType,
-    ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
+    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
+    FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile,
+    ProfileMixFunctionType, ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID,
+    DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -231,7 +232,9 @@ impl Config {
                 for cause in err.chain() {
                     if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
                         if io_err.kind() == std::io::ErrorKind::NotFound {
-                            info!("UI Config file not found - likely first run. Using empty UI Config file.");
+                            info!(
+                                "UI Config file not found - likely first run. Using empty UI Config file."
+                            );
                             return Ok(String::new());
                         }
                     }
@@ -464,13 +467,15 @@ impl Config {
         Ok(devices_settings)
     }
 
-    pub fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, Option<CCDeviceSettings>>> {
+    pub fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, CCDeviceSettings>> {
         let mut devices_settings = HashMap::new();
         if let Some(device_table) = self.document.borrow()["settings"].as_table() {
             for (device_uid, _value) in device_table {
                 if device_uid.len() == 64 {
                     // there are other settings here, we want only the ones with proper UIDs
-                    let settings = self.get_cc_settings_for_device(device_uid)?;
+                    let settings = self
+                        .get_cc_settings_for_device(device_uid)?
+                        .with_context(|| "Since the Device ID is present, CC Settings option should always be present")?;
                     devices_settings.insert(device_uid.to_string(), settings);
                 }
             }
@@ -1042,6 +1047,7 @@ impl Config {
     /// This gets the `CoolerControl` settings for specific devices
     /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
+    #[allow(clippy::too_many_lines)]
     pub fn get_cc_settings_for_device(&self, device_uid: &str) -> Result<Option<CCDeviceSettings>> {
         if let Some(table_item) = self.document.borrow()["settings"].get(device_uid) {
             let device_settings_table = table_item
@@ -1060,6 +1066,7 @@ impl Config {
                 .as_str()
                 .with_context(|| "name should be a string")?
                 .to_string();
+            // deprecated(3.0.0). We convert this to the new model for backwards compatibility:
             let disable_channels =
                 if let Some(value) = device_settings_table.get("disable_channels") {
                     let mut disable_channels = Vec::new();
@@ -1077,10 +1084,81 @@ impl Config {
                 } else {
                     Vec::new()
                 };
+            let mut channel_settings = HashMap::new();
+            if let Some(value) = device_settings_table.get("channel_settings") {
+                let channel_settings_table = value
+                    .as_table()
+                    .with_context(|| "channel_settings should be a table")?;
+                for (channel_name, channel_table_item) in channel_settings_table {
+                    let setting_table = channel_table_item
+                        .as_inline_table()
+                        .with_context(|| "CC Channel Setting should be an inline table")?
+                        .clone()
+                        .into_table();
+                    let label = if let Some(value) = setting_table.get("label") {
+                        Some(
+                            value
+                                .as_str()
+                                .with_context(|| "label should be a string")?
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    };
+                    let disabled = setting_table
+                        .get("disabled")
+                        .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                        .as_bool()
+                        .with_context(|| "disabled should be a boolean")?;
+                    let extension = if let Some(extension_value) = setting_table.get("extension") {
+                        let extension_table = extension_value
+                            .as_inline_table()
+                            .with_context(|| "extension should be an inline table")?;
+                        if let Some(value) = extension_table.get("auto_hw_curve_enabled") {
+                            Some(ChannelExtensions::AutoHWCurve {
+                                auto_hw_curve_enabled: value
+                                    .as_bool()
+                                    .with_context(|| "auto_hw_curve_enabled should be a boolean")?,
+                            })
+                        } else if let Some(value) = extension_table.get("hw_fan_curve_enabled") {
+                            Some(ChannelExtensions::AmdRdnaGpu {
+                                hw_fan_curve_enabled: value
+                                    .as_bool()
+                                    .with_context(|| "hw_fan_curve_enabled should be a boolean")?,
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    channel_settings.insert(
+                        channel_name.to_owned(),
+                        CCChannelSettings {
+                            label,
+                            disabled,
+                            extension,
+                        },
+                    );
+                }
+            }
+            // IF channel_settings is not present, see if disable_channels is present and convert it to the new model
+            if channel_settings.is_empty() {
+                for channel_name in disable_channels {
+                    channel_settings.insert(
+                        channel_name,
+                        CCChannelSettings {
+                            label: None,
+                            disabled: true,
+                            extension: None,
+                        },
+                    );
+                }
+            }
             Ok(Some(CCDeviceSettings {
                 name,
                 disable,
-                disable_channels,
+                channel_settings,
             }))
         } else {
             Ok(None)
@@ -1101,11 +1179,40 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
-        let mut channel_array = toml_edit::Array::new();
-        for channel_name in &cc_device_settings.disable_channels {
-            channel_array.push(Value::String(Formatted::new(channel_name.clone())));
+        // deprecated (3.0.0). channel_settings is now used instead:
+        device_settings_table["disable_channels"] = Item::None;
+        let mut channel_settings_table = Item::Table(Table::new());
+        for (channel_name, channel_setting) in &cc_device_settings.channel_settings {
+            let channel_inline_item = &mut channel_settings_table[channel_name];
+            channel_inline_item["label"] = if let Some(label) = channel_setting.label.as_ref() {
+                Item::Value(Value::String(Formatted::new(label.clone())))
+            } else {
+                Item::None
+            };
+            channel_inline_item["disabled"] =
+                Item::Value(Value::Boolean(Formatted::new(channel_setting.disabled)));
+            channel_inline_item["extension"] = if let Some(extension) = &channel_setting.extension {
+                let mut extension_table = Item::Table(Table::new());
+                match extension {
+                    ChannelExtensions::AutoHWCurve {
+                        auto_hw_curve_enabled: hw_curve_enabled,
+                    } => {
+                        extension_table["auto_hw_curve_enabled"] =
+                            Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
+                    }
+                    ChannelExtensions::AmdRdnaGpu {
+                        hw_fan_curve_enabled: hw_curve_enabled,
+                    } => {
+                        extension_table["hw_fan_curve_enabled"] =
+                            Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
+                    }
+                }
+                extension_table
+            } else {
+                Item::None
+            };
         }
-        device_settings_table["disable_channels"] = Item::Value(Value::Array(channel_array));
+        device_settings_table["channel_settings"] = channel_settings_table;
     }
 
     /*

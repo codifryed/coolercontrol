@@ -42,7 +42,6 @@ export class CoolerControlDeviceSettingsDTO {
     uid: UID
     name: string
     disable: boolean = false
-    disable_channels: Array<string> = []
 
     // We need a special transformer for this collection mapping to work
     @Transform(
@@ -58,10 +57,9 @@ export class CoolerControlDeviceSettingsDTO {
     )
     channel_settings: Map<string, CCChannelSettings> = new Map<string, CCChannelSettings>()
 
-    constructor(uid: UID, name: string, disable_channels: Array<string> = []) {
+    constructor(uid: UID, name: string) {
         this.uid = uid
         this.name = name
-        this.disable_channels = disable_channels
     }
 }
 
@@ -78,6 +76,7 @@ export class CCChannelSettings {
     extension?: ChannelExtensions
 }
 
+// since TS doesn't have the same kind of enum power as Rust, we include all options
 export class ChannelExtensions {
     // Whether to use the device channel's internal hardware fan curve functionality.
     auto_hw_curve_enabled?: boolean

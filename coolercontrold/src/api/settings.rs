@@ -19,11 +19,12 @@
 use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
-use crate::setting::{CCDeviceSettings, CoolerControlSettings};
+use crate::setting::{CCChannelSettings, CCDeviceSettings, CoolerControlSettings};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
 
 /// Get General `CoolerControl` settings
@@ -201,7 +202,7 @@ pub struct CoolerControlDeviceSettingsDto {
     pub uid: UID,
     pub name: String,
     pub disable: bool,
-    pub disable_channels: Vec<ChannelName>,
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

@@ -108,38 +108,49 @@ impl ApiActor<SettingMessage> for SettingActor {
             }
             SettingMessage::GetAllCCDevices { respond_to } => {
                 let result = async {
-                    let settings_map = self.config.get_all_cc_devices_settings()?;
                     let mut devices_settings = HashMap::new();
+                    let mut saved_settings_map = self.config.get_all_cc_devices_settings()?;
                     for (device_uid, device_lock) in self.all_devices.iter() {
-                        if device_lock.borrow().d_type == DeviceType::CustomSensors {
-                            // custom sensors is handled differently than hardware devices
-                            continue;
+                        // use saved settings if present, otherwise use default
+                        if let Some(settings) = saved_settings_map.remove(device_uid) {
+                            devices_settings.insert(
+                                device_uid.clone(),
+                                CoolerControlDeviceSettingsDto {
+                                    uid: device_uid.clone(),
+                                    name: settings.name, // keeps user-defined name from UI
+                                    disable: settings.disable,
+                                    channel_settings: settings.channel_settings,
+                                },
+                            );
+                        } else {
+                            let device_name = {
+                                let lock = device_lock.borrow();
+                                if lock.d_type == DeviceType::CustomSensors {
+                                    // custom sensors is handled differently than hardware devices
+                                    continue;
+                                }
+                                lock.info.model.clone().unwrap_or_else(|| lock.name.clone())
+                            };
+                            devices_settings.insert(
+                                device_uid.clone(),
+                                CoolerControlDeviceSettingsDto {
+                                    uid: device_uid.clone(),
+                                    name: device_name,
+                                    disable: false,
+                                    channel_settings: HashMap::with_capacity(0),
+                                },
+                            );
                         }
-                        let name = device_lock.borrow().name.clone();
-                        // first fill with the default settings
-                        devices_settings.insert(
-                            device_uid.clone(),
-                            CoolerControlDeviceSettingsDto {
-                                uid: device_uid.to_string(),
-                                name,
-                                disable: false,
-                                disable_channels: Vec::with_capacity(0),
-                            },
-                        );
                     }
-                    for (device_uid, setting_option) in settings_map {
-                        let setting = setting_option.ok_or_else(|| CCError::InternalError {
-                            msg: "CC Settings option should always be present in this situation"
-                                .to_string(),
-                        })?;
-                        // override and fill with blacklisted devices:
+                    // This adds the remaining devices which are currently not present, (i.e. blacklisted devices)
+                    for (device_uid, settings) in saved_settings_map {
                         devices_settings.insert(
                             device_uid.clone(),
                             CoolerControlDeviceSettingsDto {
                                 uid: device_uid,
-                                name: setting.name,
-                                disable: setting.disable,
-                                disable_channels: setting.disable_channels,
+                                name: settings.name,
+                                disable: settings.disable,
+                                channel_settings: settings.channel_settings,
                             },
                         );
                     }
@@ -160,26 +171,30 @@ impl ApiActor<SettingMessage> for SettingActor {
                     let dto = if let Some(settings) = settings_option {
                         CoolerControlDeviceSettingsDto {
                             uid: device_uid,
-                            name: settings.name,
+                            name: settings.name, // keeps user-defined name from UI
                             disable: settings.disable,
-                            disable_channels: settings.disable_channels,
+                            channel_settings: settings.channel_settings,
                         }
                     } else {
-                        // Default settings for a device: (Same as None)
-                        let device_name = self
-                            .all_devices
-                            .get(&device_uid)
-                            .ok_or_else(|| CCError::NotFound {
-                                msg: "Device not found".to_string(),
-                            })?
-                            .borrow()
-                            .name
-                            .clone();
+                        // Default settings
+                        let current_device_name = {
+                            if let Some(device_lock) = self.all_devices.get(&device_uid) {
+                                let lock = device_lock.borrow();
+                                let device_name =
+                                    lock.info.model.clone().unwrap_or_else(|| lock.name.clone());
+                                Some(device_name)
+                            } else {
+                                None
+                            }
+                        }
+                        .ok_or_else(|| CCError::NotFound {
+                            msg: "Device not found".to_string(),
+                        })?;
                         CoolerControlDeviceSettingsDto {
                             uid: device_uid,
-                            name: device_name,
+                            name: current_device_name,
                             disable: false,
-                            disable_channels: Vec::with_capacity(0),
+                            channel_settings: HashMap::with_capacity(0),
                         }
                     };
                     Ok(dto)
@@ -189,15 +204,39 @@ impl ApiActor<SettingMessage> for SettingActor {
             }
             SettingMessage::UpdateCCDevice {
                 device_uid,
-                update,
+                mut update,
                 respond_to,
             } => {
                 let result = async {
+                    // update any missing channel labels before saving
+                    for (channel_name, settings) in &mut update.channel_settings {
+                        if settings
+                            .label
+                            .as_ref()
+                            .is_some_and(|label| label.is_empty().not())
+                        {
+                            // label may be already set by UI - allowing user-defined labels to persist
+                            continue;
+                        }
+                        if let Some(device_lock) = self.all_devices.get(&device_uid) {
+                            let lock = device_lock.borrow();
+                            if let Some(temp_info) = lock.info.temps.get(channel_name) {
+                                settings.label = Some(temp_info.label.clone());
+                            } else if let Some(channel_info) = lock.info.channels.get(channel_name)
+                            {
+                                settings.label.clone_from(&channel_info.label);
+                            }
+                        }
+                    }
                     self.config.set_cc_settings_for_device(&device_uid, &update);
                     // check for disabled devices and channels and remove their settings:
-                    if update.disable_channels.is_empty().not() {
+                    if update.channel_settings.is_empty().not() {
                         for setting in self.config.get_device_settings(&device_uid)? {
-                            if update.disable_channels.contains(&setting.channel_name) {
+                            if update
+                                .channel_settings
+                                .get(&setting.channel_name)
+                                .is_some_and(|s| s.disabled)
+                            {
                                 let reset_setting = Setting {
                                     channel_name: setting.channel_name,
                                     reset_to_default: Some(true),

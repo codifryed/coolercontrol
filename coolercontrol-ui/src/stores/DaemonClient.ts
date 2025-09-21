@@ -425,6 +425,7 @@ export default class DaemonClient {
             return plainToInstance(CoolerControlAllDeviceSettingsDTO, response.data as object)
         } catch (err: any) {
             this.logError(err)
+            // This is loaded at startup, hence simple Error log and continue
             return new CoolerControlAllDeviceSettingsDTO()
         }
     }
