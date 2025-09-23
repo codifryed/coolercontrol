@@ -27,17 +27,19 @@ one.
 4. Create Release Tag and Commit and Build Release Artifacts
    1. Verify Milestone exists for the to-be-released version in GitLab
    2. All commits and tags are to be signed. Make sure your PGP keys are setup.
-   3. In CoolerControl Repo run `make release`
-      1. without argument for a quick patch update 1.0.0 -> 1.0.1
-      2. with 'v' argument to specify a version
+   3. In CoolerControl Repo root directory
+      1. IF version needs to be increase again (from post-release) run `make bump`
+      2. without argument for a quick patch update 1.0.0 -> 1.0.1
+      3. with 'v' argument to specify a version
          1. `v=minor`, `v=major`, `v=patch`
-         2. for ex: `make release v=minor` 1.0.0 -> 1.1.0
-      3. check the diff that the changes are correct
-      4. `make push-release`
-      5. make sure build & release pipelines complete successfully
-      6. check that the release notes look correct (gitlab -> Deployment -> Releases)
-      7. close the current Milestone
-      8. create the next release milestone (can easily change the milestone name/version later)
+         2. for ex: `make bump v=minor` 1.0.0 -> 1.1.0
+      4. run `make release`
+      5. check the diff that the changes are correct
+      6. `make push-release`
+      7. make sure build & release pipelines complete successfully
+      8. check that the release notes look correct (gitlab -> Deployment -> Releases)
+      9. close the current Milestone
+      10. create the next release milestone (can easily change the milestone name/version later)
 
 5. Update OpenAPI specification
    1. Update locally running daemon with a new version: `make dev-build && make dev-install`
@@ -60,5 +62,11 @@ one.
    10. Note: if you ever need to fix the local nix store:
        `sudo nix-store --verify --check-contents --repair` or to clear out garbage:
        `nix-collect-garbage -d`
+
+7. Post Release
+   1. Run `make bump`
+   2. without argument for a quick patch update 1.0.0 -> 1.0.1
+   3. After a release we just want to at least bump the source version by a patch number, for
+      clarity when testing. We can increase it later for the next release.
 
 <!--Test-->

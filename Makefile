@@ -193,7 +193,7 @@ bump:
 	@./packaging/version_bump.sh $(v)
 
 # version from bump above applies to release as well:
-release: bump
+release:
 	@./packaging/release.sh
 
 push-release:
