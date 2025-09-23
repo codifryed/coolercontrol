@@ -1,4 +1,0 @@
-liquidctl
-setproctitle
-fastapi
-uvicorn
