@@ -262,6 +262,7 @@ impl Engine {
             && &temp_source.device_uid == device_uid
             && hw_curve_enabled
         {
+            info!("Applying | hardware internal profile:: {} | {channel_name}", device_lock.borrow().name);
             repo.apply_setting_speed_profile(
                 device_uid,
                 channel_name,
