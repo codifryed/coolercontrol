@@ -360,8 +360,15 @@ impl CustomSensorsRepo {
         let mut temp_data = Vec::new();
         for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
-            let Ok(some_temp) = self.get_temp_source_temp(temp_source, custom_temps) else {
-                continue;
+            let some_temp = match self.get_temp_source_temp(temp_source, custom_temps) {
+                Ok(some_temp) => some_temp,
+                Err(err) => {
+                    error!(
+                        "Temp not found for Custom Sensor: {}:{} - {err}",
+                        temp_source.device_uid, temp_source.temp_name
+                    );
+                    continue;
+                }
             };
             if some_temp.is_none() {
                 error!(
