@@ -900,6 +900,15 @@ export default {
                 new: '新しいカスタムセンサー',
             },
         },
+        channelExtensionSettings: {
+            title: 'デバイスチャンネルの設定',
+            firmwareControlledProfile: 'ファームウェア制御プロファイル',
+            firmwareControlledProfileDesc:
+                '有効にすると、デバイスのファームウェアがファンプロファイルを管理します。\nソフトウェアによる頻繁な速度変更にうまく反応しないハードウェアに有効です。\nデバイス内蔵の温度センサーを使用するグラフプロファイルでのみ利用できます。\n機能設定は適用されません。',
+            saveError: 'チャンネル拡張設定の保存に失敗しました',
+            firmwareControlDisabled:
+                '現在の設定ではファームウェア制御は利用できません。\nこのデバイス向けの、対応する内蔵温度センサーを使用するグラフプロファイルを使用してください。',
+        },
     },
     auth: {
         enterPassword: 'パスワードを入力してください',

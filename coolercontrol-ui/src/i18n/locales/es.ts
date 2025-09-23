@@ -896,6 +896,15 @@ export default {
                 new: 'Nuevo Sensor Personalizado',
             },
         },
+        channelExtensionSettings: {
+            title: 'Ajustes del canal del dispositivo',
+            firmwareControlledProfile: 'Perfil controlado por firmware',
+            firmwareControlledProfileDesc:
+                'Cuando está habilitado, el firmware del dispositivo gestiona el perfil del ventilador.\nÚtil para hardware que no responde bien a cambios de velocidad frecuentes realizados por software.\nSolo disponible para Perfiles de gráfico que utilizan sensores de temperatura internos del dispositivo.\nLos ajustes de Función no se aplican.',
+            saveError: 'Error al guardar los ajustes de la extensión del canal',
+            firmwareControlDisabled:
+                'El control por firmware no está disponible con la configuración actual.\nUse un Perfil de gráfico para este dispositivo con un sensor de temperatura interno compatible.',
+        },
     },
     auth: {
         enterPassword: 'Introduzca Su Contraseña',

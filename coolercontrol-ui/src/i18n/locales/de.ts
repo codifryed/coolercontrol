@@ -915,6 +915,15 @@ export default {
                 new: 'Neuer benutzerdefinierter Sensor',
             },
         },
+        channelExtensionSettings: {
+            title: 'Gerätekanal-Einstellungen',
+            firmwareControlledProfile: 'Firmware-gesteuertes Profil',
+            firmwareControlledProfileDesc:
+                'Wenn aktiviert, steuert die Geräte-Firmware das Lüfterprofil.\nNützlich bei Hardware, die auf häufige softwareseitige Geschwindigkeitsänderungen nicht gut reagiert.\nNur verfügbar für Graph-Profile, die geräteinterne Temperatursensoren verwenden.\nFunktions-Einstellungen gelten nicht.',
+            saveError: 'Speichern der Einstellungen der Kanalerweiterung fehlgeschlagen',
+            firmwareControlDisabled:
+                'Die Firmware-Steuerung ist mit den aktuellen Einstellungen nicht verfügbar.\nVerwenden Sie ein Graph-Profil für dieses Gerät mit einem unterstützten internen Temperatursensor.',
+        },
     },
     auth: {
         enterPassword: 'Geben Sie Ihr Passwort ein',

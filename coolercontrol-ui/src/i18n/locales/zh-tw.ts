@@ -862,6 +862,15 @@ export default {
                 new: '新自訂感測器',
             },
         },
+        channelExtensionSettings: {
+            title: '裝置通道設定',
+            firmwareControlledProfile: '韌體控制的設定檔',
+            firmwareControlledProfileDesc:
+                '啟用後，裝置韌體將管理風扇設定檔。\n適用於對軟體頻繁變更速度反應不佳的硬體。\n僅適用於使用裝置內建溫度感測器的圖表設定檔。\n功能設定不適用。',
+            saveError: '儲存通道擴充設定失敗',
+            firmwareControlDisabled:
+                '目前設定無法使用韌體控制。\n請為此裝置使用含有受支援內建溫度感測器的圖表設定檔。',
+        },
     },
     auth: {
         enterPassword: '請輸入您的密碼',

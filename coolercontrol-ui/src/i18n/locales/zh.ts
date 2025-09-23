@@ -862,6 +862,15 @@ export default {
                 new: '新建自定义传感器',
             },
         },
+        channelExtensionSettings: {
+            title: '设备通道设置',
+            firmwareControlledProfile: '固件控制的配置文件',
+            firmwareControlledProfileDesc:
+                '启用后，设备固件将管理风扇配置文件。\n适用于对软件频繁调速反应不佳的硬件。\n仅适用于使用设备内置温度传感器的图表配置文件。\n函数设置不适用。',
+            saveError: '保存通道扩展设置失败',
+            firmwareControlDisabled:
+                '当前设置无法使用固件控制。\n请为此设备使用带有受支持内置温度传感器的图表配置文件。',
+        },
     },
     auth: {
         enterPassword: '请输入您的密码',
