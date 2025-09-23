@@ -281,11 +281,6 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if let Some(_pwm_mode) = setting.pwm_mode {
-            // don't save anymore:
-            channel_setting["pwm_mode"] = Item::None;
-            // Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
-        }
         if setting.reset_to_default.unwrap_or(false) {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
@@ -426,15 +421,11 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(&setting_table)?;
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
-                // deprecated:
-                let pwm_mode = None;
-                // Self::get_pwm_mode(&setting_table)?;
                 let profile_uid = Self::get_profile_uid(&setting_table)?;
                 if speed_fixed.is_none()
                     && lighting.is_none()
                     && lcd.is_none()
                     && profile_uid.is_none()
-                    && pwm_mode.is_none()
                 {
                     debug!(
                         "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
@@ -447,7 +438,6 @@ impl Config {
                     speed_fixed,
                     lighting,
                     lcd,
-                    pwm_mode,
                     reset_to_default: None,
                     profile_uid,
                 });

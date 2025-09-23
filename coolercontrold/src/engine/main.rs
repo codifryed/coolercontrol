@@ -614,6 +614,8 @@ impl Engine {
             })
     }
 
+    /// This hasn't been supported for some time, but may be in the future with Extensions.
+    #[allow(unused)]
     pub async fn set_pwm_mode(
         &self,
         device_uid: &UID,

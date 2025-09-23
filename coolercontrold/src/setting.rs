@@ -59,10 +59,6 @@ pub struct Setting {
     /// Settings for LCD screens
     pub lcd: Option<LcdSettings>,
 
-    /// the current `pwm_mode` to set for hwmon devices, eg: 1
-    // #[deprecated]
-    pub pwm_mode: Option<u8>,
-
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
     pub reset_to_default: Option<bool>,
 
