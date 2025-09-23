@@ -354,7 +354,6 @@ const format = (value: number, dataType: DataType): string => {
 }
 const suffix = (dataType: DataType): string => {
     switch (dataType) {
-        // todo: translations?
         case DataType.TEMP:
             return ` ${t('common.tempUnit')}`
         case DataType.DUTY:
