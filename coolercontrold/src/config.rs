@@ -1191,26 +1191,24 @@ impl Config {
             };
             channel_inline_item["disabled"] =
                 Item::Value(Value::Boolean(Formatted::new(channel_setting.disabled)));
-            channel_inline_item["extension"] = if let Some(extension) = &channel_setting.extension {
-                let mut extension_table = Item::Table(Table::new());
+            if let Some(extension) = &channel_setting.extension {
                 match extension {
                     ChannelExtensions::AutoHWCurve {
                         auto_hw_curve_enabled: hw_curve_enabled,
                     } => {
-                        extension_table["auto_hw_curve_enabled"] =
+                        channel_inline_item["extension"]["auto_hw_curve_enabled"] =
                             Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
                     }
                     ChannelExtensions::AmdRdnaGpu {
                         hw_fan_curve_enabled: hw_curve_enabled,
                     } => {
-                        extension_table["hw_fan_curve_enabled"] =
+                        channel_inline_item["extension"]["hw_fan_curve_enabled"] =
                             Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
                     }
                 }
-                extension_table
             } else {
-                Item::None
-            };
+                channel_inline_item["extension"] = Item::None;
+            }
         }
         device_settings_table["channel_settings"] = channel_settings_table;
     }
