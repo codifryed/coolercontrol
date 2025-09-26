@@ -862,8 +862,8 @@ impl GpuAMD {
             let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
                 duty
             } else {
-                debug!(
-                    "AMD GPU RDNA 3 - Only fan duties within range of {}% to {}% are allowed. \
+                warn!(
+                    "AMD GPU RDNA - Only fan duties within range of {}% to {}% are allowed. \
                 Clamping passed duty of {duty}% to nearest limit",
                     fan_curve_info.speed_range.start(),
                     fan_curve_info.speed_range.end(),
@@ -878,8 +878,8 @@ impl GpuAMD {
             let clamped_temp = if fan_curve_info.temperature_range.contains(&temp_integer) {
                 temp_integer
             } else {
-                debug!(
-                    "AMD GPU RDNA 3 - Only fan curve temps within range of {}C to {}C are allowed. \
+                warn!(
+                    "AMD GPU RDNA - Only fan curve temps within range of {}C to {}C are allowed. \
                 Clamping passed temp of {temp_integer}% to nearest limit",
                     fan_curve_info.temperature_range.start(),
                     fan_curve_info.temperature_range.end(),
@@ -914,7 +914,7 @@ impl GpuAMD {
         let mut capped_profile = speed_profile.to_vec();
         if capped_profile.len() > fan_curve_length {
             warn!(
-                "AMD GPU RDNA 3 - Max {fan_curve_length} fan curve points are allowed. \
+                "AMD GPU RDNA - Max {fan_curve_length} fan curve points are allowed. \
                 Truncating speed profile with {} points. Please adjust the \
                 Graph Profile to match the number of points allowed by the device fan curve.",
                 capped_profile.len()
