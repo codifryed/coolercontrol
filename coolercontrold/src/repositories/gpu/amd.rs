@@ -825,7 +825,7 @@ impl GpuAMD {
         // Otherwise we let the firmware handle it like stock.
         let mut set_zero_rpm = false;
         if fan_curve_info.zero_rpm.is_some() && fan_curve_info.zero_rpm_stop_temp.is_some() {
-            if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile) {
+            if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(speed_profile) {
                 Self::set_zero_rpm(fan_curve_info, true).await?;
                 Self::set_zero_rpm_stop_temp(fan_curve_info, &stop_temp).await?;
                 set_zero_rpm = true;
@@ -850,10 +850,7 @@ impl GpuAMD {
     /// Returns the temperature at which the fan curve hits 0.
     /// If the fan curve never hits 0, returns None.
     /// We use this to auto-set the `zero_rpm_stop_temp`.
-    fn find_zero_rpm_stop_temp(
-        fan_curve_info: &FanCurveInfo,
-        speed_profile: &[(Temp, Duty)],
-    ) -> Option<CurveTemp> {
+    fn find_zero_rpm_stop_temp(speed_profile: &[(Temp, Duty)]) -> Option<CurveTemp> {
         // We don't need to interpolate here really, we can just reverse check the points to find
         // the first point that hits 0.
         // (as the curve can never go below 0, and it therefore has to be a point)
@@ -1132,11 +1129,10 @@ mod tests {
     #[test]
     fn find_zero_rpm_stop_temp() {
         // given
-        let fan_curve_info = basic_test_fan_curve_info();
         let speed_profile = vec![(25.0, 0), (35.2, 30), (62.5, 50), (81.3, 75), (100.0, 100)];
 
         // when
-        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&fan_curve_info, &speed_profile);
+        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&speed_profile);
 
         // then
         assert!(stop_temp.is_some(), "Expected a stop temp");
@@ -1146,11 +1142,10 @@ mod tests {
     #[test]
     fn find_zero_rpm_stop_temp_highest() {
         // given
-        let fan_curve_info = basic_test_fan_curve_info();
         let speed_profile = vec![(25.0, 0), (35.2, 0), (62.5, 0), (81.3, 75), (100.0, 100)];
 
         // when
-        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&fan_curve_info, &speed_profile);
+        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&speed_profile);
 
         // then
         assert!(stop_temp.is_some(), "Expected a stop temp");
