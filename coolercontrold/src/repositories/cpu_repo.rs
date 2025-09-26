@@ -601,8 +601,8 @@ impl CpuRepo {
                     info!("Skipping disabled device: {cpu_name} with UID: {device_uid}");
                     continue;
                 }
-                let disabled_channels =
-                    cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                let disabled_channels = cc_device_setting
+                    .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
                 match self.init_cpu_load(physical_id) {
                     Ok(load) => channels.push(load),
                     Err(err) => {

@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use crate::device::{
-    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
-    TempStatus,
+    ChannelExtensionNames, ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType,
+    LightingMode, SpeedOptions, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
@@ -55,9 +55,8 @@ impl DeviceSupport for MsiAcpiEcSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
-                        profiles_enabled: true,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
+                        extension: Some(ChannelExtensionNames::AutoHWCurve),
                     }),
                     ..Default::default()
                 },

@@ -100,18 +100,30 @@ impl LiqctldClient {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    debug!("Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",retry_count + 1);
+                    debug!(
+                        "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",
+                        retry_count + 1
+                    );
                     Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
             };
             let io_stream = TokioIo::new(unix_stream);
-            // When hyper_util has a more mature higher-level Client impl, we can use that instead.
+            // hyper can now be replaced with reqwest for UDS connections, removing much of our custom low-level code.
+            // That would ease maintenance should we need to adjust this client in the future and
+            //  do things like auto-handle connection retries, timeouts and pooling for us.
+            // The downside to this, besides refactoring and testing effort, is that reqwest
+            //  will introduce more dependencies that we don't really need for our use case,
+            //  and from experience it may be slightly less performant because of this.
+            //reqwest = { version = "0.12.23", default-features = false, features = ["json"]}
             let (sender, connection) = match hyper::client::conn::http1::handshake(io_stream).await
             {
                 Ok((sender, connection)) => (sender, connection),
                 Err(err) => {
-                    warn!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}", retry_count + 1);
+                    warn!(
+                        "Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}",
+                        retry_count + 1
+                    );
                     Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
@@ -320,7 +332,9 @@ impl LiqctldClient {
                     return response;
                 }
             }
-            warn!("Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} tries.");
+            warn!(
+                "Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} tries."
+            );
         }
         response
     }

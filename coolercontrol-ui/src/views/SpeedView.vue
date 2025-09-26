@@ -45,6 +45,7 @@ import { ChartType, Dashboard, DashboardDeviceChannel } from '@/models/Dashboard
 import TimeChart from '@/components/TimeChart.vue'
 import SensorTable from '@/components/SensorTable.vue'
 import AxisOptions from '@/components/AxisOptions.vue'
+import ChannelExtensionSettings from '@/components/ChannelExtensionSettings.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -130,6 +131,19 @@ const channelLabel =
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
         ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+
+const hasChannelExtensionSettings = (): boolean => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === props.deviceUID && device.info != null) {
+            const channelInfo = device.info.channels.get(props.channelName)
+            if (channelInfo != null && channelInfo.speed_options != null) {
+                return channelInfo.speed_options.extension != null
+            }
+        }
+    }
+    return false
+}
+const channelExtensionSettingsRef = ref()
 
 const createNewDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel)
@@ -229,6 +243,7 @@ const saveSetting = async () => {
         )
         contextIsDirty.value = false
     } else {
+        channelExtensionSettingsRef.value?.saveChannelExtensionSettings()
         const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
         await settingsStore.saveDaemonDeviceSettingProfile(
             props.deviceUID,
@@ -363,6 +378,23 @@ onUnmounted(() => {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </Button>
+            </div>
+            <div
+                v-if="
+                    chosenViewType === ChannelViewType.Control &&
+                    !manualControlEnabled &&
+                    hasChannelExtensionSettings()
+                "
+                class="p-2 pr-0 flex flex-row"
+            >
+                <channel-extension-settings
+                    ref="channelExtensionSettingsRef"
+                    class="h-[2.375rem]"
+                    :device-u-i-d="props.deviceUID"
+                    :channel-name="props.channelName"
+                    :chosen-profile="selectedProfile"
+                    @change="contextIsDirty = true"
+                />
             </div>
             <div
                 v-if="chosenViewType === ChannelViewType.Control && manualControlEnabled"

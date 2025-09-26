@@ -887,6 +887,15 @@ export default {
                 new: 'New Custom Sensor',
             },
         },
+        channelExtensionSettings: {
+            title: 'Device Channel Settings',
+            firmwareControlledProfile: 'Firmware-controlled Profile',
+            firmwareControlledProfileDesc:
+                'When enabled, the device firmware manages the fan profile.\nUseful for hardware that does not respond well to frequent software speed changes.\nOnly available for Graph Profiles that use device-internal temperature sensors.\nFunction settings do not apply.',
+            saveError: 'Failed to save channel extension settings',
+            firmwareControlDisabled:
+                'Firmware control is not available with the current settings.\nUse a Graph Profile for this device with a supported internal temperature sensor.',
+        },
     },
     auth: {
         enterPassword: 'Enter Your Password',

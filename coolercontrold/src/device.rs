@@ -327,15 +327,15 @@ pub struct TempInfo {
 pub struct SpeedOptions {
     /// The minimum fan duty for this speed channel
     pub min_duty: Duty,
+
     /// The maximum fan duty for this speed channel
     pub max_duty: Duty,
-    /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
-    pub profiles_enabled: bool,
-    /// If this is false, it means the fans are not controllable, but viewable.
+
+    /// True if manual fan speed control is supported; if false, speeds are read-only (monitoring only).
     pub fixed_enabled: bool,
-    /// This enables software-profiles for device-internal temperatures
-    /// External temperatures must always be software-profiles and are not handled by this property
-    pub manual_profiles_enabled: bool,
+
+    /// If present, then this channel has special settings that are applicable.
+    pub extension: Option<ChannelExtensionNames>,
 }
 
 impl Default for SpeedOptions {
@@ -343,11 +343,18 @@ impl Default for SpeedOptions {
         SpeedOptions {
             min_duty: 0,
             max_duty: 100,
-            profiles_enabled: false,
             fixed_enabled: true,
-            manual_profiles_enabled: false,
+            extension: None,
         }
     }
+}
+
+/// Channel extension names that signal which `ChannelExtensions` are applicable
+/// for a particular device channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumString, JsonSchema)]
+pub enum ChannelExtensionNames {
+    AutoHWCurve,
+    AmdRdnaGpu,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]

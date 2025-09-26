@@ -22,7 +22,9 @@ use std::rc::Rc;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID};
+use crate::device::{
+    ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
+};
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::LcdCommander;
 use crate::engine::commanders::mix::MixProfileCommander;
@@ -30,8 +32,8 @@ use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
-    Setting, DEFAULT_FUNCTION_UID,
+    ChannelExtensions, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
+    ProfileUID, Setting, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
@@ -247,22 +249,23 @@ impl Engine {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let temp_source = profile.temp_source.as_ref().unwrap();
-        let profile_function = self
-            .config
-            .get_functions()
-            .await?
-            .into_iter()
-            .find(|f| f.uid == profile.function_uid)
-            .with_context(|| "Function should be present")?;
+        let channel_supports_hw_curve = speed_options.extension.is_some_and(|s| {
+            s == ChannelExtensionNames::AutoHWCurve || s == ChannelExtensionNames::AmdRdnaGpu
+        });
+        let hw_curve_enabled = self.is_hw_curve_enabled(device_uid, channel_name)?;
         // clear any profile setting for this channel first:
         self.overlay_commander
             .clear_channel_setting_all_commanders(device_uid, channel_name);
-        // For internal temps, if the device firmware supports speed profiles and settings
-        // match, let's use it: (device firmwares only support Identity Functions)
-        if speed_options.profiles_enabled
+        // Note: this logic only applies to Graph Profiles.
+        if channel_supports_hw_curve
+            // specific internal temp channels are verified by the device repos
             && &temp_source.device_uid == device_uid
-            && profile_function.f_type == FunctionType::Identity
+            && hw_curve_enabled
         {
+            info!(
+                "Applying | hardware internal profile:: {} | {channel_name}",
+                device_lock.borrow().name
+            );
             repo.apply_setting_speed_profile(
                 device_uid,
                 channel_name,
@@ -270,9 +273,7 @@ impl Engine {
                 profile.speed_profile.as_ref().unwrap(),
             )
             .await
-        } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
-            || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
-        {
+        } else if speed_options.fixed_enabled {
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await?;
             self.graph_commander.schedule_setting(
@@ -613,6 +614,8 @@ impl Engine {
             })
     }
 
+    /// This hasn't been supported for some time, but may be in the future with Extensions.
+    #[allow(unused)]
     pub async fn set_pwm_mode(
         &self,
         device_uid: &UID,
@@ -980,5 +983,29 @@ impl Engine {
                     && profile.member_profile_uids.contains(changed_profile_uid)
             })
             .collect::<Vec<_>>()
+    }
+
+    fn is_hw_curve_enabled(&self, device_uid: &UID, channel_name: &str) -> Result<bool> {
+        let cc_settings = self.config.get_cc_settings_for_device(device_uid)?;
+        let enabled = cc_settings.is_some_and(|device_settings| {
+            device_settings
+                .channel_settings
+                .get(channel_name)
+                .is_some_and(|channel_settings| {
+                    channel_settings
+                        .extension
+                        .as_ref()
+                        .is_some_and(|extension| match extension {
+                            ChannelExtensions::AutoHWCurve {
+                                auto_hw_curve_enabled: hw_curve_enabled,
+                            }
+                            | ChannelExtensions::AmdRdnaGpu {
+                                hw_fan_curve_enabled: hw_curve_enabled,
+                                ..
+                            } => *hw_curve_enabled,
+                        })
+                })
+        });
+        Ok(enabled)
     }
 }

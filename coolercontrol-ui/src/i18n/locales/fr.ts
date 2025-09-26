@@ -911,6 +911,15 @@ export default {
                 new: 'Nouveau Capteur Personnalisé',
             },
         },
+        channelExtensionSettings: {
+            title: "Paramètres du canal de l'appareil",
+            firmwareControlledProfile: 'Profil contrôlé par le firmware',
+            firmwareControlledProfileDesc:
+                "Lorsque cette option est activée, le firmware de l'appareil gère le profil du ventilateur.\nUtile pour le matériel qui réagit mal aux modifications fréquentes de vitesse effectuées par le logiciel.\nDisponible uniquement pour les profils Graph qui utilisent des capteurs de température internes à l'appareil.\nLes paramètres de Fonction ne s'appliquent pas.",
+            saveError: "Échec de l'enregistrement des paramètres de l'extension de canal",
+            firmwareControlDisabled:
+                "Le contrôle par firmware n'est pas disponible avec la configuration actuelle.\nUtilisez un profil Graph pour cet appareil avec un capteur de température interne pris en charge.",
+        },
     },
     auth: {
         enterPassword: 'Entrez Votre Mot de Passe',

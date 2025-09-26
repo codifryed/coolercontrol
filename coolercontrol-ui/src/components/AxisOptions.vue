@@ -52,11 +52,12 @@ watch(freqScaledMin, () => {
 watch(freqScaledMax, () => {
     props.dashboard.frequencyMax = freqScaledMax.value * precision
 })
+const isPopupOpen = ref(false)
 </script>
 
 <template>
-    <div v-tooltip.bottom="t('components.axisOptions.title')">
-        <popover-root>
+    <div v-tooltip.bottom="{ value: t('components.axisOptions.title'), disabled: isPopupOpen }">
+        <popover-root @update:open="(open) => (isPopupOpen = open)">
             <popover-trigger
                 class="h-[2.375rem] rounded-lg border-2 border-border-one !py-1.5 !px-4 text-text-color outline-0 text-center justify-center items-center flex !m-0 hover:bg-surface-hover"
             >

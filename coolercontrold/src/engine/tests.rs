@@ -186,7 +186,6 @@ mod engine_tests {
             fan_channel_name.clone(),
             ChannelInfo {
                 speed_options: Some(SpeedOptions {
-                    manual_profiles_enabled: true,
                     fixed_enabled: true,
                     ..Default::default()
                 }),

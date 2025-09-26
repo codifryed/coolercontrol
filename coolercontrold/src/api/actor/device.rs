@@ -17,6 +17,7 @@
  */
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::devices::DeviceDto;
+use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
@@ -311,26 +312,32 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 .await;
                 let _ = respond_to.send(result);
             }
+            /// This hasn't been supported for some time, but may be in the future with Extensions.
+            #[allow(unused)]
             DeviceMessage::DeviceSettingPWMMode {
                 device_uid,
                 channel_name,
                 pwm_mode,
                 respond_to,
             } => {
-                let result = async {
-                    self.engine
-                        .set_pwm_mode(&device_uid, &channel_name, pwm_mode)
-                        .await?;
-                    let config_setting = Setting {
-                        channel_name,
-                        pwm_mode: Some(pwm_mode),
-                        ..Default::default()
-                    };
-                    self.config.set_device_setting(&device_uid, &config_setting);
-                    self.modes_controller.clear_active_modes().await;
-                    self.config.save_config_file().await
+                let result = Err(CCError::UserError {
+                    msg: "This feature is not currently supported".to_string(),
                 }
-                .await;
+                .into());
+                // let result = async {
+                //     self.engine
+                //         .set_pwm_mode(&device_uid, &channel_name, pwm_mode)
+                //         .await?;
+                //     let config_setting = Setting {
+                //         channel_name,
+                //         pwm_mode: Some(pwm_mode),
+                //         ..Default::default()
+                //     };
+                //     self.config.set_device_setting(&device_uid, &config_setting);
+                //     self.modes_controller.clear_active_modes().await;
+                //     self.config.save_config_file().await
+                // }
+                // .await;
                 let _ = respond_to.send(result);
             }
             DeviceMessage::DeviceSettingReset {

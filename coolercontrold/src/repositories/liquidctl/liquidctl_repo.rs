@@ -26,7 +26,9 @@ use std::string::ToString;
 use std::time::{Duration, Instant};
 
 use crate::config::Config;
-use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
+use crate::device::{
+    ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -131,9 +133,9 @@ impl LiquidctlRepo {
         for device_response in devices_response.devices {
             let Some(driver_type) = self.map_driver_type(&device_response) else {
                 info!(
-                        "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
-                        device_response.device_type
-                    );
+                    "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
+                    device_response.device_type
+                );
                 continue;
             };
             self.preloaded_statuses
@@ -164,7 +166,7 @@ impl LiquidctlRepo {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             // remove disabled lighting and lcd channels:
             device
                 .info
@@ -178,7 +180,9 @@ impl LiquidctlRepo {
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if self.devices.is_empty() {
-            info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
+            info!(
+                "No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down."
+            );
             self.liqctld_client.post_quit().await?;
             self.liqctld_client.shutdown();
         }
@@ -440,6 +444,17 @@ impl LiquidctlRepo {
         temp_source: &TempSource,
         profile: &[(f64, u8)],
     ) -> Result<()> {
+        let max_points = self
+            .devices
+            .get(&device_data.uid)
+            .map(|dev| dev.borrow().info.profile_max_length)
+            .with_context(|| {
+                format!(
+                    "Failed to get device info for {} to set internal speed profile",
+                    device_data.uid
+                )
+            })?;
+        let capped_profile = Self::cap_speed_profile(profile, max_points as usize);
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
         let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
             let temp_sensor_number: u8 = regex_temp_sensor_number
@@ -457,7 +472,7 @@ impl LiquidctlRepo {
             .put_speed_profile(
                 &device_data.type_index,
                 channel_name,
-                profile,
+                &capped_profile,
                 temperature_sensor,
             )
             .await
@@ -468,6 +483,26 @@ impl LiquidctlRepo {
                     device_data.uid
                 )
             })
+    }
+
+    /// Caps the speed profile to the max number of points allowed by the fan curve.
+    ///
+    /// If the speed profile is longer than the fan curve, we truncate the speed profile to the
+    /// max number of points allowed by the fan curve. We keep the last point as reference for
+    /// the fan curve, safety-wise, but allow setting it truncated.
+    fn cap_speed_profile(speed_profile: &[(Temp, Duty)], max_points: usize) -> Vec<(Temp, Duty)> {
+        let mut capped_profile = speed_profile.to_vec();
+        if capped_profile.len() > max_points {
+            warn!(
+                "Liquidctl Device - Max {max_points} fan curve points are allowed. \
+                Truncating speed profile with {} points. Please adjust the \
+                Graph Profile to match the number of points allowed by the device fan curve.",
+                capped_profile.len()
+            );
+            capped_profile.truncate(max_points - 1); // remove all but the last point
+            capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
+        }
+        capped_profile
     }
 
     async fn set_color(
@@ -681,7 +716,7 @@ impl LiquidctlRepo {
                         .await
                     {
                         error!("Error setting LCD screen to default upon shutdown: {err}");
-                    };
+                    }
                 }
             }
         }
@@ -856,8 +891,7 @@ impl Repository for LiquidctlRepo {
     ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
@@ -877,8 +911,7 @@ impl Repository for LiquidctlRepo {
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
-            device_uid, channel_name, speed_profile
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(
@@ -897,8 +930,7 @@ impl Repository for LiquidctlRepo {
         lighting: &LightingSettings,
     ) -> Result<()> {
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Lighting: {:?}",
-            device_uid, channel_name, lighting
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_color(&cached_device_data, channel_name, lighting)
@@ -911,10 +943,7 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; LCD: {:?}",
-            device_uid, channel_name, lcd
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; LCD: {lcd:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_screen(&cached_device_data, channel_name, lcd)
             .await
