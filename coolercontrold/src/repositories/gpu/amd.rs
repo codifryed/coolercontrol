@@ -896,7 +896,7 @@ impl GpuAMD {
             .last()
             .expect("Should be at least one point");
         // add any missing points:
-        for _ in capped_profile_length..=fan_curve_length {
+        for _ in capped_profile_length..fan_curve_length {
             fan_curve.points.push((last_point.0, last_point.1));
         }
         fan_curve
@@ -982,4 +982,137 @@ impl Default for FanCurveInfo {
 struct FanCurve {
     /// Fan curve points in the (temperature, speed) format
     points: Vec<(CurveTemp, Duty)>,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::repositories::gpu::amd::{FanCurve, FanCurveInfo, GpuAMD};
+    use std::ops::RangeInclusive;
+    use std::path::PathBuf;
+
+    fn basic_test_fan_curve_info() -> FanCurveInfo {
+        FanCurveInfo {
+            changeable: true,
+            temperature_range: RangeInclusive::new(0, 100),
+            speed_range: RangeInclusive::new(0, 100),
+            path: PathBuf::default(),
+            zero_rpm: None,
+            zero_rpm_stop_temp: None,
+            zero_rpm_stop_temp_range: RangeInclusive::new(0, 100),
+            fan_curve: FanCurve {
+                // default curve from auto mode: (5 points)
+                points: vec![(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+            },
+        }
+    }
+
+    #[test]
+    fn create_fan_curve_valid_length() {
+        // given
+        let fan_curve_info = basic_test_fan_curve_info();
+        let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.3, 75), (100.0, 100)];
+
+        // when
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+
+        // then
+        assert_eq!(resulting_fan_curve.points.len(), 5);
+    }
+
+    #[test]
+    fn create_fan_curve_caps_to_length() {
+        // given
+        let fan_curve_info = basic_test_fan_curve_info();
+        let speed_profile = vec![
+            (25.0, 29),
+            (35.2, 30),
+            (35.2, 30),
+            (62.5, 50),
+            (81.3, 75),
+            (100.0, 100),
+        ];
+
+        // when
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+
+        // then
+        assert_eq!(resulting_fan_curve.points.len(), 5);
+        let (curve_temps, curve_duties): (Vec<u8>, Vec<u8>) =
+            resulting_fan_curve.points.into_iter().unzip();
+        let (expected_curve_temps, expected_curve_duties): (Vec<u8>, Vec<u8>) =
+            vec![(25, 29), (35, 30), (35, 30), (63, 50), (100, 100)]
+                .into_iter()
+                .unzip();
+        assert_eq!(curve_temps, expected_curve_temps);
+        assert_eq!(curve_duties, expected_curve_duties);
+    }
+
+    #[test]
+    fn create_fan_curve_expands_to_length() {
+        // given
+        let fan_curve_info = basic_test_fan_curve_info();
+        let speed_profile = vec![(25.0, 29), (62.5, 50), (81.3, 75), (100.0, 100)];
+
+        // when
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+
+        // then
+        assert_eq!(resulting_fan_curve.points.len(), 5);
+        let (curve_temps, curve_duties): (Vec<u8>, Vec<u8>) =
+            resulting_fan_curve.points.into_iter().unzip();
+        let (expected_curve_temps, expected_curve_duties): (Vec<u8>, Vec<u8>) =
+            vec![(25, 29), (63, 50), (81, 75), (100, 100), (100, 100)]
+                .into_iter()
+                .unzip();
+        assert_eq!(curve_temps, expected_curve_temps);
+        assert_eq!(curve_duties, expected_curve_duties);
+    }
+
+    #[test]
+    fn create_fan_curve_rounds_temps() {
+        // given
+        let fan_curve_info = basic_test_fan_curve_info();
+        let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.7, 75), (100.0, 100)];
+
+        // when
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+
+        // then
+        let (curve_temps, _): (Vec<u8>, Vec<u8>) = resulting_fan_curve.points.into_iter().unzip();
+        let expected_curve_temps = vec![25, 35, 63, 82, 100];
+        assert_eq!(curve_temps, expected_curve_temps);
+    }
+
+    #[test]
+    fn create_fan_curve_clamps_temps_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties_and_duties(
+    ) {
+        // given
+        let fan_curve_info = FanCurveInfo {
+            changeable: true,
+            temperature_range: RangeInclusive::new(50, 90),
+            speed_range: RangeInclusive::new(50, 90),
+            path: PathBuf::default(),
+            zero_rpm: None,
+            zero_rpm_stop_temp: None,
+            zero_rpm_stop_temp_range: RangeInclusive::new(0, 100),
+            fan_curve: FanCurve {
+                // default curve from auto mode: (5 points)
+                points: vec![(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+            },
+        };
+        let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.7, 75), (100.0, 100)];
+
+        // when
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+
+        // then
+        let (curve_temps, curve_duties): (Vec<u8>, Vec<u8>) =
+            resulting_fan_curve.points.into_iter().unzip();
+        let (expected_curve_temps, expected_curve_duties): (Vec<u8>, Vec<u8>) =
+            vec![(50, 50), (50, 50), (63, 50), (82, 75), (90, 90)]
+                .into_iter()
+                .unzip();
+        assert_eq!(curve_temps, expected_curve_temps);
+        assert_eq!(curve_duties, expected_curve_duties);
+    }
 }
