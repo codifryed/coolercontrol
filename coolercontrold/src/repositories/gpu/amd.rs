@@ -736,30 +736,17 @@ impl GpuAMD {
     }
 
     async fn set_zero_rpm_stop_temp_highest(fan_curve_info: &FanCurveInfo) -> Result<()> {
-        let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
-            return Ok(());
-        };
         let highest_temp = fan_curve_info.zero_rpm_stop_temp_range.end();
-        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{highest_temp}\n"))
-            .await
-            .map_err(|err| {
-                anyhow!("Error applying {highest_temp} to Zero RPM Stop Temperature: {err}")
-            })?;
-        cc_fs::write(&zero_rpm_stop_temp_path, b"c\n".to_vec())
-            .await
-            .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
+        Self::set_zero_rpm_stop_temp(fan_curve_info, highest_temp).await
     }
 
-    async fn set_zero_rpm_stop_temp_lowest(fan_curve_info: &FanCurveInfo) -> Result<()> {
+    async fn set_zero_rpm_stop_temp(fan_curve_info: &FanCurveInfo, temp: &CurveTemp) -> Result<()> {
         let Some(zero_rpm_stop_temp_path) = &fan_curve_info.zero_rpm_stop_temp else {
             return Ok(());
         };
-        let lowest_temp = fan_curve_info.zero_rpm_stop_temp_range.start();
-        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{lowest_temp}\n"))
+        cc_fs::write_string(&zero_rpm_stop_temp_path, format!("{temp}\n"))
             .await
-            .map_err(|err| {
-                anyhow!("Error applying {lowest_temp} to Zero RPM Stop Temperature: {err}")
-            })?;
+            .map_err(|err| anyhow!("Error applying {temp} to Zero RPM Stop Temperature: {err}"))?;
         cc_fs::write(&zero_rpm_stop_temp_path, b"c\n".to_vec())
             .await
             .map_err(|err| anyhow!("Error Committing Zero RPM Stop Temperature: {err}"))
