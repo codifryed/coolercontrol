@@ -825,7 +825,7 @@ impl GpuAMD {
         // Otherwise we let the firmware handle it like stock.
         let mut set_zero_rpm = false;
         if fan_curve_info.zero_rpm.is_some() && fan_curve_info.zero_rpm_stop_temp.is_some() {
-            if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(speed_profile) {
+            if let Some(stop_temp) = Self::find_zero_rpm_stop_temp(fan_curve_info, speed_profile) {
                 Self::set_zero_rpm(fan_curve_info, true).await?;
                 Self::set_zero_rpm_stop_temp(fan_curve_info, &stop_temp).await?;
                 set_zero_rpm = true;
@@ -836,7 +836,7 @@ impl GpuAMD {
                 warn!("Failed to reset fan curve and zero rpm: {err}");
             }
         }
-        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile);
+        let fan_curve = Self::create_fan_curve(fan_curve_info, speed_profile, set_zero_rpm);
         Self::set_fan_curve(fan_curve, &fan_curve_info.path)
             .await
             .map_err(|err| {
@@ -850,21 +850,43 @@ impl GpuAMD {
     /// Returns the temperature at which the fan curve hits 0.
     /// If the fan curve never hits 0, returns None.
     /// We use this to auto-set the `zero_rpm_stop_temp`.
-    fn find_zero_rpm_stop_temp(speed_profile: &[(Temp, Duty)]) -> Option<CurveTemp> {
+    fn find_zero_rpm_stop_temp(
+        fan_curve_info: &FanCurveInfo,
+        speed_profile: &[(Temp, Duty)],
+    ) -> Option<CurveTemp> {
         // We don't need to interpolate here really, we can just reverse check the points to find
         // the first point that hits 0.
         // (as the curve can never go below 0, and it therefore has to be a point)
         speed_profile.iter().rev().find_map(|(temp, duty)| {
             if duty < &1 {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                return Some(temp.round() as CurveTemp);
+                let curve_temp = temp.round() as CurveTemp;
+                let clamped_temp = if fan_curve_info.zero_rpm_stop_temp_range.contains(&curve_temp) {
+                    curve_temp
+                } else {
+                    warn!(
+                    "AMD GPU RDNA - Only zero_rpm stop temps within range of {}C to {}C are allowed. \
+                Clamping passed temp of {curve_temp}% to nearest limit",
+                    fan_curve_info.zero_rpm_stop_temp_range.start(),
+                    fan_curve_info.zero_rpm_stop_temp_range.end(),
+                );
+                    *fan_curve_info
+                        .zero_rpm_stop_temp_range
+                        .end()
+                        .min(fan_curve_info.zero_rpm_stop_temp_range.start().max(&curve_temp))
+                };
+                return Some(clamped_temp);
             }
             None
         })
     }
 
     /// Returns a sanitized fan curve with clamped values.
-    fn create_fan_curve(fan_curve_info: &FanCurveInfo, speed_profile: &[(Temp, Duty)]) -> FanCurve {
+    fn create_fan_curve(
+        fan_curve_info: &FanCurveInfo,
+        speed_profile: &[(Temp, Duty)],
+        set_zero_rpm: bool,
+    ) -> FanCurve {
         let mut fan_curve = FanCurve::default();
         let fan_curve_length = fan_curve_info.fan_curve.points.len();
         let capped_profile = Self::cap_speed_profile(speed_profile, fan_curve_length);
@@ -873,12 +895,14 @@ impl GpuAMD {
             let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
                 duty
             } else {
-                warn!(
-                    "AMD GPU RDNA - Only fan duties within range of {}% to {}% are allowed. \
-                Clamping passed duty of {duty}% to nearest limit",
-                    fan_curve_info.speed_range.start(),
-                    fan_curve_info.speed_range.end(),
-                );
+                if set_zero_rpm.not() && duty != 0 {
+                    warn!(
+                        "AMD GPU RDNA - Only fan duties within range of {}% to {}% are allowed. \
+                    Clamping passed duty of {duty}% to nearest limit",
+                        fan_curve_info.speed_range.start(),
+                        fan_curve_info.speed_range.end(),
+                    );
+                }
                 *fan_curve_info
                     .speed_range
                     .end()
@@ -1024,7 +1048,7 @@ mod tests {
         let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.3, 75), (100.0, 100)];
 
         // when
-        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile, false);
 
         // then
         assert_eq!(resulting_fan_curve.points.len(), 5);
@@ -1044,7 +1068,7 @@ mod tests {
         ];
 
         // when
-        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile, false);
 
         // then
         assert_eq!(resulting_fan_curve.points.len(), 5);
@@ -1065,7 +1089,7 @@ mod tests {
         let speed_profile = vec![(25.0, 29), (62.5, 50), (81.3, 75), (100.0, 100)];
 
         // when
-        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile, false);
 
         // then
         assert_eq!(resulting_fan_curve.points.len(), 5);
@@ -1086,7 +1110,7 @@ mod tests {
         let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.7, 75), (100.0, 100)];
 
         // when
-        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile, false);
 
         // then
         let (curve_temps, _): (Vec<u8>, Vec<u8>) = resulting_fan_curve.points.into_iter().unzip();
@@ -1113,7 +1137,7 @@ mod tests {
         let speed_profile = vec![(25.0, 29), (35.2, 30), (62.5, 50), (81.7, 75), (100.0, 100)];
 
         // when
-        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile);
+        let resulting_fan_curve = GpuAMD::create_fan_curve(&fan_curve_info, &speed_profile, false);
 
         // then
         let (curve_temps, curve_duties): (Vec<u8>, Vec<u8>) =
@@ -1129,10 +1153,11 @@ mod tests {
     #[test]
     fn find_zero_rpm_stop_temp() {
         // given
+        let fan_curve_info = basic_test_fan_curve_info();
         let speed_profile = vec![(25.0, 0), (35.2, 30), (62.5, 50), (81.3, 75), (100.0, 100)];
 
         // when
-        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&speed_profile);
+        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&fan_curve_info, &speed_profile);
 
         // then
         assert!(stop_temp.is_some(), "Expected a stop temp");
@@ -1142,10 +1167,11 @@ mod tests {
     #[test]
     fn find_zero_rpm_stop_temp_highest() {
         // given
+        let fan_curve_info = basic_test_fan_curve_info();
         let speed_profile = vec![(25.0, 0), (35.2, 0), (62.5, 0), (81.3, 75), (100.0, 100)];
 
         // when
-        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&speed_profile);
+        let stop_temp = GpuAMD::find_zero_rpm_stop_temp(&fan_curve_info, &speed_profile);
 
         // then
         assert!(stop_temp.is_some(), "Expected a stop temp");
