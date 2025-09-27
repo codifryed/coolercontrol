@@ -52,7 +52,7 @@ export class Dashboard {
     wattsMin: number = 0
 
     // Selected data types to filter by
-    dataTypes: Array<DataType> = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
+    dataTypes: Array<DataType> = []
 
     // Selected Raw deviceUID and channel names to filter by (not user-level names)
     @Type(() => DashboardDeviceChannel)
@@ -63,8 +63,11 @@ export class Dashboard {
     }
 
     // Dashboards build by default when there are none (first-run)
-    static defaults(): Array<Dashboard> {
-        return [new Dashboard('System')]
+    static default(): Array<Dashboard> {
+        const newDashboard = new Dashboard('System')
+        // very first default dashbaord to have these filters for initial UX (not overloaded)
+        newDashboard.dataTypes = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
+        return [newDashboard]
     }
 }
 

@@ -105,7 +105,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
-    const dashboards: Array<Dashboard> = reactive([...Dashboard.defaults()])
+    const dashboards: Array<Dashboard> = reactive([...Dashboard.default()])
     const homeDashboard: Ref<UID | undefined> = ref()
     const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
