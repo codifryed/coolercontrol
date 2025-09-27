@@ -242,16 +242,11 @@ const applyGenericDaemonChange = _.debounce(
 )
 
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
+// commented out for now but can be reused in the near future.
+// See https://gitlab.com/coolercontrol/coolercontrol/-/issues/506
 // const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
 // const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
-// This is leftover setting from the older implementation that are no longer helpful or needed.
-// In fact, they're confusing now. The UI part has been removed, but we could use these in the
-// future to allow the user to change the daemon's IPs and port. Kept for the moment to
-// env vars and the daemon's config file.
 // const saveDaemonSettings = () => {
-//     // Ok, this isn't really a bug - it's just changed a lot since it was originally implemented (since Tauri as well)
-//     //  - This isn't really needed anymore (we can keep the backup behavoir to change the port/address, but these settings should either
-//     //  - be removed or replaced with ACTUALly changing the daemon's settings
 //     deviceStore.setDaemonAddress(daemonAddress.value)
 //     deviceStore.setDaemonPort(daemonPort.value)
 //     deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
