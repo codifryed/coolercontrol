@@ -49,7 +49,6 @@ import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import { Color } from '@/models/Device.ts'
 import { Emitter, EventType } from 'mitt'
 import LanguageSwitcher from '@/components/LanguageSwitcher.vue'
@@ -243,20 +242,23 @@ const applyGenericDaemonChange = _.debounce(
 )
 
 const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
-const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
-const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
-const saveDaemonSettings = () => {
-    deviceStore.setDaemonAddress(daemonAddress.value)
-    deviceStore.setDaemonPort(daemonPort.value)
-    deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
-    deviceStore.reloadUI()
-}
-const resetDaemonSettings = () => {
-    deviceStore.clearDaemonAddress()
-    deviceStore.clearDaemonPort()
-    deviceStore.clearDaemonSslEnabled()
-    deviceStore.reloadUI()
-}
+// commented out for now but can be reused in the near future.
+// See https://gitlab.com/coolercontrol/coolercontrol/-/issues/506
+// const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
+// const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
+// const saveDaemonSettings = () => {
+//     deviceStore.setDaemonAddress(daemonAddress.value)
+//     deviceStore.setDaemonPort(daemonPort.value)
+//     deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+//     deviceStore.reloadUI()
+// }
+// const resetDaemonSettings = () => {
+//     deviceStore.clearDaemonAddress()
+//     deviceStore.clearDaemonPort()
+//     deviceStore.clearDaemonSslEnabled()
+//     deviceStore.reloadUI()
+// }
+
 const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 watch(pollRate, () => {
     applyGenericDaemonChange()
@@ -1160,121 +1162,122 @@ onUnmounted(() => {
                                 </tr>
                             </tbody>
                         </table>
-                        <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
-                            <tbody>
-                                <tr
-                                    v-tooltip.right="{
-                                        escape: false,
-                                        value: t('layout.settings.tooltips.daemonAddress'),
-                                    }"
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
-                                    >
-                                        {{ t('common.address') }}
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
-                                    >
-                                        <InputText
-                                            v-model="daemonAddress"
-                                            class="min-w-48 w-full text-center"
-                                            placeholder="localhost"
-                                        />
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-tooltip.right="{
-                                        escape: false,
-                                        value: t('layout.settings.tooltips.daemonPort'),
-                                    }"
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
-                                    >
-                                        {{ t('common.port') }}
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
-                                    >
-                                        <InputNumber
-                                            id="port-input"
-                                            v-model="daemonPort"
-                                            show-buttons
-                                            :min="80"
-                                            :max="65535"
-                                            :useGrouping="false"
-                                            button-layout="horizontal"
-                                            :input-style="{ width: '6rem' }"
-                                        >
-                                            <template #incrementicon>
-                                                <span class="pi pi-plus" />
-                                            </template>
-                                            <template #decrementicon>
-                                                <span class="pi pi-minus" />
-                                            </template>
-                                        </InputNumber>
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-tooltip.right="{
-                                        escape: false,
-                                        value: t('layout.settings.tooltips.sslTls'),
-                                    }"
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
-                                    >
-                                        {{ t('common.sslTls') }}
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
-                                    >
-                                        <el-switch v-model="daemonSslEnabled" size="large" />
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td
-                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
-                                    >
-                                        <div
-                                            class="float-left py-2"
-                                            v-tooltip.top="
-                                                t('layout.settings.tooltips.triggersUIRestart')
-                                            "
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestart"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
-                                        <div class="float-right">
-                                            <Button
-                                                :label="t('common.defaults')"
-                                                class="h-[2.375rem]"
-                                                @click="resetDaemonSettings"
-                                                v-tooltip.top="
-                                                    t('layout.settings.tooltips.resetToDefaults')
-                                                "
-                                            />
-                                        </div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
-                                    >
-                                        <Button
-                                            :label="t('common.apply')"
-                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
-                                            @click="saveDaemonSettings"
-                                            v-tooltip.top="
-                                                t('layout.settings.tooltips.saveAndReload')
-                                            "
-                                        />
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <!--                        Might use again in the future-->
+                        <!--                        <table class="lg:ml-4 h-full bg-bg-two rounded-lg">-->
+                        <!--                            <tbody>-->
+                        <!--                                <tr-->
+                        <!--                                    v-tooltip.right="{-->
+                        <!--                                        escape: false,-->
+                        <!--                                        value: t('layout.settings.tooltips.daemonAddress'),-->
+                        <!--                                    }"-->
+                        <!--                                >-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        {{ t('common.address') }}-->
+                        <!--                                    </td>-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        <InputText-->
+                        <!--                                            v-model="daemonAddress"-->
+                        <!--                                            class="min-w-48 w-full text-center"-->
+                        <!--                                            placeholder="localhost"-->
+                        <!--                                        />-->
+                        <!--                                    </td>-->
+                        <!--                                </tr>-->
+                        <!--                                <tr-->
+                        <!--                                    v-tooltip.right="{-->
+                        <!--                                        escape: false,-->
+                        <!--                                        value: t('layout.settings.tooltips.daemonPort'),-->
+                        <!--                                    }"-->
+                        <!--                                >-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        {{ t('common.port') }}-->
+                        <!--                                    </td>-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        <InputNumber-->
+                        <!--                                            id="port-input"-->
+                        <!--                                            v-model="daemonPort"-->
+                        <!--                                            show-buttons-->
+                        <!--                                            :min="80"-->
+                        <!--                                            :max="65535"-->
+                        <!--                                            :useGrouping="false"-->
+                        <!--                                            button-layout="horizontal"-->
+                        <!--                                            :input-style="{ width: '6rem' }"-->
+                        <!--                                        >-->
+                        <!--                                            <template #incrementicon>-->
+                        <!--                                                <span class="pi pi-plus" />-->
+                        <!--                                            </template>-->
+                        <!--                                            <template #decrementicon>-->
+                        <!--                                                <span class="pi pi-minus" />-->
+                        <!--                                            </template>-->
+                        <!--                                        </InputNumber>-->
+                        <!--                                    </td>-->
+                        <!--                                </tr>-->
+                        <!--                                <tr-->
+                        <!--                                    v-tooltip.right="{-->
+                        <!--                                        escape: false,-->
+                        <!--                                        value: t('layout.settings.tooltips.sslTls'),-->
+                        <!--                                    }"-->
+                        <!--                                >-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        {{ t('common.sslTls') }}-->
+                        <!--                                    </td>-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"-->
+                        <!--                                    >-->
+                        <!--                                        <el-switch v-model="daemonSslEnabled" size="large" />-->
+                        <!--                                    </td>-->
+                        <!--                                </tr>-->
+                        <!--                                <tr>-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"-->
+                        <!--                                    >-->
+                        <!--                                        <div-->
+                        <!--                                            class="float-left py-2"-->
+                        <!--                                            v-tooltip.top="-->
+                        <!--                                                t('layout.settings.tooltips.triggersUIRestart')-->
+                        <!--                                            "-->
+                        <!--                                        >-->
+                        <!--                                            <svg-icon-->
+                        <!--                                                type="mdi"-->
+                        <!--                                                :path="mdiRestart"-->
+                        <!--                                                :size="deviceStore.getREMSize(1.0)"-->
+                        <!--                                            />-->
+                        <!--                                        </div>-->
+                        <!--                                        <div class="float-right">-->
+                        <!--                                            <Button-->
+                        <!--                                                :label="t('common.defaults')"-->
+                        <!--                                                class="h-[2.375rem]"-->
+                        <!--                                                @click="resetDaemonSettings"-->
+                        <!--                                                v-tooltip.top="-->
+                        <!--                                                    t('layout.settings.tooltips.resetToDefaults')-->
+                        <!--                                                "-->
+                        <!--                                            />-->
+                        <!--                                        </div>-->
+                        <!--                                    </td>-->
+                        <!--                                    <td-->
+                        <!--                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"-->
+                        <!--                                    >-->
+                        <!--                                        <Button-->
+                        <!--                                            :label="t('common.apply')"-->
+                        <!--                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"-->
+                        <!--                                            @click="saveDaemonSettings"-->
+                        <!--                                            v-tooltip.top="-->
+                        <!--                                                t('layout.settings.tooltips.saveAndReload')-->
+                        <!--                                            "-->
+                        <!--                                        />-->
+                        <!--                                    </td>-->
+                        <!--                                </tr>-->
+                        <!--                            </tbody>-->
+                        <!--                        </table>-->
                     </TabPanel>
                     <TabPanel value="2">
                         <!--Desktop Settings-->
