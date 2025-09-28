@@ -22,6 +22,8 @@ Homepage: https://gitlab.com/coolercontrol/coolercontrol
 
 Package: coolercontrold
 Architecture: amd64 arm64
+Conflicts: coolercontrol-liqctld
+Replaces: coolercontrol-liqctld
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
