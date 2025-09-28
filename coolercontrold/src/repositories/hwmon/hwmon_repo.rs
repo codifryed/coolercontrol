@@ -357,9 +357,10 @@ impl Repository for HwmonRepo {
 
         let base_paths = devices::find_all_hwmon_device_paths();
         if base_paths.is_empty() {
-            return Err(anyhow!(
-                "No HWMon devices were found, try running sensors-detect"
-            ));
+            info!(
+                "No HWMon devices were found, try installing lm-sensors and running sensors-detect"
+            );
+            return Ok(());
         }
         debug!("Detected HWMon device paths: {base_paths:?}");
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
