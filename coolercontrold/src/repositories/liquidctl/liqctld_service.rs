@@ -50,11 +50,13 @@ pub async fn verify_env() -> Result<()> {
 }
 
 /// This function runs the `liqctld` service daemon.
-pub async fn run(run_token: CancellationToken) -> Result<()> {
+/// The `run_token` is used to signal that the daemon is shutting down.
+/// The `stop_token` is used to signal that only the service should be stopped.
+pub async fn run(run_token: CancellationToken, stop_token: CancellationToken) -> Result<()> {
     debug!("Starting...");
     let mut tries = 0;
     let mut result = run_python(PY_SERVICE, run_token.clone()).await;
-    while run_token.is_cancelled().not() && tries < MAX_RETRIES {
+    while run_token.is_cancelled().not() && stop_token.is_cancelled().not() && tries < MAX_RETRIES {
         warn!("liqctld exited prematurely! Restarting...");
         debug!("liqctld run result: {result:?}");
         sleep(Duration::from_secs(2)).await;
