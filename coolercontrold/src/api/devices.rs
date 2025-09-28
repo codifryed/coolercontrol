@@ -23,13 +23,14 @@ use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::Json;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use mime::Mime;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use std::fmt;
 use std::io::Read;
 use std::ops::Not;
 use std::str::FromStr;
@@ -117,10 +118,12 @@ pub async fn get_device_lcd_image(
 /// Used to apply LCD settings that contain images.
 pub async fn update_device_setting_lcd_image(
     Path(path): Path<DeviceChannelPath>,
+    Query(lcd_image_update_query): Query<LcdImageUpdateQuery>,
     State(AppState { device_handle, .. }): State<AppState>,
     NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
 ) -> Result<(), CCError> {
     let file_data = validate_form_images(&mut form)?;
+    let log_success = lcd_image_update_query.log.unwrap_or(true);
     device_handle
         .device_image_update(
             path.device_uid,
@@ -129,6 +132,7 @@ pub async fn update_device_setting_lcd_image(
             form.brightness,
             form.orientation,
             file_data,
+            log_success,
         )
         .await
         .map_err(handle_error)
@@ -321,4 +325,24 @@ pub struct DevicePath {
 pub struct DeviceChannelPath {
     pub device_uid: DeviceUID,
     pub channel_name: ChannelName,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct LcdImageUpdateQuery {
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    log: Option<bool>,
+}
+
+/// Serde deserialization decorator to map empty Strings to None,
+fn empty_string_as_none<'de, D, T>(de: D) -> anyhow::Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    match opt.as_deref() {
+        None | Some("") => Ok(None),
+        Some(s) => FromStr::from_str(s).map_err(de::Error::custom).map(Some),
+    }
 }

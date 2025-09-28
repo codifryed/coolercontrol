@@ -38,7 +38,7 @@ use crate::setting::{
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
-use log::{error, info, trace};
+use log::{error, info, log, trace, Level};
 use mime::Mime;
 use moro_local::Scope;
 use tokio::time::Instant;
@@ -124,6 +124,7 @@ impl Engine {
                 device_uid,
                 &setting.channel_name,
                 setting.lcd.as_ref().unwrap(),
+                true,
             )
             .await
         } else if setting.profile_uid.is_some() {
@@ -429,6 +430,7 @@ impl Engine {
         device_uid: &UID,
         channel_name: &str,
         lcd_settings: &LcdSettings,
+        log_success: bool,
     ) -> Result<()> {
         let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let lcd_not_enabled = device_lock
@@ -464,7 +466,13 @@ impl Engine {
                 .await
         };
         result.inspect(|()| {
-            info!(
+            let log_level = if log_success {
+                Level::Info
+            } else {
+                Level::Debug
+            };
+            log!(
+                log_level,
                 "Successfully applied:: {} | {channel_name} | LCD Mode: {}",
                 device_lock.borrow().name,
                 lcd_settings.mode
