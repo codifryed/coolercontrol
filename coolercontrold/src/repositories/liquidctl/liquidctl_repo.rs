@@ -56,6 +56,7 @@ pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
     liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
+    liqctld_stop_token: CancellationToken,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
@@ -87,7 +88,9 @@ impl LiquidctlRepo {
             );
             return Err(InitError::PythonEnv { msg }.into());
         }
-        let service_handle = tokio::task::spawn_local(liqctld_service::run(run_token));
+        let stop_token = CancellationToken::new();
+        let service_handle =
+            tokio::task::spawn_local(liqctld_service::run(run_token, stop_token.clone()));
         // give the service a moment to come up and detect devices
         sleep(Duration::from_millis(300)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
@@ -118,6 +121,7 @@ impl LiquidctlRepo {
             config,
             liqctld_client,
             liqctld_service_handle: RefCell::new(Some(service_handle)),
+            liqctld_stop_token: stop_token,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -183,8 +187,7 @@ impl LiquidctlRepo {
             info!(
                 "No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down."
             );
-            self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown();
+            self.shutdown_service_and_client().await?;
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
@@ -674,6 +677,22 @@ impl LiquidctlRepo {
         })
     }
 
+    async fn shutdown_service_and_client(&self) -> Result<()> {
+        // sometimes we want to shut the service down before the daemon, hence the stop token:
+        self.liqctld_stop_token.cancel();
+        self.liqctld_client.post_quit().await?;
+        // proper shutdown of liqctld service child process:
+        let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
+        if let Some(service_handle) = liqctld_service_handle {
+            // wait for the service to exit
+            if let Err(err) = service_handle.await {
+                warn!("liqctld service did not shutdown properly: {err}");
+            }
+        }
+        self.liqctld_client.shutdown();
+        Ok(())
+    }
+
     #[allow(dead_code)]
     /// Resets any used device's LCD screen to its default.
     ///
@@ -854,15 +873,7 @@ impl Repository for LiquidctlRepo {
             // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
-            self.liqctld_client.post_quit().await?;
-            let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
-            if let Some(service_handle) = liqctld_service_handle {
-                // wait for the service to exit
-                if let Err(err) = service_handle.await {
-                    warn!("liqctld service did not shutdown properly: {err}");
-                }
-            }
-            self.liqctld_client.shutdown();
+            self.shutdown_service_and_client().await?;
         }
         info!("LIQUIDCTL Repository Shutdown");
         Ok(())
