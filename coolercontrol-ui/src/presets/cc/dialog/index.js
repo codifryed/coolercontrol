@@ -125,8 +125,10 @@ export default {
 
             // Background and Effects
             {
-                'has-[.mask-active]:bg-transparent bg-black/40': props.modal,
-                'has-[.mask-active]:backdrop-blur-none backdrop-blur-sm': props.modal,
+                'has-[.mask-active]:bg-transparent bg-black/75': props.modal,
+                // nice blur effect - but can be a bit slow on some systems, particularly if there
+                // are animations running on the blurred page
+                // 'has-[.mask-active]:backdrop-blur-none backdrop-blur-md': props.modal,
             },
         ],
     }),

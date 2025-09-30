@@ -525,7 +525,7 @@ onUnmounted(() => {
                             v-model="selectedOrientation"
                             mode="decimal"
                             class="mt-0.5 w-full"
-                            :suffix="` ${t('common.tempUnit')}`"
+                            suffix=" °"
                             showButtons
                             :min="0"
                             :max="270"
