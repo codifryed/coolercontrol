@@ -27,8 +27,9 @@ Replaces: coolercontrol-liqctld
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
-Suggests:
+Recommends:
  liquidctl
+ lm-sensors
 Description: Monitor and control your cooling devices.
  This is the main systemd daemon for CoolerControl.
 

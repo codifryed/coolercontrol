@@ -21,6 +21,7 @@ BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
 Recommends:     python3-liquidctl
+Recommends:     lm_sensors
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
