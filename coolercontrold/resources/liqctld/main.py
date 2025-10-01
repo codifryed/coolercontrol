@@ -1262,10 +1262,14 @@ def setup_logging() -> None:
             or env_liquidctl_log_level.lower() == "trace"
         ):
             liquidctl_level = logging.DEBUG
+        elif env_liquidctl_log_level.lower() == "info":
+            liquidctl_level = logging.INFO
         elif env_liquidctl_log_level.lower() == "warn":
             liquidctl_level = logging.WARNING
         elif env_liquidctl_log_level.lower() == "error":
             liquidctl_level = logging.ERROR
+        elif env_liquidctl_log_level.lower() == "critical":
+            liquidctl_level = logging.CRITICAL
     root_logger = logging.getLogger("root")
     root_logger.setLevel(log_level)
     liquidctl_logger = logging.getLogger("liquidctl")
