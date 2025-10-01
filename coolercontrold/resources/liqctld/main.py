@@ -1241,6 +1241,7 @@ def setup_logging() -> None:
         if os.getenv("CC_LOG") is not None
         else os.getenv("COOLERCONTROL_LOG")
     )
+    env_liquidctl_log_level: Optional[str] = os.getenv("LIQUIDCTL_LOG")
     # default & "INFO" levels:
     log_level = logging.INFO
     liquidctl_level = logging.WARNING
@@ -1253,6 +1254,17 @@ def setup_logging() -> None:
             liquidctl_level = logging.WARNING
         elif env_log_level.lower() == "error":
             log_level = logging.ERROR
+            liquidctl_level = logging.ERROR
+    # override liquidctl log level if set
+    if env_liquidctl_log_level:
+        if (
+            env_liquidctl_log_level.lower() == "debug"
+            or env_liquidctl_log_level.lower() == "trace"
+        ):
+            liquidctl_level = logging.DEBUG
+        elif env_liquidctl_log_level.lower() == "warn":
+            liquidctl_level = logging.WARNING
+        elif env_liquidctl_log_level.lower() == "error":
             liquidctl_level = logging.ERROR
     root_logger = logging.getLogger("root")
     root_logger.setLevel(log_level)
