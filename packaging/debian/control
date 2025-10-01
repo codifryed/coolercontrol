@@ -28,8 +28,8 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
 Recommends:
- liquidctl
- lm-sensors
+ liquidctl,
+ lm-sensors,
 Description: Monitor and control your cooling devices.
  This is the main systemd daemon for CoolerControl.
 
