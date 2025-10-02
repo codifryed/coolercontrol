@@ -126,7 +126,10 @@ coverage:
   some situations where the kernel drivers are not yet mature enough to offer full fan control
   functionality, in which case you will get **an error** when attempting to apply changes.
 
-## 🌐 [CoolerControl Website](https://docs.coolercontrol.org)
+## 🌐 CoolerControl Website
+
+[coolercontrol.org](https://coolercontrol.org) is the source for CoolerControl documentation and
+guides.
 
 ## ❔ Problem or Question
 
@@ -137,17 +140,25 @@ provided templates. When submitting a bug
 are invaluable to determining the cause. If you have a general question, please join the
 [Discord](https://discord.gg/MbcgUFAfhV) channel where community members can also help.
 
+## ❤️ Support CoolerControl
+
+Made for Linux, used 24/7 by me. CoolerControl started as the tool I needed for my own rigs and grew
+from there. If you’d like to help, your support goes straight into new features, integrations,
+maintenance, and a cup of coffee to power those late‑night coding sessions.
+
+<div>
+<!-- trunk-ignore-begin(markdownlint)-->
+<a href="https://ko-fi.com/codifryed"><img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
+<a href="https://github.com/sponsors/codifryed"><img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA"></a>
+<!-- trunk-ignore-end(markdownlint)-->
+</div>
+
 ## 🚀 Contributing
 
-:heart: CoolerControl is in need of help with the following areas:
-
-- Packaging
-- Website
-- Spreading the word
-
-If you have an idea or want to submit some changes, it's usually best to either
-[submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) first or get on
-[Discord](https://discord.gg/MbcgUFAfhV) to discuss it. For general information, please read the
+Contributions are welcome and if you have an idea or want to submit some changes, it's best to
+either [submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) or get on
+[Discord](https://discord.gg/MbcgUFAfhV) to discuss it first. For general information, please read
+the
 [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
 
 ## ⭐ Acknowledgements
