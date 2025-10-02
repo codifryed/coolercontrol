@@ -42,8 +42,7 @@ Powerful cooling control and monitoring for Linux 🐧
 
 [Install](https://docs.coolercontrol.org/getting-started.html) ·
 [Hardware Support](https://docs.coolercontrol.org/hardware-support.html) ·
-[Documentation](https://docs.coolercontrol.org) ·
-[Discord](https://discord.gg/MbcgUFAfhV)
+[Documentation](https://docs.coolercontrol.org) · [Discord](https://discord.gg/MbcgUFAfhV)
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
@@ -89,8 +88,8 @@ are invaluable for determining the cause. If you have a general question, please
 
 ## ❤️ Support CoolerControl
 
-Made for Linux, used 24/7. CoolerControl started as the tool I needed for my own rigs and grew
-from there. If you’d like to help, your support goes straight into new features, integrations,
+Made for Linux, used 24/7. CoolerControl started as the tool I needed for my own rigs and grew from
+there. If you’d like to help, your support goes straight into new features, integrations,
 maintenance, and a cup of coffee to power those late‑night coding sessions.
 
 <div>
