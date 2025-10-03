@@ -18,7 +18,7 @@ one.
 
 3. Update Packaging Settings
    1. Update
-      `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`,`packaging/fedora/coolercontrol-liqctld.spec`
+      `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`
       1. Version near the top
       2. Changelog at the bottom
    2. Update `packaging/debian/changelog`
