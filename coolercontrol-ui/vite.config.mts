@@ -32,6 +32,8 @@ export default defineConfig({
         loadVersion(),
         legacy({
             renderLegacyChunks: false,
+            targets: ['chrome >= 90', 'safari >= 12'],
+            modernPolyfills: true,
         }),
     ],
     resolve: {
