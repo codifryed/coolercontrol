@@ -199,9 +199,7 @@ impl HwmonRepo {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                profiles_enabled: false,
                                 fixed_enabled: channel.pwm_writable,
-                                manual_profiles_enabled: channel.pwm_writable,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -222,7 +220,7 @@ impl HwmonRepo {
                 temps,
                 channels,
                 temp_min: 0,
-                temp_max: 100,
+                temp_max: 150,
                 profile_max_length: 21,
                 model: driver.model.clone(),
                 thinkpad_fan_control,
@@ -334,7 +332,7 @@ impl HwmonRepo {
         type_index: TypeIndex,
         driver_name: &str,
         channel_name: &str,
-    ) -> Result<SemaphorePermit> {
+    ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
             () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
@@ -359,9 +357,10 @@ impl Repository for HwmonRepo {
 
         let base_paths = devices::find_all_hwmon_device_paths();
         if base_paths.is_empty() {
-            return Err(anyhow!(
-                "No HWMon devices were found, try running sensors-detect"
-            ));
+            info!(
+                "No HWMon devices were found, try installing lm-sensors and running sensors-detect"
+            );
+            return Ok(());
         }
         debug!("Detected HWMon device paths: {base_paths:?}");
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
@@ -394,7 +393,7 @@ impl Repository for HwmonRepo {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
                 Ok(fans) => channels.extend(

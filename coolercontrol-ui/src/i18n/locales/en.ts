@@ -63,6 +63,7 @@ export default {
         logout: 'Logout',
         temperature: 'Temp',
         duty: 'Duty',
+        offset: 'Offset',
         stay: 'Stay',
         discard: 'Discard',
         blankNameResetDefault: 'A blank name will reset it to the system default.',
@@ -74,6 +75,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Mode Created',
             modeDuplicated: 'Mode Duplicated',
@@ -205,6 +207,8 @@ export default {
                 border: 'Border Color',
                 text: 'Text Color',
                 textSecondary: 'Secondary Text Color',
+                export: 'Export Theme',
+                import: 'Import Theme',
             },
             tooltips: {
                 introduction: 'Start the application introduction tour.',
@@ -282,6 +286,7 @@ export default {
             customSensors: 'Custom Sensors',
             modes: 'Modes',
             alerts: 'Alerts',
+            pinned: 'Pinned',
             tooltips: {
                 delete: 'Delete',
                 createMode: 'Create Mode from Current Settings',
@@ -301,6 +306,13 @@ export default {
                 addCustomSensor: 'Add Custom Sensor',
                 addFunction: 'Add Function',
                 chooseColor: 'Choose Color',
+                options: 'More Options',
+                moveTop: 'Move to Top',
+                moveBottom: 'Move to Bottom',
+                disable: 'Disable',
+                pin: 'Pin to Top',
+                unpin: 'Unpin',
+                profileApply: 'Apply Profile to fans',
             },
         },
         add: {
@@ -372,8 +384,12 @@ export default {
             browse: 'Browse',
             browseCustomSensorFile: 'Browse for a custom sensor file',
             tempSources: 'Temp Sources',
+            tempSource: 'Temp Source',
             tempSourcesTooltip:
-                'Temperature sources to be used in the mix function<br/><i>Note: You can use a Mix Profile to combine multiple<br/>Customer Sensors.</i>',
+                'Temperature sources to be used in the mix function<br/><i>Note: Only direct parent-child relationships are allowed<br/>when combining multiple Custom Sensors.<br/>Use Mix Profiles for more complex setups.</i>',
+            offset: 'Offset Amount',
+            offsetTooltip:
+                'Enter the negative or positive offset amount to<br/>apply to the source sensor.<br/><i>Note: The final value will is limited to<br/>normal temperature ranges.</i>',
             tempWeights: 'Temp Weights',
             tempWeightsTooltip: 'The individual weight of each selected temperature source.',
             tempName: 'Temp Name',
@@ -466,6 +482,7 @@ export default {
             warmupGreaterThan: 'condition triggered longer than',
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
+            createFailAlert: 'Fail Alert',
         },
         profiles: {
             createProfile: 'Create Profile',
@@ -493,7 +510,7 @@ export default {
             newProfile: 'New Profile',
             tooltip: {
                 profileType:
-                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles',
+                    'Profile Types:<br/>- Default: Retains current device settings<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixed: Sets a constant speed<br/>- Graph: Customizable fan curve<br/>- Mix: Combines multiple profiles<br/>- Overlay: offset the output of an existing profile',
             },
             profileDeleted: 'Profile Deleted',
             profileDuplicated: 'Profile Duplicated',
@@ -504,6 +521,18 @@ export default {
             profileUpdateError: 'There was an error attempting to update this Profile',
             tempSourceRequired: 'A Temp Source is required for a Graph Profile.',
             memberProfilesRequired: 'At least 2 Member Profiles are required for a Mix Profile.',
+            minProfileTemp: 'Minimum Profile Temperature',
+            maxProfileTemp: 'Maximum Profile Temperature',
+            staticOffset: 'Static Offset',
+            offsetType: 'Offset Type',
+            offsetTypeStatic: 'Static Offset',
+            offsetTypeGraph: 'Graph Offset',
+            baseProfile: 'Base Profile',
+            baseProfileRequired: 'A Base Profile is required for an Overlay Profile.',
+            selectedPointOutputDuty: 'Selected Point Profile Output Duty',
+            selectedPointOffset: 'Selected Point Offset Duty',
+            profileOutputDuty: 'Profile Output Duty',
+            offsetDuty: 'Offset Duty',
         },
         controls: {
             viewType: 'View Type',
@@ -633,6 +662,37 @@ export default {
             imageTooLarge: 'Image is too large. Please choose a smaller one.',
             notImageType: 'Image does not register as an image type',
         },
+        shortcuts: {
+            shortcuts: 'Keyboard Shortcuts',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: 'Left',
+            right: 'Right',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'Keyboard Shortcuts',
+            home: 'Home Page',
+            settings: 'Settings',
+            info: 'Application Info',
+            dashboardOne: 'Dashboard One',
+            dashboardTwo: 'Dashboard Two',
+            dashboardThree: 'Dashboard Three',
+            dashboardFour: 'Dashboard Four',
+            alerts: 'Alerts',
+            controls: 'Controls',
+            sideMenuCollapse: 'Collapse Side Menu',
+            sideMenuExpand: 'Expand Side Menu',
+            fullScreen: 'Full Screen',
+        },
     },
     components: {
         confirmation: {
@@ -761,8 +821,8 @@ export default {
             max: 'Max',
             min: 'Min',
             dutyTemperature: 'Duty / Temperature',
-            rpmMhz: 'rpm / Mhz',
-            krpmGhz: 'krpm / Ghz',
+            rpmMhz: 'rpm / MHz',
+            krpmGhz: 'krpm / GHz',
             watts: 'watts',
         },
         sensorTable: {
@@ -795,6 +855,7 @@ export default {
                 selectSpeed: 'Select your speed',
                 newMixProfile: 'New Mix Profile',
                 newGraphProfile: 'New Graph Profile',
+                newOverlayProfile: 'New Overlay Profile',
                 functionFor: 'Choose a Function to be applied to',
                 functionDescription:
                     'Functions allow you to further control how Profile output is applied.',
@@ -810,9 +871,30 @@ export default {
             profile: {
                 willCreated: 'will be created.',
             },
+            profileApply: {
+                applyProfile: 'Apply Profile',
+                channelsApply: 'Channels to Apply Profile to',
+                selectChannels: 'Select Channels',
+                channelsTooltip: 'Select one or more channels to apply this Profile to.',
+            },
+            functionApply: {
+                applyFunction: 'Apply Function',
+                profilesApply: 'Profiles to Apply Function to',
+                selectProfiles: 'Select Profiles',
+                profilesTooltip: 'Select one or more Profiles to apply this Function to.',
+            },
             customSensor: {
                 new: 'New Custom Sensor',
             },
+        },
+        channelExtensionSettings: {
+            title: 'Device Channel Settings',
+            firmwareControlledProfile: 'Firmware-controlled Profile',
+            firmwareControlledProfileDesc:
+                'When enabled, the device firmware manages the fan profile.\nUseful for hardware that does not respond well to frequent software speed changes.\nOnly available for Graph Profiles that use device-internal temperature sensors.\nFunction settings do not apply.',
+            saveError: 'Failed to save channel extension settings',
+            firmwareControlDisabled:
+                'Firmware control is not available with the current settings.\nUse a Graph Profile for this device with a supported internal temperature sensor.',
         },
     },
     auth: {
@@ -893,6 +975,7 @@ export default {
                 fixed: 'Fixed',
                 graph: 'Graph',
                 mix: 'Mix',
+                overlay: 'Overlay',
             },
             functionType: {
                 identity: 'Identity',
@@ -903,12 +986,14 @@ export default {
                 min: 'Min',
                 max: 'Max',
                 avg: 'Average',
+                diff: 'Difference',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'Mix',
                 file: 'File',
+                offset: 'Offset',
             },
             mixFunctionType: {
                 min: 'Minimum',

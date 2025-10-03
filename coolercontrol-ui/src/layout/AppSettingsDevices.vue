@@ -29,7 +29,7 @@ import TreeIcon from '@/components/TreeIcon.vue'
 import Button from 'primevue/button'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
+import { CCChannelSettings, CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import { useI18n } from 'vue-i18n'
 
 const deviceStore = useDeviceStore()
@@ -190,21 +190,59 @@ const devicesTreeArray = (): any[] => {
             }
         }
         // Disabled Channels/Sensors:
-        if (settingsStore.ccDeviceSettings.has(device.uid)) {
-            for (const channelName of settingsStore.ccDeviceSettings.get(device.uid)!
-                .disable_channels) {
+        const ccDeviceSettings = settingsStore.ccDeviceSettings.get(device.uid)
+        if (ccDeviceSettings != null) {
+            const disabledChannels = []
+            for (const [
+                channelName,
+                channelSettings,
+            ] of ccDeviceSettings.channel_settings.entries()) {
+                if (!channelSettings.disabled) continue
                 const nodeId = `${device.uid}_${channelName}`
                 // @ts-ignore
-                deviceItem.children.push({
+                disabledChannels.push({
                     id: nodeId,
-                    label: deviceSettings.sensorsAndChannels.get(channelName)?.name ?? channelName,
+                    label:
+                        deviceSettings.sensorsAndChannels.get(channelName)?.name ??
+                        channelSettings.label ??
+                        channelName,
                     name: channelName,
                     deviceUID: device.uid,
                     isChecked: false,
                 })
             }
+            disabledChannels.sort((a, b) => a.name.localeCompare(b.name))
+            // @ts-ignore
+            deviceItem.children.push(...disabledChannels)
         }
         allDevices.push(deviceItem)
+    }
+    if (settingsStore.menuOrder.length > 0) {
+        // Sort main menu items
+        const getRootIndex = (item: any) => {
+            const index = settingsStore.menuOrder.findIndex((menuItem) => menuItem.id === item.id)
+            return index >= 0
+                ? index
+                : // disabled devices should be at the top always
+                  item.isChecked
+                  ? Number.MAX_SAFE_INTEGER
+                  : Number.MIN_SAFE_INTEGER
+        }
+        allDevices.sort((a, b) => getRootIndex(a) - getRootIndex(b))
+
+        // Sort children of each menu item
+        allDevices.forEach((menuItem) => {
+            const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === menuItem.id)
+            if (menuOrderItem?.children?.length) {
+                const getIndex = (item: any) => {
+                    const index = menuOrderItem.children.indexOf(item.id)
+                    // disabled devices should always be at the end
+                    if (!item.isChecked) return Number.MAX_SAFE_INTEGER
+                    return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                }
+                menuItem.children.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+            }
+        })
     }
     return allDevices
 }
@@ -231,17 +269,38 @@ const saveCCDeviceSettings = async (): Promise<void> => {
                 }
                 const ccSetting: CoolerControlDeviceSettingsDTO =
                     settingsStore.ccDeviceSettings.get(deviceUID)!
+                const deviceSettings = settingsStore.allUIDeviceSettings.get(deviceUID)
+                // persist user-defined name if it exists (Helpful when blacklisting)
+                ccSetting.name =
+                    deviceSettings?.name != null && deviceSettings.name
+                        ? deviceSettings.name
+                        : ccSetting.name
                 ccSetting.disable = !deviceIsEnabled
                 if (deviceIsEnabled) {
                     // No deviceChannels means previously blacklisted, now enabled, leave channels alone
                     if (deviceChannels.length >= 0) {
-                        const disabledChannelNames: Array<string> = []
                         for (const channelNode of deviceChannels) {
-                            // @ts-ignore
-                            if (channelNode.isChecked) continue
-                            disabledChannelNames.push(channelNode.name)
+                            let channelSettings = ccSetting.channel_settings.get(channelNode.name)
+                            if (channelSettings == null) {
+                                // only already-applied channel changes exist in channel_settings
+                                // if a change has happened, it needs to now be created
+                                if (channelNode.isChecked) {
+                                    // no need to save enabled channels with no settings
+                                    continue
+                                } else {
+                                    // disabled
+                                    channelSettings = new CCChannelSettings()
+                                    ccSetting.channel_settings.set(
+                                        channelNode.name,
+                                        channelSettings,
+                                    )
+                                }
+                            }
+                            channelSettings.disabled = !channelNode.isChecked
+                            channelSettings.label =
+                                deviceSettings?.sensorsAndChannels.get(channelNode.name)?.name ??
+                                channelSettings.label
                         }
-                        ccSetting.disable_channels = disabledChannelNames
                     }
                 }
                 ccDeviceSettingsToSet.push(ccSetting)
@@ -356,7 +415,10 @@ const saveCCDeviceSettings = async (): Promise<void> => {
 
 <style scoped lang="scss">
 .disabled-text {
-    opacity: 0.3;
+    text-decoration: line-through;
+    text-decoration-color: rgb(var(--colors-accent));
+    text-decoration-thickness: 1px;
+    opacity: 0.9;
 }
 
 .el-tree {
@@ -384,6 +446,6 @@ const saveCCDeviceSettings = async (): Promise<void> => {
 .el-checkbox {
     margin-left: 6px !important;
     --el-checkbox-input-border: var(--el-border-width) var(--el-border-style)
-        rgba(var(--colors-accent) / 0.3);
+        rgba(var(--colors-accent) / 0.9);
 }
 </style>

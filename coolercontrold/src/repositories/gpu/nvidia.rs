@@ -248,7 +248,7 @@ impl GpuNVidia {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             self.nvidia_nvml_load_enabled
                 .set(disabled_channels.contains(&GPU_LOAD_NAME.to_string()).not());
             let mut nvidia_temp_infos = Vec::new();
@@ -309,9 +309,7 @@ impl GpuNVidia {
                         ChannelInfo {
                             label: Some(fan_name.clone()),
                             speed_options: Some(SpeedOptions {
-                                profiles_enabled: false,
                                 fixed_enabled: true,
-                                manual_profiles_enabled: true,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -456,7 +454,7 @@ impl GpuNVidia {
                 None,
                 DeviceInfo {
                     temps: temp_infos,
-                    temp_max: 100,
+                    temp_max: 150,
                     channels: channel_infos,
                     driver_info: DriverInfo {
                         drv_type: DriverType::NVML,
@@ -816,8 +814,8 @@ impl GpuNVidia {
                         );
                         continue;
                     }
-                    let disabled_channels =
-                        cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                    let disabled_channels = cc_device_setting
+                        .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
                     self.nvidia_smi_disabled_channels
                         .borrow_mut()
                         .insert(nv_status.index, disabled_channels.clone());
@@ -862,9 +860,7 @@ impl GpuNVidia {
                             NVIDIA_FAN_NAME.to_string(),
                             ChannelInfo {
                                 speed_options: Some(SpeedOptions {
-                                    profiles_enabled: false,
                                     fixed_enabled: has_xauth, // disable if xauth not found
-                                    manual_profiles_enabled: has_xauth,
                                     ..Default::default()
                                 }),
                                 ..Default::default()
@@ -891,7 +887,7 @@ impl GpuNVidia {
                         None,
                         DeviceInfo {
                             temps,
-                            temp_max: 100,
+                            temp_max: 150,
                             channels,
                             driver_info: DriverInfo {
                                 drv_type: DriverType::NvidiaCLI,

@@ -276,6 +276,9 @@ impl Processor for FunctionStandardPreProcessor {
         if oldest_temp_within_tolerance && data.safety_latch_triggered.not() {
             return data; // nothing to apply
         }
+        // todo: think about having the safety latch bypass the temp_deviance as well (force current)
+        //  - ok, so the delay is still in effect... but what about the deviance? - nope, should be forced.
+        //  - could it be I was noticing an effect of the delay (for many minutes???)
         data.temp = Some(oldest_temp);
         metadata.last_applied_temp = oldest_temp;
         data

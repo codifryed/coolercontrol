@@ -63,6 +63,7 @@ export default {
         logout: 'ログアウト',
         temperature: '温度',
         duty: 'デューティ',
+        offset: 'オフセット',
         stay: '留まる',
         discard: '破棄',
         blankNameResetDefault: '空の名前を入力するとシステムのデフォルトにリセットされます。',
@@ -198,6 +199,8 @@ export default {
                 border: 'ボーダーカラー',
                 text: 'テキストカラー',
                 textSecondary: 'セカンダリテキストカラー',
+                export: 'テーマをエクスポート',
+                import: 'テーマをインポート',
             },
             applySettingAndRestart:
                 'この設定を変更するにはデーモンとUIの再起動が必要です。今すぐ実行しますか？',
@@ -299,6 +302,7 @@ export default {
             customSensors: 'カスタムセンサー',
             modes: 'モード',
             alerts: 'アラート',
+            pinned: 'ピン留め済み',
             tooltips: {
                 delete: '削除',
                 createMode: '現在の設定からモードを作成',
@@ -318,6 +322,13 @@ export default {
                 addCustomSensor: 'カスタムセンサーを追加',
                 addFunction: '機能を追加',
                 chooseColor: '色を選択',
+                options: 'その他のオプション',
+                moveTop: '上に移動',
+                moveBottom: '下に移動',
+                disable: '無効化',
+                pin: '上部にピン留め',
+                unpin: 'ピン留め解除',
+                profileApply: 'ファンにプロファイルを適用',
             },
         },
         add: {
@@ -416,8 +427,12 @@ export default {
             browse: 'ブラウズ',
             browseCustomSensorFile: 'カスタムセンサーファイルを参照',
             tempSources: '温度ソース',
+            tempSource: '温度ソース',
             tempSourcesTooltip:
-                'ミックス関数で使用する温度ソース<br/><i>注：ミックスプロファイルを使用して複数の<br/>カスタムセンサーを組み合わせることができます。</i>',
+                'ミックス機能で使用する温度ソース<br/><i>注: 複数のカスタムセンサーを組み合わせる場合、許可されるのは直接の親子関係のみです。<br/>より複雑な構成にはミックスプロファイルを使用してください。</i>',
+            offset: 'オフセット',
+            offsetTooltip:
+                'ソースセンサーに適用する負または正のオフセット値を入力してください。<br/><i>注: 最終的な値は通常の温度範囲に制限されます。</i>',
             tempWeights: '温度の重み',
             tempWeightsTooltip: '選択した各温度ソースの個々の重み。',
             tempName: '温度名',
@@ -509,6 +524,7 @@ export default {
             warmupGreaterThan: '条件発動時間が',
             unsavedChanges: 'このアラートに未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
+            createFailAlert: '故障アラート',
         },
         profiles: {
             createProfile: 'プロファイルを作成',
@@ -536,7 +552,7 @@ export default {
             newProfile: '新しいプロファイル',
             tooltip: {
                 profileType:
-                    'プロファイルタイプ：<br/>- デフォルト：現在のデバイス設定を保持<br/>&nbsp;&nbsp;（BIOS/ファームウェア）<br/>- 固定：一定速度を設定<br/>- グラフ：カスタマイズ可能なファンカーブ<br/>- ミックス：複数のプロファイルを組み合わせる',
+                    'プロファイル種類:<br/>- デフォルト: 現在のデバイス設定を保持<br/>&nbsp;&nbsp;(BIOS/ファームウェア)<br/>- 固定: 一定の速度を設定<br/>- グラフ: カスタマイズ可能なファンカーブ<br/>- ミックス: 複数のプロファイルを組み合わせる<br/>- オーバーレイ: 既存のプロファイルの出力にオフセットを適用',
             },
             profileDeleted: 'プロファイルが削除されました',
             profileDuplicated: 'プロファイルが複製されました',
@@ -548,6 +564,18 @@ export default {
             tempSourceRequired: 'グラフプロファイルには温度ソースが必要です。',
             memberProfilesRequired:
                 'ミックスプロファイルには少なくとも2つのメンバープロファイルが必要です。',
+            minProfileTemp: '最小プロファイル温度',
+            maxProfileTemp: '最大プロファイル温度',
+            staticOffset: '静的オフセット',
+            offsetType: 'オフセットタイプ',
+            offsetTypeStatic: '静的オフセット',
+            offsetTypeGraph: 'グラフオフセット',
+            baseProfile: 'ベースプロファイル',
+            baseProfileRequired: 'オーバーレイプロファイルにはベースプロファイルが必要です。',
+            selectedPointOutputDuty: '選択ポイントのプロファイル出力デューティ',
+            selectedPointOffset: '選択ポイントのオフセットデューティ',
+            profileOutputDuty: 'プロファイル出力デューティ',
+            offsetDuty: 'オフセットデューティ',
         },
         controls: {
             viewType: 'ビュータイプ',
@@ -646,6 +674,37 @@ export default {
             unsavedChangesHeader: '未保存の変更',
             imageTooLarge: '画像が大きすぎます。より小さいものを選んでください。',
             notImageType: 'ファイルが画像タイプとして登録されていません',
+        },
+        shortcuts: {
+            shortcuts: 'キーボードショートカット',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: '左',
+            right: '右',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'キーボードショートカット',
+            home: 'ホーム',
+            settings: '設定',
+            info: 'アプリ情報',
+            dashboardOne: 'ダッシュボード 1',
+            dashboardTwo: 'ダッシュボード 2',
+            dashboardThree: 'ダッシュボード 3',
+            dashboardFour: 'ダッシュボード 4',
+            alerts: 'アラート',
+            controls: 'コントロール',
+            sideMenuCollapse: 'サイドメニューを折りたたむ',
+            sideMenuExpand: 'サイドメニューを展開',
+            fullScreen: '全画面',
         },
     },
     components: {
@@ -809,6 +868,7 @@ export default {
                 selectSpeed: '速度を選択してください',
                 newMixProfile: '新しいミックスプロファイル',
                 newGraphProfile: '新しいグラフプロファイル',
+                newOverlayProfile: '新しいオーバーレイプロファイル',
                 functionFor: '適用する機能を選択：',
                 functionDescription:
                     '機能を使用すると、プロファイル出力の適用方法をさらに制御できます。',
@@ -824,9 +884,30 @@ export default {
             profile: {
                 willCreated: '作成されます。',
             },
+            profileApply: {
+                applyProfile: 'プロファイルを適用',
+                channelsApply: 'プロファイルを適用するチャンネル',
+                selectChannels: 'チャンネルを選択',
+                channelsTooltip: 'プロファイルを適用するチャンネルを選択してください。',
+            },
+            functionApply: {
+                applyFunction: '機能を適用',
+                profilesApply: '機能を適用するプロファイル',
+                selectProfiles: 'プロファイルを選択',
+                profilesTooltip: '機能を適用するプロファイルを選択してください。',
+            },
             customSensor: {
                 new: '新しいカスタムセンサー',
             },
+        },
+        channelExtensionSettings: {
+            title: 'デバイスチャンネルの設定',
+            firmwareControlledProfile: 'ファームウェア制御プロファイル',
+            firmwareControlledProfileDesc:
+                '有効にすると、デバイスのファームウェアがファンプロファイルを管理します。\nソフトウェアによる頻繁な速度変更にうまく反応しないハードウェアに有効です。\nデバイス内蔵の温度センサーを使用するグラフプロファイルでのみ利用できます。\n機能設定は適用されません。',
+            saveError: 'チャンネル拡張設定の保存に失敗しました',
+            firmwareControlDisabled:
+                '現在の設定ではファームウェア制御は利用できません。\nこのデバイス向けの、対応する内蔵温度センサーを使用するグラフプロファイルを使用してください。',
         },
     },
     auth: {
@@ -900,6 +981,7 @@ export default {
                 fixed: '固定',
                 graph: 'グラフ',
                 mix: 'ミックス',
+                overlay: 'オーバーレイ',
             },
             functionType: {
                 identity: 'アイデンティティ',
@@ -910,12 +992,14 @@ export default {
                 min: '最小',
                 max: '最大',
                 avg: '平均',
+                diff: '差分',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'ミックス',
                 file: 'ファイル',
+                offset: 'オフセット',
             },
             mixFunctionType: {
                 min: '最小',

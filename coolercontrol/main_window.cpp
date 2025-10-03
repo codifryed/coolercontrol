@@ -254,6 +254,25 @@ void MainWindow::forceQuit() {
   close();
 }
 
+void MainWindow::forceRefresh() const {
+  qInfo() << "Forced UI refresh.";
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+  connect(
+      m_profile, &QWebEngineProfile::clearHttpCacheCompleted, this,
+      [this]() {
+        m_uiLoadingStopped = false;
+        m_view->load(getDaemonUrl());
+      },
+      Qt::SingleShotConnection);
+  m_profile->clearHttpCache();
+#else
+  m_profile->clearHttpCache();
+  delay(200);
+  m_uiLoadingStopped = false;
+  m_view->load(getDaemonUrl());
+#endif
+}
+
 void MainWindow::closeEvent(QCloseEvent* event) {
   if (m_startup && !m_uiLoadingStopped) {
     // Killing the app during initialization can cause a crash

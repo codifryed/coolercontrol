@@ -23,33 +23,40 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use crate::config::Config;
+use crate::device::{
+    ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
+};
+use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::device_mapper::DeviceMapper;
+use crate::repositories::liquidctl::liqctld_client::{
+    DeviceResponse, LCStatus, LiqctldClient, LIQCTLD_CONNECTION_TRIES,
+};
+use crate::repositories::liquidctl::liqctld_service;
+use crate::repositories::liquidctl::supported_devices::device_support;
+use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
+use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-
-use crate::config::Config;
-use crate::device::{ChannelName, DeviceType, DeviceUID, LcInfo, Status, TempInfo, TypeIndex, UID};
-use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{
-    DeviceResponse, LCStatus, LiqctldClient, LIQCTLD_CONNECTION_TRIES,
-};
-use crate::repositories::liquidctl::supported_devices::device_support;
-use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
-use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
-use crate::setting::{LcdSettings, LightingSettings, TempSource};
-use crate::Device;
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
+    liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
+    liqctld_stop_token: CancellationToken,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
@@ -57,7 +64,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Rc<Config>) -> Result<Self> {
+    pub async fn new(config: Rc<Config>, run_token: CancellationToken) -> Result<Self> {
         if config
             .get_settings()
             .is_ok_and(|settings| settings.liquidctl_integration.not())
@@ -72,22 +79,49 @@ impl LiquidctlRepo {
             .await;
             return Err(InitError::LiqctldDisabled.into());
         }
-        info!("Attempting to connect to coolercontrol-liqctld...");
-        let liqctld_client = LiqctldClient::new(LIQCTLD_CONNECTION_TRIES)
-            .await
-            .map_err(|err| InitError::Connection {
-                msg: err.to_string(),
-            })?;
+        if let Err(err) = liqctld_service::verify_env().await {
+            let msg = format!(
+                "Python liquidctl system package not detected. If you want liquidctl device \
+                support, please make sure the liquidctl package is installed with your \
+                distribution's package manager. If not, you may disable liquidctl support \
+                to no longer see this message. {err}"
+            );
+            return Err(InitError::PythonEnv { msg }.into());
+        }
+        let stop_token = CancellationToken::new();
+        let service_handle =
+            tokio::task::spawn_local(liqctld_service::run(run_token, stop_token.clone()));
+        // give the service a moment to come up and detect devices
+        sleep(Duration::from_millis(300)).await;
+        let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
+            Ok(client) => client,
+            Err(err) => {
+                let err_msg = if service_handle.is_finished() {
+                    match service_handle.await {
+                        Ok(_) => {
+                            format!("liqctld service exited without error. Client error: {err}")
+                        }
+                        Err(service_err) => format!(
+                            "liqctld service exited with error: {service_err} ; Client error: {err}"
+                        ),
+                    }
+                } else {
+                    err.to_string()
+                };
+                return Err(InitError::Connection { msg: err_msg }.into());
+            }
+        };
         liqctld_client
             .handshake()
             .await
             .map_err(|err| InitError::Connection {
                 msg: err.to_string(),
             })?;
-        info!("Communication established with coolercontrol-liqctld.");
         Ok(LiquidctlRepo {
             config,
             liqctld_client,
+            liqctld_service_handle: RefCell::new(Some(service_handle)),
+            liqctld_stop_token: stop_token,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -101,15 +135,12 @@ impl LiquidctlRepo {
         let poll_rate = self.config.get_settings()?.poll_rate;
 
         for device_response in devices_response.devices {
-            let driver_type = match self.map_driver_type(&device_response) {
-                None => {
-                    info!(
-                        "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
-                        device_response.device_type
-                    );
-                    continue;
-                }
-                Some(d_type) => d_type,
+            let Some(driver_type) = self.map_driver_type(&device_response) else {
+                info!(
+                    "The liquidctl Driver: {:?} is currently not supported. If support is desired, please create a feature request.",
+                    device_response.device_type
+                );
+                continue;
             };
             self.preloaded_statuses
                 .borrow_mut()
@@ -139,7 +170,7 @@ impl LiquidctlRepo {
                 continue;
             }
             let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.disable_channels);
+                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             // remove disabled lighting and lcd channels:
             device
                 .info
@@ -153,9 +184,10 @@ impl LiquidctlRepo {
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
         if self.devices.is_empty() {
-            info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
-            self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown();
+            info!(
+                "No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down."
+            );
+            self.shutdown_service_and_client().await?;
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
@@ -415,6 +447,17 @@ impl LiquidctlRepo {
         temp_source: &TempSource,
         profile: &[(f64, u8)],
     ) -> Result<()> {
+        let max_points = self
+            .devices
+            .get(&device_data.uid)
+            .map(|dev| dev.borrow().info.profile_max_length)
+            .with_context(|| {
+                format!(
+                    "Failed to get device info for {} to set internal speed profile",
+                    device_data.uid
+                )
+            })?;
+        let capped_profile = Self::cap_speed_profile(profile, max_points as usize);
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
         let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
             let temp_sensor_number: u8 = regex_temp_sensor_number
@@ -432,7 +475,7 @@ impl LiquidctlRepo {
             .put_speed_profile(
                 &device_data.type_index,
                 channel_name,
-                profile,
+                &capped_profile,
                 temperature_sensor,
             )
             .await
@@ -443,6 +486,26 @@ impl LiquidctlRepo {
                     device_data.uid
                 )
             })
+    }
+
+    /// Caps the speed profile to the max number of points allowed by the fan curve.
+    ///
+    /// If the speed profile is longer than the fan curve, we truncate the speed profile to the
+    /// max number of points allowed by the fan curve. We keep the last point as reference for
+    /// the fan curve, safety-wise, but allow setting it truncated.
+    fn cap_speed_profile(speed_profile: &[(Temp, Duty)], max_points: usize) -> Vec<(Temp, Duty)> {
+        let mut capped_profile = speed_profile.to_vec();
+        if capped_profile.len() > max_points {
+            warn!(
+                "Liquidctl Device - Max {max_points} fan curve points are allowed. \
+                Truncating speed profile with {} points. Please adjust the \
+                Graph Profile to match the number of points allowed by the device fan curve.",
+                capped_profile.len()
+            );
+            capped_profile.truncate(max_points - 1); // remove all but the last point
+            capped_profile.push(speed_profile.last().copied().unwrap_or((100., 100_u8)));
+        }
+        capped_profile
     }
 
     async fn set_color(
@@ -500,6 +563,20 @@ impl LiquidctlRepo {
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
         // We set several settings at once for lcd/screen settings
+        // We first start with re-initializing the device, as this helps clear LCD related settings
+        // and gives more consistent results when applying images.
+        let start_lcd_settings_apply = Instant::now();
+        self.liqctld_client
+            .initialize_device(&device_data.type_index, None)
+            .await
+            .map(|_| ()) // ignore successful result
+            .map_err(|err| {
+                anyhow!(
+                    "Error on LCD initialization for LIQUIDCTL Device #{}: {} - {err}",
+                    device_data.type_index,
+                    device_data.uid
+                )
+            })?;
         if let Some(brightness) = lcd_settings.brightness {
             if let Err(err) = self
                 .send_screen_request(
@@ -512,10 +589,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen brightness {brightness} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen brightness {brightness} | {err}.");
             }
         }
         if let Some(orientation) = lcd_settings.orientation {
@@ -530,10 +604,7 @@ impl LiquidctlRepo {
                 .await
             {
                 // we don't abort if there are brightness or orientation setting errors
-                warn!(
-                    "Error setting lcd/screen orientation {orientation} | {err}. \
-                    Check coolercontrol-liqctld log for details."
-                );
+                warn!("Error setting lcd/screen orientation {orientation} | {err}.");
             }
         }
         if lcd_settings.mode == "image" {
@@ -552,9 +623,7 @@ impl LiquidctlRepo {
                     Some(image_file.clone()),
                 )
                 .await
-                .map_err(|err| {
-                    anyhow!("Setting lcd/screen 'image/gif'. Check coolercontrol-liqctld log for details. - {err}")
-                })?;
+                .map_err(|err| anyhow!("Setting lcd/screen 'image/gif' - {err}"))?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -565,10 +634,12 @@ impl LiquidctlRepo {
                 None,
             )
             .await
-            .map_err(|err| {
-                anyhow!("Setting lcd/screen 'liquid' mode. Check coolercontrol-liqctld log for details. - {err}")
-            })?;
+            .map_err(|err| anyhow!("Setting lcd/screen 'liquid' mode - {err}"))?;
         }
+        trace!(
+            "Time taken to apply all LIQUIDCTL IMAGE LCD settings: {:?}",
+            start_lcd_settings_apply.elapsed()
+        );
         Ok(())
     }
 
@@ -604,6 +675,22 @@ impl LiquidctlRepo {
                 .driver_type
                 .clone(),
         })
+    }
+
+    async fn shutdown_service_and_client(&self) -> Result<()> {
+        // sometimes we want to shut the service down before the daemon, hence the stop token:
+        self.liqctld_stop_token.cancel();
+        self.liqctld_client.post_quit().await?;
+        // proper shutdown of liqctld service child process:
+        let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
+        if let Some(service_handle) = liqctld_service_handle {
+            // wait for the service to exit
+            if let Err(err) = service_handle.await {
+                warn!("liqctld service did not shutdown properly: {err}");
+            }
+        }
+        self.liqctld_client.shutdown();
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -648,7 +735,7 @@ impl LiquidctlRepo {
                         .await
                     {
                         error!("Error setting LCD screen to default upon shutdown: {err}");
-                    };
+                    }
                 }
             }
         }
@@ -786,15 +873,14 @@ impl Repository for LiquidctlRepo {
             // https://github.com/liquidctl/liquidctl/issues/631#issuecomment-1826568352
             // - setting the LCD to the default 'liquid' mode is ill-advised for newer 2023+ Krakens
             // self.reset_lcd_to_default().await;
-            self.liqctld_client.post_quit().await?;
-            self.liqctld_client.shutdown();
+            self.shutdown_service_and_client().await?;
         }
         info!("LIQUIDCTL Repository Shutdown");
         Ok(())
     }
 
-    /// On LiquidCtl devices, reset basically does nothing with the device itself.
-    /// All internal CoolerControl processes for this device channel are reset though.
+    /// On `LiquidCtl` devices, reset basically does nothing with the device itself.
+    /// All internal `CoolerControl` processes for this device channel are reset though.
     async fn apply_setting_reset(&self, _: &UID, _: &str) -> Result<()> {
         Ok(())
     }
@@ -816,8 +902,7 @@ impl Repository for LiquidctlRepo {
     ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}",
-            device_uid, channel_name, speed_fixed
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
@@ -837,8 +922,7 @@ impl Repository for LiquidctlRepo {
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
-            device_uid, channel_name, speed_profile
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_speed_profile(
@@ -857,8 +941,7 @@ impl Repository for LiquidctlRepo {
         lighting: &LightingSettings,
     ) -> Result<()> {
         debug!(
-            "Applying LiquidCtl device: {} channel: {}; Lighting: {:?}",
-            device_uid, channel_name, lighting
+            "Applying LiquidCtl device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
         );
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_color(&cached_device_data, channel_name, lighting)
@@ -871,10 +954,7 @@ impl Repository for LiquidctlRepo {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
-        debug!(
-            "Applying LiquidCtl device: {} channel: {}; LCD: {:?}",
-            device_uid, channel_name, lcd
-        );
+        debug!("Applying LiquidCtl device: {device_uid} channel: {channel_name}; LCD: {lcd:?}");
         let cached_device_data = self.cache_device_data(device_uid)?;
         self.set_screen(&cached_device_data, channel_name, lcd)
             .await

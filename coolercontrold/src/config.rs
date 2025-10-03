@@ -31,14 +31,15 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::UID;
+use crate::device::{Duty, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, FunctionUID,
-    LcdCarouselSettings, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
-    ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
+    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
+    FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile,
+    ProfileMixFunctionType, ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID,
+    DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -231,7 +232,9 @@ impl Config {
                 for cause in err.chain() {
                     if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
                         if io_err.kind() == std::io::ErrorKind::NotFound {
-                            info!("UI Config file not found - likely first run. Using empty UI Config file.");
+                            info!(
+                                "UI Config file not found - likely first run. Using empty UI Config file."
+                            );
                             return Ok(String::new());
                         }
                     }
@@ -278,11 +281,6 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if let Some(_pwm_mode) = setting.pwm_mode {
-            // don't save anymore:
-            channel_setting["pwm_mode"] = Item::None;
-            // Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
-        }
         if setting.reset_to_default.unwrap_or(false) {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
@@ -423,15 +421,11 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(&setting_table)?;
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
-                // deprecated:
-                let pwm_mode = None;
-                // Self::get_pwm_mode(&setting_table)?;
                 let profile_uid = Self::get_profile_uid(&setting_table)?;
                 if speed_fixed.is_none()
                     && lighting.is_none()
                     && lcd.is_none()
                     && profile_uid.is_none()
-                    && pwm_mode.is_none()
                 {
                     debug!(
                         "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
@@ -444,7 +438,6 @@ impl Config {
                     speed_fixed,
                     lighting,
                     lcd,
-                    pwm_mode,
                     reset_to_default: None,
                     profile_uid,
                 });
@@ -464,15 +457,15 @@ impl Config {
         Ok(devices_settings)
     }
 
-    pub fn get_all_cc_devices_settings(
-        &self,
-    ) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
+    pub fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, CCDeviceSettings>> {
         let mut devices_settings = HashMap::new();
         if let Some(device_table) = self.document.borrow()["settings"].as_table() {
             for (device_uid, _value) in device_table {
                 if device_uid.len() == 64 {
                     // there are other settings here, we want only the ones with proper UIDs
-                    let settings = self.get_cc_settings_for_device(device_uid)?;
+                    let settings = self
+                        .get_cc_settings_for_device(device_uid)?
+                        .with_context(|| "Since the Device ID is present, CC Settings option should always be present")?;
                     devices_settings.insert(device_uid.to_string(), settings);
                 }
             }
@@ -523,6 +516,43 @@ impl Config {
             None
         };
         Ok(mix_function_type)
+    }
+
+    fn get_offset_profile(setting_table: &Table) -> Result<Option<Vec<(Duty, Offset)>>> {
+        let offset_profile = if let Some(value) = setting_table.get("offset_profile") {
+            let mut duty_offset_pairs = Vec::new();
+            let pairs = value
+                .as_array()
+                .with_context(|| "pairs should be an array")?;
+            for pair_value in pairs {
+                let pair_array = pair_value
+                    .as_array()
+                    .with_context(|| "profile pairs should be an array")?;
+                let duty: Duty = pair_array
+                    .get(0)
+                    .with_context(|| "Graph Offsets must be pairs")?
+                    .as_integer()
+                    .with_context(|| "Graph Offset Duties must be integers")?
+                    .try_into()
+                    .ok()
+                    .with_context(|| "Graph Offset Duties must be values between 0-100")?;
+                let duty = duty.clamp(0, 100);
+                let offset: Offset = pair_array
+                    .get(1)
+                    .with_context(|| "Graph Offsets must be pairs")?
+                    .as_integer()
+                    .with_context(|| "Graph Offset Offsets must be integers")?
+                    .try_into()
+                    .ok()
+                    .with_context(|| "Graph Offset Offsets must be values between -100 and 100")?;
+                let offset = offset.clamp(-100, 100);
+                duty_offset_pairs.push((duty, offset));
+            }
+            Some(duty_offset_pairs)
+        } else {
+            None
+        };
+        Ok(offset_profile)
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
@@ -597,6 +627,30 @@ impl Config {
             None
         };
         Ok(temp_source)
+    }
+
+    fn get_temp_min(setting_table: &Table) -> Result<Option<f64>> {
+        let temp_min = if let Some(temp_value) = setting_table.get("temp_min") {
+            let temp: f64 = temp_value
+                .as_float()
+                .with_context(|| "temp_min should be a float")?;
+            Some(temp.clamp(0., 100.))
+        } else {
+            None
+        };
+        Ok(temp_min)
+    }
+
+    fn get_temp_max(setting_table: &Table) -> Result<Option<f64>> {
+        let temp_max = if let Some(temp_value) = setting_table.get("temp_max") {
+            let temp: f64 = temp_value
+                .as_float()
+                .with_context(|| "temp_max should be a float")?;
+            Some(temp.clamp(0., 200.))
+        } else {
+            None
+        };
+        Ok(temp_max)
     }
 
     fn get_carousel(setting_table: &Table) -> Result<Option<LcdCarouselSettings>> {
@@ -983,10 +1037,8 @@ impl Config {
     /// This gets the `CoolerControl` settings for specific devices
     /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
-    pub fn get_cc_settings_for_device(
-        &self,
-        device_uid: &str,
-    ) -> Result<Option<CoolerControlDeviceSettings>> {
+    #[allow(clippy::too_many_lines)]
+    pub fn get_cc_settings_for_device(&self, device_uid: &str) -> Result<Option<CCDeviceSettings>> {
         if let Some(table_item) = self.document.borrow()["settings"].get(device_uid) {
             let device_settings_table = table_item
                 .as_table()
@@ -1004,6 +1056,7 @@ impl Config {
                 .as_str()
                 .with_context(|| "name should be a string")?
                 .to_string();
+            // deprecated(3.0.0). We convert this to the new model for backwards compatibility:
             let disable_channels =
                 if let Some(value) = device_settings_table.get("disable_channels") {
                     let mut disable_channels = Vec::new();
@@ -1021,10 +1074,81 @@ impl Config {
                 } else {
                     Vec::new()
                 };
-            Ok(Some(CoolerControlDeviceSettings {
+            let mut channel_settings = HashMap::new();
+            if let Some(value) = device_settings_table.get("channel_settings") {
+                let channel_settings_table = value
+                    .as_table()
+                    .with_context(|| "channel_settings should be a table")?;
+                for (channel_name, channel_table_item) in channel_settings_table {
+                    let setting_table = channel_table_item
+                        .as_inline_table()
+                        .with_context(|| "CC Channel Setting should be an inline table")?
+                        .clone()
+                        .into_table();
+                    let label = if let Some(value) = setting_table.get("label") {
+                        Some(
+                            value
+                                .as_str()
+                                .with_context(|| "label should be a string")?
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    };
+                    let disabled = setting_table
+                        .get("disabled")
+                        .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                        .as_bool()
+                        .with_context(|| "disabled should be a boolean")?;
+                    let extension = if let Some(extension_value) = setting_table.get("extension") {
+                        let extension_table = extension_value
+                            .as_inline_table()
+                            .with_context(|| "extension should be an inline table")?;
+                        if let Some(value) = extension_table.get("auto_hw_curve_enabled") {
+                            Some(ChannelExtensions::AutoHWCurve {
+                                auto_hw_curve_enabled: value
+                                    .as_bool()
+                                    .with_context(|| "auto_hw_curve_enabled should be a boolean")?,
+                            })
+                        } else if let Some(value) = extension_table.get("hw_fan_curve_enabled") {
+                            Some(ChannelExtensions::AmdRdnaGpu {
+                                hw_fan_curve_enabled: value
+                                    .as_bool()
+                                    .with_context(|| "hw_fan_curve_enabled should be a boolean")?,
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    channel_settings.insert(
+                        channel_name.to_owned(),
+                        CCChannelSettings {
+                            label,
+                            disabled,
+                            extension,
+                        },
+                    );
+                }
+            }
+            // IF channel_settings is not present, see if disable_channels is present and convert it to the new model
+            if channel_settings.is_empty() {
+                for channel_name in disable_channels {
+                    channel_settings.insert(
+                        channel_name,
+                        CCChannelSettings {
+                            label: None,
+                            disabled: true,
+                            extension: None,
+                        },
+                    );
+                }
+            }
+            Ok(Some(CCDeviceSettings {
                 name,
                 disable,
-                disable_channels,
+                channel_settings,
             }))
         } else {
             Ok(None)
@@ -1035,7 +1159,7 @@ impl Config {
     pub fn set_cc_settings_for_device(
         &self,
         device_uid: &str,
-        cc_device_settings: &CoolerControlDeviceSettings,
+        cc_device_settings: &CCDeviceSettings,
     ) {
         let mut doc = self.document.borrow_mut();
         let device_settings_table =
@@ -1045,11 +1169,38 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
-        let mut channel_array = toml_edit::Array::new();
-        for channel_name in &cc_device_settings.disable_channels {
-            channel_array.push(Value::String(Formatted::new(channel_name.clone())));
+        // deprecated (3.0.0). channel_settings is now used instead:
+        device_settings_table["disable_channels"] = Item::None;
+        let mut channel_settings_table = Item::Table(Table::new());
+        for (channel_name, channel_setting) in &cc_device_settings.channel_settings {
+            let channel_inline_item = &mut channel_settings_table[channel_name];
+            channel_inline_item["label"] = if let Some(label) = channel_setting.label.as_ref() {
+                Item::Value(Value::String(Formatted::new(label.clone())))
+            } else {
+                Item::None
+            };
+            channel_inline_item["disabled"] =
+                Item::Value(Value::Boolean(Formatted::new(channel_setting.disabled)));
+            if let Some(extension) = &channel_setting.extension {
+                match extension {
+                    ChannelExtensions::AutoHWCurve {
+                        auto_hw_curve_enabled: hw_curve_enabled,
+                    } => {
+                        channel_inline_item["extension"]["auto_hw_curve_enabled"] =
+                            Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
+                    }
+                    ChannelExtensions::AmdRdnaGpu {
+                        hw_fan_curve_enabled: hw_curve_enabled,
+                    } => {
+                        channel_inline_item["extension"]["hw_fan_curve_enabled"] =
+                            Item::Value(Value::Boolean(Formatted::new(*hw_curve_enabled)));
+                    }
+                }
+            } else {
+                channel_inline_item["extension"] = Item::None;
+            }
         }
-        device_settings_table["disable_channels"] = Item::Value(Value::Array(channel_array));
+        device_settings_table["channel_settings"] = channel_settings_table;
     }
 
     /*
@@ -1101,6 +1252,8 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(profile_table)?;
                 let speed_profile = Self::get_speed_profile(profile_table)?;
                 let temp_source = Self::get_temp_source(profile_table)?;
+                let temp_min = Self::get_temp_min(profile_table)?;
+                let temp_max = Self::get_temp_max(profile_table)?;
                 let temp_function_default_uid_value = Item::Value(Value::String(Formatted::new(
                     DEFAULT_FUNCTION_UID.to_string(),
                 )));
@@ -1112,6 +1265,7 @@ impl Config {
                     .to_string();
                 let member_profile_uids = Self::get_profile_uids(profile_table)?;
                 let mix_function_type = Self::get_mix_function_type(profile_table)?;
+                let offset_profile = Self::get_offset_profile(profile_table)?;
                 let profile = Profile {
                     uid,
                     p_type,
@@ -1119,9 +1273,12 @@ impl Config {
                     speed_fixed,
                     speed_profile,
                     temp_source,
+                    temp_min,
+                    temp_max,
                     function_uid,
                     member_profile_uids,
                     mix_function_type,
+                    offset_profile,
                 };
                 profiles.push(profile);
             }
@@ -1266,6 +1423,16 @@ impl Config {
         } else {
             profile_table["temp_source"] = Item::None;
         }
+        if let Some(temp_min) = profile.temp_min {
+            profile_table["temp_min"] = Item::Value(Value::Float(Formatted::new(temp_min)));
+        } else {
+            profile_table["temp_min"] = Item::None;
+        }
+        if let Some(temp_max) = profile.temp_max {
+            profile_table["temp_max"] = Item::Value(Value::Float(Formatted::new(temp_max)));
+        } else {
+            profile_table["temp_max"] = Item::None;
+        }
         profile_table["function_uid"] =
             Item::Value(Value::String(Formatted::new(profile.function_uid)));
         if profile.member_profile_uids.is_empty().not() {
@@ -1284,6 +1451,18 @@ impl Config {
                 Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
         } else {
             profile_table["mix_function_type"] = Item::None;
+        }
+        if let Some(offset_profile) = profile.offset_profile {
+            let mut array = toml_edit::Array::new();
+            for (duty, offset) in offset_profile {
+                let mut pair_array = toml_edit::Array::new();
+                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
+                pair_array.push(Value::Integer(Formatted::new(i64::from(offset))));
+                array.push(pair_array);
+            }
+            profile_table["offset_profile"] = Item::Value(Value::Array(array));
+        } else {
+            profile_table["offset_profile"] = Item::None;
         }
     }
 
@@ -1680,12 +1859,27 @@ impl Config {
                 } else {
                     None
                 };
+                let offset = if let Some(offset_value) = c_sensor_table.get("offset") {
+                    let offset_raw: i8 = offset_value
+                        .as_integer()
+                        .with_context(|| "offset should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| "offset must be a value between -100 and 100")?;
+                    let offset = offset_raw.clamp(-100, 100);
+                    Some(offset)
+                } else {
+                    None
+                };
                 let custom_sensor = CustomSensor {
                     id,
                     cs_type,
                     mix_function,
                     sources,
                     file_path,
+                    offset,
+                    children: vec![],
+                    parents: vec![],
                 };
                 custom_sensors.push(custom_sensor);
             }
@@ -1867,6 +2061,11 @@ impl Config {
             )));
         } else {
             cs_table["file_path"] = Item::None;
+        }
+        if let Some(offset) = custom_sensor.offset {
+            cs_table["offset"] = Item::Value(Value::Integer(Formatted::new(i64::from(offset))));
+        } else {
+            cs_table["offset"] = Item::None;
         }
     }
 }

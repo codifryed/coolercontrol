@@ -63,6 +63,7 @@ export default {
         logout: 'Déconnexion',
         temperature: 'Température',
         duty: 'Puissance',
+        offset: 'Décalage',
         stay: 'Rester',
         discard: 'Abandonner',
         blankNameResetDefault: 'Un nom vide réinitialisera à la valeur système par défaut.',
@@ -214,6 +215,8 @@ export default {
                 border: 'Couleur de la Bordure',
                 text: 'Couleur du Texte',
                 textSecondary: 'Couleur du Texte Secondaire',
+                export: 'Exporter le Thème',
+                import: 'Importer le Thème',
             },
             tooltips: {
                 introduction: "Commencer le tour d'introduction de l'application.",
@@ -294,6 +297,7 @@ export default {
             customSensors: 'Capteurs personnalisés',
             modes: 'Modes',
             alerts: 'Alertes',
+            pinned: 'Épinglé',
             tooltips: {
                 delete: 'Supprimer',
                 createMode: 'Créer un mode à partir des paramètres actuels',
@@ -313,6 +317,13 @@ export default {
                 addCustomSensor: 'Ajouter un capteur personnalisé',
                 addFunction: 'Ajouter une fonction',
                 chooseColor: 'Choisir une couleur',
+                options: "Plus d'Options",
+                moveTop: 'Déplacer en Haut',
+                moveBottom: 'Déplacer en Bas',
+                disable: 'Désactiver',
+                pin: 'Épingler en Haut',
+                unpin: 'Désépingler',
+                profileApply: 'Appliquer le Profil aux ventilateurs',
             },
         },
         add: {
@@ -386,8 +397,12 @@ export default {
             browse: 'Parcourir',
             browseCustomSensorFile: 'Parcourir pour un fichier de capteur personnalisé',
             tempSources: 'Sources de Température',
+            tempSource: 'Source de Température',
             tempSourcesTooltip:
-                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : Vous pouvez utiliser un Profil de Mélange pour combiner plusieurs<br/>Capteurs Personnalisés.</i>',
+                'Sources de température à utiliser dans la fonction de mélange<br/><i>Remarque : lors de la combinaison de plusieurs capteurs personnalisés, seules les relations directes parent-enfant sont autorisées.<br/>Utilisez des Profils de Mélange pour des configurations plus complexes.</i>',
+            offset: 'Décalage',
+            offsetTooltip:
+                'Saisissez un décalage négatif ou positif à appliquer au capteur source.<br/><i>Remarque : la valeur finale est limitée aux plages de température normales.</i>',
             tempWeights: 'Poids des Températures',
             tempWeightsTooltip: 'Le poids individuel de chaque source de température sélectionnée.',
             tempName: 'Nom de la Température',
@@ -482,6 +497,7 @@ export default {
             warmupGreaterThan: 'condition déclenchée plus longtemps que',
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
             unsavedChangesHeader: 'Changements non enregistrés',
+            createFailAlert: 'Alerte de panne',
         },
         profiles: {
             createProfile: 'Créer un profil',
@@ -509,7 +525,7 @@ export default {
             newProfile: 'Nouveau profil',
             tooltip: {
                 profileType:
-                    'Type de profil :<br/>- Par défaut : Conserve les paramètres actuels du périphérique<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe : Définit une vitesse constante<br/>- Graphique : Courbe de ventilateur personnalisable<br/>- Mixte : Combine plusieurs profils',
+                    "Types de profils:<br/>- Par défaut: conserve les paramètres actuels de l'appareil<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixe: définit une vitesse constante<br/>- Graphique: courbe de ventilateur personnalisable<br/>- Mélange: combine plusieurs profils<br/>- Superposition: applique un décalage à la sortie d'un profil existant",
             },
             profileDeleted: 'Profil supprimé',
             profileDuplicated: 'Profil dupliqué',
@@ -521,6 +537,18 @@ export default {
                 'Une erreur est survenue lors de la tentative de mise à jour de ce profil',
             tempSourceRequired: 'Une source de température est requise pour un profil graphique.',
             memberProfilesRequired: 'Au moins 2 profils membres sont requis pour un profil mixte.',
+            minProfileTemp: 'Température de Profil Minimum',
+            maxProfileTemp: 'Température de Profil Maximum',
+            staticOffset: 'Décalage statique',
+            offsetType: 'Type de décalage',
+            offsetTypeStatic: 'Décalage statique',
+            offsetTypeGraph: 'Décalage du graphique',
+            baseProfile: 'Profil de base',
+            baseProfileRequired: 'Un profil de base est requis pour un profil de superposition.',
+            selectedPointOutputDuty: 'Puissance de sortie du profil au point sélectionné',
+            selectedPointOffset: 'Puissance de décalage du point sélectionné',
+            profileOutputDuty: 'Puissance de sortie du profil',
+            offsetDuty: 'Puissance de décalage',
         },
         controls: {
             viewType: 'Type de Vue',
@@ -654,6 +682,37 @@ export default {
             unsavedChangesHeader: 'Changements non enregistrés',
             imageTooLarge: "L'image est trop grande. Veuillez en choisir une plus petite.",
             notImageType: "L'image n'est pas reconnue comme un type d'image",
+        },
+        shortcuts: {
+            shortcuts: 'Raccourcis clavier',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: 'Gauche',
+            right: 'Droite',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'Raccourcis clavier',
+            home: "Page d'accueil",
+            settings: 'Paramètres',
+            info: "Informations sur l'application",
+            dashboardOne: 'Tableau de bord 1',
+            dashboardTwo: 'Tableau de bord 2',
+            dashboardThree: 'Tableau de bord 3',
+            dashboardFour: 'Tableau de bord 4',
+            alerts: 'Alertes',
+            controls: 'Contrôles',
+            sideMenuCollapse: 'Réduire le menu latéral',
+            sideMenuExpand: 'Développer le menu latéral',
+            fullScreen: 'Plein écran',
         },
     },
     components: {
@@ -819,6 +878,7 @@ export default {
                 selectSpeed: 'Sélectionnez votre vitesse',
                 newMixProfile: 'Nouveau profil de mélange',
                 newGraphProfile: 'Nouveau profil graphique',
+                newOverlayProfile: 'Nouveau profil de superposition',
                 functionFor: 'Choisissez une fonction à appliquer à',
                 functionDescription:
                     'Les fonctions vous permettent de contrôler davantage la façon dont la sortie du profil est appliquée.',
@@ -834,9 +894,31 @@ export default {
             profile: {
                 willCreated: 'sera créé.',
             },
+            profileApply: {
+                applyProfile: 'Appliquer le Profil',
+                channelsApply: 'Canaux pour Appliquer le Profil',
+                selectChannels: 'Sélectionner les Canaux',
+                channelsTooltip: 'Sélectionnez un ou plusieurs canaux pour appliquer ce Profil.',
+            },
+            functionApply: {
+                applyFunction: 'Appliquer la Fonction',
+                profilesApply: 'Profils pour Appliquer la Fonction',
+                selectProfiles: 'Sélectionner les Profils',
+                profilesTooltip:
+                    'Sélectionnez un ou plusieurs Profils pour appliquer cette Fonction.',
+            },
             customSensor: {
                 new: 'Nouveau Capteur Personnalisé',
             },
+        },
+        channelExtensionSettings: {
+            title: "Paramètres du canal de l'appareil",
+            firmwareControlledProfile: 'Profil contrôlé par le firmware',
+            firmwareControlledProfileDesc:
+                "Lorsque cette option est activée, le firmware de l'appareil gère le profil du ventilateur.\nUtile pour le matériel qui réagit mal aux modifications fréquentes de vitesse effectuées par le logiciel.\nDisponible uniquement pour les profils Graph qui utilisent des capteurs de température internes à l'appareil.\nLes paramètres de Fonction ne s'appliquent pas.",
+            saveError: "Échec de l'enregistrement des paramètres de l'extension de canal",
+            firmwareControlDisabled:
+                "Le contrôle par firmware n'est pas disponible avec la configuration actuelle.\nUtilisez un profil Graph pour cet appareil avec un capteur de température interne pris en charge.",
         },
     },
     auth: {
@@ -918,6 +1000,7 @@ export default {
                 fixed: 'Fixe',
                 graph: 'Graphique',
                 mix: 'Mélange',
+                overlay: 'Superposition',
             },
             functionType: {
                 identity: 'Identité',
@@ -928,12 +1011,14 @@ export default {
                 min: 'Minimum',
                 max: 'Maximum',
                 avg: 'Moyenne',
+                diff: 'Différence',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'Mélange',
                 file: 'Fichier',
+                offset: 'Décalage',
             },
             mixFunctionType: {
                 min: 'Minimum',

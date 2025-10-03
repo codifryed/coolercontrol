@@ -28,7 +28,11 @@ export interface DeviceLineProperties {
     name: string
 }
 
-export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLineProperties>) => {
+export const tooltipPlugin = (
+    allDevicesLineProperties: Map<string, DeviceLineProperties>,
+    t: any,
+    precisionRef: any,
+) => {
     const tooltip = document.createElement('div')
     tooltip.className = 'u-plot-tooltip'
     tooltip.style.display = 'none'
@@ -224,34 +228,32 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                 // @ts-ignore
                 if (series.label!.endsWith('duty')) {
                     lineValue = seriesValue.toString()
-                    suffix = '%'
+                    suffix = t('common.percentUnit')
                     // @ts-ignore
                 } else if (series.label!.endsWith('temp')) {
                     lineValue = seriesValue.toFixed(1)
-                    suffix = '°'
+                    suffix = t('common.tempUnit')
                     // @ts-ignore
                 } else if (series.label!.endsWith('load')) {
                     lineValue = seriesValue.toString()
-                    suffix = '%'
+                    suffix = t('common.percentUnit')
                     // @ts-ignore
                 } else if (series.label!.endsWith('freq')) {
-                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
-                    if (frequencyPrecision === 1) {
+                    if (precisionRef === 1) {
                         lineValue = seriesValue.toString()
-                        suffix = 'Mhz'
+                        suffix = t('common.mhzAbbr')
                     } else {
                         lineValue = seriesValue.toFixed(2)
-                        suffix = 'Ghz'
+                        suffix = t('common.ghzAbbr')
                     }
                     // @ts-ignore
                 } else if (series.label!.endsWith('rpm')) {
-                    const frequencyPrecision = seriesValue.toString().includes('.') ? 1000 : 1
-                    suffix = 'rpm'
-                    lineValue = (seriesValue * frequencyPrecision).toFixed(0)
+                    suffix = t('common.rpmAbbr')
+                    lineValue = (seriesValue * precisionRef).toFixed(0)
                     // @ts-ignore
                 } else if (series.label!.endsWith('watts')) {
                     lineValue = seriesValue.toFixed(1)
-                    suffix = 'W'
+                    suffix = t('common.wattAbbr')
                 }
                 // @ts-ignore
                 const lineColor = allDevicesLineProperties.get(series.label!)?.color

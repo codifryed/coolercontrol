@@ -16,18 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::UID;
 use crate::modes::Mode;
 use crate::setting::Setting;
-use aide::NoApi;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 pub async fn get_all(
     State(AppState { mode_handle, .. }): State<AppState>,
@@ -57,11 +54,9 @@ pub async fn get(
 }
 
 pub async fn save_order(
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
     Json(mode_order_dto): Json<ModeOrderDto>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .save_order(mode_order_dto.mode_uids)
         .await
@@ -69,11 +64,9 @@ pub async fn save_order(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
     Json(create_mode_dto): Json<CreateModeDto>,
 ) -> Result<Json<ModeDto>, CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .create(create_mode_dto.name)
         .await
@@ -82,11 +75,9 @@ pub async fn create(
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
     Json(update_mode_dto): Json<UpdateModeDto>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .update(update_mode_dto.uid, update_mode_dto.name)
         .await
@@ -95,10 +86,8 @@ pub async fn update(
 
 pub async fn delete(
     Path(path): Path<ModePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .delete(path.mode_uid)
         .await
@@ -107,10 +96,8 @@ pub async fn delete(
 
 pub async fn duplicate(
     Path(path): Path<ModePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ModeDto>, CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .duplicate(path.mode_uid)
         .await
@@ -120,10 +107,8 @@ pub async fn duplicate(
 
 pub async fn update_mode_settings(
     Path(path): Path<ModePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<Json<ModeDto>, CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .update_settings(path.mode_uid)
         .await
@@ -143,10 +128,8 @@ pub async fn get_active(
 
 pub async fn activate(
     Path(path): Path<ModePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { mode_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     mode_handle
         .activate(path.mode_uid)
         .await

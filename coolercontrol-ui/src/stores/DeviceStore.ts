@@ -38,6 +38,7 @@ import { TempInfo } from '@/models/TempInfo.ts'
 import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
 import { useI18n } from 'vue-i18n'
+import { ChannelStatus, TempStatus } from '@/models/Status.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -105,12 +106,27 @@ export const useDeviceStore = defineStore('device', () => {
             }
             s++
         }
-        reloadUI()
+        reloadUI(true)
     }
 
-    function reloadUI(): void {
-        // When accessing the UI directly from the daemon, we need to refresh on the base URL.
-        window.location.reload()
+    function reloadUI(force: boolean = false): void {
+        if (force && isQtApp()) {
+            // call force refresh in the Qt App, which will clear the cache and reload the UI
+            // @ts-ignore
+            const ipc = window.ipc
+            try {
+                ipc.forceRefresh()
+            } catch (_) {
+                // This will catch the very first time this logic is used and the Qt app
+                // hasn't been restarted yet. (delete later)
+                console.error(
+                    'Could not force refresh the UI. Please restart the desktop application.',
+                )
+                window.location.reload()
+            }
+        } else {
+            window.location.reload()
+        }
     }
 
     function toTitleCase(str: string): string {
@@ -226,6 +242,71 @@ export const useDeviceStore = defineStore('device', () => {
                     })
                 }),
             )
+        }
+    }
+
+    /**
+     * Re-sorts the devices by menuOrder.
+     * This must be called after the settingsStore is loaded.
+     */
+    function reSortDevicesByMenuOrder(allStatuses: boolean = false): void {
+        const settingsStore = useSettingsStore()
+        if (settingsStore.menuOrder.length > 0) {
+            const deviceEntriesToSort = [...devices]
+            const getDeviceIndex = (deviceEntry: [UID, Device]) => {
+                const index = settingsStore.menuOrder.findIndex(
+                    (menuItem) => menuItem.id === deviceEntry[0],
+                )
+                return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            }
+            deviceEntriesToSort.sort(
+                (a: [UID, Device], b: [UID, Device]) => getDeviceIndex(a) - getDeviceIndex(b),
+            )
+
+            // Sort channels and temps:
+            deviceEntriesToSort.forEach((deviceEntry: [UID, Device]) => {
+                const menuOrderItem = settingsStore.menuOrder.find(
+                    (item) => item.id === deviceEntry[0],
+                )
+                if (menuOrderItem?.children?.length) {
+                    const device = deviceEntry[1]
+                    const getIndex = (channelName: string) => {
+                        const index = menuOrderItem.children.indexOf(`${device.uid}_${channelName}`)
+                        return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                    }
+                    if (device.info?.channels) {
+                        device.info.channels = new Map<string, ChannelInfo>(
+                            [...device.info.channels.entries()].sort(
+                                ([c1name, _c1i], [c2name, _c2i]) =>
+                                    getIndex(c1name) - getIndex(c2name),
+                            ),
+                        )
+                    }
+                    if (device.info?.temps) {
+                        device.info.temps = new Map<string, TempInfo>(
+                            [...device.info.temps.entries()].sort(
+                                ([c1name], [c2name]) => getIndex(c1name) - getIndex(c2name),
+                            ),
+                        )
+                    }
+                    if (allStatuses) {
+                        device.status_history.forEach((status) => {
+                            status.channels.sort(
+                                (a: ChannelStatus, b: ChannelStatus) =>
+                                    getIndex(a.name) - getIndex(b.name),
+                            )
+                            status.temps.sort(
+                                (a: TempStatus, b: TempStatus) =>
+                                    getIndex(a.name) - getIndex(b.name),
+                            )
+                        })
+                    }
+                }
+            })
+            devices.clear()
+            for (const deviceEntry of deviceEntriesToSort) {
+                devices.set(deviceEntry[0], deviceEntry[1])
+            }
         }
     }
 
@@ -561,6 +642,7 @@ export const useDeviceStore = defineStore('device', () => {
         }
 
         if (onlyLatestStatus) {
+            sortAllStatusHistory(dto)
             for (const dtoDevice of dto.devices) {
                 // not all device UIDs are present locally (composite can be ignored for example)
                 if (devices.has(dtoDevice.uid)) {
@@ -594,6 +676,31 @@ export const useDeviceStore = defineStore('device', () => {
             await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
+    }
+
+    /**
+     * Sorts the status history of all devices so that all consumers have the right order.
+     * @param allStatusesDto
+     */
+    function sortAllStatusHistory(allStatusesDto: StatusResponseDTO) {
+        const settingsStore = useSettingsStore()
+        for (const dtoDevice of allStatusesDto.devices) {
+            const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === dtoDevice.uid)
+            if (menuOrderItem?.children?.length) {
+                const getIndex = (channelName: string) => {
+                    const index = menuOrderItem.children.indexOf(`${dtoDevice.uid}_${channelName}`)
+                    return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                }
+                dtoDevice.status_history.forEach((status) => {
+                    status.channels.sort(
+                        (a: ChannelStatus, b: ChannelStatus) => getIndex(a.name) - getIndex(b.name),
+                    )
+                    status.temps.sort(
+                        (a: TempStatus, b: TempStatus) => getIndex(a.name) - getIndex(b.name),
+                    )
+                })
+            }
+        }
     }
 
     async function updateStatusFromSSE(): Promise<void> {
@@ -807,5 +914,6 @@ export const useDeviceStore = defineStore('device', () => {
         isSafariWebKit,
         isThinkPad,
         connectToQtIPC,
+        reSortDevicesByMenuOrder,
     }
 })

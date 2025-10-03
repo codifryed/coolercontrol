@@ -46,9 +46,8 @@ impl DeviceSupport for CorsairHidPsuSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 30, // PSU min
                     max_duty: 100,
-                    profiles_enabled: false,
                     fixed_enabled: true,
-                    manual_profiles_enabled: true,
+                    extension: None,
                 }),
                 ..Default::default()
             },

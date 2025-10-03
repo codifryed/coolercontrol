@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::device::{Duty, Temp};
+use crate::setting::Offset;
 use std::collections::VecDeque;
 
 /// Sort, cleanup, and set safety levels for the given profile[(temp, duty)].
@@ -26,11 +28,11 @@ use std::collections::VecDeque;
 ///   - only the first profile step with duty=100% is kept
 #[allow(clippy::float_cmp)]
 pub fn normalize_profile(
-    profile: &[(f64, u8)],
-    critical_temp: f64,
-    max_duty_value: u8,
-) -> Vec<(f64, u8)> {
-    let mut sorted_profile: VecDeque<(f64, u8)> = profile.iter().copied().collect();
+    profile: &[(Temp, Duty)],
+    critical_temp: Temp,
+    max_duty_value: Duty,
+) -> Vec<(Temp, Duty)> {
+    let mut sorted_profile: VecDeque<(Temp, Duty)> = profile.iter().copied().collect();
     sorted_profile.push_back((critical_temp, max_duty_value));
     sorted_profile
         .make_contiguous()
@@ -61,16 +63,49 @@ pub fn normalize_profile(
     }
     normalized_profile
 }
+/// This will ensure that:
+///   - the profile duty is a monotonically increasing function
+///   - the profile is sorted
+///   - offset profile offsets may go up or down, so no failsafe is enforced
+pub fn normalize_offset_profile(profile: &[(Duty, Offset)]) -> Vec<(Duty, Offset)> {
+    let mut sorted_profile: VecDeque<(Duty, Offset)> = profile.iter().copied().collect();
+    sorted_profile
+        .make_contiguous()
+        .sort_by(|(duty_a, offset_a), (duty_b, offset_b)|
+            // reverse ordering for offset so that the largest given offset value is used
+            duty_a.partial_cmp(duty_b).unwrap().then(offset_b.cmp(offset_a)));
+    for (_, offset) in &mut sorted_profile {
+        // clamp offsets to limits
+        *offset = *(offset.clamp(&mut -100, &mut 100));
+    }
+    let mut normalized_profile = Vec::new();
+    normalized_profile.push(sorted_profile.pop_front().unwrap());
+    let mut previous_duty = normalized_profile[0].0;
+    for (duty, offset) in sorted_profile {
+        if duty == previous_duty {
+            continue; // skip duplicate duties
+        }
+        normalized_profile.push((duty, offset));
+        if duty == 100 {
+            break;
+        }
+        previous_duty = duty;
+    }
+    normalized_profile
+}
 
-/// Interpolate duty from a given temp and profile(temp, duty)
-/// profile must be normalized first for this function to work as expected
-/// Returned duty is rounded to the nearest integer
+/// Interpolate duty for a given temp and profile(temp, duty).
+/// profile must be normalized first for this function to work as expected (Temp always increasing).
+/// Returned duty is rounded to the nearest integer.
+///
+/// This is a custom interpolation function that is designed for our use case.
+/// Other interpolation libraries benched are not near as efficient as this.
 #[allow(
     clippy::float_cmp,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
-pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
+pub fn interpolate_profile(normalized_profile: &[(Temp, Duty)], temp: Temp) -> Duty {
     let mut step_below = &normalized_profile[0];
     let mut step_above = normalized_profile.last().unwrap();
     for step in normalized_profile {
@@ -93,12 +128,45 @@ pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
         .round() as u8
 }
 
+/// Interpolate offset for a given duty and profile(duty, offset).
+/// profile must be normalized first for this function to work as expected.
+/// Returned offset is rounded to the nearest integer.
+///
+/// This is a custom interpolation function that is designed for our use case.
+/// Other interpolation libraries benched are not near as efficient as this.
+#[allow(clippy::cast_possible_truncation)]
+pub fn interpolate_offset_profile(normalized_profile: &[(Duty, Offset)], duty: Duty) -> Offset {
+    let mut step_below = &normalized_profile[0];
+    let mut step_above = normalized_profile.last().unwrap();
+    for step in normalized_profile {
+        if step.0 <= duty {
+            step_below = step;
+        }
+        if step.0 >= duty {
+            step_above = step;
+            break;
+        }
+    }
+    if step_below.0 == step_above.0 {
+        return step_below.1; // duty matches exactly, no offset calculation needed
+    }
+    let (step_below_duty, step_below_offset) = (f64::from(step_below.0), f64::from(step_below.1));
+    let (step_above_duty, step_above_offset) = (f64::from(step_above.0), f64::from(step_above.1));
+    (step_below_offset
+        + (f64::from(duty) - step_below_duty) / (step_above_duty - step_below_duty)
+            * (step_above_offset - step_below_offset))
+        .round() as Offset
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::engine::utils::{interpolate_profile, normalize_profile};
+    use crate::engine::utils::{
+        interpolate_offset_profile, interpolate_profile, normalize_offset_profile,
+        normalize_profile,
+    };
 
     #[test]
-    fn normalize_profile_test() {
+    fn test_normalize_profile() {
         let given_expected = vec![
             (
                 (
@@ -136,6 +204,7 @@ mod tests {
                 ),
                 vec![(25.0, 25), (30.0, 40), (35.0, 100)],
             ),
+            ((vec![(25.0, 30)], 60.0, 100), vec![(25.0, 30), (60.0, 100)]),
             ((vec![], 60.0, 100), vec![(60.0, 100)]),
             ((vec![], 60.0, 200), vec![(60.0, 200)]),
         ];
@@ -146,15 +215,116 @@ mod tests {
     }
 
     #[test]
-    fn interpolate_profile_test() {
+    fn test_interpolate_profile() {
         let given_expected = vec![
             ((vec![(20f64, 50u8), (50.0, 70), (60.0, 100)], 33.), 59u8),
             ((vec![(20.0, 50), (50.0, 70)], 19.), 50),
             ((vec![(20.0, 50), (50.0, 70)], 51.), 70),
-            ((vec![(20.0, 50)], 20.), 50),
         ];
         for (given, expected) in given_expected {
             assert_eq!(interpolate_profile(&given.0, given.1), expected);
         }
     }
+
+    #[test]
+    fn test_interpolate_negative_profile() {
+        let given_expected = vec![
+            ((vec![(20f64, 50u8), (50.0, 70), (60.0, 20)], 33.), 59u8),
+            ((vec![(10.0, 50), (20.0, 30), (30.0, 80)], 20.), 30),
+            ((vec![(20.0, 50), (50.0, 30)], 51.), 30),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_profile(&given.0, given.1), expected);
+        }
+    }
+
+    #[test]
+    fn test_interpolate_single_profile() {
+        let given_expected = vec![
+            ((vec![(20.0, 50)], 20.), 50),
+            ((vec![(20.0, 50)], 0.), 50),
+            ((vec![(20.0, 50)], 80.), 50),
+            ((vec![(20.0, 70)], 80.), 70),
+            ((vec![(20.0, 10)], 80.), 10),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_profile(&given.0, given.1), expected);
+        }
+    }
+
+    #[test]
+    fn test_normalize_offset_profile() {
+        let given_expected = vec![
+            (
+                // can go back down and up, and double duty values are handled
+                vec![(30u8, 40i8), (25, 25), (35, 30), (40, 35), (40, 80)],
+                vec![(25u8, 25i8), (30, 40), (35, 30), (40, 80)],
+            ),
+            (
+                vec![(30, 40), (25, 25), (35, 30), (40, 100)],
+                vec![(25, 25), (30, 40), (35, 30), (40, 100)],
+            ),
+            (
+                vec![(30, 40), (25, 25), (35, 100), (40, 100)],
+                vec![(25, 25), (30, 40), (35, 100), (40, 100)],
+            ),
+            (
+                // make sure offsets are clamped
+                vec![(30, 40), (25, -120), (35, 120), (40, i8::MAX)],
+                vec![(25, -100), (30, 40), (35, 100), (40, 100)],
+            ),
+            (vec![(25, 30)], vec![(25, 30)]),
+        ];
+
+        for (given, expected) in given_expected {
+            assert_eq!(normalize_offset_profile(&given), expected);
+        }
+    }
+
+    #[test]
+    fn test_interpolate_offset_profile() {
+        let given_expected = vec![
+            ((vec![(20u8, 50i8), (50, 70), (60, 100)], 33), 59i8),
+            ((vec![(20, 50), (50, 70)], 19), 50),
+            ((vec![(20, 50), (50, 70)], 51), 70),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_offset_profile(&given.0, given.1), expected);
+        }
+    }
+
+    #[test]
+    fn test_interpolate_negative_offset_profile() {
+        let given_expected = vec![
+            ((vec![(20u8, 50i8), (50, 70), (60, 20)], 33), 59i8),
+            ((vec![(10, 50), (20, 30), (30, 80)], 20), 30),
+            ((vec![(20, 50), (50, 30)], 51), 30),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_offset_profile(&given.0, given.1), expected);
+        }
+    }
+
+    #[test]
+    fn test_interpolate_single_offset_profile() {
+        let given_expected = vec![
+            ((vec![(20, 50)], 20), 50),
+            ((vec![(20, 50)], 0), 50),
+            ((vec![(20, 50)], 80), 50),
+            ((vec![(20, 70)], 80), 70),
+            ((vec![(20, 10)], 80), 10),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(interpolate_offset_profile(&given.0, given.1), expected);
+        }
+    }
+
+    // #[bench]
+    // fn bench_interpolate_profile(b: &mut test::Bencher) {
+    //     let given = (
+    //         vec![(20f64, 50u8), (50.0, 70), (60.0, 100)],
+    //         33.,
+    //     );
+    //     b.iter(|| black_box(interpolate_profile(&given.0, given.1)));
+    // }
 }

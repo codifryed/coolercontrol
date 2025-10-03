@@ -26,6 +26,15 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
     const cssRoot = document.querySelector(':root')
     const getStyle = (varName: string): string =>
         `rgb(${getComputedStyle(cssRoot!).getPropertyValue(varName)})`
+    const reLoadThemeColors = () => {
+        themeColors.value.accent = getStyle('--colors-accent')
+        themeColors.value.bg_one = getStyle('--colors-bg-one')
+        themeColors.value.bg_two = getStyle('--colors-bg-two')
+        themeColors.value.border = getStyle('--colors-border-one')
+        themeColors.value.text_color = getStyle('--colors-text-color')
+        themeColors.value.text_color_secondary = getStyle('--colors-text-color-secondary')
+    }
+
     const themeColors = ref({
         accent: getStyle('--colors-accent'),
         bg_one: getStyle('--colors-bg-one'),
@@ -51,6 +60,48 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
             .match(/.{2}/g)!
             .map((x) => parseInt(x, 16))
     }
+
+    function hexToRgbThemeString(hex: string): string {
+        const [r, g, b] = hexToRgb(hex)
+        return `${r} ${g} ${b}`
+    }
+
+    function hexToRgbString(hex: string): string {
+        if (isRGBColor(hex)) {
+            return hex
+        }
+        return `rgb(${hexToRgb(hex).join(', ')})`
+    }
+
+    function rgbToHex(rgb: string): string {
+        if (isHexColor(rgb)) {
+            return rgb
+        }
+        const matches = rgb.match(/\d+/g)!.map((x) => parseInt(x, 10))
+        if (matches == null) {
+            console.error(`Invalid RGB color: ${rgb}`)
+            return rgb
+        }
+        const [r, g, b] = matches
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
+    }
+
+    function isHexColor(color: string): boolean {
+        return color.startsWith('#')
+    }
+
+    function isValidHex(color: string): boolean {
+        return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color)
+    }
+
+    function isRGBColor(color: string): boolean {
+        return color.startsWith('rgb')
+    }
+
+    // function isValidRGB(color: string): boolean {
+    //     return /^rgb\((\d{1,3},){2}\d{1,3}\)$/.test(color)
+    // }
+
     function convertColorToRGBA(color: string, opacity: number): string {
         if (color.includes('#')) {
             const rgbArray = hexToRgb(color)
@@ -63,5 +114,15 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
     }
 
     console.debug(`Theme Colors Store created`)
-    return { themeColors, hexToRgb, convertColorToRGBA }
+    return {
+        themeColors,
+        reLoadThemeColors,
+        hexToRgb,
+        hexToRgbString,
+        hexToRgbThemeString,
+        rgbToHex,
+        isHexColor,
+        isValidHex,
+        convertColorToRGBA,
+    }
 })

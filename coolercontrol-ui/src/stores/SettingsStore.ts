@@ -26,6 +26,7 @@ import {
     defaultCustomTheme,
     DeviceUISettings,
     DeviceUISettingsDTO,
+    MenuOrderIds,
     SensorAndChannelSettings,
     ThemeMode,
     UISettingsDTO,
@@ -67,9 +68,9 @@ export const useSettingsStore = defineStore('settings', () => {
         '#FF0000',
         '#FFFF00',
         '#00FF00',
-        '#FF00FF',
         '#00FFFF',
         '#0000FF',
+        '#FF00FF',
     ])
 
     const functions: Ref<Array<Function>> = ref([])
@@ -104,7 +105,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
 
-    const dashboards: Array<Dashboard> = reactive([...Dashboard.defaults()])
+    const dashboards: Array<Dashboard> = reactive([...Dashboard.default()])
+    const homeDashboard: Ref<UID | undefined> = ref()
     const chartLineScale: Ref<number> = ref(1.5)
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
@@ -112,10 +114,11 @@ export const useSettingsStore = defineStore('settings', () => {
     const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const time24: Ref<boolean> = ref(false)
-    const collapsedMenuNodeIds: Ref<Array<string>> = ref([])
+    const menuOrder: Ref<Array<MenuOrderIds>> = ref([])
+    const expandedMenuIds: Ref<Array<string> | undefined> = ref()
+    const pinnedIds: Ref<Array<string>> = ref([])
     const collapsedMainMenu: Ref<boolean> = ref(false)
     const hideMenuCollapseIcon: Ref<boolean> = ref(false)
-    const menuEntitiesAtBottom: Ref<boolean> = ref(false)
     const mainMenuWidthRem: Ref<number> = ref(24)
     const frequencyPrecision: Ref<number> = ref(1)
     const customTheme: CustomThemeSettings = reactive({
@@ -126,6 +129,7 @@ export const useSettingsStore = defineStore('settings', () => {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     })
+    const entityColors: Ref<Array<[string, string]>> = ref([])
     const showOnboarding: Ref<boolean> = ref(true)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
@@ -189,6 +193,11 @@ export const useSettingsStore = defineStore('settings', () => {
             dashboards.length = 0
             dashboards.push(...uiSettings.dashboards)
         }
+        homeDashboard.value = uiSettings.homeDashboard
+        if (homeDashboard.value == null) {
+            // set home dashboard to first dashboard by default
+            homeDashboard.value = dashboards[0].uid
+        }
         chartLineScale.value = uiSettings.chartLineScale
         if (deviceStore.isQtApp()) {
             // @ts-ignore
@@ -205,11 +214,12 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
         time24.value = uiSettings.time24
-        collapsedMenuNodeIds.value = uiSettings.collapsedMenuNodeIds
+        menuOrder.value = uiSettings.menuOrder
+        expandedMenuIds.value = uiSettings.expandedMenuIds
+        pinnedIds.value = uiSettings.pinnedIds
         collapsedMainMenu.value = uiSettings.collapsedMainMenu
         mainMenuWidthRem.value = uiSettings.mainMenuWidthRem
         hideMenuCollapseIcon.value = uiSettings.hideMenuCollapseIcon
-        menuEntitiesAtBottom.value = uiSettings.menuEntitiesAtBottom
         frequencyPrecision.value = uiSettings.frequencyPrecision
         customTheme.accent = uiSettings.customTheme.accent
         customTheme.bgOne = uiSettings.customTheme.bgOne
@@ -217,6 +227,7 @@ export const useSettingsStore = defineStore('settings', () => {
         customTheme.borderOne = uiSettings.customTheme.borderOne
         customTheme.textColor = uiSettings.customTheme.textColor
         customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
+        entityColors.value = uiSettings.entityColors
         showOnboarding.value = uiSettings.showOnboarding
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
@@ -231,8 +242,8 @@ export const useSettingsStore = defineStore('settings', () => {
                 const deviceSettings = allUIDeviceSettings.value.has(uid)
                     ? allUIDeviceSettings.value.get(uid)!
                     : new DeviceUISettings()
-                deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
                 deviceSettings.userName = deviceSettingsDto.userName
+                deviceSettings.userColor = deviceSettingsDto.userColor
                 if (
                     deviceSettingsDto.names.length !==
                     deviceSettingsDto.sensorAndChannelSettings.length
@@ -868,6 +879,7 @@ export const useSettingsStore = defineStore('settings', () => {
             [
                 allUIDeviceSettings.value,
                 dashboards,
+                homeDashboard,
                 chartLineScale,
                 startInSystemTray,
                 closeToSystemTray,
@@ -875,13 +887,15 @@ export const useSettingsStore = defineStore('settings', () => {
                 themeMode,
                 uiScale,
                 time24,
-                collapsedMenuNodeIds.value,
+                menuOrder,
+                expandedMenuIds,
+                pinnedIds,
                 collapsedMainMenu,
                 hideMenuCollapseIcon,
-                menuEntitiesAtBottom,
                 mainMenuWidthRem,
                 frequencyPrecision,
                 customTheme,
+                entityColors.value,
                 showOnboarding,
             ],
             _.debounce(
@@ -892,8 +906,8 @@ export const useSettingsStore = defineStore('settings', () => {
                     for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
                         uiSettings.devices?.push(toRaw(uid))
                         const deviceSettingsDto = new DeviceUISettingsDTO()
-                        deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
                         deviceSettingsDto.userName = deviceSettings.userName
+                        deviceSettingsDto.userColor = deviceSettings.userColor
                         deviceSettings.sensorsAndChannels.forEach(
                             (sensorAndChannelSettings, name) => {
                                 deviceSettingsDto.names.push(name)
@@ -905,6 +919,7 @@ export const useSettingsStore = defineStore('settings', () => {
                         uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
                     uiSettings.dashboards = dashboards
+                    uiSettings.homeDashboard = homeDashboard.value
                     uiSettings.chartLineScale = chartLineScale.value
                     if (deviceStore.isQtApp()) {
                         try {
@@ -920,10 +935,11 @@ export const useSettingsStore = defineStore('settings', () => {
                     }
                     uiSettings.themeMode = themeMode.value
                     uiSettings.time24 = time24.value
-                    uiSettings.collapsedMenuNodeIds = collapsedMenuNodeIds.value
+                    uiSettings.menuOrder = menuOrder.value
+                    uiSettings.expandedMenuIds = expandedMenuIds.value
+                    uiSettings.pinnedIds = pinnedIds.value
                     uiSettings.collapsedMainMenu = collapsedMainMenu.value
                     uiSettings.hideMenuCollapseIcon = hideMenuCollapseIcon.value
-                    uiSettings.menuEntitiesAtBottom = menuEntitiesAtBottom.value
                     uiSettings.mainMenuWidthRem = mainMenuWidthRem.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.customTheme.accent = customTheme.accent
@@ -932,6 +948,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.customTheme.borderOne = customTheme.borderOne
                     uiSettings.customTheme.textColor = customTheme.textColor
                     uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
+                    uiSettings.entityColors = entityColors.value
                     uiSettings.showOnboarding = showOnboarding.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
@@ -1151,6 +1168,7 @@ export const useSettingsStore = defineStore('settings', () => {
         modeInEdit,
         allUIDeviceSettings,
         dashboards,
+        homeDashboard,
         chartLineScale,
         startInSystemTray,
         closeToSystemTray,
@@ -1158,13 +1176,15 @@ export const useSettingsStore = defineStore('settings', () => {
         themeMode,
         uiScale,
         time24,
-        collapsedMenuNodeIds,
+        menuOrder,
+        expandedMenuIds,
+        pinnedIds,
         collapsedMainMenu,
         hideMenuCollapseIcon,
-        menuEntitiesAtBottom,
         mainMenuWidthRem,
         frequencyPrecision,
         customTheme,
+        entityColors,
         showOnboarding,
         allDaemonDeviceSettings,
         ccSettings,

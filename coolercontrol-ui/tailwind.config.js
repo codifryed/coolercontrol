@@ -223,6 +223,7 @@ module.exports = {
         extend: {
             animation: {
                 'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                'spin-slow': 'spin 2s linear infinite',
             },
             // This seems to confict with our setup. Don't use:
             //colors: {},

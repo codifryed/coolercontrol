@@ -16,8 +16,8 @@ ENV PYTHONFAULTHANDLER=1 \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.82.0
-ENV NODE_MAJOR=18
+    RUST_VERSION=1.86.0
+ENV NODE_MAJOR=22
 
 RUN apt update && apt install -y --no-install-recommends \
     # build essentials:
@@ -55,14 +55,6 @@ RUN apt update && apt install -y --no-install-recommends \
     python-is-python3 \
     # debian package helper
     debhelper
-
-# python 3.11.8 used for AppImages (Nuitka does not yet support 3.12)
-RUN wget https://www.python.org/ftp/python/3.11.8/Python-3.11.8.tgz && \
-    tar -xf Python-3.11.*.tgz && \
-    cd Python-3.11.*/ && \
-    ./configure --enable-optimizations && \
-    make -j$(nproc) && \
-    make install
 
 # rust toolchain
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \

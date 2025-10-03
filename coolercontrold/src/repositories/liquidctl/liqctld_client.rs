@@ -27,8 +27,8 @@ use anyhow::Result;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::client::conn::http1::SendRequest;
-use hyper::Request;
 use hyper::Response;
+use hyper::{Request, Version};
 use hyper_util::rt::TokioIo;
 use log::error;
 use log::trace;
@@ -43,7 +43,7 @@ use tokio::time::sleep;
 
 const LIQCTLD_MAX_POOL_SIZE: usize = 15;
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
-const LIQCTLD_SOCKET: &str = "/run/coolercontrol-liqctld.sock";
+const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
 pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
@@ -86,7 +86,7 @@ impl LiqctldClient {
     // private
 
     /// Attempts to establish a socket connection to a server and
-    /// returns a `SocketConnection` if successful, otherwise it retries a specified number of times
+    /// returns a `SocketConnection` if successful; otherwise it retries a specified number of times
     /// before returning an error.
     ///
     /// Returns:
@@ -100,18 +100,30 @@ impl LiqctldClient {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    debug!("Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",retry_count + 1);
+                    debug!(
+                        "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {err}",
+                        retry_count + 1
+                    );
                     Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
             };
             let io_stream = TokioIo::new(unix_stream);
-            // When hyper_util has a more mature higher-level Client impl, we can use that instead.
+            // hyper can now be replaced with reqwest for UDS connections, removing much of our custom low-level code.
+            // That would ease maintenance should we need to adjust this client in the future and
+            //  do things like auto-handle connection retries, timeouts and pooling for us.
+            // The downside to this, besides refactoring and testing effort, is that reqwest
+            //  will introduce more dependencies that we don't really need for our use case,
+            //  and from experience it may be slightly less performant because of this.
+            //reqwest = { version = "0.12.23", default-features = false, features = ["json"]}
             let (sender, connection) = match hyper::client::conn::http1::handshake(io_stream).await
             {
                 Ok((sender, connection)) => (sender, connection),
                 Err(err) => {
-                    warn!("Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}", retry_count + 1);
+                    warn!(
+                        "Could not handshake with coolercontrol-liqctld socket connection, retry #{} - {err}",
+                        retry_count + 1
+                    );
                     Self::handle_retry(&mut retry_count, connection_tries).await;
                     continue;
                 }
@@ -180,12 +192,15 @@ impl LiqctldClient {
         for _ in 0..LIQCTLD_EXPIRED_CONNECTION_RETRIES {
             // If we run out of connections or timeout, this will return Err:
             let mut socket_connection = self.get_socket_connection().await?;
-            let Ok(response) = socket_connection.sender.send_request(request.clone()).await else {
-                // this can happen semi-regularly (if a connection isn't used for a while)
-                debug!("Socket Connection no longer valid. Closing.");
-                socket_connection.connection_handle.abort();
-                drop(socket_connection);
-                continue; // retry with a different connection
+            let response = match socket_connection.sender.send_request(request.clone()).await {
+                Ok(response) => response,
+                Err(err) => {
+                    // this can happen semi-regularly (if a connection isn't used for a while)
+                    debug!("Socket Connection no longer valid or closed. Aborting. {err:?}");
+                    socket_connection.connection_handle.abort();
+                    drop(socket_connection);
+                    continue; // retry with a different connection
+                }
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
             if self.connection_pool.borrow().len() < LIQCTLD_MAX_POOL_SIZE {
@@ -227,6 +242,15 @@ impl LiqctldClient {
         Ok(LiqctldResponse { body })
     }
 
+    /// Creates a new request builder for the `liqctld` service,
+    /// with standard headers already set.
+    fn request_builder() -> hyper::http::request::Builder {
+        Request::builder()
+            .header("Host", LIQCTLD_HOST)
+            .header("Connection", "keep-alive")
+            .version(Version::HTTP_11)
+    }
+
     // public
 
     /// Sends a GET Handshake request to the liqctld service to verify requests are
@@ -236,8 +260,7 @@ impl LiqctldClient {
     ///
     /// a `Result<()>`.
     pub async fn handshake(&self) -> Result<()> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_HANDSHAKE)
             .method("GET")
             .body(String::new())?;
@@ -251,8 +274,7 @@ impl LiqctldClient {
     ///
     /// a Result object with a `DevicesResponse` as the Ok variant.
     pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_DEVICES)
             .method("GET")
             .body(String::new())?;
@@ -270,8 +292,7 @@ impl LiqctldClient {
     ///
     /// a `Result` with a `StatusResponse` object.
     pub async fn get_status(&self, device_index: &u8) -> Result<StatusResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_STATUS.replace("{}", &device_index.to_string()))
             .method("GET")
             .body(String::new())?;
@@ -297,8 +318,7 @@ impl LiqctldClient {
         pump_mode: Option<String>,
     ) -> Result<StatusResponse> {
         let request_body = serde_json::to_string(&InitializeRequest { pump_mode })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_INITIALIZE.replace("{}", &device_index.to_string()))
             .method("POST")
             .body(request_body)?;
@@ -312,7 +332,9 @@ impl LiqctldClient {
                     return response;
                 }
             }
-            warn!("Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} tries.");
+            warn!(
+                "Failed to successfully initialize liquidctl device after {LIQCTLD_MAX_INIT_RETRIES} tries."
+            );
         }
         response
     }
@@ -328,8 +350,7 @@ impl LiqctldClient {
     ///
     /// a Result object with a value of `DeviceResponse`.
     pub async fn put_legacy690(&self, device_index: &u8) -> Result<DeviceResponse> {
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_LEGACY690.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(String::new())?;
@@ -360,8 +381,7 @@ impl LiqctldClient {
             channel: channel_name.to_string(),
             duty: fixed_speed,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_FIXED_SPEED.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -400,8 +420,7 @@ impl LiqctldClient {
             profile: profile.to_vec(),
             temperature_sensor,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_SPEED_PROFILE.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -455,8 +474,7 @@ impl LiqctldClient {
             speed,
             direction,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_COLOR.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -494,8 +512,7 @@ impl LiqctldClient {
             mode: mode.to_string(),
             value,
         })?;
-        let request = Request::builder()
-            .header("Host", LIQCTLD_HOST)
+        let request = Self::request_builder()
             .uri(LIQCTLD_SCREEN.replace("{}", &device_index.to_string()))
             .method("PUT")
             .body(request_body)?;
@@ -519,7 +536,7 @@ impl LiqctldClient {
         Ok(())
     }
 
-    /// Asynchronously shuts down all connections in a connection pool and clears the pool.
+    /// Shuts down all connections in a connection pool and clears the pool.
     pub fn shutdown(&self) {
         for socket_connect in self.connection_pool.borrow_mut().drain(..) {
             socket_connect.connection_handle.abort();

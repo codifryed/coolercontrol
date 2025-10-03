@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, inject, ref } from 'vue'
+import { computed, defineAsyncComponent, inject, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
@@ -56,7 +56,9 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
+import hotkeys from 'hotkeys-js'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from 'primevue/usedialog'
 
 const { t } = useI18n()
 const { getREMSize } = useDeviceStore()
@@ -64,6 +66,8 @@ const deviceStore = useDeviceStore()
 const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
+const dialog = useDialog()
+const shortcutsView = defineAsyncComponent(() => import('../components/ShortcutsView.vue'))
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
@@ -71,6 +75,100 @@ const logoUrl = `/logo.svg`
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()
 
+hotkeys('ctrl+,', () => {
+    router.push({ name: 'settings' })
+    return false
+})
+hotkeys('ctrl+h', () => {
+    router.push({ name: 'system-overview' })
+    return false
+})
+hotkeys('ctrl+a', () => {
+    router.push({ name: 'alerts-overview' })
+    return false
+})
+hotkeys('ctrl+c', () => {
+    router.push({ name: 'system-controls' })
+    return false
+})
+hotkeys('ctrl+i', () => {
+    router.push({ name: 'app-info' })
+    return false
+})
+
+hotkeys('ctrl+alt+1', () => {
+    if (settingsStore.dashboards.length > 0) {
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 0
+                ? dashboardsMenuOrderItem.children[0]
+                : settingsStore.dashboards[0].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+2', () => {
+    if (settingsStore.dashboards.length > 1) {
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 1
+                ? dashboardsMenuOrderItem.children[1]
+                : settingsStore.dashboards[1].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+3', () => {
+    if (settingsStore.dashboards.length > 2) {
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 2
+                ? dashboardsMenuOrderItem.children[2]
+                : settingsStore.dashboards[2].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+alt+4', () => {
+    if (settingsStore.dashboards.length > 3) {
+        const dashboardsMenuOrderItem = settingsStore.menuOrder.find(
+            (item) => item.id === 'dashboards',
+        )
+        const dashboardUID =
+            dashboardsMenuOrderItem != null && dashboardsMenuOrderItem.children.length > 3
+                ? dashboardsMenuOrderItem.children[3]
+                : settingsStore.dashboards[3].uid
+        router.push({ name: 'dashboards', params: { dashboardUID: dashboardUID } })
+    }
+})
+hotkeys('ctrl+left', () => {
+    emitter.emit('collapse-side-menu')
+})
+hotkeys('ctrl+right', () => {
+    emitter.emit('expand-side-menu')
+})
+let shortcutsDialogVisible = false
+hotkeys('ctrl+/, ctrl+shift+/', () => {
+    if (shortcutsDialogVisible) {
+        return
+    }
+    shortcutsDialogVisible = true
+    dialog.open(shortcutsView, {
+        props: {
+            header: t('views.shortcuts.shortcuts'),
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+        },
+        data: {},
+        onClose: () => {
+            shortcutsDialogVisible = false
+        },
+    })
+})
 const daemonBadgeSeverity = computed((): string => {
     switch (daemonState.status) {
         case DaemonStatus.OK:
@@ -90,24 +188,32 @@ const dashboardItems = computed(() => {
     const dashboardItems = []
     for (const dashboard of settingsStore.dashboards) {
         dashboardItems.push({
+            uid: dashboard.uid,
             label: dashboard.name,
             mdiIcon: mdiChartBoxOutline,
-            uid: dashboard.uid,
             command: async () => {
                 dashboardMenuRef.value?.handleClose()
                 await router.push({ name: 'dashboards', params: { dashboardUID: dashboard.uid } })
             },
         })
     }
+    const dashboardMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'dashboards')
+    if (dashboardMenuOrder?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = dashboardMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        dashboardItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
     return dashboardItems
 })
-const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesItems = computed(() => {
     const menuItems = []
     for (const mode of settingsStore.modes) {
         const isActive = settingsStore.modeActiveCurrent === mode.uid
         const isRecentlyActive = settingsStore.modeActivePrevious === mode.uid
         menuItems.push({
+            uid: mode.uid,
             label: mode.name,
             isActive: isActive,
             isRecentlyActive: isRecentlyActive,
@@ -120,6 +226,14 @@ const modesItems = computed(() => {
                 await settingsStore.activateMode(mode.uid)
             },
         })
+    }
+    const modeMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'modes')
+    if (modeMenuOrder?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = modeMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        menuItems.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
     return menuItems
 })
@@ -355,7 +469,8 @@ const addItems = computed(() => [
                     :class="{
                         'text-accent':
                             router.currentRoute.value.fullPath === '/' ||
-                            router.currentRoute.value.params.dashboardUID === homeDashboardUID,
+                            router.currentRoute.value.params.dashboardUID ===
+                                settingsStore.homeDashboard,
                     }"
                     type="mdi"
                     :path="mdiHomeAnalytics"
@@ -376,10 +491,14 @@ const addItems = computed(() => [
                                         router.currentRoute.value.params.dashboardUID ===
                                             item.uid ||
                                         (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === homeDashboardUID),
+                                            item.uid === settingsStore.homeDashboard),
                                 }"
-                                :path="item.mdiIcon ?? ''"
-                                :size="getREMSize(1.25)"
+                                :path="
+                                    item.uid === settingsStore.homeDashboard
+                                        ? mdiHomeAnalytics
+                                        : (item.mdiIcon ?? '')
+                                "
+                                :size="getREMSize(1.325)"
                             />
                             <span
                                 class="ml-1.5"
@@ -388,7 +507,7 @@ const addItems = computed(() => [
                                         router.currentRoute.value.params.dashboardUID ===
                                             item.uid ||
                                         (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === homeDashboardUID),
+                                            item.uid === settingsStore.homeDashboard),
                                 }"
                             >
                                 {{ item.label }}

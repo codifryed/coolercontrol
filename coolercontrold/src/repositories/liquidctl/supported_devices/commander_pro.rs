@@ -47,10 +47,9 @@ impl DeviceSupport for CommanderProSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
-                        // Internal profiles for the commander pro only work with RPMs! not duty %
-                        profiles_enabled: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: true,
+                        // Internal profiles for the commander pro only work with RPMs! not duty %
+                        extension: None,
                     }),
                     ..Default::default()
                 },

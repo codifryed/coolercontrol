@@ -30,6 +30,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 echarts.use([
     GridComponent,
@@ -53,21 +54,27 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const router = useRouter()
+const { t } = useI18n()
 
 // set min & max dependent of temp source range:
-let currentTempSourceMin = 0
-let currentTempSourceMax = 100
+let currentAxisTempMin = 0
+let currentAxisTempMax = 100
 for (const device of deviceStore.allDevices()) {
     if (device.uid === props.profile.temp_source?.device_uid) {
         if (device.info == null) {
             break
         }
-        currentTempSourceMin = device.info!.temp_min
-        currentTempSourceMax = device.info!.temp_max
+        currentAxisTempMin = device.info!.temp_min
+        currentAxisTempMax = device.info!.temp_max
     }
 }
-const axisXTempMin: number = currentTempSourceMin
-const axisXTempMax: number = currentTempSourceMax
+if (props.profile.temp_max != null && currentAxisTempMax > 100) {
+    currentAxisTempMax = Math.min(currentAxisTempMax, props.profile.temp_max)
+} else if (props.profile.temp_max == null && currentAxisTempMax > 100) {
+    currentAxisTempMax = 100
+}
+const axisXTempMin: number = currentAxisTempMin
+const axisXTempMax: number = currentAxisTempMax
 const dutyMin: number = 0
 const dutyMax: number = 100
 
@@ -127,7 +134,7 @@ const calcSmoothness = (): number => {
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 0.0
     } else {
-        return 0.3
+        return 0.1
     }
 }
 const calcLineShadowColor = (): string => {
@@ -176,7 +183,7 @@ const option = {
         show: false,
         top: deviceStore.getREMSize(0.5),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
@@ -187,7 +194,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}°',
+            formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
             lineStyle: {
@@ -210,7 +217,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}%',
+            formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
             lineStyle: {
@@ -253,7 +260,7 @@ const option = {
                     color: getDeviceDutyLineColor(),
                     formatter: (params: any): string => {
                         if (params.value == null) return ''
-                        return Number(params.value).toFixed(0) + '%'
+                        return Number(params.value).toFixed(0) + t('common.percentUnit')
                     },
                     shadowColor: colors.themeColors.bg_one,
                     shadowBlur: 10,
@@ -371,8 +378,16 @@ const setGraphData = () => {
     tempLineData[1].value = [temp, dutyMax]
     graphLineData.length = 0
     if (props.profile.speed_profile.length > 1) {
+        const firstPoint = props.profile.speed_profile[0]
+        if (firstPoint[0] > axisXTempMin) {
+            graphLineData.push({ value: [axisXTempMin, firstPoint[1]] })
+        }
         for (const point of props.profile.speed_profile) {
             graphLineData.push({ value: point })
+        }
+        const lastPoint = props.profile.speed_profile[props.profile.speed_profile.length - 1]
+        if (lastPoint[0] < axisXTempMax) {
+            graphLineData.push({ value: [axisXTempMax, lastPoint[1]] })
         }
     }
 }

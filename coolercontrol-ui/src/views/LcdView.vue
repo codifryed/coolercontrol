@@ -525,7 +525,7 @@ onUnmounted(() => {
                             v-model="selectedOrientation"
                             mode="decimal"
                             class="mt-0.5 w-full"
-                            :suffix="` ${t('common.tempUnit')}`"
+                            suffix=" °"
                             showButtons
                             :min="0"
                             :max="270"
@@ -638,9 +638,7 @@ onUnmounted(() => {
                                         :style="{ color: slotProps.option.lineColor }"
                                     />{{ slotProps.option.tempFrontendName }}
                                 </div>
-                                <div>
-                                    {{ slotProps.option.temp + ' °' }}
-                                </div>
+                                <div>{{ slotProps.option.temp }} {{ t('common.tempUnit') }}</div>
                             </div>
                         </template>
                     </Listbox>

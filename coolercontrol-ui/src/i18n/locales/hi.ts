@@ -63,6 +63,7 @@ export default {
         logout: 'लॉग आउट',
         temperature: 'तापमान',
         duty: 'कार्यभार',
+        offset: 'ऑफ़सेट',
         stay: 'रहें',
         discard: 'त्यागें',
         blankNameResetDefault: 'खाली नाम इसे सिस्टम डिफ़ॉल्ट पर रीसेट कर देगा।',
@@ -206,6 +207,8 @@ export default {
                 border: 'बॉर्डर रंग',
                 text: 'पाठ रंग',
                 textSecondary: 'माध्यमिक पाठ रंग',
+                export: 'थीम निर्यात करें',
+                import: 'थीम आयात करें',
             },
         },
         menu: {
@@ -216,6 +219,7 @@ export default {
             customSensors: 'कस्टम सेंसर',
             modes: 'मोड',
             alerts: 'अलर्ट',
+            pinned: 'पिन किया गया',
             tooltips: {
                 delete: 'हटाएं',
                 createMode: 'वर्तमान सेटिंग्स से मोड बनाएं',
@@ -235,6 +239,13 @@ export default {
                 addCustomSensor: 'कस्टम सेंसर जोड़ें',
                 addFunction: 'फंक्शन जोड़ें',
                 chooseColor: 'रंग चुनें',
+                options: 'अधिक विकल्प',
+                moveTop: 'शीर्ष पर ले जाएं',
+                moveBottom: 'नीचे ले जाएं',
+                disable: 'अक्षम करें',
+                pin: 'शीर्ष पर पिन करें',
+                unpin: 'अनपिन करें',
+                profileApply: 'पंखों पर प्रोफाइल लागू करें',
             },
         },
         add: {
@@ -415,6 +426,7 @@ export default {
             warmupGreaterThan: 'स्थिति लंबे समय तक ट्रिगर होती है',
             unsavedChanges: 'इस अलर्ट में असहेजे परिवर्तन हैं।',
             unsavedChangesHeader: 'असहेजे परिवर्तन',
+            createFailAlert: 'खराबी अलर्ट',
         },
         profiles: {
             createProfile: 'प्रोफ़ाइल बनाएँ',
@@ -442,7 +454,7 @@ export default {
             newProfile: 'नई प्रोफ़ाइल',
             tooltip: {
                 profileType:
-                    'प्रोफ़ाइल प्रकार:<br/>- डिफ़ॉल्ट: वर्तमान डिवाइस सेटिंग्स बनाए रखता है<br/>&nbsp;&nbsp;(BIOS/फर्मवेयर)<br/>- निश्चित: एक स्थिर गति सेट करता है<br/>- ग्राफ़: अनुकूलन योग्य पंखा कर्व<br/>- मिक्स: कई प्रोफ़ाइल को जोड़ता है',
+                    'प्रोफ़ाइल प्रकार:<br/>- डिफ़ॉल्ट: वर्तमान डिवाइस सेटिंग्स बनाए रखता है<br/>&nbsp;&nbsp;(BIOS/फर्मवेयर)<br/>- फिक्स्ड: स्थिर गति सेट करता है<br/>- ग्राफ़: अनुकूलन योग्य फ़ैन कर्व<br/>- मिक्स: कई प्रोफ़ाइलों को संयोजित करता है<br/>- ओवरले: मौजूदा प्रोफ़ाइल के आउटपुट पर ऑफ़सेट लागू करता है',
             },
             profileDeleted: 'प्रोफ़ाइल हटाई गई',
             profileDuplicated: 'प्रोफ़ाइल डुप्लिकेट की गई',
@@ -453,6 +465,18 @@ export default {
             profileUpdateError: 'इस प्रोफ़ाइल को अपडेट करने का प्रयास करते समय एक त्रुटि हुई',
             tempSourceRequired: 'ग्राफ़ प्रोफ़ाइल के लिए एक तापमान स्रोत आवश्यक है।',
             memberProfilesRequired: 'मिक्स प्रोफ़ाइल के लिए कम से कम 2 सदस्य प्रोफ़ाइल आवश्यक हैं।',
+            minProfileTemp: 'न्यूनतम प्रोफ़ाइल तापमान',
+            maxProfileTemp: 'अधिकतम प्रोफ़ाइल तापमान',
+            staticOffset: 'स्थिर ऑफ़सेट',
+            offsetType: 'ऑफ़सेट प्रकार',
+            offsetTypeStatic: 'स्थिर ऑफ़सेट',
+            offsetTypeGraph: 'ग्राफ़ ऑफ़सेट',
+            baseProfile: 'आधार प्रोफ़ाइल',
+            baseProfileRequired: 'ओवरले प्रोफ़ाइल के लिए एक आधार प्रोफ़ाइल आवश्यक है।',
+            selectedPointOutputDuty: 'चयनित बिंदु पर प्रोफ़ाइल आउटपुट कार्यभार',
+            selectedPointOffset: 'चयनित बिंदु ऑफ़सेट कार्यभार',
+            profileOutputDuty: 'प्रोफ़ाइल आउटपुट कार्यभार',
+            offsetDuty: 'ऑफ़सेट कार्यभार',
         },
         devices: {
             detectionIssues: 'पहचान समस्याएं? देखें',
@@ -493,8 +517,12 @@ export default {
             browse: 'ब्राउज़ करें',
             browseCustomSensorFile: 'कस्टम सेंसर फ़ाइल के लिए ब्राउज़ करें',
             tempSources: 'तापमान स्रोत',
+            tempSource: 'तापमान स्रोत',
             tempSourcesTooltip:
-                'मिक्स फ़ंक्शन में उपयोग किए जाने वाले तापमान स्रोत<br/><i>नोट: आप कई कस्टम सेंसर को जोड़ने के लिए मिक्स प्रोफाइल का उपयोग कर सकते हैं।</i>',
+                'मिक्स फ़ंक्शन में उपयोग किए जाने वाले तापमान स्रोत<br/><i>नोट: एक से अधिक कस्टम सेंसर को मिलाते समय केवल प्रत्यक्ष पैरेंट‑चाइल्ड संबंधों की अनुमति है।<br/>अधिक जटिल सेटअप के लिए मिक्स प्रोफाइल का उपयोग करें।</i>',
+            offset: 'ऑफ़सेट',
+            offsetTooltip:
+                'स्रोत सेंसर पर लागू करने के लिए नकारात्मक या सकारात्मक ऑफ़सेट मान दर्ज करें।<br/><i>नोट: अंतिम मान सामान्य तापमान सीमा तक सीमित रहेगा।</i>',
             tempWeights: 'तापमान वेट',
             tempWeightsTooltip: 'प्रत्येक चयनित तापमान स्रोत का व्यक्तिगत वेट।',
             tempName: 'तापमान नाम',
@@ -638,6 +666,37 @@ export default {
             imageTooLarge: 'छवि बहुत बड़ी है। कृपया एक छोटी छवि चुनें।',
             notImageType: 'छवि एक छवि प्रकार के रूप में पंजीकृत नहीं होती है',
         },
+        shortcuts: {
+            shortcuts: 'कीबोर्ड शॉर्टकट्स',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: 'बायाँ',
+            right: 'दायाँ',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'कीबोर्ड शॉर्टकट्स',
+            home: 'मुखपृष्ठ',
+            settings: 'सेटिंग्स',
+            info: 'एप्लिकेशन जानकारी',
+            dashboardOne: 'डैशबोर्ड 1',
+            dashboardTwo: 'डैशबोर्ड 2',
+            dashboardThree: 'डैशबोर्ड 3',
+            dashboardFour: 'डैशबोर्ड 4',
+            alerts: 'चेतावनियाँ',
+            controls: 'नियंत्रण',
+            sideMenuCollapse: 'साइड मेनू संकुचित करें',
+            sideMenuExpand: 'साइड मेनू विस्तारित करें',
+            fullScreen: 'पूर्ण स्क्रीन',
+        },
     },
     components: {
         confirmation: {
@@ -766,8 +825,8 @@ export default {
             max: 'अधिकतम',
             min: 'न्यूनतम',
             dutyTemperature: 'ड्यूटी / तापमान',
-            rpmMhz: 'rpm / Mhz',
-            krpmGhz: 'krpm / Ghz',
+            rpmMhz: 'rpm / MHz',
+            krpmGhz: 'krpm / GHz',
             watts: 'वाट',
         },
         sensorTable: {
@@ -800,6 +859,7 @@ export default {
                 selectSpeed: 'अपनी गति चुनें',
                 newMixProfile: 'नई मिक्स प्रोफ़ाइल',
                 newGraphProfile: 'नई ग्राफ़ प्रोफ़ाइल',
+                newOverlayProfile: 'नई ओवरले प्रोफ़ाइल',
                 functionFor: 'लागू करने के लिए एक फ़ंक्शन चुनें',
                 functionDescription:
                     'फ़ंक्शन आपको प्रोफ़ाइल आउटपुट कैसे लागू किया जाता है इस पर अतिरिक्त नियंत्रण की अनुमति देते हैं।',
@@ -815,9 +875,30 @@ export default {
             profile: {
                 willCreated: 'बनाई जाएगी।',
             },
+            profileApply: {
+                applyProfile: 'प्रोफाइल लागू करें',
+                channelsApply: 'प्रोफाइल लागू करने के लिए चैनल',
+                selectChannels: 'चैनल चुनें',
+                channelsTooltip: 'इस प्रोफाइल को लागू करने के लिए एक या अधिक चैनल चुनें।',
+            },
+            functionApply: {
+                applyFunction: 'फंक्शन लागू करें',
+                profilesApply: 'फंक्शन लागू करने के लिए प्रोफाइल',
+                selectProfiles: 'प्रोफाइल चुनें',
+                profilesTooltip: 'इस फंक्शन को लागू करने के लिए एक या अधिक प्रोफाइल चुनें।',
+            },
             customSensor: {
                 new: 'नया कस्टम सेंसर',
             },
+        },
+        channelExtensionSettings: {
+            title: 'डिवाइस चैनल सेटिंग्स',
+            firmwareControlledProfile: 'फर्मवेयर-नियंत्रित प्रोफ़ाइल',
+            firmwareControlledProfileDesc:
+                'सक्रिय करने पर, डिवाइस का फर्मवेयर फैन प्रोफ़ाइल को नियंत्रित करता है.\nसॉफ़्टवेयर द्वारा बार‑बार गति बदलने पर ठीक तरह प्रतिक्रिया न देने वाले हार्डवेयर के लिए उपयोगी.\nकेवल उन ग्राफ़ प्रोफ़ाइल के लिए उपलब्ध जो डिवाइस‑आंतरिक तापमान सेंसर का उपयोग करते हैं.\nफ़ंक्शन सेटिंग्स लागू नहीं होतीं.',
+            saveError: 'चैनल एक्सटेंशन सेटिंग्स सहेजने में विफल',
+            firmwareControlDisabled:
+                'वर्तमान सेटिंग्स के साथ फर्मवेयर नियंत्रण उपलब्ध नहीं है.\nइस डिवाइस के लिए समर्थित आंतरिक तापमान सेंसर वाले ग्राफ़ प्रोफ़ाइल का उपयोग करें.',
         },
     },
     auth: {
@@ -898,6 +979,7 @@ export default {
                 fixed: 'निश्चित',
                 graph: 'ग्राफ',
                 mix: 'मिक्स',
+                overlay: 'ओवरले',
             },
             functionType: {
                 identity: 'पहचान',
@@ -908,12 +990,14 @@ export default {
                 min: 'न्यूनतम',
                 max: 'अधिकतम',
                 avg: 'औसत',
+                diff: 'अंतर',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'मिक्स',
                 file: 'फ़ाइल',
+                offset: 'ऑफ़सेट',
             },
             mixFunctionType: {
                 min: 'न्यूनतम',

@@ -63,6 +63,7 @@ export default {
         logout: 'Abmelden',
         temperature: 'Temperatur',
         duty: 'Leistung',
+        offset: 'Versatz',
         stay: 'Bleiben',
         discard: 'Verwerfen',
         blankNameResetDefault: 'Ein leerer Name setzt den Wert auf den Systemstandard zurück.',
@@ -210,6 +211,8 @@ export default {
                 border: 'Rahmenfarbe',
                 text: 'Textfarbe',
                 textSecondary: 'Sekundäre Textfarbe',
+                export: 'Theme exportieren',
+                import: 'Theme importieren',
             },
             tooltips: {
                 introduction: 'Die Einführungstour der Anwendung starten.',
@@ -288,6 +291,7 @@ export default {
             customSensors: 'Benutzerdefinierte Sensoren',
             modes: 'Modi',
             alerts: 'Warnungen',
+            pinned: 'Angeheftet',
             tooltips: {
                 delete: 'Löschen',
                 createMode: 'Modus aus aktuellen Einstellungen erstellen',
@@ -307,6 +311,13 @@ export default {
                 addCustomSensor: 'Benutzerdefinierten Sensor hinzufügen',
                 addFunction: 'Funktion hinzufügen',
                 chooseColor: 'Farbe wählen',
+                options: 'Weitere Optionen',
+                moveTop: 'An die Spitze verschieben',
+                moveBottom: 'An das Ende verschieben',
+                disable: 'Deaktivieren',
+                pin: 'An die Spitze anheften',
+                unpin: 'Loslassen',
+                profileApply: 'Profil auf Lüfter anwenden',
             },
         },
         add: {
@@ -379,8 +390,12 @@ export default {
             browse: 'Durchsuchen',
             browseCustomSensorFile: 'Nach einer benutzerdefinierten Sensordatei suchen',
             tempSources: 'Temp-Quellen',
+            tempSource: 'Temp-Quelle',
             tempSourcesTooltip:
-                'Temperaturquellen, die in der Mix-Funktion verwendet werden sollen<br/><i>Hinweis: Sie können ein Mix-Profil verwenden, um mehrere<br/>benutzerdefinierte Sensoren zu kombinieren.</i>',
+                'Temperaturquellen, die in der Mischfunktion verwendet werden sollen<br/><i>Hinweis: Beim Kombinieren mehrerer benutzerdefinierter Sensoren sind nur direkte Eltern-Kind-Beziehungen erlaubt.<br/>Verwenden Sie Mix-Profile für komplexere Setups.</i>',
+            offset: 'Versatz',
+            offsetTooltip:
+                'Geben Sie einen negativen oder positiven Versatz ein, der auf den Quellsensor angewendet wird.<br/><i>Hinweis: Der Endwert wird auf normale Temperaturbereiche begrenzt.</i>',
             tempWeights: 'Temp-Gewichtungen',
             tempWeightsTooltip: 'Die individuelle Gewichtung jeder ausgewählten Temperaturquelle.',
             tempName: 'Temp-Name',
@@ -475,6 +490,7 @@ export default {
             warmupGreaterThan: 'bedingung ausgelöst länger als',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
+            createFailAlert: 'Ausfallwarnung',
         },
         profiles: {
             createProfile: 'Profil erstellen',
@@ -502,7 +518,7 @@ export default {
             newProfile: 'Neues Profil',
             tooltip: {
                 profileType:
-                    'Profiltyp:<br/>- Standard: Behält aktuelle Geräteeinstellungen bei<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Stellt eine konstante Geschwindigkeit ein<br/>- Grafik: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile',
+                    'Profiltypen:<br/>- Standard: Beibehaltung der aktuellen Geräteeinstellungen<br/>&nbsp;&nbsp;(BIOS/Firmware)<br/>- Fest: Setzt eine konstante Geschwindigkeit<br/>- Graph: Anpassbare Lüfterkurve<br/>- Mix: Kombiniert mehrere Profile<br/>- Overlay: Überlagert die Ausgabe eines bestehenden Profils mit einem Versatz',
             },
             profileDeleted: 'Profil gelöscht',
             profileDuplicated: 'Profil dupliziert',
@@ -515,6 +531,18 @@ export default {
             tempSourceRequired: 'Für ein Grafikprofil ist eine Temperaturquelle erforderlich.',
             memberProfilesRequired:
                 'Für ein Mischprofil sind mindestens 2 Mitgliedsprofile erforderlich.',
+            minProfileTemp: 'Minimale Profiltemperatur',
+            maxProfileTemp: 'Maximale Profiltemperatur',
+            staticOffset: 'Statischer Versatz',
+            offsetType: 'Versatztyp',
+            offsetTypeStatic: 'Statischer Versatz',
+            offsetTypeGraph: 'Graph-Versatz',
+            baseProfile: 'Basisprofil',
+            baseProfileRequired: 'Für ein Overlay-Profil ist ein Basisprofil erforderlich.',
+            selectedPointOutputDuty: 'Ausgabeleistung des Profils am ausgewählten Punkt',
+            selectedPointOffset: 'Versatzleistung am ausgewählten Punkt',
+            profileOutputDuty: 'Profil-Ausgabeleistung',
+            offsetDuty: 'Versatzleistung',
         },
         controls: {
             viewType: 'Ansichtstyp',
@@ -649,6 +677,37 @@ export default {
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
             imageTooLarge: 'Bild ist zu groß. Bitte wählen Sie ein kleineres.',
             notImageType: 'Bild wird nicht als Bildtyp erkannt',
+        },
+        shortcuts: {
+            shortcuts: 'Tastenkombinationen',
+            ctrl: 'Strg',
+            alt: 'Alt',
+            left: 'Links',
+            right: 'Rechts',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'Tastenkombinationen',
+            home: 'Startseite',
+            settings: 'Einstellungen',
+            info: 'Anwendungsinformationen',
+            dashboardOne: 'Dashboard Eins',
+            dashboardTwo: 'Dashboard Zwei',
+            dashboardThree: 'Dashboard Drei',
+            dashboardFour: 'Dashboard Vier',
+            alerts: 'Benachrichtigungen',
+            controls: 'Steuerungen',
+            sideMenuCollapse: 'Seitenmenü einklappen',
+            sideMenuExpand: 'Seitenmenü ausklappen',
+            fullScreen: 'Vollbild',
         },
     },
     daemon: {
@@ -822,6 +881,7 @@ export default {
                 selectSpeed: 'Wählen Sie Ihre Geschwindigkeit',
                 newMixProfile: 'Neues Mix-Profil',
                 newGraphProfile: 'Neues Graph-Profil',
+                newOverlayProfile: 'Neues Overlay-Profil',
                 functionFor: 'Wählen Sie eine anzuwendende Funktion aus',
                 functionDescription:
                     'Funktionen ermöglichen es Ihnen, weiter zu steuern, wie das Profil-Output angewendet wird.',
@@ -837,9 +897,32 @@ export default {
             profile: {
                 willCreated: 'wird erstellt.',
             },
+            profileApply: {
+                applyProfile: 'Profil anwenden',
+                channelsApply: 'Kanäle für Profilanwendung',
+                selectChannels: 'Kanäle auswählen',
+                channelsTooltip:
+                    'Wählen Sie einen oder mehrere Kanäle aus, auf die dieses Profil angewendet werden soll.',
+            },
+            functionApply: {
+                applyFunction: 'Funktion anwenden',
+                profilesApply: 'Profile für Funktionsanwendung',
+                selectProfiles: 'Profile auswählen',
+                profilesTooltip:
+                    'Wählen Sie ein oder mehrere Profile aus, auf die diese Funktion angewendet werden soll.',
+            },
             customSensor: {
                 new: 'Neuer benutzerdefinierter Sensor',
             },
+        },
+        channelExtensionSettings: {
+            title: 'Gerätekanal-Einstellungen',
+            firmwareControlledProfile: 'Firmware-gesteuertes Profil',
+            firmwareControlledProfileDesc:
+                'Wenn aktiviert, steuert die Geräte-Firmware das Lüfterprofil.\nNützlich bei Hardware, die auf häufige softwareseitige Geschwindigkeitsänderungen nicht gut reagiert.\nNur verfügbar für Graph-Profile, die geräteinterne Temperatursensoren verwenden.\nFunktions-Einstellungen gelten nicht.',
+            saveError: 'Speichern der Einstellungen der Kanalerweiterung fehlgeschlagen',
+            firmwareControlDisabled:
+                'Die Firmware-Steuerung ist mit den aktuellen Einstellungen nicht verfügbar.\nVerwenden Sie ein Graph-Profil für dieses Gerät mit einem unterstützten internen Temperatursensor.',
         },
     },
     auth: {
@@ -914,6 +997,7 @@ export default {
                 fixed: 'Fest',
                 graph: 'Graph',
                 mix: 'Mix',
+                overlay: 'Overlay',
             },
             functionType: {
                 identity: 'Identität',
@@ -924,12 +1008,14 @@ export default {
                 min: 'Minimum',
                 max: 'Maximum',
                 avg: 'Durchschnitt',
+                diff: 'Differenz',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'Mix',
                 file: 'Datei',
+                offset: 'Versatz',
             },
             mixFunctionType: {
                 min: 'Minimum',

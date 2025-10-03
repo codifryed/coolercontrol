@@ -37,11 +37,15 @@ interface Props {
     deviceUID: UID
     channelName: string
     name: string // profileName
-    // type: ProfileType // At this point type is always ProfileTypeGraph.
-    tempSource: ProfileTempSource
+    type: ProfileType
+    tempSource?: ProfileTempSource
     speedProfile: Array<[number, number]>
+    tempMin?: number
+    tempMax?: number
     functionUID: UID
     newFunction: Function | undefined
+    memberProfileIds: Array<UID>
+    offsetProfile: Array<[number, number]>
 }
 
 const props = defineProps<Props>()
@@ -80,6 +84,30 @@ const removeLocallyCreatedFunction = (): void => {
     }
     settingsStore.functions.splice(functionIndex, 1)
 }
+
+const backStep = (): void => {
+    const nextStep = props.type === ProfileType.Overlay ? 3 : 10
+    emit('nextStep', nextStep)
+}
+
+const createNewProfile = (): Profile => {
+    if (props.type === ProfileType.Overlay) {
+        const newProfile = new Profile(props.name, ProfileType.Overlay)
+        newProfile.member_profile_uids = props.memberProfileIds
+        newProfile.offset_profile = props.offsetProfile
+        return newProfile
+    } else if (props.type === ProfileType.Graph) {
+        const newProfile = new Profile(props.name, ProfileType.Graph)
+        newProfile.temp_source = props.tempSource!
+        newProfile.speed_profile = props.speedProfile
+        newProfile.temp_min = props.tempMin
+        newProfile.temp_max = props.tempMax
+        newProfile.function_uid = createNewFunction ? props.newFunction!.uid : props.functionUID
+        return newProfile
+    } else {
+        throw new Error('Unsupported profile type: ' + props.type)
+    }
+}
 const saveProfileAndFunction = async (): Promise<void> => {
     if (createNewFunction) {
         if (props.newFunction == null) {
@@ -97,10 +125,7 @@ const saveProfileAndFunction = async (): Promise<void> => {
         }
     }
 
-    const newProfile = new Profile(props.name, ProfileType.Graph)
-    newProfile.temp_source = props.tempSource
-    newProfile.speed_profile = props.speedProfile
-    newProfile.function_uid = createNewFunction ? props.newFunction!.uid : props.functionUID
+    const newProfile = createNewProfile()
     settingsStore.profiles.push(newProfile)
     const profileSuccess = await settingsStore.saveProfile(newProfile.uid)
     if (!profileSuccess) {
@@ -140,9 +165,11 @@ const saveProfileAndFunction = async (): Promise<void> => {
                     {{ t('components.wizards.fanControl.aNewProfile') }}:
                     <span class="font-bold">{{ props.name }}</span>
                     <br /><br />
-                    {{ t('components.wizards.fanControl.andFunction') }}:
-                    <span class="font-bold">{{ functionName }}</span>
-                    <br /><br />
+                    <span v-if="props.type === ProfileType.Graph">
+                        {{ t('components.wizards.fanControl.andFunction') }}:
+                        <span class="font-bold">{{ functionName }}</span>
+                        <br /><br />
+                    </span>
                     {{ t('components.wizards.fanControl.willCreatedAndAppliedTo') }}
                     <span class="font-bold">{{ channelLabel }}</span
                     >.
@@ -150,7 +177,7 @@ const saveProfileAndFunction = async (): Promise<void> => {
             </div>
         </div>
         <div class="flex flex-row justify-between mt-4">
-            <Button class="w-24 bg-bg-one" label="Back" @click="emit('nextStep', 10)">
+            <Button class="w-24 bg-bg-one" label="Back" @click="backStep">
                 <svg-icon
                     class="outline-0"
                     type="mdi"

@@ -35,13 +35,15 @@ export class UISettingsDTO {
 
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
+    homeDashboard?: UID
     themeMode: ThemeMode = ThemeMode.SYSTEM
     chartLineScale: number = 1.5
     time24: boolean = false
-    collapsedMenuNodeIds: Array<string> = []
+    menuOrder: Array<MenuOrderIds> = []
+    expandedMenuIds: Array<string> | undefined
+    pinnedIds: Array<string> = []
     collapsedMainMenu: boolean = false
     hideMenuCollapseIcon: boolean = false
-    menuEntitiesAtBottom: boolean = false
     mainMenuWidthRem: number = 24
     frequencyPrecision: number = 1
     customTheme: CustomThemeSettings = {
@@ -52,6 +54,7 @@ export class UISettingsDTO {
         textColor: defaultCustomTheme.textColor,
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
+    entityColors: Array<[string, string]> = []
     showOnboarding: boolean = true
 }
 
@@ -108,11 +111,16 @@ export const defaultCustomTheme: CustomThemeSettings = {
 }
 
 export class DeviceUISettingsDTO {
-    menuCollapsed: boolean = false
     userName?: string
+    userColor?: Color
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
+}
+
+export interface MenuOrderIds {
+    id: string
+    children: Array<string>
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>
@@ -121,12 +129,10 @@ export type AllDeviceSettings = Map<UID, DeviceUISettings>
  * A Device's Settings
  */
 export class DeviceUISettings {
-    /**
-     * Whether the main menu's Device entry is collapsed or not
-     */
-    menuCollapsed: boolean = false
     displayName: string = ''
     userName?: string
+    // An optional color for the device, default is the theme's text color:
+    userColor?: Color
 
     /**
      * A Map of Sensor and Channel Names to associated Settings.

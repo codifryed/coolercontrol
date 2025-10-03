@@ -33,6 +33,8 @@ IPC::IPC(QObject* parent)
           &MainWindow::acknowledgeDaemonErrors, Qt::QueuedConnection);
   connect(m_mainWindow, &MainWindow::forceQuitSignal, m_mainWindow, &MainWindow::forceQuit,
           Qt::QueuedConnection);
+  connect(m_mainWindow, &MainWindow::forceRefreshSignal, m_mainWindow, &MainWindow::forceRefresh,
+          Qt::QueuedConnection);
 }
 
 bool IPC::getStartInTray() const {
@@ -98,4 +100,9 @@ void IPC::syncSettings() const { m_settings->sync(); }
 void IPC::forceQuit() const {
   // this is only called when open from the UI currently
   emit m_mainWindow->forceQuitSignal();
+}
+
+void IPC::forceRefresh() const {
+  // Called from the UI to force a complete refresh of the Desktop UI
+  emit m_mainWindow->forceRefreshSignal();
 }

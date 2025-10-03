@@ -32,83 +32,98 @@ import {
     mdiChartLine,
     mdiChartMultiple,
     mdiCircleMultipleOutline,
+    mdiDotsVertical,
     mdiFan,
     mdiFlask,
     mdiFlaskOutline,
+    mdiHomeAnalytics,
     mdiLedOn,
     mdiLightningBoltCircle,
     mdiMemory,
+    mdiPinOutline,
     mdiSineWave,
     mdiSpeedometer,
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, inject, onMounted, onUnmounted, reactive, Reactive, ref, Ref, watch } from 'vue'
-import { ElDropdown, ElTree } from 'element-plus'
-import 'element-plus/es/components/tree/style/css'
+import { inject, onMounted, onUnmounted, ref, Ref, toRaw, watch } from 'vue'
+import { ElCollapse, ElCollapseItem } from 'element-plus'
+import 'element-plus/es/components/collapse/style/css'
+import Popover from 'primevue/popover'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Emitter, EventType } from 'mitt'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
 import MenuRename from '@/components/menu/MenuRename.vue'
-import MenuColor from '@/components/menu/MenuColor.vue'
+import MenuColorPicker from '@/components/menu/MenuColorPicker.vue'
 import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
-import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
-import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
+import SubMenuDashboardDelete from '@/components/menu/SubMenuDashboardDelete.vue'
+import SubMenuCustomSensorDelete from '@/components/menu/SubMenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
-import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
+import SubMenuFunctionDelete from '@/components/menu/SubMenuFunctionDelete.vue'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
-import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
-import MenuDashboardDuplicate from '@/components/menu/MenuDashboardDuplicate.vue'
-import MenuProfileDelete from '@/components/menu/MenuProfileDelete.vue'
+import SubMenuFunctionDuplicate from '@/components/menu/SubMenuFunctionDuplicate.vue'
+import SubMenuDashboardDuplicate from '@/components/menu/SubMenuDashboardDuplicate.vue'
+import SubMenuProfileDelete from '@/components/menu/SubMenuProfileDelete.vue'
 import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
-import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
+import SubMenuProfileDuplicate from '@/components/menu/SubMenuProfileDuplicate.vue'
 import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
 import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
 import MenuModeRename from '@/components/menu/MenuModeRename.vue'
-import MenuModeDelete from '@/components/menu/MenuModeDelete.vue'
-import MenuModeDuplicate from '@/components/menu/MenuModeDuplicate.vue'
-import MenuModeUpdate from '@/components/menu/MenuModeUpdate.vue'
-import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
+import SubMenuModeDelete from '@/components/menu/SubMenuModeDelete.vue'
+import SubMenuModeDuplicate from '@/components/menu/SubMenuModeDuplicate.vue'
+import SubMenuModeUpdate from '@/components/menu/SubMenuModeUpdate.vue'
 import MenuModeInfo from '@/components/menu/MenuModeInfo.vue'
 import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
 import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
 import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
 import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
-import TreeIcon from '@/components/TreeIcon.vue'
 import { AlertState } from '@/models/Alert.ts'
 import MenuAlertInfo from '@/components/menu/MenuAlertInfo.vue'
 import MenuAlertRename from '@/components/menu/MenuAlertRename.vue'
 import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
-import MenuAlertDelete from '@/components/menu/MenuAlertDelete.vue'
+import SubMenuAlertDelete from '@/components/menu/SubMenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
+import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
+import SubMenuMoveTop from '@/components/menu/SubMenuMoveTop.vue'
+import SubMenuMoveBottom from '@/components/menu/SubMenuMoveBottom.vue'
+import SubMenuDisable from '@/components/menu/SubMenuDisable.vue'
+import { useDaemonState } from '@/stores/DaemonState.ts'
+import SubMenuPin from '@/components/menu/SubMenuPin.vue'
+import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
+import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
+import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
+import SubMenuAlertDuplicate from '@/components/menu/SubMenuAlertDuplicate.vue'
+import SubMenuAlertAddFail from '@/components/menu/SubMenuAlertAddFail.vue'
+import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
+import SubMenuDeviceColorPicker from '@/components/menu/SubMenuDeviceColorPicker.vue'
+import SubMenuEntityColorPicker from '@/components/menu/SubMenuEntityColorPicker.vue'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 
-// interface Tree {
-//     label: string
-//     children?: Tree[]
-// }
 interface Tree {
-    // necessary for test filter
     [key: string]: any
 }
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const colorStore = useThemeColorsStore()
 const router = useRouter()
 const route = useRoute()
+const daemonState = useDaemonState()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const { t } = useI18n()
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
-const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => {
-    let color = ref('')
+const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Ref<Color> => {
+    // blank color will use the theme's css
+    const color = ref('')
     if (
         deviceUID == null ||
         deviceUID.startsWith('Dashboards') ||
@@ -124,8 +139,62 @@ const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => 
     }
     return color
 }
+const deviceColor = (deviceUID: UID | undefined): Ref<Color> => {
+    // blank color will use the theme's css
+    const color = ref('')
+    if (deviceUID != null) {
+        if (settingsStore.allUIDeviceSettings.get(deviceUID) == null) {
+            return color
+        }
+        // default device color should be the theme's text color:
+        color.value =
+            settingsStore.allUIDeviceSettings.get(deviceUID)?.userColor ??
+            colorStore.themeColors.text_color
+    }
+    return color
+}
 
-const deviceChannelIconSize = (deviceUID: UID, name: string | undefined): number => {
+const entityColor = (entityID: string): Ref<Color> => {
+    const color = ref('')
+    const foundColorEntry = settingsStore.entityColors.find(
+        (entityColor) => entityColor[0] === entityID,
+    )
+    if (entityID === 'dashboards') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#FF7F00'
+    } else if (entityID === 'modes') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#7F00FF'
+    } else if (entityID === 'profiles') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#007FFF'
+    } else if (entityID === 'functions') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#7FFF00'
+    } else if (entityID === 'alerts') {
+        color.value = foundColorEntry != null ? foundColorEntry[1] : '#FF007F'
+    }
+    return color
+}
+const getIconColor = (item: any): Color => {
+    if (item.color != null) {
+        return item.color
+    }
+    if (item.name == null) {
+        if (item.deviceUID == null) {
+            return entityColor(item.id).value
+        } else {
+            return deviceColor(item.deviceUID).value
+        }
+    }
+    return deviceChannelColor(item.deviceUID, item.name).value
+}
+
+const getLabelColor = (item: any): Color => {
+    // this is only used for devices currently
+    if (item.name == null && item.deviceUID != null) {
+        return deviceColor(item.deviceUID).value
+    }
+    return ''
+}
+
+const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefined): number => {
     if (deviceUID == null) {
         // Group root like Dashboards, Modes, etc
         return 1.75
@@ -136,7 +205,7 @@ const deviceChannelIconSize = (deviceUID: UID, name: string | undefined): number
         deviceUID.startsWith('Profiles') ||
         deviceUID.startsWith('Functions')
     ) {
-        return 1.0
+        return 1.25
     } else if (deviceUID && !name) {
         // Device roots
         return 1.75
@@ -146,93 +215,199 @@ const deviceChannelIconSize = (deviceUID: UID, name: string | undefined): number
     }
 }
 
-// const filterText: Ref<string> = ref('')
-const treeRef = ref<InstanceType<typeof ElTree>>()
-const speedControlMenuClass = ({ isControllable }: TreeNodeData) =>
-    isControllable ? 'speed-control-menu' : ''
-const nodeProps = {
-    children: 'children',
-    label: 'label',
-    class: speedControlMenuClass,
-}
-const data: Reactive<Tree[]> = reactive([])
+const data: Ref<Array<Tree>> = ref([])
+const pinnedItems: Ref<Array<Tree>> = ref([])
 
-// Remove computed wrapper for menu data
-const createTreeMenu = (): void => {
-    data.length = 0
-    const result: Tree[] = []
-    if (settingsStore.menuEntitiesAtBottom) {
-        result.push(customSensorsTree())
-        result.push(...devicesTreeArray())
-        result.push(dashboardsTree())
-        result.push(modesTree())
-        result.push(profilesTree())
-        result.push(functionsTree())
-        result.push(alertsTree())
-    } else {
-        result.push(dashboardsTree())
-        result.push(modesTree())
-        result.push(profilesTree())
-        result.push(functionsTree())
-        result.push(alertsTree())
-        result.push(customSensorsTree())
-        result.push(...devicesTreeArray())
-    }
-    data.push(...result)
+const pinItem = (item: any) => {
+    pinnedItems.value.push(item)
+    changedPinnedItems()
 }
-// const pinnedTree = (data: Reactive<Tree[]>): any => {
-//     // todo: only add pinned node if there are pins
-//     //  perhaps the children should be added after the tree is created and "we link to the already created child ID"? (copy-ish)
-//
-//     // pull saved "pinned" node IDs from settingsStore
-//     // copy those nodes from the data array and add them to the pinned tree
-//     return {
-//         id: 'pinned',
-//         label: 'Pinned',
-//         icon: mdiPinOutline,
-//         name: null, // devices should not have names
-//         options: [],
-//     }
-// }
+const isPinned = (item: any): boolean => {
+    return pinnedItems.value.some((pinnedItem) => pinnedItem.id === item.id)
+}
+const unPinItem = (item: any) => {
+    pinnedItems.value = pinnedItems.value.filter((pinnedItem) => pinnedItem.id !== item.id)
+    changedPinnedItems()
+}
+const changedPinnedItems = () => {
+    settingsStore.pinnedIds = pinnedItems.value.map((item: any) => item.id)
+}
+
+enum Menu {
+    COLOR,
+    RENAME,
+    DEVICE_INFO,
+    CUSTOM_SENSOR_INFO,
+    CUSTOM_SENSOR_ADD,
+    DASHBOARD_INFO,
+    DASHBOARD_ADD,
+    DASHBOARD_HOME,
+    DASHBOARD_RENAME,
+    MODE_INFO,
+    MODE_ADD,
+    MODE_ACTIVATE,
+    MODE_RENAME,
+    PROFILE_INFO,
+    PROFILE_ADD,
+    PROFILE_APPLY,
+    PROFILE_RENAME,
+    FUNCTION_INFO,
+    FUNCTION_ADD,
+    FUNCTION_APPLY,
+    FUNCTION_RENAME,
+    ALERT_INFO,
+    ALERT_ADD,
+    ALERT_RENAME,
+    IS_CONTROLLABLE,
+}
+enum SubMenu {
+    MOVE_TOP,
+    PIN,
+    COLOR,
+    DISABLE,
+    CUSTOM_SENSOR_DELETE,
+    DASHBOARD_DUPLICATE,
+    DASHBOARD_DELETE,
+    MODE_UPDATE,
+    MODE_DUPLICATE,
+    MODE_DELETE,
+    PROFILE_DUPLICATE,
+    PROFILE_DELETE,
+    FUNCTION_DUPLICATE,
+    FUNCTION_DELETE,
+    ALERT_DUPLICATE,
+    ALERT_DELETE,
+    ALERT_ADD_FAIL,
+    ALERT_ADD_TEMP,
+    MOVE_BOTTOM,
+}
+
+const createTreeMenu = (): void => {
+    data.value.length = 0
+    const result: Tree[] = []
+    result.push(dashboardsTree())
+    result.push(modesTree())
+    result.push(profilesTree())
+    result.push(functionsTree())
+    result.push(alertsTree())
+    result.push(customSensorsTree())
+    result.push(...devicesTreeArray())
+    if (settingsStore.menuOrder.length > 0) {
+        // Sort main menu items
+        const getRootIndex = (item: any) => {
+            const index = settingsStore.menuOrder.findIndex((menuItem) => menuItem.id === item.id)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        result.sort((a, b) => getRootIndex(a) - getRootIndex(b))
+
+        // Sort children of each menu item
+        result.forEach((menuItem) => {
+            const menuOrderItem = settingsStore.menuOrder.find((item) => item.id === menuItem.id)
+            if (menuOrderItem?.children?.length) {
+                const getIndex = (item: any) => {
+                    const index = menuOrderItem.children.indexOf(item.id)
+                    return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+                }
+                menuItem.children.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+            }
+        })
+        sortStoreProfiles()
+        sortStoreFunctions()
+        deviceStore.reSortDevicesByMenuOrder(true)
+    }
+    data.value.push(...result)
+}
+
+const saveMenuOrderChanges = () => {
+    settingsStore.menuOrder = data.value.map((item: any) => {
+        return { id: item.id, children: item.children.map((child: any) => child.id) }
+    })
+    sortStoreProfiles()
+    sortStoreFunctions()
+    deviceStore.reSortDevicesByMenuOrder()
+}
+
+const sortStoreProfiles = () => {
+    const profilesOrderItem = settingsStore.menuOrder.find((item) => item.id === 'profiles')
+    if (profilesOrderItem?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = profilesOrderItem.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        settingsStore.profiles.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
+}
+const sortStoreFunctions = () => {
+    const functionsOrderItem = settingsStore.menuOrder.find((item) => item.id === 'functions')
+    if (functionsOrderItem?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = functionsOrderItem.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        settingsStore.functions.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
+}
+
+const createPinnedMenu = (): void => {
+    pinnedItems.value.length = 0
+    if (settingsStore.pinnedIds.length > 0) {
+        settingsStore.pinnedIds.forEach((id: string) => {
+            data.value.forEach((item: any) => {
+                item.children.forEach((child: any) => {
+                    if (child.id === id) {
+                        pinnedItems.value.push(child)
+                    }
+                })
+            })
+        })
+    }
+}
+
 const dashboardsTree = (): any => {
     return {
         id: 'dashboards',
         label: t('layout.menu.dashboards'),
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
-        options: [{ dashboardInfo: true }, { dashboardAdd: true }],
+        menus: [Menu.DASHBOARD_INFO, Menu.DASHBOARD_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.dashboards.map((dashboard) => {
             return {
                 id: dashboard.uid,
                 label: dashboard.name,
-                icon: mdiChartBoxOutline,
+                icon:
+                    dashboard.uid === settingsStore.homeDashboard
+                        ? mdiHomeAnalytics
+                        : mdiChartBoxOutline,
                 deviceUID: 'Dashboards',
                 dashboardUID: dashboard.uid,
                 name: dashboard.uid,
                 to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-                options: [
-                    { dashboardHome: true },
-                    { dashboardRename: true },
-                    { dashboardDuplicate: true },
-                    { dashboardDelete: true },
+                menus: [Menu.DASHBOARD_HOME, Menu.DASHBOARD_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.DASHBOARD_DUPLICATE,
+                    SubMenu.DASHBOARD_DELETE,
+                    SubMenu.MOVE_BOTTOM,
                 ],
             }
         }),
     }
 }
-const homeDashboardUID = computed(() => settingsStore.dashboards[0]?.uid)
 const modesTree = (): any => {
     return {
         id: 'modes',
         label: t('layout.menu.modes'),
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
-        options: [{ modeInfo: true }, { modeAdd: true }],
+        menus: [Menu.MODE_INFO, Menu.MODE_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modeActiveCurrent === mode.uid
             const isRecentlyActive: boolean = settingsStore.modeActivePrevious === mode.uid
             return {
-                id: `modes_${mode.uid}`,
+                id: mode.uid,
                 label: mode.name,
                 icon: isActive
                     ? mdiBookmarkCheckOutline
@@ -244,11 +419,14 @@ const modesTree = (): any => {
                 isActive: isActive,
                 isRecentlyActive: isRecentlyActive,
                 to: { name: 'modes', params: { modeUID: mode.uid } },
-                options: [
-                    { modeRename: true },
-                    { modeUpdate: true },
-                    { modeDuplicate: true },
-                    { modeDelete: true },
+                menus: [Menu.MODE_ACTIVATE, Menu.MODE_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.MODE_UPDATE,
+                    SubMenu.MODE_DUPLICATE,
+                    SubMenu.MODE_DELETE,
+                    SubMenu.MOVE_BOTTOM,
                 ],
             }
         }),
@@ -261,21 +439,25 @@ const profilesTree = (): any => {
         label: t('layout.menu.profiles'),
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        options: [{ profileInfo: true }, { profileAdd: true }],
+        menus: [Menu.PROFILE_INFO, Menu.PROFILE_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
                 return {
-                    id: `profiles_${profile.uid}`,
+                    id: profile.uid,
                     label: profile.name,
                     icon: mdiChartLine,
                     deviceUID: 'Profiles',
                     uid: profile.uid,
                     to: { name: 'profiles', params: { profileUID: profile.uid } },
-                    options: [
-                        { profileRename: true },
-                        { profileDuplicate: true },
-                        { profileDelete: true },
+                    menus: [Menu.PROFILE_APPLY, Menu.PROFILE_RENAME],
+                    subMenus: [
+                        SubMenu.MOVE_TOP,
+                        SubMenu.PIN,
+                        SubMenu.PROFILE_DUPLICATE,
+                        SubMenu.PROFILE_DELETE,
+                        SubMenu.MOVE_BOTTOM,
                     ],
                 }
             }),
@@ -288,21 +470,25 @@ const functionsTree = (): any => {
         label: t('layout.menu.functions'),
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
-        options: [{ functionInfo: true }, { functionAdd: true }],
+        menus: [Menu.FUNCTION_INFO, Menu.FUNCTION_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.functions
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
                 return {
-                    id: `functions_${fun.uid}`,
+                    id: fun.uid,
                     label: fun.name,
                     icon: mdiFlask,
                     deviceUID: 'Functions',
                     uid: fun.uid,
                     to: { name: 'functions', params: { functionUID: fun.uid } },
-                    options: [
-                        { functionRename: true },
-                        { functionDuplicate: true },
-                        { functionDelete: true },
+                    menus: [Menu.FUNCTION_APPLY, Menu.FUNCTION_RENAME],
+                    subMenus: [
+                        SubMenu.MOVE_TOP,
+                        SubMenu.PIN,
+                        SubMenu.FUNCTION_DUPLICATE,
+                        SubMenu.FUNCTION_DELETE,
+                        SubMenu.MOVE_BOTTOM,
                     ],
                 }
             }),
@@ -315,18 +501,26 @@ const alertsTree = (): any => {
         label: t('layout.menu.alerts'),
         name: null, // devices should not have names
         icon: mdiBellCircleOutline,
-        options: [{ alertInfo: true }, { alertAdd: true }],
+        menus: [Menu.ALERT_INFO, Menu.ALERT_ADD],
+        subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
         children: settingsStore.alerts.map((alert) => {
             const isActive: boolean = settingsStore.alertsActive.includes(alert.uid)
             return {
-                id: `alerts_${alert.uid}`,
+                id: alert.uid,
                 label: alert.name,
                 icon: isActive ? mdiBellRingOutline : mdiBellOutline,
                 deviceUID: 'Alerts',
                 uid: alert.uid,
                 alertIsActive: isActive,
                 to: { name: 'alerts', params: { alertUID: alert.uid } },
-                options: [{ alertRename: true }, { alertDelete: true }],
+                menus: [Menu.ALERT_RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.ALERT_DUPLICATE,
+                    SubMenu.ALERT_DELETE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             }
         }),
     }
@@ -342,33 +536,55 @@ const customSensorsTree = (): any => {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const temp of device.status.temps) {
             sensorsChildren.push({
-                id: `custom-sensors_${temp.name}`,
+                // This prefix is needed, as names are not unique across devices
+                id: `${device.uid}_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
-                hasColor: true,
-                color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ rename: true }, { color: true }, { customSensorDelete: true }],
+                menus: [Menu.COLOR, Menu.RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.ALERT_ADD_TEMP,
+                    SubMenu.CUSTOM_SENSOR_DELETE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             })
         }
         return {
-            id: 'custom-sensors',
+            // deviceUID is used to sort the menu items and custom-sensors has a deviceUID
+            id: deviceUID,
             label: t('layout.menu.customSensors'),
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,
-            options: [{ customSensorInfo: true }, { customSensorAdd: true }],
+            menus: [Menu.CUSTOM_SENSOR_INFO, Menu.CUSTOM_SENSOR_ADD],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
             children: sensorsChildren,
         }
     }
 }
-const aSubMenuIsOpen: Ref<boolean> = ref(false)
-const subMenuStatusChange = (isOpen: boolean, data: any): void => {
-    aSubMenuIsOpen.value = isOpen
-    if (!isOpen) data.dropdownRef.handleClose()
+
+const hoverMenusAreClosed: Ref<boolean> = ref(true)
+const setHoverMenuStatus = (isOpen: boolean): void => {
+    hoverMenusAreClosed.value = !isOpen
+    const elements = document.querySelectorAll('.el-collapse-item__header')
+    for (const element of elements) {
+        if (isOpen) {
+            // This overrides the hover:bg-bg-two style set in the CSS style
+            // The reason for this is to avoid a flicker effect that happens when we add or remove
+            // css classes, which is due to the EL component also changing the classes (is-active).
+            element.setAttribute(
+                'style',
+                'background-color: rgb(var(--colors-bg-one)); cursor: default;',
+            )
+        } else {
+            element.removeAttribute('style')
+        }
+    }
 }
 
 const devicesTreeArray = (): any[] => {
@@ -385,7 +601,8 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ deviceInfo: true }, { rename: true }],
+            menus: [Menu.DEVICE_INFO, Menu.RENAME],
+            subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -393,8 +610,6 @@ const devicesTreeArray = (): any[] => {
                 id: `${device.uid}_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
-                hasColor: true,
-                color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
                 to: {
                     name: 'single-dashboard',
@@ -402,7 +617,14 @@ const devicesTreeArray = (): any[] => {
                 },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ rename: true }, { color: true }],
+                menus: [Menu.COLOR, Menu.RENAME],
+                subMenus: [
+                    SubMenu.MOVE_TOP,
+                    SubMenu.PIN,
+                    SubMenu.ALERT_ADD_TEMP,
+                    SubMenu.DISABLE,
+                    SubMenu.MOVE_BOTTOM,
+                ],
             })
         }
         for (const channel of device.status.channels) {
@@ -412,8 +634,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSineWave,
                     to: {
                         name: 'single-dashboard',
@@ -421,7 +641,8 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
-                    options: [{ rename: true }, { color: true }],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -432,8 +653,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiLightningBoltCircle,
                     to: {
                         name: 'single-dashboard',
@@ -441,7 +660,8 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     watts: channel.watts,
-                    options: [{ rename: true }, { color: true }],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -452,8 +672,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channel.name}`,
                     label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
                     name: channel.name,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSpeedometer,
                     to: {
                         name: 'single-dashboard',
@@ -462,7 +680,8 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
-                    options: [{ rename: true }, { color: true }],
+                    menus: [Menu.COLOR, Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -487,8 +706,6 @@ const devicesTreeArray = (): any[] => {
                     id: `${device.uid}_${channelName}`,
                     label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
                     name: channelName,
-                    hasColor: true,
-                    color: deviceChannelColor(device.uid, channelName),
                     icon: mdiFan,
                     to: {
                         name: 'device-speed',
@@ -498,7 +715,17 @@ const devicesTreeArray = (): any[] => {
                     duty: duty,
                     rpm: rpm,
                     isControllable: isControllable,
-                    options: [{ rename: true }, { color: true }, { speedControls: isControllable }],
+                    menus: [Menu.COLOR, Menu.RENAME, Menu.IS_CONTROLLABLE],
+                    subMenus:
+                        rpm != null
+                            ? [
+                                  SubMenu.MOVE_TOP,
+                                  SubMenu.PIN,
+                                  SubMenu.ALERT_ADD_FAIL,
+                                  SubMenu.DISABLE,
+                                  SubMenu.MOVE_BOTTOM,
+                              ]
+                            : [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -517,7 +744,8 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }],
+                    menus: [Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -536,7 +764,8 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ rename: true }],
+                    menus: [Menu.RENAME],
+                    subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
             }
         }
@@ -546,44 +775,57 @@ const devicesTreeArray = (): any[] => {
 }
 
 createTreeMenu()
+const expandMenusByDefault = (): void => {
+    if (settingsStore.expandedMenuIds == null || settingsStore.expandedMenuIds.length == 0) {
+        // First run/no settings, so expand all menus
+        settingsStore.expandedMenuIds = data.value.map((node: any) => node.id)
+        return
+    }
+    // Check if there are any newly added devices, and if so, add them to the expanded menu ids
+    const newDevices: Array<string> = data.value
+        .filter(
+            (node: any) =>
+                settingsStore.menuOrder.findIndex((menuOrder) => menuOrder.id === node.id) < 0,
+        )
+        .map((node: any) => node.id)
+    settingsStore.expandedMenuIds.push(...newDevices)
+}
+expandMenusByDefault()
+createPinnedMenu()
 
 const formatFrequency = (value: string): string =>
     settingsStore.frequencyPrecision === 1
         ? value
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
-
-const expandedNodeIds = (): Array<string> => {
-    return data
-        .filter((node: any) => !settingsStore.collapsedMenuNodeIds.includes(node.id))
-        .map((node: any) => node.id)
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
     )!
-    treeRef.value!.append(
-        {
-            id: dashboardUID,
-            label: newDashboard.name,
-            icon: mdiChartBoxOutline,
-            deviceUID: 'Dashboards',
-            dashboardUID: dashboardUID,
-            name: dashboardUID,
-            to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
-            options: [
-                { dashboardHome: true },
-                { dashboardRename: true },
-                { dashboardDuplicate: true },
-                { dashboardDelete: true },
-            ],
-        },
-        'dashboards',
-    )
-    adjustTreeLeaves()
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children.push({
+        id: dashboardUID,
+        label: newDashboard.name,
+        icon: mdiChartBoxOutline,
+        deviceUID: 'Dashboards',
+        dashboardUID: dashboardUID,
+        name: dashboardUID,
+        to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
+        menus: [Menu.DASHBOARD_HOME, Menu.DASHBOARD_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.DASHBOARD_DUPLICATE,
+            SubMenu.DASHBOARD_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
+
 interface DashboardUIDObj {
     dashboardUID: UID
 }
+
 const addDashboardMenu = (dashboardUIDObj: DashboardUIDObj): void =>
     addDashbaord(dashboardUIDObj.dashboardUID)
 emitter.on('dashboard-add-menu', addDashboardMenu)
@@ -592,30 +834,24 @@ const deleteDashboard = async (dashboardUID: UID): Promise<void> => {
     if (route.params != null && route.params.dashboardUID === dashboardUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children = dashboardParent!.children.filter(
+        (item: any) => item.id !== dashboardUID,
+    )
+    unPinItem({ id: dashboardUID })
 }
-const rearrangeDashboards = (): void => {
-    const children = settingsStore.dashboards.map((dashboard) => {
-        return {
-            id: dashboard.uid,
-            label: dashboard.name,
-            icon: mdiChartBoxOutline,
-            deviceUID: 'Dashboards',
-            dashboardUID: dashboard.uid,
-            name: dashboard.uid,
-            to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-            options: [
-                { dashboardHome: true },
-                { dashboardRename: true },
-                { dashboardDuplicate: true },
-                { dashboardDelete: true },
-            ],
-        }
+const homeDashboardSet = async (): Promise<void> => {
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    dashboardParent!.children.forEach((item: any) => {
+        item.icon =
+            item.dashboardUID === settingsStore.homeDashboard
+                ? mdiHomeAnalytics
+                : mdiChartBoxOutline
     })
-    treeRef.value!.getNode('dashboards').childNodes = []
-    treeRef.value!.getNode('dashboards').doCreateChildren(children)
+    await router.push({ name: 'system-overview' })
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
  * Updates the mode tree nodes to reflect the current active modes.
  *
@@ -625,20 +861,18 @@ const rearrangeDashboards = (): void => {
  * @param {string} _ - the UID of the mode that was just activated/deactivated
  */
 const activeModesChange = async (_: UID): Promise<void> => {
-    treeRef
-        .value!.getNode('modes')
-        .getChildren()
-        .forEach((data: TreeNodeData) => {
-            const isActive: boolean = settingsStore.modeActiveCurrent === data.uid
-            const isRecentlyActive: boolean = settingsStore.modeActivePrevious === data.uid
-            data.icon = isActive
-                ? mdiBookmarkCheckOutline
-                : isRecentlyActive
-                  ? mdiBookmarkOffOutline
-                  : mdiBookmarkOutline
-            data.isActive = isActive
-            data.isRecentlyActive = isRecentlyActive
-        })
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    modesParent?.children.forEach((item: any) => {
+        const isActive: boolean = settingsStore.modeActiveCurrent === item.uid
+        const isRecentlyActive: boolean = settingsStore.modeActivePrevious === item.uid
+        item.icon = isActive
+            ? mdiBookmarkCheckOutline
+            : isRecentlyActive
+              ? mdiBookmarkOffOutline
+              : mdiBookmarkOutline
+        item.isActive = isActive
+        item.isRecentlyActive = isRecentlyActive
+    })
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
@@ -650,34 +884,36 @@ const addMode = (modeUID: UID): void => {
     const newMode = settingsStore.modes.find((mode) => mode.uid === modeUID)!
     const isActive: boolean = settingsStore.modeActiveCurrent === newMode.uid
     const isRecentlyActive: boolean = settingsStore.modeActivePrevious === newMode.uid
-    treeRef.value!.append(
-        {
-            id: `modes_${newMode.uid}`,
-            label: newMode.name,
-            icon: isActive
-                ? mdiBookmarkCheckOutline
-                : isRecentlyActive
-                  ? mdiBookmarkOffOutline
-                  : mdiBookmarkOutline,
-            deviceUID: 'Modes',
-            uid: newMode.uid,
-            isActive: isActive,
-            isRecentlyActive: isRecentlyActive,
-            to: { name: 'modes', params: { modeUID: newMode.uid } },
-            options: [
-                { modeRename: true },
-                { modeUpdate: true },
-                { modeDuplicate: true },
-                { modeDelete: true },
-            ],
-        },
-        'modes',
-    )
-    adjustTreeLeaves()
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    modesParent!.children.push({
+        id: newMode.uid,
+        label: newMode.name,
+        icon: isActive
+            ? mdiBookmarkCheckOutline
+            : isRecentlyActive
+              ? mdiBookmarkOffOutline
+              : mdiBookmarkOutline,
+        deviceUID: 'Modes',
+        uid: newMode.uid,
+        isActive: isActive,
+        isRecentlyActive: isRecentlyActive,
+        to: { name: 'modes', params: { modeUID: newMode.uid } },
+        menus: [Menu.MODE_ACTIVATE, Menu.MODE_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.MODE_UPDATE,
+            SubMenu.MODE_DUPLICATE,
+            SubMenu.MODE_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
+
 interface ModeUIDObj {
     modeUID: UID
 }
+
 const addModeMenu = (modeUIDObj: ModeUIDObj): void => addMode(modeUIDObj.modeUID)
 emitter.on('mode-add-menu', addModeMenu)
 
@@ -685,29 +921,37 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     if (route.params != null && route.params.modeUID === modeUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`modes_${modeUID}`))
+    const modesParent = data.value.find((item: any) => item.id === 'modes')!
+    modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
+    unPinItem({ id: modeUID })
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addProfile = (profileUID: UID): void => {
     const newProfile = settingsStore.profiles.find((profile) => profile.uid === profileUID)!
-    treeRef.value!.append(
-        {
-            id: `profiles_${newProfile.uid}`,
-            label: newProfile.name,
-            icon: mdiChartLine,
-            deviceUID: 'Profiles',
-            uid: newProfile.uid,
-            to: { name: 'profiles', params: { profileUID: newProfile.uid } },
-            options: [{ profileRename: true }, { profileDuplicate: true }, { profileDelete: true }],
-        },
-        'profiles',
-    )
-    adjustTreeLeaves()
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')
+    profilesParent?.children.push({
+        id: newProfile.uid,
+        label: newProfile.name,
+        icon: mdiChartLine,
+        deviceUID: 'Profiles',
+        uid: newProfile.uid,
+        to: { name: 'profiles', params: { profileUID: newProfile.uid } },
+        menus: [Menu.PROFILE_APPLY, Menu.PROFILE_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.PROFILE_DUPLICATE,
+            SubMenu.PROFILE_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
 
 interface ProfileUIDObj {
     profileUID: UID
 }
+
 const addProfileMenu = (profileUIDObj: ProfileUIDObj): void => addProfile(profileUIDObj.profileUID)
 emitter.on('profile-add-menu', addProfileMenu)
 
@@ -715,32 +959,37 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     if (route.params != null && route.params.profileUID === profileUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`profiles_${profileUID}`))
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')!
+    profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
+    unPinItem({ id: profileUID })
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
 const addFunction = (functionUID: UID): void => {
     const newFunction = settingsStore.functions.find((fun) => fun.uid === functionUID)!
-    treeRef.value!.append(
-        {
-            id: `functions_${newFunction.uid}`,
-            label: newFunction.name,
-            icon: mdiFlask,
-            deviceUID: 'Functions',
-            uid: newFunction.uid,
-            to: { name: 'functions', params: { functionUID: newFunction.uid } },
-            options: [
-                { functionRename: true },
-                { functionDuplicate: true },
-                { functionDelete: true },
-            ],
-        },
-        'functions',
-    )
-    adjustTreeLeaves()
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')
+    functionsParent?.children.push({
+        id: newFunction.uid,
+        label: newFunction.name,
+        icon: mdiFlask,
+        deviceUID: 'Functions',
+        uid: newFunction.uid,
+        to: { name: 'functions', params: { functionUID: newFunction.uid } },
+        menus: [Menu.FUNCTION_APPLY, Menu.FUNCTION_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.FUNCTION_DUPLICATE,
+            SubMenu.FUNCTION_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
+
 interface FunctionUIDObj {
     functionUID: UID
 }
+
 const addFunctionMenu = (functionUIDObj: FunctionUIDObj): void =>
     addFunction(functionUIDObj.functionUID)
 emitter.on('function-add-menu', addFunctionMenu)
@@ -749,433 +998,1204 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     if (route.params != null && route.params.functionUID === functionUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')!
+    functionsParent.children = functionsParent.children.filter(
+        (item: any) => item.id !== functionUID,
+    )
+    unPinItem({ id: functionUID })
 }
 
-interface AlertUIDObj {
-    alertUID: UID
-}
-const addAlert = (alertUIDObj: AlertUIDObj): void => {
-    const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUIDObj.alertUID)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+const addAlert = (alertUID: UID): void => {
+    const newAlert = settingsStore.alerts.find((alert) => alert.uid === alertUID)
     if (newAlert == null) {
-        console.error('Alert with UID: ' + alertUIDObj.alertUID + ' not found')
+        console.error('Alert with UID: ' + alertUID + ' not found')
         return
     }
     const isActive = newAlert.state === AlertState.Active
-    treeRef.value!.append(
-        {
-            id: `alerts_${newAlert.uid}`,
-            label: newAlert.name,
-            icon: isActive ? mdiBellRingOutline : mdiBellOutline,
-            deviceUID: 'Alerts',
-            uid: newAlert.uid,
-            alertIsActive: isActive,
-            to: { name: 'alerts', params: { alertUID: newAlert.uid } },
-            options: [{ alertRename: true }, { alertDelete: true }],
-        },
-        'alerts',
-    )
-    adjustTreeLeaves()
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')
+    alertsParent?.children.push({
+        id: newAlert.uid,
+        label: newAlert.name,
+        icon: isActive ? mdiBellRingOutline : mdiBellOutline,
+        deviceUID: 'Alerts',
+        uid: newAlert.uid,
+        alertIsActive: isActive,
+        to: { name: 'alerts', params: { alertUID: newAlert.uid } },
+        menus: [Menu.ALERT_RENAME],
+        subMenus: [
+            SubMenu.MOVE_TOP,
+            SubMenu.PIN,
+            SubMenu.ALERT_DUPLICATE,
+            SubMenu.ALERT_DELETE,
+            SubMenu.MOVE_BOTTOM,
+        ],
+    })
 }
-emitter.on('alert-add-menu', addAlert)
+interface AlertUIDObj {
+    alertUID: UID
+}
+const addAlertMenu = (alertUIDObj: AlertUIDObj) => addAlert(alertUIDObj.alertUID)
+emitter.on('alert-add-menu', addAlertMenu)
 
 const deleteAlert = async (alertUID: UID): Promise<void> => {
     if (route.params != null && route.params.alertUID === alertUID) {
         await router.push({ name: 'system-overview' })
     }
-    treeRef.value!.remove(treeRef.value!.getNode(`alerts_${alertUID}`))
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
+    alertsParent.children = alertsParent.children.filter((item: any) => item.id !== alertUID)
+    unPinItem({ id: alertUID })
 }
 
 const alertStateChange = (): void => {
-    treeRef
-        .value!.getNode('alerts')
-        .getChildren()
-        .forEach((data: TreeNodeData) => {
-            const isActive = settingsStore.alertsActive.includes(data.uid)
-            data.alertIsActive = isActive
-            data.icon = isActive ? mdiBellRingOutline : mdiBellOutline
-        })
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')!
+    alertsParent.children.forEach((item: any) => {
+        const isActive = settingsStore.alertsActive.includes(item.uid)
+        item.alertIsActive = isActive
+        item.icon = isActive ? mdiBellRingOutline : mdiBellOutline
+    })
 }
 emitter.on('alert-state-change', alertStateChange)
 
 watch(settingsStore.alertsActive, alertStateChange)
 
-const adjustTreeLeaves = (): void => {
-    const dynamicAdjustment = (): void => {
-        const mainMenu = document.getElementById('main-menu')
-        const children = mainMenu!.getElementsByClassName('el-tree-node__children')
-        for (const child of children) {
-            const els = child!.getElementsByClassName('el-tree-node__expand-icon is-leaf')
-            if (els.length > 0) {
-                for (const el of els) {
-                    el.innerHTML = '<div class="w-2"/>'
-                    el.classList.add('border-l')
-                    el.classList.add('border-border-one/70')
-                    el.classList.add('!visible')
-                    el.classList.add('!h-[inherit]')
-                    el.classList.remove('el-icon')
-                    el.classList.add('w-2')
-                }
-            }
-        }
-    }
-    setTimeout(dynamicAdjustment)
-}
-onMounted(async () => {
-    adjustTreeLeaves()
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// add group class to all collapse header items (used to show options menus on hover)
+const addGroup = (): void => {
+    setTimeout(() => {
+        const elements = document.querySelectorAll('.el-collapse-item__header')
+        for (const element of elements) {
+            element.classList.add('group')
+        }
+    })
+}
+const moveToTop = (item: any, data: any): void => {
+    item.subMenuRef.hide()
+    data.splice(data.indexOf(item), 1)
+    data.unshift(item)
+}
+
+const moveToBottom = (item: any, data: any): void => {
+    item.subMenuRef.hide()
+    data.splice(data.indexOf(item), 1)
+    data.push(item)
+}
+
+onMounted(async () => {
     // Listen for language change events, refresh menu
     window.addEventListener('language-changed', () => {
         createTreeMenu()
+        createPinnedMenu()
     })
+
+    addGroup()
 })
 
 // Remove event listeners when component is unmounted
 onUnmounted(() => {
     window.removeEventListener('language-changed', () => {
         createTreeMenu()
+        createPinnedMenu()
     })
 })
 </script>
 
 <template>
-    <!--    <div-->
-    <!--        id="system-menu"-->
-    <!--        class="flex h-[3.625rem] text-text-color mx-0 border-b-4 border-border-one pb-1 tree-text"-->
-    <!--    >-->
-    <!--            <span class="flex ml-4 text-2xl mb-1 items-center">-->
-    <!--                {{ daemonState.systemName }}-->
-    <!--            </span>-->
-    <!--    </div>-->
-    <div>
-        <el-tree
-            ref="treeRef"
-            id="main-menu"
-            class="w-full"
-            :data="data"
-            :props="nodeProps"
-            node-key="id"
-            empty-text="No Matches"
-            :indent="deviceStore.getREMSize(0.5)"
-            :default-expanded-keys="expandedNodeIds()"
-            :render-after-expand="false"
-            :icon="TreeIcon"
-            @node-collapse="(node) => settingsStore.collapsedMenuNodeIds.push(node.id)"
-            @node-expand="
-                (node) => {
-                    const indexOfNode = settingsStore.collapsedMenuNodeIds.indexOf(node.id)
-                    if (indexOfNode < 0) return
-                    settingsStore.collapsedMenuNodeIds.splice(indexOfNode, 1)
-                }
-            "
-        >
-            <template #default="{ node, data }">
-                <el-dropdown
-                    :ref="(el) => (data.dropdownRef = el)"
-                    :id="data.id"
-                    class="ml-0.5 h-full w-full outline-none"
-                    :show-timeout="0"
-                    :hide-timeout="0"
-                    :disabled="data.options == null || data.options.length == 0"
-                    placement="top-end"
-                    :popper-options="{
-                        modifiers: [
-                            {
-                                name: 'offset',
-                                options: {
-                                    offset: [
-                                        0,
-                                        data.isControllable
-                                            ? -deviceStore.getREMSize(2.7)
-                                            : -deviceStore.getREMSize(2.4),
-                                    ],
-                                },
-                            },
-                        ],
-                    }"
-                    :teleported="true"
-                    :hide-on-click="false"
-                    :trigger="aSubMenuIsOpen ? 'click' : 'hover'"
-                >
-                    <!--This options with so many dropdowns causes a strange issue when scrolling-->
-                    <!--down a large list of sensors-->
-                    <!--:popper-options="{-->
-                    <!--modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],-->
-                    <!--}"-->
+    <div id="system-menu" class="flex text-text-color mx-0 pb-1 tree-text">
+        <span class="ml-1 text-2xl mb-2 items-center tree-text">
+            {{ daemonState.systemName }}
+        </span>
+    </div>
+    <!--Pined Items-->
+    <el-collapse
+        v-if="pinnedItems.length > 0"
+        expand-icon-position="left"
+        :model-value="'pinned'"
+        @change="(_activeNames) => addGroup()"
+        :before-collapse="() => hoverMenusAreClosed"
+    >
+        <el-collapse-item name="pinned" :key="'pinned'">
+            <template #title>
+                <div class="flex group h-full w-full items-center justify-between outline-none">
+                    <div class="flex flex-row items-center min-w-0">
+                        <svg-icon
+                            class="mr-1.5 min-w-7 w-7"
+                            type="mdi"
+                            :path="mdiPinOutline"
+                            :style="{
+                                color: deviceChannelColor(undefined, '').value,
+                            }"
+                            :size="
+                                deviceStore.getREMSize(deviceChannelIconSize(undefined, undefined))
+                            "
+                        />
+                        <div class="flex flex-col overflow-hidden">
+                            <div class="tree-text leading-tight">
+                                {{ t('layout.menu.pinned') }}
+                            </div>
+                            <div></div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            <VueDraggable
+                v-model="pinnedItems"
+                :scroll="true"
+                :force-auto-scroll-fallback="true"
+                :fallback-on-body="true"
+                :animation="300"
+                :direction="'vertical'"
+                :scroll-sensitivity="deviceStore.getREMSize(5)"
+                :scroll-speed="deviceStore.getREMSize(1.25)"
+                :bubble-scroll="true"
+                :revert-on-spill="true"
+                :force-fallback="true"
+                :fallback-tolerance="15"
+                :clone="toRaw"
+                @start="setHoverMenuStatus(true)"
+                @end="
+                    () => {
+                        setHoverMenuStatus(false)
+                        changedPinnedItems()
+                    }
+                "
+            >
+                <div v-for="childItem in pinnedItems" :key="childItem.id">
+                    <!--Pinned Elements Start-->
+                    <!--This is a complete copy from the childItems standard menu below-->
                     <router-link
-                        class="flex h-full items-center justify-between outline-none"
+                        class="flex h-10 group items-center justify-between outline-none rounded-lg"
                         :class="{
+                            'h-12': childItem.isControllable,
+                            'hover:bg-bg-two': hoverMenusAreClosed,
+                            'pointer-events-none': !hoverMenusAreClosed,
                             'text-accent':
-                                route.fullPath === '/' && data.dashboardUID === homeDashboardUID,
+                                route.fullPath === '/' &&
+                                childItem.dashboardUID != null &&
+                                childItem.dashboardUID === settingsStore.homeDashboard,
                         }"
                         tabindex="0"
                         exact
-                        :exact-active-class="data.to != null ? 'text-accent font-medium' : ''"
-                        :to="!data.to ? '' : data.to"
+                        :exact-active-class="childItem.to != null ? 'text-accent font-medium' : ''"
+                        :to="!childItem.to ? '' : childItem.to"
                         v-slot="{ isActive }"
                     >
+                        <!-- Child Item Icons and Labels -->
                         <div class="flex flex-row items-center min-w-0">
+                            <div class="w-2 min-w-2 whitespace-pre" />
+                            <div
+                                class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
+                                :class="{ 'h-12': childItem.isControllable }"
+                            />
                             <svg-icon
-                                v-if="data.icon"
+                                v-if="childItem.icon"
                                 class="mr-1.5 min-w-6"
                                 :class="{
-                                    'text-accent': data.isActive,
-                                    'text-error': data.alertIsActive,
+                                    'text-accent': childItem.isActive,
+                                    'text-error': childItem.alertIsActive,
                                 }"
                                 type="mdi"
-                                :path="data.icon ?? ''"
+                                :path="childItem.icon ?? ''"
                                 :style="{
-                                    color: deviceChannelColor(data.deviceUID, data.name).value,
+                                    color: deviceChannelColor(childItem.deviceUID, childItem.name)
+                                        .value,
                                 }"
                                 :size="
                                     deviceStore.getREMSize(
-                                        deviceChannelIconSize(data.deviceUID, data.name),
+                                        deviceChannelIconSize(childItem.deviceUID, childItem.name),
                                     )
                                 "
                             />
                             <div class="flex flex-col overflow-hidden">
                                 <div
                                     class="tree-text leading-tight"
-                                    :class="{ 'mr-2': data.deviceUID && !data.name }"
+                                    :class="{ 'mr-2': childItem.deviceUID && !childItem.name }"
                                 >
-                                    {{ node.label }}
+                                    {{ childItem.label }}
                                 </div>
-                                <div v-if="data.isControllable" class="mt-0.5">
+                                <div v-if="childItem.isControllable" class="mt-0.5">
                                     <menu-control-view
-                                        :device-u-i-d="data.deviceUID"
-                                        :channel-name="data.name"
+                                        :device-u-i-d="childItem.deviceUID"
+                                        :channel-name="childItem.name"
                                         :class="{ 'text-text-color-secondary': !isActive }"
                                     />
                                 </div>
                             </div>
                         </div>
-                        <div class="flex ml-2 justify-end">
-                            <div v-if="data.temp != null" class="items-end tree-data">
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.temp }}
-                                <span>°&nbsp;&nbsp;&nbsp;</span>
+                        <!-- Sensor Metrics -->
+                        <div
+                            class="flex ml-2 mr-1 justify-end select-none"
+                            :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
+                        >
+                            <div v-if="childItem.temp != null" class="items-end tree-data">
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.temp }}
+                                <span style="font-size: 0.8rem" class="align-text-top"
+                                    >°C&nbsp;</span
+                                >
                             </div>
-                            <div v-else-if="data.freq != null" class="items-end tree-data">
+                            <div v-else-if="childItem.freq != null" class="items-end tree-data">
                                 {{
                                     formatFrequency(
-                                        deviceChannelValues(data.deviceUID, data.name)!.freq!,
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .freq!,
                                     )
                                 }}
-                                <span style="font-size: 0.62rem">
-                                    {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
+                                <span style="font-size: 0.55rem">
+                                    {{ settingsStore.frequencyPrecision === 1 ? 'MHz' : 'GHz' }}
                                 </span>
                             </div>
-                            <div v-else-if="data.watts != null" class="items-end tree-data">
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.watts }}
+                            <div v-else-if="childItem.watts != null" class="items-end tree-data">
+                                {{
+                                    deviceChannelValues(childItem.deviceUID, childItem.name)!.watts
+                                }}
                                 <span style="font-size: 0.62rem">W&nbsp;&nbsp;&nbsp;</span>
                             </div>
                             <div
-                                v-else-if="data.duty != null && data.rpm == null"
+                                v-else-if="childItem.duty != null && childItem.rpm == null"
                                 class="content-end tree-data"
                             >
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
-                                <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.duty }}
+                                <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                             </div>
                             <div
-                                v-else-if="data.rpm != null && data.duty == null"
+                                v-else-if="childItem.rpm != null && childItem.duty == null"
                                 class="items-end tree-data"
                             >
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
-                                <span style="font-size: 0.7rem">rpm</span>
+                                {{ deviceChannelValues(childItem.deviceUID, childItem.name)!.rpm }}
+                                <span style="font-size: 0.65rem">rpm</span>
                             </div>
                             <div
-                                v-else-if="data.duty != null && data.rpm != null"
+                                v-else-if="childItem.duty != null && childItem.rpm != null"
                                 class="items-end flex flex-col leading-none tree-data"
                             >
-                                <span :class="{ 'mb-0.5': data.isControllable }">
-                                    {{ deviceChannelValues(data.deviceUID, data.name)!.duty }}
-                                    <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+                                <span :class="{ 'mb-0.5': childItem.isControllable }">
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .duty
+                                    }}
+                                    <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
                                 </span>
-                                <span :class="{ 'mt-0.5': data.isControllable }">
-                                    {{ deviceChannelValues(data.deviceUID, data.name)!.rpm }}
-                                    <span style="font-size: 0.7rem">rpm</span>
+                                <span :class="{ 'mt-0.5': childItem.isControllable }">
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .rpm
+                                    }}
+                                    <span style="font-size: 0.65rem">rpm</span>
                                 </span>
+                            </div>
+                        </div>
+                        <!-- Hover Menu -->
+                        <div
+                            class="hidden mr-1 justify-end whitespace-normal"
+                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                        >
+                            <div v-for="menu in childItem.menus">
+                                <menu-color-picker
+                                    v-if="menu === Menu.COLOR"
+                                    :device-u-i-d="childItem.deviceUID"
+                                    :channel-name="childItem.name"
+                                    :color="
+                                        deviceChannelColor(childItem.deviceUID, childItem.name)
+                                            .value
+                                    "
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-rename
+                                    v-else-if="menu === Menu.RENAME"
+                                    :device-u-i-d="childItem.deviceUID"
+                                    :channel-name="childItem.name"
+                                    @click.stop
+                                    @name-change="(value: string) => (childItem.label = value)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-dashboard-home
+                                    v-else-if="menu === Menu.DASHBOARD_HOME"
+                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                    @home-set="homeDashboardSet"
+                                />
+                                <menu-dashboard-rename
+                                    v-else-if="menu === Menu.DASHBOARD_RENAME"
+                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-mode-activate
+                                    v-else-if="menu === Menu.MODE_ACTIVATE"
+                                    :mode-u-i-d="childItem.uid"
+                                />
+                                <menu-mode-rename
+                                    v-else-if="menu === Menu.MODE_RENAME"
+                                    :mode-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-profile-apply
+                                    v-else-if="menu === Menu.PROFILE_APPLY"
+                                    :profile-u-i-d="childItem.uid"
+                                />
+                                <menu-profile-rename
+                                    v-else-if="menu === Menu.PROFILE_RENAME"
+                                    :profile-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-function-apply
+                                    v-else-if="menu === Menu.FUNCTION_APPLY"
+                                    :function-u-i-d="childItem.uid"
+                                />
+                                <menu-function-rename
+                                    v-else-if="menu === Menu.FUNCTION_RENAME"
+                                    :function-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-alert-rename
+                                    v-else-if="menu === Menu.ALERT_RENAME"
+                                    :alert-u-i-d="childItem.uid"
+                                    @name-change="(name: string) => (childItem.label = name)"
+                                    @open="setHoverMenuStatus"
+                                />
+                            </div>
+                            <!-- More Options Menu -->
+                            <div
+                                v-if="childItem.subMenus"
+                                v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
+                            >
+                                <div
+                                    class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                                    @click.stop.prevent="
+                                        (event) => childItem.subMenuRef.toggle(event)
+                                    "
+                                >
+                                    <svg-icon
+                                        class="outline-0"
+                                        type="mdi"
+                                        :path="mdiDotsVertical"
+                                        :size="deviceStore.getREMSize(1.5)"
+                                    />
+                                </div>
+                                <Popover
+                                    :ref="(el) => (childItem.subMenuRef = el)"
+                                    @show="() => setHoverMenuStatus(true)"
+                                    @hide="() => setHoverMenuStatus(false)"
+                                >
+                                    <div
+                                        class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
+                                    >
+                                        <ul>
+                                            <li v-for="subMenu in childItem.subMenus">
+                                                <sub-menu-move-top
+                                                    v-if="subMenu === SubMenu.MOVE_TOP"
+                                                    @moveTop="moveToTop(childItem, pinnedItems)"
+                                                />
+                                                <sub-menu-pin
+                                                    v-else-if="subMenu === SubMenu.PIN"
+                                                    :is-pinned="isPinned(childItem)"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                    @pin="pinItem(childItem)"
+                                                    @unpin="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            unPinItem(childItem)
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-custom-sensor-delete
+                                                    v-else-if="
+                                                        subMenu === SubMenu.CUSTOM_SENSOR_DELETE
+                                                    "
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :custom-sensor-i-d="childItem.name"
+                                                />
+                                                <sub-menu-disable
+                                                    v-else-if="subMenu === SubMenu.DISABLE"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-dashboard-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.DASHBOARD_DUPLICATE
+                                                    "
+                                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                                    @added="addDashbaord"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-dashboard-delete
+                                                    v-else-if="subMenu === SubMenu.DASHBOARD_DELETE"
+                                                    :dashboard-u-i-d="childItem.dashboardUID"
+                                                    @deleted="
+                                                        (dashboardUID: UID) => {
+                                                            deleteDashboard(dashboardUID)
+                                                            setHoverMenuStatus(false)
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-mode-update
+                                                    v-else-if="subMenu === SubMenu.MODE_UPDATE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @updated="activeModesChange"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-mode-duplicate
+                                                    v-else-if="subMenu === SubMenu.MODE_DUPLICATE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @added="addMode"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-mode-delete
+                                                    v-else-if="subMenu === SubMenu.MODE_DELETE"
+                                                    :mode-u-i-d="childItem.uid"
+                                                    @deleted="deleteMode"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-profile-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.PROFILE_DUPLICATE
+                                                    "
+                                                    :profile-u-i-d="childItem.uid"
+                                                    @added="addProfile"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-profile-delete
+                                                    v-else-if="subMenu === SubMenu.PROFILE_DELETE"
+                                                    :profile-u-i-d="childItem.uid"
+                                                    @deleted="deleteProfile"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-function-duplicate
+                                                    v-else-if="
+                                                        subMenu === SubMenu.FUNCTION_DUPLICATE
+                                                    "
+                                                    :function-u-i-d="childItem.uid"
+                                                    @added="addFunction"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-function-delete
+                                                    v-else-if="subMenu === SubMenu.FUNCTION_DELETE"
+                                                    :function-u-i-d="childItem.uid"
+                                                    @deleted="deleteFunction"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-alert-duplicate
+                                                    v-else-if="subMenu === SubMenu.ALERT_DUPLICATE"
+                                                    :alert-u-i-d="childItem.uid"
+                                                    @added="addAlert"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-alert-delete
+                                                    v-else-if="subMenu === SubMenu.ALERT_DELETE"
+                                                    :alert-u-i-d="childItem.uid"
+                                                    @deleted="deleteAlert"
+                                                    @close="
+                                                        () => {
+                                                            setHoverMenuStatus(false)
+                                                            childItem.subMenuRef.hide()
+                                                        }
+                                                    "
+                                                />
+                                                <sub-menu-move-bottom
+                                                    v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
+                                                    @moveBottom="
+                                                        moveToBottom(childItem, pinnedItems)
+                                                    "
+                                                />
+                                                <sub-menu-alert-add-fail
+                                                    v-else-if="subMenu === SubMenu.ALERT_ADD_FAIL"
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :channel-name="childItem.name"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-alert-add-temp
+                                                    v-else-if="subMenu === SubMenu.ALERT_ADD_TEMP"
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :channel-name="childItem.name"
+                                                    @close="childItem.subMenuRef.hide()"
+                                                />
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </Popover>
                             </div>
                         </div>
                     </router-link>
-                    <template #dropdown>
-                        <div
-                            class="border border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center p-[2px]"
-                        >
-                            <div v-for="option in data.options">
-                                <menu-rename
-                                    v-if="option.rename"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                    @name-change="(value: string) => (data.label = value)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-color
-                                    v-else-if="option.color"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                    :color="data.color"
-                                    @color-reset="(newColor: Color) => (data.color = newColor)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-device-info
-                                    v-else-if="option.deviceInfo"
-                                    :device-u-i-d="data.deviceUID"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-info
-                                    v-else-if="option.dashboardInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-add
-                                    v-else-if="option.dashboardAdd"
-                                    @added="addDashbaord"
-                                />
-                                <menu-dashboard-home
-                                    v-else-if="option.dashboardHome"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @rearrange="rearrangeDashboards"
-                                />
-                                <menu-dashboard-rename
-                                    v-else-if="option.dashboardRename"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-dashboard-duplicate
-                                    v-else-if="option.dashboardDuplicate"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @added="addDashbaord"
-                                />
-                                <menu-dashboard-delete
-                                    v-else-if="option.dashboardDelete"
-                                    :dashboard-u-i-d="data.dashboardUID"
-                                    @deleted="deleteDashboard"
-                                />
-                                <menu-mode-info
-                                    v-else-if="option.modeInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
-                                <menu-mode-update
-                                    v-else-if="option.modeUpdate"
-                                    :mode-u-i-d="data.uid"
-                                    @updated="activeModesChange"
-                                />
-                                <menu-mode-duplicate
-                                    v-else-if="option.modeDuplicate"
-                                    :mode-u-i-d="data.uid"
-                                    @added="addMode"
-                                />
-                                <menu-mode-rename
-                                    v-else-if="option.modeRename"
-                                    :mode-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-mode-delete
-                                    v-else-if="option.modeDelete"
-                                    :mode-u-i-d="data.uid"
-                                    @deleted="deleteMode"
-                                />
-                                <menu-profile-info
-                                    v-else-if="option.profileInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-profile-add
-                                    v-else-if="option.profileAdd"
-                                    @added="addProfile"
-                                />
-                                <menu-profile-duplicate
-                                    v-else-if="option.profileDuplicate"
-                                    :profile-u-i-d="data.uid"
-                                    @added="addProfile"
-                                />
-                                <menu-profile-rename
-                                    v-else-if="option.profileRename"
-                                    :profile-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-profile-delete
-                                    v-else-if="option.profileDelete"
-                                    :profile-u-i-d="data.uid"
-                                    @deleted="deleteProfile"
-                                />
-                                <menu-function-info
-                                    v-else-if="option.functionInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-function-add
-                                    v-else-if="option.functionAdd"
-                                    @added="addFunction"
-                                />
-                                <menu-function-duplicate
-                                    v-else-if="option.functionDuplicate"
-                                    :function-u-i-d="data.uid"
-                                    @added="addFunction"
-                                />
-                                <menu-function-rename
-                                    v-else-if="option.functionRename"
-                                    :function-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-function-delete
-                                    v-else-if="option.functionDelete"
-                                    :function-u-i-d="data.uid"
-                                    @deleted="deleteFunction"
-                                />
-                                <menu-alert-info
-                                    v-else-if="option.alertInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-alert-add v-else-if="option.alertAdd" />
-                                <menu-alert-rename
-                                    v-else-if="option.alertRename"
-                                    :alert-u-i-d="data.uid"
-                                    @name-change="(name: string) => (data.label = name)"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-alert-delete
-                                    v-else-if="option.alertDelete"
-                                    :alert-u-i-d="data.uid"
-                                    @deleted="deleteAlert"
-                                />
-                                <menu-custom-sensor-info
-                                    v-else-if="option.customSensorInfo"
-                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
-                                />
-                                <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
-                                <menu-custom-sensor-delete
-                                    v-else-if="option.customSensorDelete"
-                                    :device-u-i-d="data.deviceUID"
-                                    :custom-sensor-i-d="data.name"
-                                />
+                    <!--Pinned Elements End-->
+                </div>
+            </VueDraggable>
+        </el-collapse-item>
+    </el-collapse>
+    <!--Main Menu-->
+    <VueDraggable
+        v-model="data"
+        target=".cc-root-items"
+        :scroll="true"
+        :force-auto-scroll-fallback="true"
+        :fallback-on-body="true"
+        :animation="300"
+        :direction="'vertical'"
+        :scroll-sensitivity="deviceStore.getREMSize(5)"
+        :scroll-speed="deviceStore.getREMSize(1.25)"
+        :bubble-scroll="true"
+        :revert-on-spill="true"
+        :force-fallback="true"
+        :fallback-tolerance="15"
+        :clone="toRaw"
+        @start="setHoverMenuStatus(true)"
+        @end="
+            () => {
+                setHoverMenuStatus(false)
+                saveMenuOrderChanges()
+            }
+        "
+    >
+        <el-collapse
+            class="cc-root-items"
+            expand-icon-position="left"
+            v-model="settingsStore.expandedMenuIds"
+            @change="addGroup"
+            :before-collapse="() => hoverMenusAreClosed"
+        >
+            <el-collapse-item v-for="item in data" :name="item.id" :key="item.id">
+                <template #title>
+                    <!--Root Elements-->
+                    <div
+                        :id="item.id"
+                        class="flex group h-full w-full items-center justify-between outline-none"
+                    >
+                        <div class="flex flex-row items-center min-w-0">
+                            <svg-icon
+                                v-if="item.icon"
+                                class="mr-1.5 min-w-7 w-7"
+                                type="mdi"
+                                :path="item.icon"
+                                :style="{ color: getIconColor(item) }"
+                                :size="
+                                    deviceStore.getREMSize(
+                                        deviceChannelIconSize(item.deviceUID, item.name),
+                                    )
+                                "
+                            />
+                            <div class="flex flex-col overflow-hidden">
+                                <div
+                                    class="tree-text leading-tight"
+                                    :style="{ color: getLabelColor(item) }"
+                                >
+                                    {{ item.label }}
+                                </div>
+                                <div></div>
                             </div>
                         </div>
-                    </template>
-                </el-dropdown>
-            </template>
-        </el-tree>
-    </div>
+                        <div
+                            class="hidden mr-1 justify-end whitespace-normal"
+                            :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                        >
+                            <div v-for="menu in item.menus">
+                                <menu-device-info
+                                    v-if="menu === Menu.DEVICE_INFO"
+                                    :device-u-i-d="item.deviceUID"
+                                    @click.stop
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-rename
+                                    v-else-if="menu === Menu.RENAME"
+                                    :device-u-i-d="item.deviceUID"
+                                    :channel-name="item.name"
+                                    @click.stop
+                                    @name-change="(value: string) => (item.label = value)"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-custom-sensor-info
+                                    v-else-if="menu === Menu.CUSTOM_SENSOR_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-custom-sensor-add
+                                    v-else-if="menu === Menu.CUSTOM_SENSOR_ADD"
+                                />
+                                <menu-dashboard-info
+                                    v-else-if="menu === Menu.DASHBOARD_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-dashboard-add
+                                    v-else-if="menu === Menu.DASHBOARD_ADD"
+                                    @added="addDashbaord"
+                                />
+                                <menu-mode-info
+                                    v-else-if="menu === Menu.MODE_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-mode-add
+                                    v-else-if="menu === Menu.MODE_ADD"
+                                    @added="addMode"
+                                />
+                                <menu-profile-info
+                                    v-else-if="menu === Menu.PROFILE_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-profile-add
+                                    v-else-if="menu === Menu.PROFILE_ADD"
+                                    @added="addProfile"
+                                />
+                                <menu-function-info
+                                    v-else-if="menu === Menu.FUNCTION_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-function-add
+                                    v-else-if="menu === Menu.FUNCTION_ADD"
+                                    @added="addFunction"
+                                />
+                                <menu-alert-info
+                                    v-else-if="menu === Menu.ALERT_INFO"
+                                    @open="setHoverMenuStatus"
+                                />
+                                <menu-alert-add v-else-if="menu === Menu.ALERT_ADD" />
+                            </div>
+                            <div
+                                v-if="item.subMenus"
+                                v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
+                            >
+                                <div
+                                    class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                                    @click.stop.prevent="(event) => item.subMenuRef.toggle(event)"
+                                >
+                                    <svg-icon
+                                        class="outline-0"
+                                        type="mdi"
+                                        :path="mdiDotsVertical"
+                                        :size="deviceStore.getREMSize(1.5)"
+                                    />
+                                </div>
+                                <Popover
+                                    :ref="(el) => (item.subMenuRef = el)"
+                                    @show="() => setHoverMenuStatus(true)"
+                                    @hide="() => setHoverMenuStatus(false)"
+                                >
+                                    <div
+                                        class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
+                                    >
+                                        <ul>
+                                            <li v-for="subMenu in item.subMenus">
+                                                <sub-menu-move-top
+                                                    v-if="subMenu === SubMenu.MOVE_TOP"
+                                                    @moveTop="moveToTop(item, data)"
+                                                />
+                                                <sub-menu-device-color-picker
+                                                    v-else-if="
+                                                        subMenu === SubMenu.COLOR &&
+                                                        item.deviceUID != null
+                                                    "
+                                                    :device-u-i-d="item.deviceUID"
+                                                    :color="deviceColor(item.deviceUID).value"
+                                                    @open="setHoverMenuStatus"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-entity-color-picker
+                                                    v-else-if="
+                                                        subMenu === SubMenu.COLOR &&
+                                                        item.deviceUID == null
+                                                    "
+                                                    :entity-i-d="item.id"
+                                                    :color="entityColor(item.id).value"
+                                                    @open="setHoverMenuStatus"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-disable
+                                                    v-else-if="subMenu === SubMenu.DISABLE"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-move-bottom
+                                                    v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
+                                                    @moveBottom="moveToBottom(item, data)"
+                                                />
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </Popover>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template v-if="item.children == null || item.children.length === 0" #icon>
+                    <div class="w-4" />
+                </template>
+                <VueDraggable
+                    v-model="item.children"
+                    :scroll="true"
+                    :force-auto-scroll-fallback="true"
+                    :fallback-on-body="true"
+                    :animation="300"
+                    :direction="'vertical'"
+                    :scroll-sensitivity="deviceStore.getREMSize(5)"
+                    :scroll-speed="deviceStore.getREMSize(1.25)"
+                    :bubble-scroll="true"
+                    :revert-on-spill="true"
+                    :force-fallback="true"
+                    :fallback-tolerance="15"
+                    :clone="toRaw"
+                    @start="setHoverMenuStatus(true)"
+                    @end="
+                        () => {
+                            setHoverMenuStatus(false)
+                            saveMenuOrderChanges()
+                        }
+                    "
+                >
+                    <div v-for="childItem in item.children" :key="childItem.id">
+                        <!--Child Elements-->
+                        <router-link
+                            class="flex h-10 group items-center justify-between outline-none rounded-lg"
+                            :class="{
+                                'h-12': childItem.isControllable,
+                                'hover:bg-bg-two': hoverMenusAreClosed,
+                                'pointer-events-none': !hoverMenusAreClosed,
+                                'text-accent':
+                                    route.fullPath === '/' &&
+                                    childItem.dashboardUID != null &&
+                                    childItem.dashboardUID === settingsStore.homeDashboard,
+                            }"
+                            tabindex="0"
+                            exact
+                            :exact-active-class="
+                                childItem.to != null ? 'text-accent font-medium' : ''
+                            "
+                            :to="!childItem.to ? '' : childItem.to"
+                            v-slot="{ isActive }"
+                        >
+                            <!-- Child Item Icons and Labels -->
+                            <div class="flex flex-row items-center min-w-0">
+                                <div class="w-2 min-w-2 whitespace-pre" />
+                                <div
+                                    class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
+                                    :class="{ 'h-12': childItem.isControllable }"
+                                />
+                                <svg-icon
+                                    v-if="childItem.icon"
+                                    class="mr-1.5 min-w-6"
+                                    :class="{
+                                        'text-accent': childItem.isActive,
+                                        'text-error': childItem.alertIsActive,
+                                    }"
+                                    type="mdi"
+                                    :path="childItem.icon ?? ''"
+                                    :style="{
+                                        color: deviceChannelColor(
+                                            childItem.deviceUID,
+                                            childItem.name,
+                                        ).value,
+                                    }"
+                                    :size="
+                                        deviceStore.getREMSize(
+                                            deviceChannelIconSize(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            ),
+                                        )
+                                    "
+                                />
+                                <div class="flex flex-col overflow-hidden">
+                                    <div
+                                        class="tree-text leading-tight"
+                                        :class="{ 'mr-2': childItem.deviceUID && !childItem.name }"
+                                    >
+                                        {{ childItem.label }}
+                                    </div>
+                                    <div v-if="childItem.isControllable" class="mt-0.5">
+                                        <menu-control-view
+                                            :device-u-i-d="childItem.deviceUID"
+                                            :channel-name="childItem.name"
+                                            :class="{ 'text-text-color-secondary': !isActive }"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Sensor Metrics -->
+                            <div
+                                class="flex ml-2 mr-1 justify-end select-none"
+                                :class="{ 'group-hover:hidden': hoverMenusAreClosed }"
+                            >
+                                <div v-if="childItem.temp != null" class="items-end tree-data">
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .temp
+                                    }}
+                                    <span style="font-size: 0.8rem" class="align-text-top"
+                                        >°C&nbsp;</span
+                                    >
+                                </div>
+                                <div v-else-if="childItem.freq != null" class="items-end tree-data">
+                                    {{
+                                        formatFrequency(
+                                            deviceChannelValues(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )!.freq!,
+                                        )
+                                    }}
+                                    <span style="font-size: 0.55rem">
+                                        {{ settingsStore.frequencyPrecision === 1 ? 'MHz' : 'GHz' }}
+                                    </span>
+                                </div>
+                                <div
+                                    v-else-if="childItem.watts != null"
+                                    class="items-end tree-data"
+                                >
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .watts
+                                    }}
+                                    <span style="font-size: 0.62rem">W&nbsp;&nbsp;&nbsp;</span>
+                                </div>
+                                <div
+                                    v-else-if="childItem.duty != null && childItem.rpm == null"
+                                    class="content-end tree-data"
+                                >
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .duty
+                                    }}
+                                    <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
+                                </div>
+                                <div
+                                    v-else-if="childItem.rpm != null && childItem.duty == null"
+                                    class="items-end tree-data"
+                                >
+                                    {{
+                                        deviceChannelValues(childItem.deviceUID, childItem.name)!
+                                            .rpm
+                                    }}
+                                    <span style="font-size: 0.65rem">rpm</span>
+                                </div>
+                                <div
+                                    v-else-if="childItem.duty != null && childItem.rpm != null"
+                                    class="items-end flex flex-col leading-none tree-data"
+                                >
+                                    <span :class="{ 'mb-0.5': childItem.isControllable }">
+                                        {{
+                                            deviceChannelValues(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )!.duty
+                                        }}
+                                        <span style="font-size: 0.65rem">%&nbsp;&nbsp;&nbsp;</span>
+                                    </span>
+                                    <span :class="{ 'mt-0.5': childItem.isControllable }">
+                                        {{
+                                            deviceChannelValues(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )!.rpm
+                                        }}
+                                        <span style="font-size: 0.65rem">rpm</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <!-- Hover Menu -->
+                            <div
+                                class="hidden mr-1 justify-end whitespace-normal"
+                                :class="{ 'group-hover:flex': hoverMenusAreClosed }"
+                            >
+                                <div v-for="menu in childItem.menus">
+                                    <menu-color-picker
+                                        v-if="menu === Menu.COLOR"
+                                        :device-u-i-d="childItem.deviceUID"
+                                        :channel-name="childItem.name"
+                                        :color="
+                                            deviceChannelColor(childItem.deviceUID, childItem.name)
+                                                .value
+                                        "
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-rename
+                                        v-else-if="menu === Menu.RENAME"
+                                        :device-u-i-d="childItem.deviceUID"
+                                        :channel-name="childItem.name"
+                                        @click.stop
+                                        @name-change="(value: string) => (childItem.label = value)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-dashboard-home
+                                        v-else-if="menu === Menu.DASHBOARD_HOME"
+                                        :dashboard-u-i-d="childItem.dashboardUID"
+                                        @home-set="homeDashboardSet"
+                                    />
+                                    <menu-dashboard-rename
+                                        v-else-if="menu === Menu.DASHBOARD_RENAME"
+                                        :dashboard-u-i-d="childItem.dashboardUID"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-mode-activate
+                                        v-else-if="menu === Menu.MODE_ACTIVATE"
+                                        :mode-u-i-d="childItem.uid"
+                                    />
+                                    <menu-mode-rename
+                                        v-else-if="menu === Menu.MODE_RENAME"
+                                        :mode-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-profile-apply
+                                        v-else-if="menu === Menu.PROFILE_APPLY"
+                                        :profile-u-i-d="childItem.uid"
+                                    />
+                                    <menu-profile-rename
+                                        v-else-if="menu === Menu.PROFILE_RENAME"
+                                        :profile-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-function-apply
+                                        v-else-if="menu === Menu.FUNCTION_APPLY"
+                                        :function-u-i-d="childItem.uid"
+                                    />
+                                    <menu-function-rename
+                                        v-else-if="menu === Menu.FUNCTION_RENAME"
+                                        :function-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                    <menu-alert-rename
+                                        v-else-if="menu === Menu.ALERT_RENAME"
+                                        :alert-u-i-d="childItem.uid"
+                                        @name-change="(name: string) => (childItem.label = name)"
+                                        @open="setHoverMenuStatus"
+                                    />
+                                </div>
+                                <!-- More Options Menu -->
+                                <div
+                                    v-if="childItem.subMenus"
+                                    v-tooltip.top="{ value: t('layout.menu.tooltips.options') }"
+                                >
+                                    <div
+                                        class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
+                                        @click.stop.prevent="
+                                            (event) => childItem.subMenuRef.toggle(event)
+                                        "
+                                    >
+                                        <svg-icon
+                                            class="outline-0"
+                                            type="mdi"
+                                            :path="mdiDotsVertical"
+                                            :size="deviceStore.getREMSize(1.5)"
+                                        />
+                                    </div>
+                                    <Popover
+                                        :ref="(el) => (childItem.subMenuRef = el)"
+                                        @show="() => setHoverMenuStatus(true)"
+                                        @hide="() => setHoverMenuStatus(false)"
+                                    >
+                                        <div
+                                            class="mt-2.5 bg-bg-two border border-border-one p-1 rounded-lg text-text-color"
+                                        >
+                                            <ul>
+                                                <li v-for="subMenu in childItem.subMenus">
+                                                    <sub-menu-move-top
+                                                        v-if="subMenu === SubMenu.MOVE_TOP"
+                                                        @moveTop="
+                                                            moveToTop(childItem, item.children)
+                                                        "
+                                                    />
+                                                    <sub-menu-pin
+                                                        v-else-if="subMenu === SubMenu.PIN"
+                                                        :is-pinned="isPinned(childItem)"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                        @pin="pinItem(childItem)"
+                                                        @unpin="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                unPinItem(childItem)
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-custom-sensor-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.CUSTOM_SENSOR_DELETE
+                                                        "
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :custom-sensor-i-d="childItem.name"
+                                                    />
+                                                    <sub-menu-disable
+                                                        v-else-if="subMenu === SubMenu.DISABLE"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-dashboard-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.DASHBOARD_DUPLICATE
+                                                        "
+                                                        :dashboard-u-i-d="childItem.dashboardUID"
+                                                        @added="addDashbaord"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-dashboard-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.DASHBOARD_DELETE
+                                                        "
+                                                        :dashboard-u-i-d="childItem.dashboardUID"
+                                                        @deleted="
+                                                            (dashboardUID: UID) => {
+                                                                deleteDashboard(dashboardUID)
+                                                                setHoverMenuStatus(false)
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-mode-update
+                                                        v-else-if="subMenu === SubMenu.MODE_UPDATE"
+                                                        :mode-u-i-d="childItem.uid"
+                                                        @updated="activeModesChange"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-mode-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.MODE_DUPLICATE
+                                                        "
+                                                        :mode-u-i-d="childItem.uid"
+                                                        @added="addMode"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-mode-delete
+                                                        v-else-if="subMenu === SubMenu.MODE_DELETE"
+                                                        :mode-u-i-d="childItem.uid"
+                                                        @deleted="deleteMode"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-profile-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.PROFILE_DUPLICATE
+                                                        "
+                                                        :profile-u-i-d="childItem.uid"
+                                                        @added="addProfile"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-profile-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.PROFILE_DELETE
+                                                        "
+                                                        :profile-u-i-d="childItem.uid"
+                                                        @deleted="deleteProfile"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-function-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.FUNCTION_DUPLICATE
+                                                        "
+                                                        :function-u-i-d="childItem.uid"
+                                                        @added="addFunction"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-function-delete
+                                                        v-else-if="
+                                                            subMenu === SubMenu.FUNCTION_DELETE
+                                                        "
+                                                        :function-u-i-d="childItem.uid"
+                                                        @deleted="deleteFunction"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-alert-duplicate
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_DUPLICATE
+                                                        "
+                                                        :alert-u-i-d="childItem.uid"
+                                                        @added="addAlert"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-alert-delete
+                                                        v-else-if="subMenu === SubMenu.ALERT_DELETE"
+                                                        :alert-u-i-d="childItem.uid"
+                                                        @deleted="deleteAlert"
+                                                        @close="
+                                                            () => {
+                                                                setHoverMenuStatus(false)
+                                                                childItem.subMenuRef.hide()
+                                                            }
+                                                        "
+                                                    />
+                                                    <sub-menu-move-bottom
+                                                        v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
+                                                        @moveBottom="
+                                                            moveToBottom(childItem, item.children)
+                                                        "
+                                                    />
+                                                    <sub-menu-alert-add-fail
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_ADD_FAIL
+                                                        "
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :channel-name="childItem.name"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-alert-add-temp
+                                                        v-else-if="
+                                                            subMenu === SubMenu.ALERT_ADD_TEMP
+                                                        "
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :channel-name="childItem.name"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </Popover>
+                                </div>
+                            </div>
+                        </router-link>
+                    </div>
+                </VueDraggable>
+            </el-collapse-item>
+        </el-collapse>
+    </VueDraggable>
 </template>
 
 <style scoped lang="scss">
-.el-tree {
+.el-collapse {
     --el-fill-color-blank: rgb(var(--colors-bg-one));
-    --el-font-size-base: 1rem;
-    --el-tree-text-color: rgb(var(--colors-text-color));
-    --el-tree-node-content-height: 2.5rem;
-    --el-tree-node-hover-bg-color: rgb(var(--colors-bg-two));
-    --el-text-color-placeholder: rgb(var(--colors-text-color));
-    --el-color-primary-light-9: rgb(var(--colors-bg-two));
+    --el-collapse-header-text-color: rgb(var(--colors-text-color));
+    --el-collapse-header-font-size: 1rem;
+    --el-collapse-content-font-size: 1rem;
+    --el-collapse-content-text-color: rgb(var(--colors-text-color));
+    border-top: 0;
+    border-bottom: 0;
+    --el-collapse-border-color: rgb(var(--colors-bg-one));
+    --el-collapse-header-height: 2.5rem;
 }
 
 .tree-text {
-    min-width: 0;
+    // This is THE WAY to handle elements overflowing with white-space: nowrap
+    // same as tw line-clamp-1
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: -webkit-box;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    // improves UX when dragging, as otherwise text is sometimes selected
+    user-select: none;
 }
 
 .tree-data {
@@ -1186,37 +2206,53 @@ onUnmounted(() => {
     //min-width: 5rem;
 }
 
-//.custom-tree-node {
-//    flex: 1;
-//    display: flex;
-//    align-items: center;
-//    justify-content: space-between;
-//}
+.sortable-fallback {
+    color: rgb(var(--colors-text-color));
+    background-color: rgba(var(--colors-bg-two) / 0.625);
+    border-radius: 0.5rem;
+}
 </style>
 <style lang="scss">
 /******************************************************************************************
 * Unscoped Style needed to deeply affect the element components
 */
-.el-tree-node__content {
+.el-collapse-icon-position-left .el-collapse-item__header {
+    gap: 0.125rem;
+}
+
+.el-collapse-item__header {
+    border-bottom: 0;
+    //display: block;
     border-radius: 0.5rem;
 }
 
-.speed-control-menu {
-    --el-tree-node-content-height: 3rem;
+.el-collapse-item__header:hover {
+    background-color: rgb(var(--colors-bg-two));
 }
 
-.el-zoom-in-top-enter-action,
-.el-zoom-in-top-enter-to {
-    transition-duration: 0ms;
-    transition-delay: 0;
+.el-collapse-item__header.focusing:focus:not(:hover) {
+    // strange issue with fast clicking then triggers this (likely upstream bug)
+    color: rgb(var(--colors-text-color));
 }
-.el-zoom-in-top-leave-action,
-.el-zoom-in-top-leave-to {
-    transition-duration: 0ms;
-    transition-delay: 0;
+
+.el-collapse-item__title {
+    width: 100%;
 }
-.el-tree-node__expand-icon {
+
+.el-collapse-item__wrap {
+    border-bottom: 0;
+    // creates a bit of separation between expanded items
+    margin-bottom: 0.5rem;
+}
+
+.el-collapse-item__content {
+    line-height: normal;
+    padding-bottom: 0;
+}
+
+.el-collapse-item__arrow {
     font-size: 1rem;
+    //font-weight: 800;
     padding-left: 1px !important;
 }
 </style>

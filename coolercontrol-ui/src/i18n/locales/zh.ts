@@ -1,4 +1,4 @@
-﻿/*
+/*
  * CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2021-2025  Guy Boldon and contributors
  *
@@ -63,6 +63,7 @@ export default {
         logout: '退出登录',
         temperature: '温度',
         duty: '风扇转速',
+        offset: '偏移量',
         stay: '保留',
         discard: '放弃',
         blankNameResetDefault: '留空将重置为系统默认值。',
@@ -204,6 +205,8 @@ export default {
                 border: '边框颜色',
                 text: '文本颜色',
                 textSecondary: '次要文本颜色',
+                export: '导出主题',
+                import: '导入主题',
             },
             tooltips: {
                 introduction: '启动应用程序引导教程。',
@@ -274,6 +277,7 @@ export default {
             customSensors: '自定义传感器',
             modes: '模式',
             alerts: '警报',
+            pinned: '已固定',
             tooltips: {
                 delete: '删除',
                 createMode: '从当前设置创建模式',
@@ -293,6 +297,13 @@ export default {
                 addCustomSensor: '添加自定义传感器',
                 addFunction: '添加功能',
                 chooseColor: '选择颜色',
+                options: '更多选项',
+                moveTop: '移至顶部',
+                moveBottom: '移至底部',
+                disable: '禁用',
+                pin: '固定到顶部',
+                unpin: '取消固定',
+                profileApply: '将配置文件应用到风扇',
             },
         },
         add: {
@@ -382,6 +393,7 @@ export default {
             warmupGreaterThan: '条件触发时间超过',
             unsavedChanges: '此警报有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
+            createFailAlert: '故障警报',
         },
         profiles: {
             createProfile: '创建配置文件',
@@ -409,7 +421,7 @@ export default {
             newProfile: '新配置文件',
             tooltip: {
                 profileType:
-                    '配置文件类型:<br/>- 默认: 保留当前设备设置<br/>&nbsp;&nbsp;(BIOS/固件)<br/>- 固定: 设置恒定速度<br/>- 图表: 可自定义风扇曲线<br/>- 混合: 组合多个配置文件',
+                    '配置文件类型:<br/>- 默认: 保留当前设备设置<br/>&nbsp;&nbsp;(BIOS/固件)<br/>- 固定: 设置恒定的速度<br/>- 曲线: 可自定义的风扇曲线<br/>- 混合: 组合多个配置文件<br/>- 叠加: 对现有配置文件的输出应用偏移量',
             },
             profileDeleted: '配置文件已删除',
             profileDuplicated: '配置文件已复制',
@@ -420,6 +432,18 @@ export default {
             profileUpdateError: '尝试更新此配置文件时发生错误',
             tempSourceRequired: '图表配置文件需要配置温度源。',
             memberProfilesRequired: '混合配置文件至少需要2个成员配置文件。',
+            minProfileTemp: '最小配置文件温度',
+            maxProfileTemp: '最大配置文件温度',
+            staticOffset: '静态偏移',
+            offsetType: '偏移类型',
+            offsetTypeStatic: '静态偏移',
+            offsetTypeGraph: '曲线偏移',
+            baseProfile: '基础配置文件',
+            baseProfileRequired: '叠加配置文件需要一个基础配置文件。',
+            selectedPointOutputDuty: '选中点的配置文件输出转速',
+            selectedPointOffset: '选中点的偏移转速',
+            profileOutputDuty: '配置文件输出转速',
+            offsetDuty: '偏移转速',
         },
         customSensors: {
             newSensor: '新传感器',
@@ -434,8 +458,12 @@ export default {
             browse: '浏览',
             browseCustomSensorFile: '浏览自定义传感器文件',
             tempSources: '温度源',
+            tempSource: '温度源',
             tempSourcesTooltip:
-                '要在混合函数中使用的温度源<br/><i>注意：您可以使用混合配置文件来组合多个<br/>自定义传感器。</i>',
+                '在混合函数中使用的温度源<br/><i>注意：当组合多个自定义传感器时，只允许直接的父子关系。<br/>更复杂的配置请使用混合配置文件。</i>',
+            offset: '偏移量',
+            offsetTooltip:
+                '输入要应用于源传感器的负或正偏移量。<br/><i>注意：最终值会被限制在正常的温度范围内。</i>',
             tempWeights: '温度权重',
             tempWeightsTooltip: '每个选定温度源的各自权重。',
             tempName: '温度名称',
@@ -617,6 +645,37 @@ export default {
             restartPrompt: '切换设备或传感器需要重启后台和界面。您确定要立即执行此操作吗？',
             enableDevices: '启用设备',
         },
+        shortcuts: {
+            shortcuts: '键盘快捷键',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: '左',
+            right: '右',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: '键盘快捷键',
+            home: '主页',
+            settings: '设置',
+            info: '应用信息',
+            dashboardOne: '仪表板 1',
+            dashboardTwo: '仪表板 2',
+            dashboardThree: '仪表板 3',
+            dashboardFour: '仪表板 4',
+            alerts: '警报',
+            controls: '控制',
+            sideMenuCollapse: '折叠侧边菜单',
+            sideMenuExpand: '展开侧边菜单',
+            fullScreen: '全屏',
+        },
     },
     components: {
         confirmation: {
@@ -772,6 +831,7 @@ export default {
                 selectSpeed: '选择转速',
                 newMixProfile: '新建混合配置文件',
                 newGraphProfile: '新建曲线配置文件',
+                newOverlayProfile: '新建叠加配置文件',
                 functionFor: '选择要应用的功能',
                 functionDescription: '功能允许您进一步控制如何应用配置文件输出。',
                 createNewFunction: '创建新功能',
@@ -786,9 +846,30 @@ export default {
             profile: {
                 willCreated: '将被创建。',
             },
+            profileApply: {
+                applyProfile: '应用配置文件',
+                channelsApply: '要应用配置文件的通道',
+                selectChannels: '选择通道',
+                channelsTooltip: '选择一个或多个通道来应用此配置文件。',
+            },
+            functionApply: {
+                applyFunction: '应用功能',
+                profilesApply: '要应用功能的配置文件',
+                selectProfiles: '选择配置文件',
+                profilesTooltip: '选择一个或多个配置文件来应用此功能。',
+            },
             customSensor: {
                 new: '新建自定义传感器',
             },
+        },
+        channelExtensionSettings: {
+            title: '设备通道设置',
+            firmwareControlledProfile: '固件控制的配置文件',
+            firmwareControlledProfileDesc:
+                '启用后，设备固件将管理风扇配置文件。\n适用于对软件频繁调速反应不佳的硬件。\n仅适用于使用设备内置温度传感器的图表配置文件。\n函数设置不适用。',
+            saveError: '保存通道扩展设置失败',
+            firmwareControlDisabled:
+                '当前设置无法使用固件控制。\n请为此设备使用带有受支持内置温度传感器的图表配置文件。',
         },
     },
     auth: {
@@ -869,6 +950,7 @@ export default {
                 fixed: '固定',
                 graph: '曲线图',
                 mix: '混合',
+                overlay: '叠加',
             },
             functionType: {
                 identity: '恒等',
@@ -879,12 +961,14 @@ export default {
                 min: '最小值',
                 max: '最大值',
                 avg: '平均值',
+                diff: '差值',
             },
         },
         customSensor: {
             sensorType: {
                 mix: '混合',
                 file: '文件',
+                offset: '偏移',
             },
             mixFunctionType: {
                 min: '最小值',

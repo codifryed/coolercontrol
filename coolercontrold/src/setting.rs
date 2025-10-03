@@ -18,6 +18,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use strum::{Display, EnumString};
@@ -36,12 +37,15 @@ pub type R = u8;
 pub type G = u8;
 pub type B = u8;
 type Weight = u8;
+pub type Offset = i8;
 
 pub const DEFAULT_PROFILE_UID: &str = "0";
 pub const DEFAULT_FUNCTION_UID: &str = "0";
 
-/// Setting is a passed struct used to store applied Settings to a device channel
-/// Usually only one specific lighting or speed setting is applied at a time.
+/// Setting is used to store applied Settings to a device channel.
+/// These are the general core settings that apply to a wide range of device and channel types.
+/// Specialized settings are stored in `DeviceExtensions` and `ChannelExtensions`.
+/// Only one specific lighting or speed setting is applied to a specific channel at a time.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct Setting {
     pub channel_name: ChannelName,
@@ -54,10 +58,6 @@ pub struct Setting {
 
     /// Settings for LCD screens
     pub lcd: Option<LcdSettings>,
-
-    /// the current `pwm_mode` to set for hwmon devices, eg: 1
-    // #[deprecated]
-    pub pwm_mode: Option<u8>,
 
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
     pub reset_to_default: Option<bool>,
@@ -167,17 +167,56 @@ pub struct CoolerControlSettings {
     pub drivetemp_suspend: bool,
 }
 
-/// General Device Settings for `CoolerControl`
+/// Device Specific settings that generally apply to how the application deals with the device.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-pub struct CoolerControlDeviceSettings {
+pub struct CCDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
     pub name: DeviceName,
 
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
 
-    /// A list of channels to disable communication with.
-    pub disable_channels: Vec<ChannelName>,
+    /// A list of channels specific settings, including disable and extension settings.
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct CCChannelSettings {
+    pub label: Option<String>,
+
+    pub disabled: bool,
+
+    /// Specialized settings (extensions) that apply to a specific device channel.
+    pub extension: Option<ChannelExtensions>,
+}
+
+impl CCDeviceSettings {
+    pub fn get_disabled_channels(&self) -> Vec<ChannelName> {
+        self.channel_settings
+            .iter()
+            .filter_map(|(channel_name, channel_settings)| {
+                channel_settings.disabled.then_some(channel_name)
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// Device Channel specific settings
+/// This is used to store specialized settings (extensions) that apply to a specific device channel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ChannelExtensions {
+    /// Whether to use the device channel's internal hardware fan curve functionality.
+    AutoHWCurve { auto_hw_curve_enabled: bool },
+
+    /// Whether to use the AMDGPU RDNA3/4 features.
+    /// It allows the device to run at zero RPM when the temperature is below a certain threshold.
+    AmdRdnaGpu {
+        /// Whether to use the internal HW Curve feature, instead of setting regular
+        /// flat curves. Using this reduces functionality.
+        hw_fan_curve_enabled: bool,
+    },
 }
 
 /// Profile Settings
@@ -202,6 +241,12 @@ pub struct Profile {
     /// The associated temperature source
     pub temp_source: Option<TempSource>,
 
+    /// The minimum temp for this profile
+    pub temp_min: Option<Temp>,
+
+    /// The maximum temp for this profile
+    pub temp_max: Option<Temp>,
+
     /// The function uid to apply to this profile
     pub function_uid: FunctionUID,
 
@@ -210,6 +255,11 @@ pub struct Profile {
 
     /// The function to mix the members with if this is a Mix Profile
     pub mix_function_type: Option<ProfileMixFunctionType>,
+
+    #[allow(clippy::struct_field_names)]
+    /// The graph offset to apply to the associated member profile
+    /// This can also be used as a static offset when there is only one duty/offset pair.
+    pub offset_profile: Option<Vec<(Duty, Offset)>>,
 }
 
 impl Default for Profile {
@@ -221,9 +271,12 @@ impl Default for Profile {
             speed_fixed: None,
             speed_profile: None,
             temp_source: None,
+            temp_min: None,
+            temp_max: None,
             function_uid: DEFAULT_FUNCTION_UID.to_string(),
             member_profile_uids: Vec::new(),
             mix_function_type: None,
+            offset_profile: None,
         }
     }
 }
@@ -234,6 +287,7 @@ pub enum ProfileType {
     Fixed,
     Graph,
     Mix,
+    Overlay,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -296,6 +350,7 @@ pub enum ProfileMixFunctionType {
     Min,
     Max,
     Avg,
+    Diff,
 }
 
 impl Default for ProfileMixFunctionType {
@@ -308,6 +363,7 @@ impl Default for ProfileMixFunctionType {
 pub enum CustomSensorType {
     Mix,
     File,
+    Offset,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
@@ -328,11 +384,43 @@ pub struct CustomTempSourceData {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CustomSensor {
     /// ID MUST be unique, as `temp_name` must be unique.
-    pub id: String,
+    pub id: TempName,
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
     pub file_path: Option<PathBuf>,
+    pub offset: Option<Offset>,
+
+    /// The Custom Sensor's children, if any.
+    ///
+    /// Each Custom Sensor is either a child, parent, or standalone, not a combination of those.
+    /// Custom Sensors are limited to 1 level of hierarchy. This removes the possibility
+    /// of circular references.
+    ///
+    /// The children and parents vectors are managed and filled internally. For GET endpoints,
+    /// they provide this information for clients. For POST or PUT endpoints,
+    /// any values here are essentially ignored.
+    #[serde(default)]
+    pub children: Vec<TempName>,
+
+    /// The Custom Sensor's parents, if any. See `children` for more details.
+    #[serde(default)]
+    pub parents: Vec<TempName>,
+}
+
+impl Default for CustomSensor {
+    fn default() -> Self {
+        Self {
+            id: "default".to_string(),
+            cs_type: CustomSensorType::File,
+            mix_function: CustomSensorMixFunctionType::Min,
+            sources: Vec::new(),
+            file_path: None,
+            offset: None,
+            children: Vec::new(),
+            parents: Vec::new(),
+        }
+    }
 }
 
 /// A source for displaying sensor data that is related to a particular channel.

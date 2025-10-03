@@ -63,6 +63,7 @@ export default {
         logout: 'Sair',
         temperature: 'Temperatura',
         duty: 'Velocidade',
+        offset: 'Deslocamento',
         stay: 'Permanecer',
         discard: 'Descartar',
         blankNameResetDefault: 'Um nome em branco irá redefini-lo para o padrão do sistema.',
@@ -205,6 +206,7 @@ export default {
             customSensors: 'Sensores Personalizados',
             modes: 'Modos',
             alerts: 'Alertas',
+            pinned: 'Fixado',
             tooltips: {
                 delete: 'Excluir',
                 createMode: 'Criar Modo a partir das Configurações Atuais',
@@ -224,6 +226,13 @@ export default {
                 addCustomSensor: 'Adicionar Sensor Personalizado',
                 addFunction: 'Adicionar Função',
                 chooseColor: 'Escolher Cor',
+                options: 'Mais Opções',
+                moveTop: 'Mover para o Topo',
+                moveBottom: 'Mover para Baixo',
+                disable: 'Desabilitar',
+                pin: 'Fixar no Topo',
+                unpin: 'Desfixar',
+                profileApply: 'Aplicar Perfil aos ventiladores',
             },
         },
         add: {
@@ -263,6 +272,8 @@ export default {
         border: 'Cor da Borda',
         text: 'Cor do Texto',
         textSecondary: 'Cor do Texto Secundário',
+        export: 'Exportar Tema',
+        import: 'Importar Tema',
     },
     tooltips: {
         introduction: 'Iniciar o tour de introdução do aplicativo.',
@@ -409,6 +420,7 @@ export default {
             warmupGreaterThan: 'condição desencadeada durante mais tempo do que',
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',
             unsavedChangesHeader: 'Alterações Não Salvas',
+            createFailAlert: 'Alerta de Falha',
         },
         profiles: {
             createProfile: 'Criar Perfil',
@@ -436,7 +448,7 @@ export default {
             newProfile: 'Novo Perfil',
             tooltip: {
                 profileType:
-                    'Tipo de Perfil:<br/>- Padrão: Mantém as configurações atuais do dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventilador personalizável<br/>- Mistura: Combina múltiplos perfis',
+                    'Tipos de Perfil:<br/>- Padrão: Mantém as configurações atuais do dispositivo<br/>&nbsp;&nbsp;(BIOS/firmware)<br/>- Fixo: Define uma velocidade constante<br/>- Gráfico: Curva de ventoinha personalizável<br/>- Mistura: Combina vários perfis<br/>- Sobreposição: aplica um deslocamento à saída de um perfil existente',
             },
             profileDeleted: 'Perfil Excluído',
             profileDuplicated: 'Perfil Duplicado',
@@ -448,6 +460,18 @@ export default {
             tempSourceRequired: 'Uma Fonte de Temperatura é necessária para um Perfil de Gráfico.',
             memberProfilesRequired:
                 'Pelo menos 2 Perfis Membros são necessários para um Perfil de Mistura.',
+            minProfileTemp: 'Temperatura Mínima do Perfil',
+            maxProfileTemp: 'Temperatura Máxima do Perfil',
+            staticOffset: 'Deslocamento Estático',
+            offsetType: 'Tipo de Deslocamento',
+            offsetTypeStatic: 'Deslocamento Estático',
+            offsetTypeGraph: 'Deslocamento Gráfico',
+            baseProfile: 'Perfil Base',
+            baseProfileRequired: 'Um Perfil Base é necessário para um Perfil de Sobreposição.',
+            selectedPointOutputDuty: 'Velocidade de Saída do Perfil no Ponto Selecionado',
+            selectedPointOffset: 'Deslocamento de Velocidade no Ponto Selecionado',
+            profileOutputDuty: 'Velocidade de Saída do Perfil',
+            offsetDuty: 'Velocidade de Deslocamento',
         },
         controls: {
             viewType: 'Tipo de Visualização',
@@ -543,8 +567,12 @@ export default {
             browse: 'Navegar',
             browseCustomSensorFile: 'Navegar por um arquivo de sensor personalizado',
             tempSources: 'Fontes de Temperatura',
+            tempSource: 'Fonte de Temperatura',
             tempSourcesTooltip:
-                'Fontes de temperatura a serem usadas na função de mistura<br/><i>Nota: Você pode usar um Perfil de Mistura para combinar múltiplos<br/>Sensores Personalizados.</i>',
+                'Fontes de temperatura a serem usadas na função de mistura<br/><i>Observação: Ao combinar vários Sensores Personalizados, somente relações diretas de pai e filho são permitidas.<br/>Use Perfis de Mistura para configurações mais complexas.</i>',
+            offset: 'Deslocamento',
+            offsetTooltip:
+                'Insira um valor de deslocamento negativo ou positivo para aplicar ao sensor de origem.<br/><i>Observação: O valor final é limitado a faixas normais de temperatura.</i>',
             tempWeights: 'Pesos de Temperatura',
             tempWeightsTooltip: 'O peso individual de cada fonte de temperatura selecionada.',
             tempName: 'Nome da Temperatura',
@@ -629,6 +657,37 @@ export default {
             numberOfColors: 'Número de Cores',
             numberOfColorsTooltip:
                 'Número de cores a serem usadas para o Modo de Iluminação escolhido.',
+        },
+        shortcuts: {
+            shortcuts: 'Atalhos de Teclado',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: 'Esquerda',
+            right: 'Direita',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: 'Atalhos de Teclado',
+            home: 'Página Inicial',
+            settings: 'Configurações',
+            info: 'Informações do Aplicativo',
+            dashboardOne: 'Painel 1',
+            dashboardTwo: 'Painel 2',
+            dashboardThree: 'Painel 3',
+            dashboardFour: 'Painel 4',
+            alerts: 'Alertas',
+            controls: 'Controles',
+            sideMenuCollapse: 'Recolher menu lateral',
+            sideMenuExpand: 'Expandir menu lateral',
+            fullScreen: 'Tela cheia',
         },
     },
     components: {
@@ -817,6 +876,7 @@ export default {
                 selectSpeed: 'Selecione sua velocidade',
                 newMixProfile: 'Novo Perfil de Mistura',
                 newGraphProfile: 'Novo Perfil de Gráfico',
+                newOverlayProfile: 'Novo Perfil de Sobreposição',
                 functionFor: 'Escolha uma Função para ser aplicada a',
                 functionDescription:
                     'As funções permitem que você controle ainda mais como a saída do Perfil é aplicada.',
@@ -832,9 +892,30 @@ export default {
             profile: {
                 willCreated: 'será criado.',
             },
+            profileApply: {
+                applyProfile: 'Aplicar Perfil',
+                channelsApply: 'Canais para Aplicar Perfil',
+                selectChannels: 'Selecionar Canais',
+                channelsTooltip: 'Selecione um ou mais canais para aplicar este Perfil.',
+            },
+            functionApply: {
+                applyFunction: 'Aplicar Função',
+                profilesApply: 'Perfis para Aplicar Função',
+                selectProfiles: 'Selecionar Perfis',
+                profilesTooltip: 'Selecione um ou mais Perfis para aplicar esta Função.',
+            },
             customSensor: {
                 new: 'Novo Sensor Personalizado',
             },
+        },
+        channelExtensionSettings: {
+            title: 'Configurações do canal do dispositivo',
+            firmwareControlledProfile: 'Perfil controlado por firmware',
+            firmwareControlledProfileDesc:
+                'Quando habilitado, o firmware do dispositivo gerencia o perfil do ventilador.\nÚtil para hardware que não responde bem a alterações frequentes de velocidade feitas por software.\nDisponível apenas para Perfis de gráfico que usam sensores de temperatura internos do dispositivo.\nAs configurações de Função não se aplicam.',
+            saveError: 'Falha ao salvar as configurações da extensão do canal',
+            firmwareControlDisabled:
+                'O controle por firmware não está disponível com as configurações atuais.\nUse um Perfil de gráfico para este dispositivo com um sensor de temperatura interno compatível.',
         },
     },
     auth: {
@@ -909,6 +990,7 @@ export default {
                 fixed: 'Fixo',
                 graph: 'Gráfico',
                 mix: 'Mistura',
+                overlay: 'Sobreposição',
             },
             functionType: {
                 identity: 'Identidade',
@@ -919,12 +1001,14 @@ export default {
                 min: 'Mínimo',
                 max: 'Máximo',
                 avg: 'Média',
+                diff: 'Diferença',
             },
         },
         customSensor: {
             sensorType: {
                 mix: 'Mistura',
                 file: 'Arquivo',
+                offset: 'Deslocamento',
             },
             mixFunctionType: {
                 min: 'Mínimo',

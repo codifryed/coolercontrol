@@ -31,6 +31,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { Ref, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 echarts.use([
     GridComponent,
@@ -54,9 +55,8 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const router = useRouter()
+const { t } = useI18n()
 
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
 const dutyMin: number = 0
 const dutyMax: number = 100
 const memberProfiles: Ref<Array<Profile>> = ref(
@@ -64,6 +64,34 @@ const memberProfiles: Ref<Array<Profile>> = ref(
         props.profile.member_profile_uids.includes(profile.uid),
     ),
 )
+let currentAxisTempMin = 0
+let currentAxisTempMax = 100
+let profileTempMin = 50
+let profileTempMax = 50
+for (const profile of memberProfiles.value) {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === profile.temp_source?.device_uid) {
+            if (device.info == null) {
+                break
+            }
+            currentAxisTempMin = Math.min(currentAxisTempMin, device.info!.temp_min)
+            currentAxisTempMax = Math.max(currentAxisTempMax, device.info!.temp_max)
+        }
+    }
+    if (profile.temp_min != null) {
+        profileTempMin = Math.min(profileTempMin, profile.temp_min)
+    }
+    if (profile.temp_max != null) {
+        profileTempMax = Math.max(profileTempMax, profile.temp_max)
+    }
+}
+if (profileTempMax > 50 && currentAxisTempMax > 100) {
+    currentAxisTempMax = Math.min(currentAxisTempMax, profileTempMax)
+} else if (profileTempMax == 50 && currentAxisTempMax > 100) {
+    currentAxisTempMax = 100
+}
+const axisXTempMin: number = currentAxisTempMin
+const axisXTempMax: number = currentAxisTempMax
 
 interface LineData {
     value: number[]
@@ -139,7 +167,7 @@ const calcSmoothness = (profileIndex: number): number => {
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 0.0
     } else {
-        return 0.3
+        return 0.1
     }
 }
 const calcLineShadowColor = (profileIndex: number): string => {
@@ -192,7 +220,7 @@ const option = {
         show: false,
         top: deviceStore.getREMSize(0.5),
         left: 0,
-        right: deviceStore.getREMSize(0.9),
+        right: deviceStore.getREMSize(1.2),
         bottom: 0,
         containLabel: true,
     },
@@ -203,7 +231,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}°',
+            formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
             lineStyle: {
@@ -226,7 +254,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
-            formatter: '{value}%',
+            formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
             lineStyle: {
@@ -391,8 +419,16 @@ const setGraphData = (profileIndex: number) => {
     graphLineData[profileIndex].length = 0
     const profile = memberProfiles.value[profileIndex]
     if (profile.speed_profile.length > 1) {
+        const firstPoint = profile.speed_profile[0]
+        if (firstPoint[0] > axisXTempMin) {
+            graphLineData[profileIndex].push({ value: [axisXTempMin, firstPoint[1]] })
+        }
         for (const point of profile.speed_profile) {
             graphLineData[profileIndex].push({ value: point })
+        }
+        const lastPoint = profile.speed_profile[profile.speed_profile.length - 1]
+        if (lastPoint[0] < axisXTempMax) {
+            graphLineData[profileIndex].push({ value: [axisXTempMax, lastPoint[1]] })
         }
     }
 }

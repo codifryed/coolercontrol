@@ -18,7 +18,10 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelExtensionNames, ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode,
+    SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -46,9 +49,8 @@ impl DeviceSupport for Modern690LcSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 50,
                     max_duty: 100,
-                    profiles_enabled: false,
                     fixed_enabled: true,
-                    manual_profiles_enabled: true,
+                    extension: None,
                 }),
                 ..Default::default()
             },
@@ -59,9 +61,8 @@ impl DeviceSupport for Modern690LcSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
-                    profiles_enabled: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: true,
+                    extension: Some(ChannelExtensionNames::AutoHWCurve),
                 }),
                 ..Default::default()
             },

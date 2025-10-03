@@ -62,9 +62,8 @@ impl DeviceSupport for SmartDeviceSupport {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
                         max_duty: 100,
-                        profiles_enabled: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: false, // no internal temp
+                        extension: None,
                     }),
                     ..Default::default()
                 },

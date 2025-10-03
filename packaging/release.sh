@@ -24,16 +24,12 @@ cd ..
 git add CHANGELOG.md \
     coolercontrold/Cargo.toml \
     coolercontrold/Cargo.lock \
-    coolercontrol-liqctld/pyproject.toml \
-    coolercontrol-liqctld/setup.cfg \
-    coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
     coolercontrol-ui/package.json \
     coolercontrol-ui/package-lock.json \
     coolercontrol/constants.h \
     packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
     packaging/fedora/coolercontrol.spec \
     packaging/fedora/coolercontrold.spec \
-    packaging/fedora/coolercontrol-liqctld.spec \
     packaging/debian/changelog
 git commit -S -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"

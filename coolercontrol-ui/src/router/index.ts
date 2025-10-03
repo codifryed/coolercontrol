@@ -50,10 +50,10 @@ const router = createRouter({
                     props: false,
                 },
                 {
-                    path: '/settings',
+                    path: '/settings/:tabNumber?',
                     name: 'settings',
                     component: () => import('@/layout/AppSettings.vue'),
-                    props: false,
+                    props: true,
                 },
                 {
                     path: '/dashboards/:dashboardUID?',

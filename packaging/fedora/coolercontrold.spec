@@ -9,6 +9,7 @@ Name:           %{project}d
 Version:        2.2.2
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices
+Obsoletes:      coolercontrol-liqctld
 
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
@@ -19,7 +20,8 @@ BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
-Recommends:     coolercontrol-liqctld = %{version}
+Recommends:     python3-liquidctl
+Recommends:     lm_sensors
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}

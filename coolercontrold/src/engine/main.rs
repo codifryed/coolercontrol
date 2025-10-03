@@ -22,20 +22,23 @@ use std::rc::Rc;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID};
+use crate::device::{
+    ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
+};
 use crate::engine::commanders::graph::GraphProfileCommander;
 use crate::engine::commanders::lcd::LcdCommander;
 use crate::engine::commanders::mix::MixProfileCommander;
+use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
-    Setting, DEFAULT_FUNCTION_UID,
+    ChannelExtensions, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
+    ProfileUID, Setting, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
-use log::{error, info, trace};
+use log::{error, info, log, trace, Level};
 use mime::Mime;
 use moro_local::Scope;
 use tokio::time::Instant;
@@ -52,6 +55,7 @@ pub struct Engine {
     config: Rc<Config>,
     graph_commander: Rc<GraphProfileCommander>,
     mix_commander: Rc<MixProfileCommander>,
+    overlay_commander: Rc<OverlayProfileCommander>,
     pub lcd_commander: Rc<LcdCommander>,
 }
 
@@ -77,6 +81,10 @@ impl Engine {
             config.clone(),
         ));
         let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
+        let overlay_commander = Rc::new(OverlayProfileCommander::new(
+            Rc::clone(&graph_commander),
+            Rc::clone(&mix_commander),
+        ));
         let lcd_commander = Rc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
@@ -87,6 +95,7 @@ impl Engine {
             config,
             graph_commander,
             mix_commander,
+            overlay_commander,
             lcd_commander,
         }
     }
@@ -115,6 +124,7 @@ impl Engine {
                 device_uid,
                 &setting.channel_name,
                 setting.lcd.as_ref().unwrap(),
+                true,
             )
             .await
         } else if setting.profile_uid.is_some() {
@@ -153,10 +163,8 @@ impl Engine {
     ) -> Result<()> {
         match self.get_device_repo(device_uid) {
             Ok((device_lock, repo)) => {
-                self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name);
-                self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name);
+                self.overlay_commander
+                    .clear_channel_setting_all_commanders(device_uid, channel_name);
                 repo.apply_setting_manual_control(device_uid, channel_name)
                     .await?;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
@@ -206,6 +214,10 @@ impl Engine {
                 self.set_mix_profile(device_uid, channel_name, &profile)
                     .await
             }
+            ProfileType::Overlay => {
+                self.set_overlay_profile(device_uid, channel_name, &profile)
+                    .await
+            }
         }
         .inspect(|()| {
             info!(
@@ -238,23 +250,23 @@ impl Engine {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let temp_source = profile.temp_source.as_ref().unwrap();
-        let profile_function = self
-            .config
-            .get_functions()
-            .await?
-            .into_iter()
-            .find(|f| f.uid == profile.function_uid)
-            .with_context(|| "Function should be present")?;
-        self.mix_commander // clear any mix profile settings for this channel first:
-            .clear_channel_setting(device_uid, channel_name);
-        // For internal temps, if the device firmware supports speed profiles and settings
-        // match, let's use it: (device firmwares only support Identity Functions)
-        if speed_options.profiles_enabled
+        let channel_supports_hw_curve = speed_options.extension.is_some_and(|s| {
+            s == ChannelExtensionNames::AutoHWCurve || s == ChannelExtensionNames::AmdRdnaGpu
+        });
+        let hw_curve_enabled = self.is_hw_curve_enabled(device_uid, channel_name)?;
+        // clear any profile setting for this channel first:
+        self.overlay_commander
+            .clear_channel_setting_all_commanders(device_uid, channel_name);
+        // Note: this logic only applies to Graph Profiles.
+        if channel_supports_hw_curve
+            // specific internal temp channels are verified by the device repos
             && &temp_source.device_uid == device_uid
-            && profile_function.f_type == FunctionType::Identity
+            && hw_curve_enabled
         {
-            self.graph_commander
-                .clear_channel_setting(device_uid, channel_name);
+            info!(
+                "Applying | hardware internal profile:: {} | {channel_name}",
+                device_lock.borrow().name
+            );
             repo.apply_setting_speed_profile(
                 device_uid,
                 channel_name,
@@ -262,9 +274,7 @@ impl Engine {
                 profile.speed_profile.as_ref().unwrap(),
             )
             .await
-        } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
-            || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
-        {
+        } else if speed_options.fixed_enabled {
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await?;
             self.graph_commander.schedule_setting(
@@ -304,15 +314,8 @@ impl Engine {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let member_profiles = self
-            .config
-            .get_profiles()
-            .await?
-            .into_iter()
-            .filter(|p| profile.member_profile_uids.contains(&p.uid))
-            .collect::<Vec<Profile>>();
-        if member_profiles.len() != profile.member_profile_uids.len() {
-            return Err(anyhow!("All Member Profiles should be present"));
-        }
+            .get_ordered_member_profiles(&profile.member_profile_uids)
+            .await?;
         let all_function_uids = self
             .config
             .get_functions()
@@ -327,6 +330,9 @@ impl Engine {
             return Err(anyhow!("All Member Profile Functions should be present"));
         }
         if speed_options.fixed_enabled {
+            // clear any profile setting for this channel first:
+            self.overlay_commander
+                .clear_channel_setting_all_commanders(device_uid, channel_name);
             // This could potentially take significant time for slow devices:
             repo.apply_setting_manual_control(device_uid, channel_name)
                 .await
@@ -336,11 +342,15 @@ impl Engine {
                         Profile scheduling has been disabled for {channel_name} | {err}",
                         profile.name
                     );
-                    self.graph_commander
-                        .clear_channel_setting(device_uid, channel_name);
                 })?;
-            self.mix_commander
-                .schedule_setting(device_uid, channel_name, profile, member_profiles)
+            self.mix_commander.schedule_setting(
+                DeviceChannelProfileSetting::Mix {
+                    device_uid: device_uid.clone(),
+                    channel_name: channel_name.to_string(),
+                },
+                profile,
+                member_profiles,
+            )
         } else {
             Err(anyhow!(
                 "Device Control not enabled for this device: {device_uid}"
@@ -348,12 +358,79 @@ impl Engine {
         }
     }
 
+    async fn set_overlay_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
+        if profile.member_profile_uids.len() != 1 {
+            return Err(anyhow!("Overlay Profile should one member profile"));
+        }
+        if profile.offset_profile.is_none() {
+            return Err(anyhow!("Overlay Profile should have an offset profile"));
+        }
+        if profile.offset_profile.as_ref().unwrap().is_empty() {
+            return Err(anyhow!(
+                "Overlay Profile offset profiles should have at least one duty/offset pair"
+            ));
+        }
+        let (device_lock, repo) = self.get_device_repo(device_uid)?;
+        let speed_options = device_lock
+            .borrow()
+            .info
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .speed_options
+            .clone()
+            .with_context(|| "Looking for Channel Speed Options")?;
+        let member_profile = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .find(|p| profile.member_profile_uids.contains(&p.uid))
+            .ok_or(anyhow!("Overlay Member Profile should be present"))?;
+        let member_profile_members = self
+            .get_ordered_member_profiles(&member_profile.member_profile_uids)
+            .await?;
+        if speed_options.fixed_enabled {
+            // clear any profile setting for this channel first:
+            self.overlay_commander
+                .clear_channel_setting_all_commanders(device_uid, channel_name);
+            // This could potentially take significant time for slow devices:
+            repo.apply_setting_manual_control(device_uid, channel_name)
+                .await
+                .inspect_err(|err| {
+                    error!(
+                        "Failed to enable manual control for Overlay Profile: {}. \
+                        Profile scheduling has been disabled for {channel_name} | {err}",
+                        profile.name
+                    );
+                })?;
+            self.overlay_commander.schedule_setting(
+                DeviceChannelProfileSetting::Overlay {
+                    device_uid: device_uid.clone(),
+                    channel_name: channel_name.to_string(),
+                },
+                profile,
+                &member_profile,
+                member_profile_members,
+            )
+        } else {
+            Err(anyhow!(
+                "Device Control not enabled for this device: {device_uid}"
+            ))
+        }
+    }
     /// Handles applying LCD Settings for all `LcdModes`.
     pub async fn set_lcd(
         &self,
         device_uid: &UID,
         channel_name: &str,
         lcd_settings: &LcdSettings,
+        log_success: bool,
     ) -> Result<()> {
         let (device_lock, repo) = self.get_device_repo(device_uid)?;
         let lcd_not_enabled = device_lock
@@ -372,7 +449,9 @@ impl Engine {
         }
         let result = if lcd_settings.mode == "temp" {
             if lcd_settings.temp_source.is_none() {
-                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"));
+                return Err(anyhow!(
+                    "A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"
+                ));
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
@@ -387,7 +466,13 @@ impl Engine {
                 .await
         };
         result.inspect(|()| {
-            info!(
+            let log_level = if log_success {
+                Level::Info
+            } else {
+                Level::Debug
+            };
+            log!(
+                log_level,
                 "Successfully applied:: {} | {channel_name} | LCD Mode: {}",
                 device_lock.borrow().name,
                 lcd_settings.mode
@@ -537,6 +622,8 @@ impl Engine {
             })
     }
 
+    /// This hasn't been supported for some time, but may be in the future with Extensions.
+    #[allow(unused)]
     pub async fn set_pwm_mode(
         &self,
         device_uid: &UID,
@@ -555,10 +642,8 @@ impl Engine {
     pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         match self.get_device_repo(device_uid) {
             Ok((_device_lock, repo)) => {
-                self.mix_commander
-                    .clear_channel_setting(device_uid, channel_name);
-                self.graph_commander
-                    .clear_channel_setting(device_uid, channel_name);
+                self.overlay_commander
+                    .clear_channel_setting_all_commanders(device_uid, channel_name);
                 self.lcd_commander
                     .clear_channel_setting(device_uid, channel_name);
                 repo.apply_setting_reset(device_uid, channel_name).await
@@ -572,12 +657,15 @@ impl Engine {
     pub fn process_scheduled_speeds<'s>(&'s self, scope: &'s Scope<'s, 's, Result<()>>) {
         let start = Instant::now();
         self.graph_commander.process_all_profiles();
+        self.mix_commander.process_all_profiles();
+        self.overlay_commander.process_all_profiles();
         trace!(
             "Processing time taken for all profiles: {:?}",
             start.elapsed()
         );
         self.graph_commander.update_speeds(scope);
         self.mix_commander.update_speeds(scope);
+        self.overlay_commander.update_speeds(scope);
         trace!("Update and Processing time taken: {:?}", start.elapsed());
     }
 
@@ -630,16 +718,11 @@ impl Engine {
     /// the settings for those devices.
     pub async fn profile_updated(&self, profile_uid: &ProfileUID) {
         let affected_mix_profiles = self
-            .config
-            .get_profiles()
-            .await
-            .unwrap_or_else(|_| Vec::new())
-            .into_iter()
-            .filter(|profile| {
-                profile.p_type == ProfileType::Mix
-                    && profile.member_profile_uids.contains(profile_uid)
-            })
-            .collect::<Vec<_>>();
+            .get_profiles_affected_by(profile_uid, ProfileType::Mix)
+            .await;
+        let affected_overlay_profiles = self
+            .get_profiles_affected_by(profile_uid, ProfileType::Overlay)
+            .await;
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
@@ -657,6 +740,14 @@ impl Engine {
                         .any(|p| &p.uid == setting_profile_uid)
                     {
                         // otherwise, IF the device channel setting contains an affected Mix Profile
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    } else if affected_overlay_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        // otherwise, IF the device channel setting contains an affected Overlay Profile
                         self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
                             .await
                             .ok();
@@ -679,6 +770,22 @@ impl Engine {
                     && profile.member_profile_uids.contains(profile_uid)
             })
             .collect::<Vec<_>>();
+        if self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .any(|profile| {
+                profile.p_type == ProfileType::Overlay
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+        {
+            return Err(CCError::UserError {
+                msg: "In use by an Overlay Profile. Please remove from the overlay profile first"
+                    .to_string(),
+            }
+            .into());
+        }
         if affected_mix_profiles
             .iter()
             .any(|p| p.member_profile_uids.len() < 2)
@@ -847,5 +954,66 @@ impl Engine {
         } else {
             Ok(())
         }
+    }
+
+    async fn get_ordered_member_profiles(
+        &self,
+        member_profile_uids: &Vec<UID>,
+    ) -> Result<Vec<Profile>> {
+        let mut all_profiles = self.config.get_profiles().await?;
+        let mut member_profiles = Vec::new();
+        for member_profile_uid in member_profile_uids {
+            let Some(index) = all_profiles
+                .iter()
+                .position(|m| &m.uid == member_profile_uid)
+            else {
+                return Err(anyhow!(
+                    "Member Profile UID: {member_profile_uid} could not be found!"
+                ));
+            };
+            member_profiles.push(all_profiles.swap_remove(index));
+        }
+        Ok(member_profiles)
+    }
+
+    async fn get_profiles_affected_by(
+        &self,
+        changed_profile_uid: &UID,
+        profile_type: ProfileType,
+    ) -> Vec<Profile> {
+        self.config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == profile_type
+                    && profile.member_profile_uids.contains(changed_profile_uid)
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn is_hw_curve_enabled(&self, device_uid: &UID, channel_name: &str) -> Result<bool> {
+        let cc_settings = self.config.get_cc_settings_for_device(device_uid)?;
+        let enabled = cc_settings.is_some_and(|device_settings| {
+            device_settings
+                .channel_settings
+                .get(channel_name)
+                .is_some_and(|channel_settings| {
+                    channel_settings
+                        .extension
+                        .as_ref()
+                        .is_some_and(|extension| match extension {
+                            ChannelExtensions::AutoHWCurve {
+                                auto_hw_curve_enabled: hw_curve_enabled,
+                            }
+                            | ChannelExtensions::AmdRdnaGpu {
+                                hw_fan_curve_enabled: hw_curve_enabled,
+                                ..
+                            } => *hw_curve_enabled,
+                        })
+                })
+        });
+        Ok(enabled)
     }
 }

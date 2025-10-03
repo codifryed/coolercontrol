@@ -16,15 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, AppState, CCError};
 use crate::setting::{CustomSensor, CustomSensorType};
-use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 use super::validate_name_string;
 
@@ -71,14 +68,12 @@ pub async fn save_order(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState {
         custom_sensor_handle,
         ..
     }): State<AppState>,
     Json(custom_sensor): Json<CustomSensor>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_custom_sensor(&custom_sensor)?;
     custom_sensor_handle
         .create(custom_sensor)
@@ -87,14 +82,12 @@ pub async fn create(
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState {
         custom_sensor_handle,
         ..
     }): State<AppState>,
     Json(custom_sensor): Json<CustomSensor>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_custom_sensor(&custom_sensor)?;
     custom_sensor_handle
         .update(custom_sensor)
@@ -104,13 +97,11 @@ pub async fn update(
 
 pub async fn delete(
     Path(path): Path<CSPath>,
-    NoApi(session): NoApi<Session>,
     State(AppState {
         custom_sensor_handle,
         ..
     }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     custom_sensor_handle
         .delete(path.custom_sensor_id)
         .await
@@ -144,6 +135,20 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
         invalid_msg = Some("Custom Sensor File type must have a file path".to_string());
     } else if custom_sensor.cs_type == CustomSensorType::File && !custom_sensor.sources.is_empty() {
         invalid_msg = Some("Custom Sensor File type should not have sources".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.offset.is_none() {
+        invalid_msg = Some("Custom Sensor Offset type must have an offset".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset
+        && custom_sensor.offset.unwrap() < -100
+    {
+        invalid_msg = Some("Custom Sensor Offset type offset cannot be less than -100".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset
+        && custom_sensor.offset.unwrap() > 100
+    {
+        invalid_msg =
+            Some("Custom Sensor Offset type offset cannot be greater than 100".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Offset && custom_sensor.sources.len() != 1
+    {
+        invalid_msg = Some("Custom Sensor Offset type must have exactly 1 temp source".to_string());
     }
     if let Some(msg) = invalid_msg {
         Err(CCError::UserError { msg })

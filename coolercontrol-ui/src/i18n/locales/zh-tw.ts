@@ -63,6 +63,7 @@ export default {
         logout: '登出',
         temperature: '溫度',
         duty: '風扇轉速',
+        offset: '偏移量',
         stay: '保留',
         discard: '放棄',
         blankNameResetDefault: '留空將重置為系統預設值。',
@@ -204,6 +205,8 @@ export default {
                 border: '邊框顏色',
                 text: '文字顏色',
                 textSecondary: '次要文字顏色',
+                export: '匯出主題',
+                import: '匯入主題',
             },
             tooltips: {
                 introduction: '開始應用程式介紹導覽。',
@@ -275,6 +278,7 @@ export default {
             customSensors: '自定義傳感器',
             modes: '模式',
             alerts: '警報',
+            pinned: '已釘選',
             tooltips: {
                 delete: '刪除',
                 createMode: '從當前設置創建模式',
@@ -294,6 +298,13 @@ export default {
                 addCustomSensor: '添加自定義傳感器',
                 addFunction: '添加功能',
                 chooseColor: '選擇顏色',
+                options: '更多選項',
+                moveTop: '移至頂部',
+                moveBottom: '移至底部',
+                disable: '停用',
+                pin: '釘選至頂部',
+                unpin: '取消釘選',
+                profileApply: '將設定檔套用至風扇',
             },
         },
         add: {
@@ -383,6 +394,7 @@ export default {
             warmupGreaterThan: '條件觸發時間超過',
             unsavedChanges: '此警報有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
+            createFailAlert: '故障警報',
         },
         profiles: {
             createProfile: '建立設定檔',
@@ -410,7 +422,7 @@ export default {
             newProfile: '新設定檔',
             tooltip: {
                 profileType:
-                    '設定檔類型:<br/>- 預設: 保留目前裝置設定<br/>&nbsp;&nbsp;(BIOS/韌體)<br/>- 固定: 設定恆定速度<br/>- 圖表: 可自訂風扇曲線<br/>- 混合: 組合多個設定檔',
+                    '設定檔類型:<br/>- 預設: 保留當前裝置設定<br/>&nbsp;&nbsp;(BIOS/韌體)<br/>- 固定: 設定恆定的速度<br/>- 圖表: 可自訂的風扇曲線<br/>- 混合: 組合多個設定檔<br/>- 疊加: 對現有設定檔的輸出套用偏移量',
             },
             profileDeleted: '設定檔已刪除',
             profileDuplicated: '設定檔已複製',
@@ -421,6 +433,18 @@ export default {
             profileUpdateError: '嘗試更新此設定檔時發生錯誤',
             tempSourceRequired: '圖表設定檔需要溫度來源。',
             memberProfilesRequired: '混合設定檔至少需要2個成員設定檔。',
+            minProfileTemp: '最小設定檔溫度',
+            maxProfileTemp: '最大設定檔溫度',
+            staticOffset: '靜態偏移',
+            offsetType: '偏移類型',
+            offsetTypeStatic: '靜態偏移',
+            offsetTypeGraph: '圖表偏移',
+            baseProfile: '基礎設定檔',
+            baseProfileRequired: '疊加設定檔需要一個基礎設定檔。',
+            selectedPointOutputDuty: '選取點的設定檔輸出轉速',
+            selectedPointOffset: '選取點的偏移轉速',
+            profileOutputDuty: '設定檔輸出轉速',
+            offsetDuty: '偏移轉速',
         },
         customSensors: {
             newSensor: '新傳感器',
@@ -435,8 +459,12 @@ export default {
             browse: '瀏覽',
             browseCustomSensorFile: '瀏覽自定義傳感器文件',
             tempSources: '溫度源',
+            tempSource: '溫度源',
             tempSourcesTooltip:
-                '要在混合函數中使用的溫度源<br/><i>注意：您可以使用混合設定檔來組合多個<br/>自定義傳感器。</i>',
+                '在混合函數中使用的溫度源<br/><i>注意：當組合多個自定義傳感器時，只允許直接的父子關係。<br/>較為複雜的設定請使用混合設定檔。</i>',
+            offset: '偏移量',
+            offsetTooltip:
+                '輸入要套用至來源傳感器的負值或正值偏移量。<br/><i>注意：最終數值將被限制在正常的溫度範圍內。</i>',
             tempWeights: '溫度權重',
             tempWeightsTooltip: '每個選定溫度源的各自權重。',
             tempName: '溫度名稱',
@@ -618,6 +646,37 @@ export default {
             restartPrompt: '切換設備或傳感器需要重啟後台和界面。您確定要立即執行此操作嗎？',
             enableDevices: '啟用設備',
         },
+        shortcuts: {
+            shortcuts: '鍵盤快速鍵',
+            ctrl: 'Ctrl',
+            alt: 'Alt',
+            left: '左',
+            right: '右',
+            comma: ',',
+            h: 'h',
+            a: 'a',
+            c: 'c',
+            i: 'i',
+            slash: '/',
+            one: '1',
+            two: '2',
+            three: '3',
+            four: '4',
+            f11: 'F11',
+            viewShortcuts: '鍵盤快速鍵',
+            home: '首頁',
+            settings: '設定',
+            info: '應用程式資訊',
+            dashboardOne: '儀表板 1',
+            dashboardTwo: '儀表板 2',
+            dashboardThree: '儀表板 3',
+            dashboardFour: '儀表板 4',
+            alerts: '警報',
+            controls: '控制',
+            sideMenuCollapse: '收合側邊選單',
+            sideMenuExpand: '展開側邊選單',
+            fullScreen: '全螢幕',
+        },
     },
     components: {
         confirmation: {
@@ -772,6 +831,7 @@ export default {
                 selectSpeed: '選擇您的速度',
                 newMixProfile: '新建混合設定檔',
                 newGraphProfile: '新建圖表設定檔',
+                newOverlayProfile: '新建疊加設定檔',
                 functionFor: '選擇要套用於此的功能',
                 functionDescription: '功能允許您進一步控制設定檔輸出的套用方式。',
                 createNewFunction: '建立新功能',
@@ -786,9 +846,30 @@ export default {
             profile: {
                 willCreated: '將被建立。',
             },
+            profileApply: {
+                applyProfile: '套用設定檔',
+                channelsApply: '要套用設定檔的通道',
+                selectChannels: '選擇通道',
+                channelsTooltip: '選擇一個或多個通道來套用此設定檔。',
+            },
+            functionApply: {
+                applyFunction: '套用功能',
+                profilesApply: '要套用功能的設定檔',
+                selectProfiles: '選擇設定檔',
+                profilesTooltip: '選擇一個或多個設定檔來套用此功能。',
+            },
             customSensor: {
                 new: '新自訂感測器',
             },
+        },
+        channelExtensionSettings: {
+            title: '裝置通道設定',
+            firmwareControlledProfile: '韌體控制的設定檔',
+            firmwareControlledProfileDesc:
+                '啟用後，裝置韌體將管理風扇設定檔。\n適用於對軟體頻繁變更速度反應不佳的硬體。\n僅適用於使用裝置內建溫度感測器的圖表設定檔。\n功能設定不適用。',
+            saveError: '儲存通道擴充設定失敗',
+            firmwareControlDisabled:
+                '目前設定無法使用韌體控制。\n請為此裝置使用含有受支援內建溫度感測器的圖表設定檔。',
         },
     },
     auth: {
@@ -869,6 +950,7 @@ export default {
                 fixed: '固定',
                 graph: '曲線圖',
                 mix: '混合',
+                overlay: '疊加',
             },
             functionType: {
                 identity: '恒等',
@@ -879,12 +961,14 @@ export default {
                 min: '最小值',
                 max: '最大值',
                 avg: '平均值',
+                diff: '差值',
             },
         },
         customSensor: {
             sensorType: {
                 mix: '混合',
                 file: '文件',
+                offset: '偏移',
             },
             mixFunctionType: {
                 min: '最小值',

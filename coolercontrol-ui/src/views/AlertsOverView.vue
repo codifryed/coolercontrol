@@ -19,6 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiBellPlusOutline } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import DataTable, { DataTableRowSelectEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -27,12 +28,32 @@ import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/model
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { computed, inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
+import Button from 'primevue/button'
 
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { getREMSize } = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
+const alertsList = computed(() => {
+    const alerts = []
+    for (const alert of settingsStore.alerts) {
+        alerts.push(alert)
+    }
+    const alertMenuOrder = settingsStore.menuOrder.find((item) => item.id === 'alerts')
+    if (alertMenuOrder?.children?.length) {
+        const getIndex = (item: any) => {
+            const index = alertMenuOrder.children.indexOf(item.uid)
+            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+        }
+        alerts.sort((a: any, b: any) => getIndex(a) - getIndex(b))
+    }
+    return alerts
+})
 const onRowSelect = (event: DataTableRowSelectEvent) => {
     router.push({ name: 'alerts', params: { alertUID: event.data.uid } })
 }
@@ -45,13 +66,26 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
-                    t('layout.topbar.alerts')
-                }}</span>
-                <div class="flex flex-row">
+                <div class="w-max">
+                    <div class="flex items-center justify-between">
+                        <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                            t('layout.topbar.alerts')
+                        }}</span>
+                        <Button
+                            class="h-8 my-2"
+                            v-tooltip.top="{ value: t('layout.menu.tooltips.addAlert') }"
+                            @click="emitter.emit('alert-add')"
+                        >
+                            <svg-icon
+                                class="outline-0"
+                                type="mdi"
+                                :path="mdiBellPlusOutline"
+                                :size="deviceStore.getREMSize(1.25)"
+                            />
+                        </Button>
+                    </div>
                     <DataTable
-                        class="w-[31rem]"
-                        :value="settingsStore.alerts"
+                        :value="alertsList"
                         selection-mode="single"
                         data-key="uid"
                         :meta-key-selection="false"
@@ -72,6 +106,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                         <Column field="state" :header="t('common.state')">
                             <template #body="slotProps">
                                 <span
+                                    class="underline"
                                     :class="{
                                         'text-error': slotProps.data.state === AlertState.Active,
                                         'text-success':
@@ -85,14 +120,13 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                         <Column
                             field="name"
                             :header="t('common.name')"
-                            body-class="w-full text-ellipsis"
+                            body-class="w-full text-ellipsis underline"
                         />
                     </DataTable>
-                    <div class="w-full" />
                 </div>
             </div>
             <div class="mt-8 flex flex-col">
-                <span class="pb-1 ml-1 font-semibold text-xl text-text-color">{{
+                <span class="pb-3 ml-1 font-semibold text-xl text-text-color">{{
                     t('views.alerts.alertLogs')
                 }}</span>
                 <DataTable
@@ -112,6 +146,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                     <Column field="state" :header="t('common.state')">
                         <template #body="slotProps">
                             <span
+                                class="underline"
                                 :class="{
                                     'text-error': slotProps.data.state === AlertState.Active,
                                     'text-success': slotProps.data.state === AlertState.Inactive,
@@ -121,7 +156,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                             </span>
                         </template>
                     </Column>
-                    <Column field="name" :header="t('common.name')" />
+                    <Column field="name" :header="t('common.name')" body-class="underline" />
                     <Column
                         field="message"
                         :header="t('common.message')"

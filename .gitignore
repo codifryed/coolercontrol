@@ -41,3 +41,5 @@ packaging/debian/coolercontrol.coolercontrold.service
 packaging/debian/coolercontrol.coolercontrol-liqctld.service
 
 assets-built/
+coolercontrold/gl-code-quality-report.json
+coolercontrold/report.xml

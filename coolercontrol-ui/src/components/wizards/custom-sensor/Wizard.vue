@@ -36,22 +36,24 @@ const newName: Ref<string> = ref('')
 </script>
 
 <template>
-    <NewCustomSensor
-        v-if="currentStep === 1"
-        @next-step="(step: number) => (currentStep = step)"
-        @new-custom-sensor="(sensor: CustomSensor) => (newCustomSensor = sensor)"
-        @name="(name: string) => (newName = name)"
-        @close="closeDialog"
-        :custom-sensor="newCustomSensor"
-        :name="newName"
-    />
-    <Summary
-        v-else-if="currentStep === 2"
-        @next-step="(step: number) => (currentStep = step)"
-        @close="closeDialog"
-        :custom-sensor="newCustomSensor!"
-        :name="newName"
-    />
+    <Suspense>
+        <NewCustomSensor
+            v-if="currentStep === 1"
+            @next-step="(step: number) => (currentStep = step)"
+            @new-custom-sensor="(sensor: CustomSensor) => (newCustomSensor = sensor)"
+            @name="(name: string) => (newName = name)"
+            @close="closeDialog"
+            :custom-sensor="newCustomSensor"
+            :name="newName"
+        />
+        <Summary
+            v-else-if="currentStep === 2"
+            @next-step="(step: number) => (currentStep = step)"
+            @close="closeDialog"
+            :custom-sensor="newCustomSensor!"
+            :name="newName"
+        />
+    </Suspense>
 </template>
 
 <style scoped lang="scss"></style>

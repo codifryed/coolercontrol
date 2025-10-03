@@ -16,14 +16,13 @@
 <img src="https://img.shields.io/badge/_-Linux-2c313c?style=for-the-badge&logo=linux&logoColor=dce1ec">
 <img src="https://img.shields.io/badge/_-Rust-2c313c?style=for-the-badge&logo=rust">
 <img src="https://img.shields.io/badge/_-Vue-2c313c?style=for-the-badge&logo=vue.js">
-<img src="https://img.shields.io/badge/_-Python-2c313c?style=for-the-badge&logo=python">
 
 <!-- trunk-ignore-end(markdownlint)-->
 
 <br/>
 <br/>
 <p>
-CoolerControl is a feature-rich cooling device control and monitoring application for Linux.
+Powerful cooling control and monitoring for Linux 🐧
 </p>
 
 <!-- trunk-ignore-begin(markdownlint/MD045): links with emojis -->
@@ -42,8 +41,8 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 <!-- trunk-ignore-begin(markdownlint/MD051): links with emojis -->
 
 [Install](https://docs.coolercontrol.org/getting-started.html) ·
-[Hardware Support](#🧰-hardware-support) · [Documentation](https://docs.coolercontrol.org) ·
-[Discord](https://discord.gg/MbcgUFAfhV)
+[Hardware Support](https://docs.coolercontrol.org/hardware-support.html) ·
+[Documentation](https://docs.coolercontrol.org) · [Discord](https://discord.gg/MbcgUFAfhV)
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
@@ -53,110 +52,66 @@ CoolerControl is a feature-rich cooling device control and monitoring applicatio
 
 ## ✨ Features
 
-- A highly configurable control GUI with dashboards
-- A system daemon that runs in the background
-- Control any device based on any temperature or combination of temperatures
-- Auto detection of hwmon/sysfs and liquidctl devices
-- Enhanced liquidctl device support (AIOs, USB Fan hubs, LCD screens, RGB lighting, etc)
-- Fan control support for most NVidia and AMD GPUs
-- Fully customizable speed `Profiles` like Fixed, Graph(Curve), and Mix that can be applied to
-  multiple fans
-- `Functions` to control how a Profile is applied with hysteresis, threshold, directional, and
-  response time control
-- System-wide cooling `Modes` to adjust all your devices at once
-- Create your own `Custom Sensors` based on a File or on a combination of temperature sensors
-- Multiple `Dashboards` with filters to view your system's sensor data
-- `Alerts` to notify you of unexpected changes to temperatures or fans
-- Re-applies settings after waking from sleep
+- Highly configurable GUI with dashboards
+- System daemon runs in the background
+- Control devices based on any temperature or combinations of sensors
+- Auto-detection of hwmon/sysfs and liquidctl devices
+- Enhanced liquidctl device support (AIOs, USB fan hubs, LCD screens, RGB lighting, etc.)
+- GPU fan control for most NVIDIA and AMD GPUs
+- Fully customizable `Profiles` (Fixed, Graph, Mix, Overlay) that can be applied to multiple fans
+- `Functions` add hysteresis, thresholds, directionality, and response-time control
+- System-wide cooling `Modes` to adjust all devices at once
+- `Custom Sensors` from files or combinations of existing sensors
+- Multiple `Dashboards` with filters for sensor data
+- `Alerts` for temperature/fan anomalies
+- Reapplies settings after sleep
 - External monitoring and GUI support
-- Headless server support with an available Web UI
-- Comprehensive REST API for extensions
+- Headless support with a built-in Web UI
+- Comprehensive REST API for integrations
 
-## 📦 Packages
+### 🛠️ Installation Instructions
 
-CoolerControl is made up of several sub-packages:
-
-1. `coolercontrold` _(required)_ - The system service that handles controlling your hardware.
-2. `coolercontrol-liqctld` _(optional)_ - Service integration for `liquidctl` device support (AIOs,
-   USB fan hubs, etc.).
-3. `coolercontrol` _(optional)_ - the standalone Desktop Application. _(alternatively you can access
-   the [Web UI](http://localhost:11987) in your browser)_
-
-_\*Note: You can control the daemon using its
-[config file](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files), but that is not
-officially supported._
-
-### 🛠️ [Installation Instructions](https://docs.coolercontrol.org/getting-started.html)
+[See the Getting Started page](https://docs.coolercontrol.org/getting-started.html)
 
 ## 🧰 Hardware Support
 
-CoolerControl depends on [Hwmon](https://docs.kernel.org/hwmon/) kernel drivers and
-[liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware. Note
-that your hardware <ins>**is not guaranteed**</ins> to be supported, as this depends on open-source
-drivers and contributors. The following are the steps you should take to **maximize** hardware
-coverage:
-
-- Install **`lm-sensors`** and run `sudo sensors-detect`. For more details see the
-  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation). Additionally, you can
-  check out the official [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues)
-  for tips on manually loading unofficial kernel modules for hardware that isn't supported
-  out-of-the-box yet.
-- For newer motherboards and cards, it's best to install the **latest available kernel** for your
-  distribution which includes the latest Hwmon drivers and kernel modules.
-- Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
-  of support for USB devices like fan hubs and AIOs.
-- Nvidia GPUs - Fan control has been tested working on most cards with the Nvidia proprietary
-  drivers. CoolerControl **automatically** uses `NVML` and the CLI tools `nvidia-settings` and
-  `nvidia-smi` as a fallback.
-- AMD GPUs
-  - Older cards: <=6000 series work out of the box.
-  - Newer cards: 7000, 9000 series and above have different firmwares that require an extra step to
-    enable fan control:
-    - Linux kernel >=6.12 is required for fan control on these newer cards.
-    - You can enable all features including fan control by setting the following kernel boot option:
-      `amdgpu.ppfeaturemask=0xffffffff`.
-    - ⚠️ Depending on your installed kernel version and specific model of your card, be aware that
-      sometimes there is a minimum temperature limit at which the fans will spin up.
-    - See the
-      [CoolerControl AMDGPU Docs page](https://docs.coolercontrol.org/hardware-support.html#amd-gpu)
-      for more detailed info.
-- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to have supported linux drivers,
-  **but not all**. If your laptop has a hwmon kernel driver, then CoolerControl will use it
-  automatically. Otherwise, fan control for your laptop is most likely not supported.
-- In general, CoolerControl will detect supported devices and available capabilities
-  **automatically**. If needed, the GUI will also prompt you for any additional steps. There are
-  some situations where the kernel drivers are not yet mature enough to offer full fan control
-  functionality, in which case you will get **an error** when attempting to apply changes.
-
-## 🌐 [CoolerControl Website](https://docs.coolercontrol.org)
+[See the Hardware Support page](https://docs.coolercontrol.org/hardware-support.html)
 
 ## ❔ Problem or Question
 
-If you are experiencing an issue or have a feature request, please open up an
+If you are experiencing an issue or have a feature request, please open an
 [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the
 provided templates. When submitting a bug
 [daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file)
-are invaluable to determining the cause. If you have a general question, please join the
+are invaluable for determining the cause. If you have a general question, please join the
 [Discord](https://discord.gg/MbcgUFAfhV) channel where community members can also help.
+
+## ❤️ Support CoolerControl
+
+Made for Linux, used 24/7. CoolerControl started as the tool I needed for my own rigs and grew from
+there. If you’d like to help, your support goes straight into new features, integrations,
+maintenance, and a cup of coffee to power those late‑night coding sessions.
+
+<div>
+<!-- trunk-ignore-begin(markdownlint)-->
+<a href="https://ko-fi.com/codifryed"><img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
+<a href="https://github.com/sponsors/codifryed"><img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA"></a>
+<!-- trunk-ignore-end(markdownlint)-->
+</div>
 
 ## 🚀 Contributing
 
-:heart: CoolerControl is in need of help with the following areas:
-
-- Packaging
-- Website
-- Spreading the word
-
-If you have an idea or want to submit some changes, it's usually best to either
-[submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) first or get on
-[Discord](https://discord.gg/MbcgUFAfhV) to discuss it. For general information, please read the
+Contributions are welcome and if you have an idea or want to submit some changes, it's best to
+either [submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) or get on
+[Discord](https://discord.gg/MbcgUFAfhV) to discuss it first. For general information, please read
+the
 [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
 
 ## ⭐ Acknowledgements
 
-- Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-- Thanks to all the many contributors of [HWMon](https://docs.kernel.org/hwmon/)
 - A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
+- Major thanks to the Python API of [liquidctl](https://github.com/liquidctl/liquidctl)
+- Thanks to the many contributors to [hwmon](https://docs.kernel.org/hwmon/)
 
 ## 📝 License
 

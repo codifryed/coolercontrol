@@ -16,18 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
-use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
-use aide::NoApi;
+use crate::setting::{CCChannelSettings, CCDeviceSettings, CoolerControlSettings};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
-use tower_sessions::Session;
 
 /// Get General `CoolerControl` settings
 pub async fn get_cc(
@@ -42,11 +40,9 @@ pub async fn get_cc(
 
 /// Apply General `CoolerControl` settings
 pub async fn update_cc(
-    NoApi(session): NoApi<Session>,
     State(AppState { setting_handle, .. }): State<AppState>,
     Json(cc_settings_request): Json<CoolerControlSettingsDto>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     setting_handle
         .update_cc(cc_settings_request)
         .await
@@ -79,11 +75,9 @@ pub async fn get_cc_device(
 /// Save `CoolerControl` settings that apply to a specific Device
 pub async fn update_cc_device(
     Path(path): Path<DevicePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { setting_handle, .. }): State<AppState>,
-    Json(cc_device_settings_request): Json<CoolerControlDeviceSettings>,
+    Json(cc_device_settings_request): Json<CCDeviceSettings>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     setting_handle
         .update_cc_device(path.device_uid, cc_device_settings_request)
         .await
@@ -208,7 +202,7 @@ pub struct CoolerControlDeviceSettingsDto {
     pub uid: UID,
     pub name: String,
     pub disable: bool,
-    pub disable_channels: Vec<ChannelName>,
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

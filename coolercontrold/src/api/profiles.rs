@@ -16,15 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::api::auth::verify_admin_permissions;
 use crate::api::{handle_error, validate_name_string, AppState, CCError};
 use crate::setting::{Profile, ProfileType, ProfileUID};
-use aide::NoApi;
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 
 /// Retrieves the persisted Profile list
 pub async fn get_all(
@@ -49,31 +46,25 @@ pub async fn save_order(
 }
 
 pub async fn create(
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
     Json(profile): Json<Profile>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
     profile_handle.create(profile).await.map_err(handle_error)
 }
 
 pub async fn update(
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
     Json(profile): Json<Profile>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
     profile_handle.update(profile).await.map_err(handle_error)
 }
 
 pub async fn delete(
     Path(path): Path<ProfilePath>,
-    NoApi(session): NoApi<Session>,
     State(AppState { profile_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    verify_admin_permissions(&session).await?;
     profile_handle
         .delete(path.profile_uid)
         .await
@@ -91,8 +82,7 @@ fn validate_profile(profile: &Profile) -> Result<(), CCError> {
         return Err(CCError::UserError {
             msg: "A Fixed profile must have a fixed speed".to_string(),
         });
-    }
-    if profile.p_type == ProfileType::Mix {
+    } else if profile.p_type == ProfileType::Mix {
         if profile.member_profile_uids.is_empty() {
             return Err(CCError::UserError {
                 msg: "A Mix profile must have at least one member profile".to_string(),
@@ -103,8 +93,7 @@ fn validate_profile(profile: &Profile) -> Result<(), CCError> {
                 msg: "A Mix profile must have a mix function set".to_string(),
             });
         }
-    }
-    if profile.p_type == ProfileType::Graph {
+    } else if profile.p_type == ProfileType::Graph {
         if profile.function_uid.is_empty() {
             // A Valid function_uid is verified upon entity creation/update
             return Err(CCError::UserError {
@@ -135,6 +124,22 @@ fn validate_profile(profile: &Profile) -> Result<(), CCError> {
         if profile.speed_profile.as_ref().unwrap().is_empty() {
             return Err(CCError::UserError {
                 msg: "A Graph profile must have a Speed Profile with values".to_string(),
+            });
+        }
+    } else if profile.p_type == ProfileType::Overlay {
+        if profile.member_profile_uids.is_empty() {
+            return Err(CCError::UserError {
+                msg: "An Overlay profile must have at least one member profile".to_string(),
+            });
+        }
+        if profile.offset_profile.is_none() {
+            return Err(CCError::UserError {
+                msg: "An Overlay profile must have an Offset Profile set".to_string(),
+            });
+        }
+        if profile.offset_profile.as_ref().unwrap().is_empty() {
+            return Err(CCError::UserError {
+                msg: "An Overlay profile must have an Offset Profile with values".to_string(),
             });
         }
     }
