@@ -39,6 +39,7 @@ one.
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
+   4. Update DockerHub Image links
 
 5. Update OpenAPI specification
    1. Update locally running daemon with a new version: `make dev-build && make dev-install`
