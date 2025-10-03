@@ -5,10 +5,51 @@
 <!--
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
-and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Release notes are automatically generated from this file and git tags.
 -->
+
+## [3.0.0] - 2025-10-03
+
+### Removed
+
+- The `coolercontrol-liqctld` package and service has been removed. The service has now been
+  embedded in the `coolercontrold` daemon as a child process (!340)
+
+### Added
+
+- Overlay Profiles: Advanced offset controls on top of base Profiles (!347)
+- Custom Sensor Offset and parent-child chaining (!346)
+- Custom Profile temperature ranges (!344)
+- Ability to import and export color schemes
+- API changes to help 3rd party integrations
+- Keyboard shortcuts for common navigation (!349)
+- New device/main menu: drag and drop device and sensor sorting, pinned sensors, host name,
+  additional submenu options, color control for device and entity titles, and improved usability and
+  performance (!339)
+- Firmware-controlled profile support for some AMDGPUs and liquidctl devices. (hwmon device support
+  coming soon) (!354)
+- Foundation for more advanced device and channel specific controls
+- Min and Max CPU core frequency metrics
+- Mix Profile difference mix function (!348)
+- Ability to change liquidctl log level with environment variable
+
+### Changed
+
+- New Color Picker UI component
+- Various logging improvements
+- the `liqctld` service logs are now unified with the daemon's normal log output
+- Nearly all dependencies upgraded, including several major version changes
+- Website and documentation improvements
+- Improved metric standards in the UI (!345)
+- UI Performance and reloading improvements
+
+### Fixed
+
+- Issue with 24h time format
+- Issue with minimum fan duty threshold (!338)
+- Various minor bugs and UI issues
 
 ## [2.2.2] - 2025-07-18
 
