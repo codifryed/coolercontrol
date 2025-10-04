@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [3.0.1] - 2025-10-04
+
+### Changed
+
+- improved multiple-UI reconnection handling
+
+### Fixed
+
+- liqctld service failure affecting some liquidctl devices
+- RPM warning about unversioned obsoletes
+
 ## [3.0.0] - 2025-10-03
 
 ### Removed

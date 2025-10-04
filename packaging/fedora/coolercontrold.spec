@@ -6,7 +6,7 @@
 %global __cargo_is_lib() 0
 
 Name:           %{project}d
-Version:        3.0.0
+Version:        3.0.1
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
@@ -70,6 +70,9 @@ cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 %systemd_postun_with_restart coolercontrold.service
 
 %changelog
+* Sat Oct 04 2025 Guy Boldon <gb@guyboldon.com> - 3.0.1-1
+- 3.0.1 Release
+
 * Fri Oct 03 2025 Guy Boldon <gb@guyboldon.com> - 3.0.0-1
 - 3.0.0 Release
 
