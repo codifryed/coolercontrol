@@ -509,6 +509,8 @@ class DeviceService:
                     hwmon_address=(
                         str(lc_device._hwmon.path)
                         if hasattr(lc_device, "_hwmon")
+                        and lc_device._hwmon is not None
+                        and hasattr(lc_device._hwmon, "path")
                         else None
                     ),
                 )
