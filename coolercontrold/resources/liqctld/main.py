@@ -507,7 +507,7 @@ class DeviceService:
                     liquidctl_version=self.liquidctl_version,
                     hid_address=(str(lc_device.address) if lc_device.address else None),
                     hwmon_address=(
-                        str(lc_device._hwmon.path) if lc_device._hwmon else None
+                        str(lc_device._hwmon.path) if hasattr(lc_device, "_hwmon") else None
                     ),
                 )
                 for index_id, lc_device in self.devices.items()
