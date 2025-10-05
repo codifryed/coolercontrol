@@ -1035,7 +1035,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
     # put("/devices/{device_id}/legacy690")
     def set_device_as_legacy690(self, device_id: int):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
-        return device
+        self._send(HTTPStatus.OK, json.dumps(device.to_dict()))
 
     # post("/devices/{device_id}/initialize")
     def init_device(self, device_id: int, init_request: dict):
