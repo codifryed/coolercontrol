@@ -9,11 +9,6 @@ properties that are otherwise not exposed. It tries to be as generic as possible
 driver handling is often required due to differences in the underlying devices. Resiliency and
 device delay handling are also taken into account.
 
-## Testing
-
-Changes to these files are embedded in the `coolercontrold` daemon at build time, and are largely
-tested as part of that process.
-
 ## Requirements
 
 Requirements for `liqctld` are checked before the service is started, and the daemon will start
@@ -31,3 +26,42 @@ without the required libraries if not found.
 ## Installation
 
 See the [coolercontrold](../../README.md) installation instructions.
+
+## Testing
+
+Changes to these files are embedded in the `coolercontrold` daemon at build time, and are largely
+tested as part of that process. For specific endpoint testing:
+
+### Prerequisites
+
+- `coolercontrold` and `liqctld` services are running
+- `curl` is installed
+- `sudo` is installed
+
+### Endpoint Testing
+
+Tests are run using `curl` to the `liqctld` UDS API.
+
+- Handshake example:
+
+  ```bash
+  sudo curl --no-buffer -XGET --unix-socket /run/coolercontrold-liqctld.sock http://localhost/handshake
+  ```
+
+- Get all devices example:
+
+  ```bash
+  sudo curl --no-buffer -XGET --unix-socket /run/coolercontrold-liqctld.sock http://localhost/devices
+  ```
+
+- Endpoints: (`device_id` is the liqctld internal device_id, not the UID)
+  - GET `/handshake`
+  - GET `/devices`
+  - POST `/devices/{device_id}/initialize`
+  - PUT `/devices/{device_id}/legacy690`
+  - GET `/devices/{device_id}/status`
+  - PUT `/devices/{device_id}/speed/fixed`
+  - PUT `/devices/{device_id}/speed/profile`
+  - PUT `/devices/{device_id}/color`
+  - PUT `/devices/{device_id}/screen`
+  - POST `/quit`
