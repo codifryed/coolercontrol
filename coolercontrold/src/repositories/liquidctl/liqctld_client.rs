@@ -39,10 +39,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 
 const LIQCTLD_MAX_POOL_SIZE: usize = 15;
 const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
+const LIQCTLD_RESPONSE_TIMEOUT_SECONDS: u64 = 15;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
 pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
@@ -190,16 +191,37 @@ impl LiqctldClient {
         T: for<'de> Deserialize<'de>,
     {
         for _ in 0..LIQCTLD_EXPIRED_CONNECTION_RETRIES {
-            // If we run out of connections or timeout, this will return Err:
+            // If we run out of connections or timeout waiting for a connection, this will return Err:
             let mut socket_connection = self.get_socket_connection().await?;
-            let response = match socket_connection.sender.send_request(request.clone()).await {
-                Ok(response) => response,
+            let response = match timeout(
+                Duration::from_secs(LIQCTLD_RESPONSE_TIMEOUT_SECONDS),
+                socket_connection.sender.send_request(request.clone()),
+            )
+            .await
+            {
+                Ok(call_response) => {
+                    match call_response {
+                        Ok(response) => response,
+                        Err(err) => {
+                            // this can happen occasionally (if a connection isn't used for a while)
+                            debug!(
+                                "Socket Connection no longer valid or closed. Aborting. {err:?}"
+                            );
+                            socket_connection.connection_handle.abort();
+                            drop(socket_connection);
+                            continue; // retry with a different connection
+                        }
+                    }
+                }
                 Err(err) => {
-                    // this can happen semi-regularly (if a connection isn't used for a while)
-                    debug!("Socket Connection no longer valid or closed. Aborting. {err:?}");
+                    warn!(
+                        "Response timed out after {LIQCTLD_RESPONSE_TIMEOUT_SECONDS} seconds: {err:?}"
+                    );
                     socket_connection.connection_handle.abort();
                     drop(socket_connection);
-                    continue; // retry with a different connection
+                    return Err(anyhow!(
+                        "Response timed out, not retrying to avoid overloading service"
+                    ));
                 }
             };
             let lc_response = Self::collect_to_liqctld_response(response).await?;
