@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::ENV_CC_LOG;
 use anyhow::{anyhow, Result};
 use log::{debug, info, log, warn};
@@ -69,16 +70,10 @@ pub async fn run(run_token: CancellationToken, stop_token: CancellationToken) ->
 
 #[allow(unused_assignments)]
 async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
-    let (cmd, arg) = if let Ok(appdir) = std::env::var("APPDIR") {
-        // if run inside an AppImage, so we isolate the Python environment from the host
-        info!("Running liqctld inside an AppImage");
-        (format!("{appdir}/usr/bin/python3"), "-I")
-    } else {
-        ("python3".to_string(), "-q")
-    };
+    let (cmd, arg) = create_command();
     let mut child = Command::new(cmd)
-        .envs(child_envs())
         .arg(arg)
+        .envs(child_envs())
         .stdin(Stdio::piped())
         .kill_on_drop(true)
         // allows us to better control the shutdown of the child process
@@ -116,6 +111,18 @@ async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
             _ => Err(anyhow!("liqctld exited with an unknown exit code")),
         },
         Err(err) => Err(anyhow!("liqctld exited with an error: {err}")),
+    }
+}
+
+/// Creates the command to run the Python script.
+///
+/// If run inside an `AppImage`, we use the internal isolated Python environment.
+fn create_command() -> (String, &'static str) {
+    if let Ok(appdir) = std::env::var("APPDIR") {
+        info!("Running liqctld inside an AppImage");
+        (format!("{appdir}/usr/bin/python3"), "-I")
+    } else {
+        ("python3".to_string(), "-q")
     }
 }
 
