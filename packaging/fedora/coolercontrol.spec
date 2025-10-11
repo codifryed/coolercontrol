@@ -38,14 +38,13 @@ It offers an easy-to-use user interface with various control features and also p
 {{{ git_dir_setup_macro }}}
 
 %generate_buildrequires
-# (cd coolercontrol-ui/src-tauri; #cargo_generate_buildrequires)
 
 %build
-(cd %{qt_dir}; %cmake)
-(cd %{qt_dir}; %cmake_build)
+%cmake -S %{qt_dir}
+%cmake_build
 
 %install
-(cd %{qt_dir}; %cmake_install)
+%cmake_install
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
