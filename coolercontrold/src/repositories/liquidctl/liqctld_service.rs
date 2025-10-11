@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::ENV_CC_LOG;
 use anyhow::{anyhow, Result};
 use log::{debug, info, log, warn};
 use std::collections::HashMap;
@@ -68,7 +69,6 @@ pub async fn run(run_token: CancellationToken, stop_token: CancellationToken) ->
 
 #[allow(unused_assignments)]
 async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
-    let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
     let (cmd, arg) = if let Ok(appdir) = std::env::var("APPDIR") {
         // if run inside an AppImage, so we isolate the Python environment from the host
         info!("Running liqctld inside an AppImage");
@@ -77,7 +77,7 @@ async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
         ("python3".to_string(), "-q")
     };
     let mut child = Command::new(cmd)
-        .envs(default_env)
+        .envs(child_envs())
         .arg(arg)
         .stdin(Stdio::piped())
         .kill_on_drop(true)
@@ -117,6 +117,27 @@ async fn run_python(script: &[u8], run_token: CancellationToken) -> Result<()> {
         },
         Err(err) => Err(anyhow!("liqctld exited with an error: {err}")),
     }
+}
+
+/// Sets the environment variables for the child process.
+///
+/// There several ways to set the log level, this also ensures that the child process environment
+/// is set to the same log level as the parent process.
+fn child_envs() -> HashMap<String, String> {
+    let mut envs = HashMap::new();
+    envs.insert("LC_ALL".to_string(), "C".to_string());
+    if log::log_enabled!(log::Level::Trace) {
+        envs.insert(ENV_CC_LOG.to_string(), log::Level::Trace.to_string());
+    } else if log::log_enabled!(log::Level::Debug) {
+        envs.insert(ENV_CC_LOG.to_string(), log::Level::Debug.to_string());
+    } else if log::log_enabled!(log::Level::Info) {
+        envs.insert(ENV_CC_LOG.to_string(), log::Level::Info.to_string());
+    } else if log::log_enabled!(log::Level::Warn) {
+        envs.insert(ENV_CC_LOG.to_string(), log::Level::Warn.to_string());
+    } else if log::log_enabled!(log::Level::Error) {
+        envs.insert(ENV_CC_LOG.to_string(), log::Level::Error.to_string());
+    }
+    envs
 }
 
 /// This function watches the `liqctld` service child process and returns
