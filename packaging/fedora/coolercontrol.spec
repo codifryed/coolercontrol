@@ -40,8 +40,14 @@ It offers an easy-to-use user interface with various control features and also p
 %generate_buildrequires
 
 %build
+# openSUSE hardcodes the source and build directory and we therefore need cd. Fedora allows us to override it (-S)
+%if 0%{?suse_version} > 0
+(cd %{qt_dir}; %cmake; %cmake_build)
+(cd %{qt_dir}; mv build ../)
+%else
 %cmake -S %{qt_dir}
 %cmake_build
+%endif
 
 %install
 %cmake_install
