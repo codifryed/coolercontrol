@@ -17,9 +17,10 @@ BuildRequires:  desktop-file-utils
 BuildRequires:  make
 BuildRequires:  cmake
 BuildRequires:  autoconf automake gcc gcc-c++
-BuildRequires:  qt6-qtbase-devel
-BuildRequires:  qt6-qtwebengine-devel
-BuildRequires:  qt6-qtwebchannel-devel
+BuildRequires:  cmake(Qt6)
+BuildRequires:  cmake(Qt6WebEngineCore)
+BuildRequires:  cmake(Qt6WebEngineWidgets)
+BuildRequires:  cmake(Qt6WebChannel)
 Requires:       hicolor-icon-theme > 0
 Requires:       qt6-qtbase
 Requires:       qt6-qtwebengine
