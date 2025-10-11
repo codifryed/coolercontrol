@@ -1240,11 +1240,7 @@ def server_run(device_service: DeviceService) -> None:
 
 
 def setup_logging() -> None:
-    env_log_level: Optional[str] = (
-        os.getenv("CC_LOG")
-        if os.getenv("CC_LOG") is not None
-        else os.getenv("COOLERCONTROL_LOG")
-    )
+    env_log_level: Optional[str] = os.getenv("CC_LOG")
     env_liquidctl_log_level: Optional[str] = os.getenv("LIQUIDCTL_LOG")
     # default & "INFO" levels:
     log_level = logging.INFO
