@@ -40,6 +40,12 @@ pub fn metadata(path: impl AsRef<Path>) -> Result<Metadata> {
     Ok(std::fs::metadata(path)?)
 }
 
+/// Returns whether the path exists.
+/// This is a convenience function that wraps `std::fs::exists` and returns a boolean.
+pub fn exists(path: impl AsRef<Path>) -> bool {
+    std::fs::exists(path).is_ok_and(|b| b)
+}
+
 /// Sets the permissions for the given path.
 ///
 /// This function is equivalent to `std::fs::set_permissions` and will return an error if the
