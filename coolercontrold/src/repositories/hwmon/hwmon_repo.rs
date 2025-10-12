@@ -107,7 +107,7 @@ pub struct HwmonRepo {
     preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 
     /// Permits for each `HWMon` device. This is useful for slower devices.
-    /// `coolercontrol-liqctld` already has an in-built device queue - where only one read or write
+    /// `liqctld` already has an in-built device queue - where only one read or write
     /// request can be sent to the device at a time. This is that same idea but for hwmon devices.
     /// This also ensures that polling loops don't overlap and stack if the device hasn't finished
     /// responding from the previous polling loop.
@@ -183,7 +183,7 @@ impl HwmonRepo {
                 .collect();
             let mut channels = HashMap::new();
             let mut thinkpad_fan_control = (
-                driver.name == devices::THINKPAD_DEVICE_NAME
+                driver.name == devices::DEVICE_NAME_THINK_PAD
                 // first check if this is a ThinkPad
             )
                 .then_some(false);
@@ -638,7 +638,7 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        if hwmon_driver.name == devices::THINKPAD_DEVICE_NAME {
+        if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
             return fans::thinkpad::apply_speed_fixed(
                 &self.config,
                 hwmon_driver,
