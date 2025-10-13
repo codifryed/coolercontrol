@@ -18,8 +18,10 @@
 
 use crate::cc_fs;
 use crate::device::ChannelStatus;
-use crate::repositories::hwmon::devices;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    AutoCurveInfo, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
+use crate::repositories::hwmon::{auto_curve, devices};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
@@ -31,6 +33,7 @@ use std::path::{Path, PathBuf};
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -49,6 +52,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
         init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+    auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name)?;
     trace!(
         "Hwmon pwm fans detected: {fans:?} for {}",
         base_path.display()
@@ -115,6 +119,7 @@ async fn init_pwm_fan(
         label,
         pwm_mode_supported,
         pwm_writable,
+        auto_curve: AutoCurveInfo::None,
     });
     Ok(())
 }
@@ -184,6 +189,7 @@ async fn init_rpm_only_fan(
         label,
         pwm_mode_supported: false,
         pwm_writable: false,
+        auto_curve: AutoCurveInfo::None,
     });
     Ok(())
 }
@@ -517,7 +523,7 @@ fn pwm_value_to_duty(pwm_value: u8) -> f64 {
 
 /// Converts a duty value (0-100%) to a pwm value (0-255)
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn duty_to_pwm_value(speed_duty: u8) -> u8 {
+pub fn duty_to_pwm_value(speed_duty: u8) -> u8 {
     let clamped_duty = f64::from(speed_duty.clamp(0, 100));
     // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
     ((clamped_duty * 25.5).round() / 10.0).round() as u8
@@ -766,6 +772,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -796,6 +803,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -829,6 +837,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -861,6 +870,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -895,6 +905,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -933,6 +944,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -968,6 +980,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -1009,6 +1022,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1065,6 +1079,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1125,6 +1140,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1181,6 +1197,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:

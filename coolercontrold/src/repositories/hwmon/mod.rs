@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+pub mod auto_curve;
 pub mod devices;
 mod drivetemp;
 pub mod fans;
