@@ -279,7 +279,10 @@ pub async fn apply_curve(
                 .get(&temp_channel_info.name)
                 .copied()
                 .with_context(|| {
-                    format!("Temp length for {} should exist", temp_channel_info.name)
+                    // If there is not a curve_length stored for this temp source channel
+                    // than firmware-profiles are not supported for this temp source
+                    let available_temp_names = temp_lengths.keys().map(std::string::ToString::to_string).collect::<Vec<String>>().join(", ");
+                    format!("Firmware Curves for temperature channel: {} are not supported. Please use one of: [{available_temp_names}]", temp_channel_info.name)
                 })?;
             let normalized_curve = normalize_speed_profile(speed_profile, point_length as usize);
             fans::set_pwm_enable(PWM_ENABLE_MANUAL_VALUE, base_path, fan_channel_info).await?;
