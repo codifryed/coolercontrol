@@ -693,9 +693,9 @@ impl Repository for HwmonRepo {
         temp_source: &TempSource,
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        let (hwmon_driver, channel_info, type_index) =
+        let (hwmon_driver, fan_channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
-        if channel_info.auto_curve == AutoCurveInfo::None {
+        if fan_channel_info.auto_curve == AutoCurveInfo::None {
             return Err(anyhow!(
                 "Applying Internal Profile Error: device_uid: {device_uid} channel: {channel_name} does not support auto curves."
             ));
@@ -713,11 +713,21 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
         );
+        let temp_channel_info = hwmon_driver
+            .channels
+            .iter()
+            .find(|channel| {
+                channel.hwmon_type == HwmonChannelType::Temp
+                    && channel.name == temp_source.temp_name
+            })
+            .with_context(|| {
+                format!("Searching for temp channel name: {}", temp_source.temp_name)
+            })?;
         auto_curve::apply_curve(
             &hwmon_driver.path,
-            channel_info,
+            fan_channel_info,
             speed_profile,
-            temp_source,
+            temp_channel_info,
             &hwmon_driver.name,
         )
         .await
