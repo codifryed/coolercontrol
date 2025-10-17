@@ -707,12 +707,6 @@ impl Repository for HwmonRepo {
                 temp_source.device_uid
             ));
         }
-        let _device_permit = self
-            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
-            .await?;
-        debug!(
-            "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
-        );
         let temp_channel_info = hwmon_driver
             .channels
             .iter()
@@ -723,6 +717,12 @@ impl Repository for HwmonRepo {
             .with_context(|| {
                 format!("Searching for temp channel name: {}", temp_source.temp_name)
             })?;
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
+        debug!(
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
         auto_curve::apply_curve(
             &hwmon_driver.path,
             fan_channel_info,
