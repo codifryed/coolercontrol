@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+// ChannelExtensionName is used to describe the channel extension available for a channel.
+enum ChannelExtensionName {
+  CHANNEL_EXTENSION_NAME_UNSPECIFIED = 0;
+  CHANNEL_EXTENSION_NAME_AUTO_HW_CURVE = 1;
+  CHANNEL_EXTENSION_NAME_AMD_RDNA_GPU = 2;
+}

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+import "coolercontrol/models/v1/device_info.proto";
+
+// Device Message is needed to describe the available channel and device options. Every Device
+// Service Plugin should fill this message.
+message Device {
+  // The unique identifier for this device. This is set by the daemon itself using various criteria
+  // to determine uniqueness, and if possible, will remain the same even when changing the hardware
+  // installed location. (PCI address, USB port, etc)
+  // This is reserved for informational purposes.
+  reserved "uid";
+  reserved 1;
+
+  // The device id used by the service to identify the device. This will be used when applying
+  // device and channel settings and may be used as a fallback when determining uniqueness.
+  string id = 2;
+
+  // The (short) device name. Use DeviceInfo.model for the long name.
+  string name = 3;
+
+  // Optional unique device identifier information. This should be pretty unique,
+  // like a serial number or pci bus device path to be taken into account
+  // for CoolerControl's unique device identifier.
+  optional string uid_info = 4;
+
+  DeviceInfo info = 5;
+}

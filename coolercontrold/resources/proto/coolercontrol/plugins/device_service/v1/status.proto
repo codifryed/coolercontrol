@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package coolercontrol.plugins.device_service.v1;
+
+import "coolercontrol/models/v1/status.proto";
+
+message StatusRequest {}
+
+message StatusResponse {
+  repeated coolercontrol.models.v1.Status status = 1;
+}

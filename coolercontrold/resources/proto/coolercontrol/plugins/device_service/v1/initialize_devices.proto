@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package coolercontrol.plugins.device_service.v1;
+
+message InitializeDevicesRequest {}
+
+message InitializeDevicesResponse {}
