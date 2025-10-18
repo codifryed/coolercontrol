@@ -158,9 +158,18 @@ gifski = { version = "1.34.0", default-features = false, features = [
 imgref = "1.11.0" # for gif processing
 rgb = "0.8.52" # for gif processing
 uuid = { version = "1.18.1", features = ["v4"] }
+# service plugin dependencies
+tonic = { version = "0.14.2", default-features = false, features = [
+  "channel",
+  "codegen",
+] }
+prost = "0.14.1"
 
 [dev-dependencies]
 serial_test = "3.2.0"
+
+[build-dependencies]
+tonic-prost-build = "0.14.2"
 
 [profile.dev]
 debug = "line-tables-only"
