@@ -269,6 +269,7 @@ pub enum DeviceType {
     Liquidctl,
     Hwmon,
     CustomSensors,
+    External,
 }
 
 /// Needed Device info per device
@@ -446,6 +447,7 @@ pub enum DriverType {
     NVML,
     NvidiaCLI,
     CoolerControl, // For things like CustomSensors
+    External,      // For external device services
 }
 
 impl Default for DriverInfo {

@@ -70,6 +70,7 @@ impl Engine {
                     repos_by_type.insert(DeviceType::Liquidctl, Rc::clone(repo))
                 }
                 DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Rc::clone(repo)),
+                DeviceType::External => repos_by_type.insert(DeviceType::External, Rc::clone(repo)),
                 DeviceType::CustomSensors => {
                     repos_by_type.insert(DeviceType::CustomSensors, Rc::clone(repo))
                 }
