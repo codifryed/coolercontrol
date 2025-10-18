@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     #[serial]
-    #[ignore] // requires a real block device & sudo privileges
+    #[ignore = "requires a real block device & sudo privileges"]
     fn get_driver_power_state() {
         let ctx = setup();
         cc_fs::test_runtime(async {

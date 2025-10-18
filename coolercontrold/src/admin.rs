@@ -47,7 +47,7 @@ pub async fn load_passwd() -> Result<String> {
         if let Ok(contents) = cc_fs::read_txt(passwd_path).await {
             cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
             return Ok(contents.trim().to_owned());
-        };
+        }
     }
     let passwd = hash_passwd(DEFAULT_PASS.as_bytes())?;
     let _ = cc_fs::remove_file(passwd_path);

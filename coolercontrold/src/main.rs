@@ -294,7 +294,7 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
         match config.save_backup_config_file().await {
             Ok(()) => exit_successfully(),
             Err(err) => exit_with_error(&err),
-        };
+        }
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
         match admin::reset_passwd().await {
@@ -466,7 +466,7 @@ async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
             error!("Shutdown error: {err}");
-        };
+        }
     }
     info!("Shutdown Complete");
     Ok(())
