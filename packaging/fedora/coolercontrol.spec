@@ -39,11 +39,7 @@ It offers an easy-to-use user interface with various control features and also p
 %generate_buildrequires
 
 %build
-%if 0%{?suse_version} > 0
-%cmake -S %{_builddir}/%{project}-%{version}/%{project}
-%else
 %cmake
-%endif
 %cmake_build
 
 %install
