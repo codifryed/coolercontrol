@@ -164,6 +164,7 @@ tonic = { version = "0.14.2", default-features = false, features = [
   "codegen",
 ] }
 prost = "0.14.1"
+tonic-prost = "0.14.2"
 
 [dev-dependencies]
 serial_test = "3.2.0"
