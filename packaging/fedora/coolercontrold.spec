@@ -1,5 +1,3 @@
-%global _enable_debug_packages 0
-%global debug_package %{nil}
 %global project coolercontrol
 
 # prevent library files from being installed

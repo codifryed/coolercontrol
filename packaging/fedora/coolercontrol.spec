@@ -1,5 +1,3 @@
-%global _enable_debug_packages 0
-%global debug_package %{nil}
 %global project coolercontrol
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
@@ -41,7 +39,7 @@ It offers an easy-to-use user interface with various control features and also p
 %generate_buildrequires
 
 %build
-# openSUSE hardcodes the source and build directory and we therefore need cd.
+# openSUSE cmake macro has the source and build directory hardcoded and we therefore need cd.
 %if 0%{?suse_version} > 0
 (cd %{qt_dir}; %cmake; %cmake_build)
 %else
