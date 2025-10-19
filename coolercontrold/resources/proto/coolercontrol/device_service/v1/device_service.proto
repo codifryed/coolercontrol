@@ -1,19 +1,19 @@
 syntax = "proto3";
 
-package coolercontrol.plugins.device_service.v1;
+package coolercontrol.device_service.v1;
 
-import "coolercontrol/plugins/device_service/v1/custom_function_one.proto";
-import "coolercontrol/plugins/device_service/v1/enable_manual_fan_control.proto";
-import "coolercontrol/plugins/device_service/v1/fixed_duty.proto";
-import "coolercontrol/plugins/device_service/v1/health.proto";
-import "coolercontrol/plugins/device_service/v1/initialize_devices.proto";
-import "coolercontrol/plugins/device_service/v1/lcd.proto";
-import "coolercontrol/plugins/device_service/v1/lighting.proto";
-import "coolercontrol/plugins/device_service/v1/list_devices.proto";
-import "coolercontrol/plugins/device_service/v1/reset_channel.proto";
-import "coolercontrol/plugins/device_service/v1/shutdown.proto";
-import "coolercontrol/plugins/device_service/v1/speed_profile.proto";
-import "coolercontrol/plugins/device_service/v1/status.proto";
+import "coolercontrol/device_service/v1/custom_function_one.proto";
+import "coolercontrol/device_service/v1/enable_manual_fan_control.proto";
+import "coolercontrol/device_service/v1/fixed_duty.proto";
+import "coolercontrol/device_service/v1/health.proto";
+import "coolercontrol/device_service/v1/initialize_devices.proto";
+import "coolercontrol/device_service/v1/lcd.proto";
+import "coolercontrol/device_service/v1/lighting.proto";
+import "coolercontrol/device_service/v1/list_devices.proto";
+import "coolercontrol/device_service/v1/reset_channel.proto";
+import "coolercontrol/device_service/v1/shutdown.proto";
+import "coolercontrol/device_service/v1/speed_profile.proto";
+import "coolercontrol/device_service/v1/status.proto";
 
 service DeviceService {
   // Used to confirm service connection and retrieve service health information.

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package coolercontrol.plugins.device_service.v1;
+package coolercontrol.device_service.v1;
 
 message FixedDutyRequest {
   string device_id = 1;

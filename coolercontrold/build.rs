@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_protos(
             &[
                 "resources/proto/coolercontrol/models/v1/device.proto",
-                "resources/proto/coolercontrol/plugins/device_service/v1/device_service.proto",
+                "resources/proto/coolercontrol/device_service/v1/device_service.proto",
             ],
             &["resources/proto"],
         )?;
