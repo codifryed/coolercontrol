@@ -26,6 +26,7 @@ RUN apt update && apt install -y --no-install-recommends \
     git \
     build-essential \
     dbus \
+    protobuf-compiler \
     # compressing with zstd (assets):
     zstd \
     # nuitka deps for building:

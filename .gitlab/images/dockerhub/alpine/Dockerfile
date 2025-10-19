@@ -3,7 +3,7 @@ FROM rust:alpine AS daemon-builder
 WORKDIR /usr/src/coolercontrol
 
 RUN apk add --update nodejs npm
-RUN apk add --update libc-dev openssl-dev build-base musl-dev pkgconfig perl
+RUN apk add --update libc-dev openssl-dev build-base musl-dev pkgconfig perl protoc
 
 COPY ../../../../coolercontrol-ui ./coolercontrol-ui/
 COPY ../../../../coolercontrold ./coolercontrold/
