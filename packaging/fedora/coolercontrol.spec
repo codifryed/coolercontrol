@@ -39,7 +39,6 @@ It offers an easy-to-use user interface with various control features and also p
 %generate_buildrequires
 
 %build
-# openSUSE cmake macro has the source and build directory hardcoded and we therefore need cd.
 %if 0%{?suse_version} > 0
 %cmake -S %{_builddir}/%{project}-%{version}/%{project}
 %else
