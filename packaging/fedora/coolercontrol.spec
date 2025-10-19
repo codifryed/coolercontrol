@@ -43,8 +43,7 @@ It offers an easy-to-use user interface with various control features and also p
 %if 0%{?suse_version} > 0
 %cmake -S %{_builddir}/%{project}-%{version}/%{project}
 %else
-%cmake -S %{_builddir}/%{project}-%{version}/%{project}
-#cmake
+%cmake
 %endif
 %cmake_build
 
