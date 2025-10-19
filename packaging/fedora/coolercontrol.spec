@@ -41,18 +41,15 @@ It offers an easy-to-use user interface with various control features and also p
 %build
 # openSUSE cmake macro has the source and build directory hardcoded and we therefore need cd.
 %if 0%{?suse_version} > 0
-(cd %{qt_dir}; %cmake; %cmake_build)
+%cmake -S %{_builddir}/%{project}-%{version}/%{project}
 %else
-%cmake
-%cmake_build
+%cmake -S %{_builddir}/%{project}-%{version}/%{project}
+#cmake
 %endif
+%cmake_build
 
 %install
-%if 0%{?suse_version} > 0
-(cd %{qt_dir}; %cmake_install)
-%else
 %cmake_install
-%endif
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
