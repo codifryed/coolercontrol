@@ -32,7 +32,7 @@ service DeviceService {
   // service.
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
 
-  // Request the current status of all device channels. (temps, fan speeds, etc)
+  // Request the current status of all device channels for all devices. (temps, fan speeds, etc)
   rpc Status(StatusRequest) returns (StatusResponse);
 
   // Reset the device channel to it's default state if applicable. (Auto)
