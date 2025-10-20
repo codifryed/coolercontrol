@@ -7,5 +7,10 @@ import "coolercontrol/models/v1/status.proto";
 message StatusRequest {}
 
 message StatusResponse {
-  repeated coolercontrol.models.v1.Status status = 1;
+  repeated DeviceStatus device_status = 1;
+}
+
+message DeviceStatus {
+  string device_id = 1;
+  repeated coolercontrol.models.v1.Status status = 2;
 }
