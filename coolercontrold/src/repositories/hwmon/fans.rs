@@ -34,6 +34,7 @@ const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
+pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -52,7 +53,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
         init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name)?;
+    auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
         "Hwmon pwm fans detected: {fans:?} for {}",
         base_path.display()
