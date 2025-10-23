@@ -53,7 +53,7 @@ use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
 use std::path::Path;
 
-type CurveTemp = u8;
+type CurveTemp = u32; // millidegrees Celsius
 type CurvePWM = u8;
 
 const PATTERN_TEMP_AUTO_POINT: &str =
@@ -69,8 +69,8 @@ macro_rules! format_temp_auto_point_pwm { ($($arg:tt)*) => {{ format!("temp{}_au
 macro_rules! format_temp_auto_point_temp { ($($arg:tt)*) => {{ format!("temp{}_auto_point{}_temp", $($arg)*) }}; }
 const CURVE_RANGE_PWM: RangeInclusive<CurvePWM> = 0..=255;
 const CURVE_RANGE_DUTY: RangeInclusive<CurvePWM> = 0..=100;
-const CURVE_RANGE_TEMP: RangeInclusive<CurveTemp> = 0..=100;
-// These devices from the nzxt-kraken3 driver require special handling
+const CURVE_RANGE_TEMP: RangeInclusive<CurveTemp> = 0..=100_000; // millidegrees
+                                                                 // These devices from the nzxt-kraken3 driver require special handling
 const DEVICE_NAMES_NZXT_KRAKEN3: [&str; 3] = ["z53", "kraken2023", "kraken2023elite"];
 const NZXT_KRAKEN3_POINT_LENGTH: u8 = 40;
 const CURVE_RANGE_TEMP_KRAKEN3: RangeInclusive<CurveTemp> = 20..=59;
@@ -321,19 +321,20 @@ fn normalize_speed_profile(
                 .min(CURVE_RANGE_PWM.start().max(&pwm_value))
         };
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let temp_integer = temp.round() as CurveTemp;
-        let clamped_temp = if CURVE_RANGE_TEMP.contains(&temp_integer) {
-            temp_integer
+        // to millidegrees
+        let temp_millidegrees = (temp * 1000.0).round() as CurveTemp;
+        let clamped_temp = if CURVE_RANGE_TEMP.contains(&temp_millidegrees) {
+            temp_millidegrees
         } else {
             warn!(
                 "HWMon Auto Curve - Only curve temps within range of {}C to {}C are allowed. \
-                Clamping passed temp of {temp_integer}% to nearest limit",
+                Clamping passed temp of {temp_millidegrees}% to nearest limit",
                 CURVE_RANGE_TEMP.start(),
                 CURVE_RANGE_TEMP.end(),
             );
             *CURVE_RANGE_TEMP
                 .end()
-                .min(CURVE_RANGE_TEMP.start().max(&temp_integer))
+                .min(CURVE_RANGE_TEMP.start().max(&temp_millidegrees))
         };
         normalized_curve.push((clamped_temp, clamped_pwm));
     }
@@ -779,11 +780,12 @@ mod tests {
 
         // then
         assert_eq!(normalized.len(), curve_len);
-        // temp should be clamped to 0..=100 and rounded to u8
+        // temp should be clamped to 0..=100_000 and rounded to u32
         assert!(
             normalized[0].0 >= *CURVE_RANGE_TEMP.start()
                 && normalized[0].0 <= *CURVE_RANGE_TEMP.end()
         );
+        assert_eq!(normalized[0].0, 0);
         // pwm value should be within 0..=255
         assert!(
             normalized[0].1 >= *CURVE_RANGE_PWM.start()
@@ -792,6 +794,24 @@ mod tests {
         // remaining points should be filled with the last point
         assert_eq!(normalized[1], normalized[0]);
         assert_eq!(normalized[2], normalized[0]);
+    }
+
+    #[test]
+    #[serial]
+    fn normalize_speed_profile_output() {
+        // given
+        let profile = vec![(
+            40.3, // 40.3C
+            50u8, // 50%
+        )];
+        let curve_len = 2usize;
+
+        // when
+        let normalized = normalize_speed_profile(&profile, curve_len);
+
+        // then
+        assert_eq!(normalized[0].0, 40_300);
+        assert_eq!(normalized[0].1, 128);
     }
 
     #[test]
@@ -971,7 +991,7 @@ mod tests {
                 pwm_writable: true,
                 ..Default::default()
             };
-            let curve = vec![(30u8, 100u8), (40u8, 120u8)];
+            let curve = vec![(30_000u32, 100u8), (40_000u32, 120u8)];
 
             // when
             let res = apply_pwm_curve(test_base_path, channel.number, curve.clone()).await;
@@ -1016,7 +1036,7 @@ mod tests {
                 name: "temp1".to_string(),
                 ..Default::default()
             };
-            let curve = vec![(25u8, 80u8)];
+            let curve = vec![(25_000u32, 80u8)];
 
             // when
             let res =
