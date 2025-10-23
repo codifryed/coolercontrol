@@ -1,5 +1,3 @@
-%global _enable_debug_packages 0
-%global debug_package %{nil}
 %global project coolercontrol
 
 # prevent library files from being installed
@@ -34,10 +32,8 @@ It offers an easy-to-use user interface with various control features and also p
 %prep
 {{{ git_dir_setup_macro }}}
 # non-Inet rust and npm dependencies are a WIP
-# (cd coolercontrold; #cargo_prep)
 
 %generate_buildrequires
-# (cd coolercontrold; #cargo_generate_buildrequires)
 
 %build
 # build web ui files:
