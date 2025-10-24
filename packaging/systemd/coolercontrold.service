@@ -10,7 +10,7 @@ Environment="CC_LOG=INFO"
 ExecStart=/usr/bin/coolercontrold
 Restart=always
 RestartSec=1
-TimeoutStopSec=30
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
