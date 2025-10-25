@@ -69,7 +69,11 @@ export const useDeviceStore = defineStore('device', () => {
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-    const reloadAllStatusesThreshold: number = 5_000 // 5 seconds to handle when closing to tray & network latency
+    // This threshold helps deal with closing to tray, network latency, and max polling rate
+    // When this threshold is exceeded, a full UI refresh is made
+    const reloadAllStatusesThreshold: number = 7_000
+    const appStartTime = Date.now()
+    const showLoginMessageThreshold: number = 2_000
     const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
@@ -438,32 +442,40 @@ export const useDeviceStore = defineStore('device', () => {
         localStorage.removeItem(CONFIG_DAEMON_SSL_ENABLED)
     }
 
+    function appAgeMilli(): number {
+        return Date.now() - appStartTime
+    }
+
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
-        // Likely no long needed to skip for Qt (persisted session cookie in Qt)
-        // if (!isQtApp()) {
         const sessionIsValid = await daemonClient.sessionIsValid()
         if (sessionIsValid) {
             loggedIn.value = true
             console.info('Login Session still valid')
-            toast.add({
-                severity: 'info',
-                summary: t('layout.topbar.login'),
-                detail: t('layout.topbar.loginSuccessful'),
-                life: 1500,
-            })
+            // Do not show this message on startup:
+            if (appAgeMilli() > showLoginMessageThreshold) {
+                toast.add({
+                    severity: 'info',
+                    summary: t('layout.topbar.login'),
+                    detail: t('layout.topbar.loginSuccessful'),
+                    life: 1500,
+                })
+            }
             return
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
             loggedIn.value = true
             console.info('Login successful')
-            toast.add({
-                severity: 'info',
-                summary: t('layout.topbar.login'),
-                detail: t('layout.topbar.loginSuccessful'),
-                life: 1500,
-            })
+            // Do not show this message on startup:
+            if (appAgeMilli() > showLoginMessageThreshold) {
+                toast.add({
+                    severity: 'info',
+                    summary: t('layout.topbar.login'),
+                    detail: t('layout.topbar.loginSuccessful'),
+                    life: 1500,
+                })
+            }
         } else {
             await requestPasswd()
         }
@@ -628,7 +640,10 @@ export const useDeviceStore = defineStore('device', () => {
         // now handled by server side events:
         // const dto = await daemonClient.recentStatus()
         if (dto.devices.length === 0 || dto.devices[0].status_history.length === 0) {
-            return onlyLatestStatus // we can't update anything without data, which happens on daemon restart & resuming from sleep
+            // Since the introduction of SSEs, this shouldn't happen anymore as the
+            // status history is filled, and we're no longer polling for data.
+            console.error("Device Statuses are empty, this shouldn't happen anymore.")
+            return onlyLatestStatus // we can't update anything without data
         }
         if (devices.size > 0) {
             const device: Device = devices.values().next().value! // get the first device's timestamp
@@ -653,27 +668,41 @@ export const useDeviceStore = defineStore('device', () => {
             }
             updateRecentDeviceStatus()
         } else {
-            console.debug(
+            const daemonState = useDaemonState()
+            if (!daemonState.connected) {
+                // On daemon reconnect a full UI refresh is done.
+                console.info(
+                    `[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(
+                        timeDiffMillis,
+                    )}ms. Daemon was disconnected, full UI reload incoming.`,
+                )
+                return true
+            }
+            console.info(
                 `[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(
                     timeDiffMillis,
                 )}ms, reloading all states and statuses.`,
             )
-            const settingsStore = useSettingsStore()
-            await settingsStore.loadAlertsAndLogs()
-            await settingsStore.getActiveModes()
-            const healthCheck = await health()
-            const daemonState = useDaemonState()
-            daemonState.warnings = healthCheck.details.warnings
-            daemonState.errors = healthCheck.details.errors
-            if (daemonState.errors > 0) {
-                await daemonState.setStatus(DaemonStatus.ERROR)
-            } else if (daemonState.warnings > 0) {
-                await daemonState.setStatus(DaemonStatus.WARN)
-            } else {
-                await daemonState.setStatus(DaemonStatus.OK)
-            }
-            await loadLogs()
-            await loadCompleteStatusHistory()
+            // Previously we attempted to only refresh the status data, but there are issues with
+            // array order of the graph and other edge cases when doing this. To avoid having to
+            // handle these edge cases throughout the application, we do a full refresh instead.
+            // This doesn't happen very often, and is pretty fast for the majority of systems.
+            reloadUI()
+            // const settingsStore = useSettingsStore()
+            // await settingsStore.loadAlertsAndLogs()
+            // await settingsStore.getActiveModes()
+            // const healthCheck = await health()
+            // daemonState.warnings = healthCheck.details.warnings
+            // daemonState.errors = healthCheck.details.errors
+            // if (daemonState.errors > 0) {
+            //     await daemonState.setStatus(DaemonStatus.ERROR)
+            // } else if (daemonState.warnings > 0) {
+            //     await daemonState.setStatus(DaemonStatus.WARN)
+            // } else {
+            //     await daemonState.setStatus(DaemonStatus.OK)
+            // }
+            // await loadLogs()
+            // await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
     }
@@ -900,7 +929,6 @@ export const useDeviceStore = defineStore('device', () => {
         setPasswd,
         initializeDevices,
         loggedIn,
-        loadCompleteStatusHistory,
         updateStatus,
         updateStatusFromSSE,
         updateLogsFromSSE,
