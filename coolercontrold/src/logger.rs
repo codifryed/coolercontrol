@@ -48,7 +48,6 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     logger.init()?;
     info!(
         "System Info:\n\
-        CoolerControlD {VERSION}\n\
         Name:\t{}\n\
         OS:\t\t{}\n\
         Host:\t{}\n\
