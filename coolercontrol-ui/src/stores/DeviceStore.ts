@@ -104,7 +104,7 @@ export const useDeviceStore = defineStore('device', () => {
         let s = 0
         const daemonState = useDaemonState()
         while (s < 30) {
-            await sleep(1000)
+            await sleep(1_000)
             if (s > secs && daemonState.connected) {
                 break
             }

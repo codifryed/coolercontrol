@@ -21,6 +21,7 @@ import { ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 export enum DaemonStatus {
     OK = 'Ok',
@@ -83,16 +84,22 @@ export const useDaemonState = defineStore('daemonState', () => {
             status.value = DaemonStatus.ERROR
         } else {
             // re-connected
-            status.value = preDisconnectedStatus.value
-            toast.add({
-                severity: 'success',
-                summary: t('views.daemon.connectionRestored'),
-                detail: t('views.daemon.connectionRestoredMessage'),
-                life: 4000,
-            })
-            const deviceStore = useDeviceStore()
             // force-reloading the UI results in a better UX, especially when the daemon is restarted
-            deviceStore.reloadUI(true)
+            const deviceStore = useDeviceStore()
+            if (deviceStore.isQtApp()) {
+                const settingsStore = useSettingsStore()
+                await deviceStore.waitAndReload(settingsStore.desktopStartupDelay)
+            } else {
+                deviceStore.reloadUI(true)
+            }
+            // Previous behavior:
+            // status.value = preDisconnectedStatus.value
+            // toast.add({
+            //     severity: 'success',
+            //     summary: t('views.daemon.connectionRestored'),
+            //     detail: t('views.daemon.connectionRestoredMessage'),
+            //     life: 4000,
+            // })
             // re-load the logs in case the daemon has restarted
             // await deviceStore.loadLogs()
             // re-check if the session is valid, in case the daemon has restarted
