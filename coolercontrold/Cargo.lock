@@ -2218,8 +2218,9 @@ dependencies = [
 
 [[package]]
 name = "nvml-wrapper"
-version = "0.10.0"
-source = "git+https://github.com/codifryed/nvml-wrapper?branch=coolercontrol-2-0#572095f631da93be8d243c73820e581676969897"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d5c6c0ef9702176a570f06ad94f3198bc29c524c8b498f1b9346e1b1bdcbb3a"
 dependencies = [
  "bitflags 2.9.4",
  "libloading",
@@ -2231,8 +2232,9 @@ dependencies = [
 
 [[package]]
 name = "nvml-wrapper-sys"
-version = "0.8.0"
-source = "git+https://github.com/codifryed/nvml-wrapper?branch=coolercontrol-2-0#572095f631da93be8d243c73820e581676969897"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd23dbe2eb8d8335d2bce0299e0a07d6a63c089243d626ca75b770a962ff49e6"
 dependencies = [
  "libloading",
 ]
