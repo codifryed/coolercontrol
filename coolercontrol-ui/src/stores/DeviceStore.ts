@@ -93,7 +93,7 @@ export const useDeviceStore = defineStore('device', () => {
         return new Promise((r) => setTimeout(r, ms))
     }
 
-    async function waitAndReload(secs: number = 3): Promise<void> {
+    async function waitAndReload(wait_secs: number = 3): Promise<void> {
         ElLoading.service({
             lock: true,
             text: 'Restarting...',
@@ -104,11 +104,12 @@ export const useDeviceStore = defineStore('device', () => {
         let s = 0
         const daemonState = useDaemonState()
         while (s < 30) {
-            await sleep(1_000)
-            if (s > secs && daemonState.connected) {
+            s++
+            // make sure daemon has re-connected before reloading
+            if (s > wait_secs && daemonState.connected) {
                 break
             }
-            s++
+            await sleep(1_000)
         }
         reloadUI(true)
     }

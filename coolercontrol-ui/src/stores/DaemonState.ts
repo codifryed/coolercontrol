@@ -71,19 +71,12 @@ export const useDaemonState = defineStore('daemonState', () => {
     }
 
     async function setConnected(isConnected: boolean): Promise<void> {
+        // If the connection state hasn't changed, do nothing
         if (connected.value === isConnected) return
-        if (connected.value) {
-            // disconnected
-            preDisconnectedStatus.value = status.value
-            toast.add({
-                severity: 'error',
-                summary: t('views.daemon.daemonDisconnected'),
-                detail: t('views.daemon.daemonDisconnectedDetail'),
-                life: 4000,
-            })
-            status.value = DaemonStatus.ERROR
-        } else {
+        connected.value = isConnected
+        if (isConnected) {
             // re-connected
+            status.value = preDisconnectedStatus.value
             // force-reloading the UI results in a better UX, especially when the daemon is restarted
             const deviceStore = useDeviceStore()
             if (deviceStore.isQtApp()) {
@@ -93,7 +86,6 @@ export const useDaemonState = defineStore('daemonState', () => {
                 deviceStore.reloadUI(true)
             }
             // Previous behavior:
-            // status.value = preDisconnectedStatus.value
             // toast.add({
             //     severity: 'success',
             //     summary: t('views.daemon.connectionRestored'),
@@ -105,7 +97,15 @@ export const useDaemonState = defineStore('daemonState', () => {
             // re-check if the session is valid, in case the daemon has restarted
             // await deviceStore.login()
         }
-        connected.value = isConnected
+        // else disconnected
+        preDisconnectedStatus.value = status.value
+        toast.add({
+            severity: 'error',
+            summary: t('views.daemon.daemonDisconnected'),
+            detail: t('views.daemon.daemonDisconnectedDetail'),
+            life: 4000,
+        })
+        status.value = DaemonStatus.ERROR
     }
 
     async function acknowledgeLogIssues(): Promise<void> {
