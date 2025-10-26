@@ -737,6 +737,7 @@ export const useDeviceStore = defineStore('device', () => {
         const thisStore = useDeviceStore()
         const daemonState = useDaemonState()
         async function startSSE(): Promise<void> {
+            // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
             await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
@@ -755,10 +756,11 @@ export const useDeviceStore = defineStore('device', () => {
                 onerror() {
                     daemonState.setConnected(false)
                     thisStore.loggedIn = false
-                    // auto-retry every second
+                    // auto-retry every second (return number to specify retry interval)
                 },
             })
         }
+        console.info('Listening for Status Events')
         return await startSSE()
     }
 
@@ -779,15 +781,15 @@ export const useDeviceStore = defineStore('device', () => {
                     }
                 },
                 async onclose() {
-                    // attempt to re-establish connection automatically (resume/restart)
-                    await sleep(1000)
-                    await startLogSSE()
+                    console.warn('Log SSE closed.')
                 },
-                onerror() {
-                    // auto-retry every second
+                onerror(err) {
+                    // we only retry with the status SSE
+                    throw err // rethrow will stop retry
                 },
             })
         }
+        console.info('Listening for Log Events')
         return await startLogSSE()
     }
 
@@ -807,15 +809,15 @@ export const useDeviceStore = defineStore('device', () => {
                     emitter.emit('active-modes-change-menu')
                 },
                 async onclose() {
-                    // attempt to re-establish connection automatically (resume/restart)
-                    await sleep(1000)
-                    await startModeSSE()
+                    console.warn('Active Mode SSE closed.')
                 },
-                onerror() {
-                    // auto-retry every second
+                onerror(err) {
+                    // we only retry with the status SSE
+                    throw err // rethrow will stop retry
                 },
             })
         }
+        console.info('Listening for Mode Events')
         return await startModeSSE()
     }
 
@@ -860,14 +862,15 @@ export const useDeviceStore = defineStore('device', () => {
                     }
                 },
                 async onclose() {
-                    // attempt to re-establish connection automatically (resume/restart)
-                    await startAlertSSE()
+                    console.warn('Alerts SSE closed.')
                 },
-                onerror() {
-                    // auto-retry every second
+                onerror(err) {
+                    // we only retry with the status SSE
+                    throw err // rethrow will stop retry
                 },
             })
         }
+        console.info('Listening for Alert Events')
         return await startAlertSSE()
     }
 
