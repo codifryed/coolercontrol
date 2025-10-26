@@ -60,11 +60,8 @@ tower-http = { version = "0.6.6", features = [
   "compression-full",
 ] }
 tower-sessions = { version = "0.14.0", features = ["private"] }
-# Our own fork which handles our specific use case:
-tower_governor = { git = "https://github.com/codifryed/tower-governor", branch = "0.7", features = [
-  "axum",
-  "tracing",
-] }
+governor = "0.10.1"
+pin-project = "1.1.10"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [

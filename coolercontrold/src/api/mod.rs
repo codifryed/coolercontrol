@@ -23,6 +23,7 @@ mod base;
 mod custom_sensors;
 mod devices;
 mod functions;
+mod limiter;
 pub mod modes;
 mod profiles;
 mod router;
@@ -35,6 +36,7 @@ use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
     ModeHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
+use crate::api::limiter::throttler::LimiterConfig;
 use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::logger::LogBufHandle;
@@ -52,6 +54,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
 use derive_more::{Display, Error};
+use limiter::LimiterLayer;
 use log::{debug, info, warn};
 use moro_local::Scope;
 use schemars::JsonSchema;
@@ -64,8 +67,6 @@ use std::time::Duration;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
-use tower_governor::governor::GovernorConfigBuilder;
-use tower_governor::GovernorLayer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -146,16 +147,12 @@ pub async fn start_server<'s>(
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnSessionEnd);
-    let governor_layer = GovernorLayer {
-        config: Arc::new(
-            GovernorConfigBuilder::default()
-                // startup has quite a few requests (e.g. per device)
-                .burst_size(API_RATE_BURST)
-                // 10 req/s
-                .per_millisecond(1000 / API_RATE_REQ_PER_SEC)
-                .finish()
-                .unwrap(),
-        ),
+    let limiter_layer = LimiterLayer {
+        config: Arc::new(LimiterConfig::new(
+            Duration::from_millis(1000 / API_RATE_REQ_PER_SEC),
+            // startup has quite a few requests (e.g. per device)
+            API_RATE_BURST,
+        )),
     };
 
     if let Ok(ipv4) = ipv4 {
@@ -164,7 +161,7 @@ pub async fn start_server<'s>(
             app_state.clone(),
             session_layer.clone(),
             compression_layer.clone(),
-            governor_layer.clone(),
+            limiter_layer.clone(),
             cancel_token.clone(),
         ));
     }
@@ -174,7 +171,7 @@ pub async fn start_server<'s>(
             app_state,
             session_layer,
             compression_layer,
-            governor_layer,
+            limiter_layer,
             cancel_token,
         ));
     }
@@ -186,7 +183,7 @@ async fn create_api_server(
     app_state: AppState,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
     compression_layer: Option<CompressionLayer>,
-    governor_layer: GovernorLayer,
+    limiter_layer: LimiterLayer,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     aide::generate::on_error(|error| {
@@ -216,7 +213,7 @@ async fn create_api_server(
                 TraceLayer::new_for_http(),
                 TimeoutLayer::new(Duration::from_secs(API_TIMEOUT_SECS)),
             ))
-            .layer(governor_layer),
+            .layer(limiter_layer),
     );
     axum::serve(
         listener,
