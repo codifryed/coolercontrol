@@ -117,7 +117,8 @@ psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.108.0"
+# nu-glob 0.108.0 requires >= Rust 1.88
+nu-glob = "=0.107.0"
 nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
 toml_edit = "0.23.7"
