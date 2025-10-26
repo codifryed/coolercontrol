@@ -26,6 +26,7 @@ use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
+use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
@@ -46,6 +47,9 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
+    if cmd_args.version.not() {
+        info!("CoolerControlD {VERSION}");
+    }
     info!(
         "System Info:\n\
         Name:\t{}\n\
