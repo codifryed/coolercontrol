@@ -26,7 +26,6 @@ use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
-use std::ops::Not;
 use std::path::PathBuf;
 use std::str::{from_utf8_unchecked, FromStr};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
@@ -47,21 +46,19 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
-    if cmd_args.version.not() {
-        info!("CoolerControlD {VERSION}");
-    }
     info!(
         "System Info:\n\
-        Name:\t{}\n\
-        OS:\t\t{}\n\
-        Host:\t{}\n\
-        Kernel:\t{}\n\
-        Arch:\t{}\n\
-        Board Manufacturer:\t{}\n\
-        Board Name:\t\t{}\n\
-        Board Version:\t{}\n\
-        BIOS Manufacturer:\t{}\n\
-        BIOS Version:\t{}\n\
+        CoolerControlD:     {VERSION}\n\
+        Name:               {}\n\
+        OS:                 {}\n\
+        Host:               {}\n\
+        Kernel:             {}\n\
+        Arch:               {}\n\
+        Board Manufacturer: {}\n\
+        Board Name:         {}\n\
+        Board Version:      {}\n\
+        BIOS Manufacturer:  {}\n\
+        BIOS Version:       {}\n\
         {}",
         sysinfo::System::name().unwrap_or_default(),
         sysinfo::System::long_os_version().unwrap_or_default(),
@@ -75,7 +72,7 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
         get_dmi_system_info("bios_release").await,
         get_xdg_desktop_info().await.unwrap_or_default(),
     );
-    if cmd_args.version {
+    if cmd_args.system_info {
         let _ = liqctld_service::verify_env().await;
         exit_successfully();
     }
@@ -128,7 +125,7 @@ async fn get_xdg_desktop_info() -> Result<String> {
         let desktop_list = Vec::from_iter(desktops).join(", ");
         let session_list = Vec::from_iter(sessions_types).join(", ");
         Ok(format!(
-            "XDG Desktops:\t{desktop_list}\nXDG Session Types:\t{session_list}"
+            "XDG Desktops:       {desktop_list}\nXDG Session Types:  {session_list}"
         ))
     }
 }
