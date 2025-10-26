@@ -126,15 +126,15 @@ type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 /// A program to control your cooling devices
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Parser, Debug)]
-#[clap(author, about, long_about = None)]
+#[clap(author, about, version, long_about = None)]
 struct Args {
     /// Enable debug output
     #[clap(long)]
     debug: bool,
 
-    /// Get current version info
+    /// Print detected system information
     #[clap(long, short)]
-    version: bool,
+    system_info: bool,
 
     /// Check config file validity
     #[clap(long)]

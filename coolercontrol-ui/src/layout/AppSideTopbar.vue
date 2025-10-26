@@ -698,7 +698,9 @@ const addItems = computed(() => [
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
-            popper-class="ml-[3.75rem] mb-[-3.8rem]"
+            :popper-class="
+                deviceStore.loggedIn ? 'ml-[3.75rem] mb-[-3.8rem]' : 'ml-[3.75rem] mt-[-3.8rem]'
+            "
         >
             <Button
                 class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"

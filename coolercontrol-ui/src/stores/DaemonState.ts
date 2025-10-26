@@ -21,6 +21,7 @@ import { ref, Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 export enum DaemonStatus {
     OK = 'Ok',
@@ -70,35 +71,41 @@ export const useDaemonState = defineStore('daemonState', () => {
     }
 
     async function setConnected(isConnected: boolean): Promise<void> {
+        // If the connection state hasn't changed, do nothing
         if (connected.value === isConnected) return
-        if (connected.value) {
-            // disconnected
-            preDisconnectedStatus.value = status.value
-            toast.add({
-                severity: 'error',
-                summary: t('views.daemon.daemonDisconnected'),
-                detail: t('views.daemon.daemonDisconnectedDetail'),
-                life: 4000,
-            })
-            status.value = DaemonStatus.ERROR
-        } else {
+        connected.value = isConnected
+        if (isConnected) {
             // re-connected
             status.value = preDisconnectedStatus.value
-            toast.add({
-                severity: 'success',
-                summary: t('views.daemon.connectionRestored'),
-                detail: t('views.daemon.connectionRestoredMessage'),
-                life: 4000,
-            })
-            const deviceStore = useDeviceStore()
             // force-reloading the UI results in a better UX, especially when the daemon is restarted
-            deviceStore.reloadUI(true)
+            const deviceStore = useDeviceStore()
+            if (deviceStore.isQtApp()) {
+                const settingsStore = useSettingsStore()
+                await deviceStore.waitAndReload(settingsStore.desktopStartupDelay)
+            } else {
+                deviceStore.reloadUI(true)
+            }
+            // Previous behavior:
+            // toast.add({
+            //     severity: 'success',
+            //     summary: t('views.daemon.connectionRestored'),
+            //     detail: t('views.daemon.connectionRestoredMessage'),
+            //     life: 4000,
+            // })
             // re-load the logs in case the daemon has restarted
             // await deviceStore.loadLogs()
             // re-check if the session is valid, in case the daemon has restarted
             // await deviceStore.login()
         }
-        connected.value = isConnected
+        // else disconnected
+        preDisconnectedStatus.value = status.value
+        toast.add({
+            severity: 'error',
+            summary: t('views.daemon.daemonDisconnected'),
+            detail: t('views.daemon.daemonDisconnectedDetail'),
+            life: 4000,
+        })
+        status.value = DaemonStatus.ERROR
     }
 
     async function acknowledgeLogIssues(): Promise<void> {
