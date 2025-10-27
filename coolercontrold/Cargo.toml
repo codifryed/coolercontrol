@@ -60,7 +60,8 @@ tower-http = { version = "0.6.6", features = [
   "compression-full",
 ] }
 tower-sessions = { version = "0.14.0", features = ["private"] }
-governor = "0.10.1"
+# disable the quanta feature, as it introduces a bug in the rate limiter when resuming from sleep:
+governor = { version = "0.10.1", default-features = false, features = ["std"] }
 pin-project = "1.1.10"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
