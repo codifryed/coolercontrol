@@ -419,7 +419,11 @@ fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
-pub async fn set_pwm_enable_to_default(
+/// This sets `pwm_enable` to the default value,
+/// unless it's currently set to "auto-mode" (>1), then it will be left on auto mode.
+/// This is mostly used when shutting down the service to revert to the default value,
+/// but not necessarily and not all devices support an auto setting.
+pub async fn set_pwm_enable_to_default_or_auto(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
@@ -427,11 +431,17 @@ pub async fn set_pwm_enable_to_default(
         // not all devices have pwm_enable available
         return Ok(());
     };
-    if let Err(err) = set_pwm_enable_if_not_already(default_value, base_path, channel_info).await {
-        warn!("Failed to reset pwm_enable to default: {err}");
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
+        .await
+        .and_then(check_parsing_8)?;
+    if current_pwm_enable < PWM_ENABLE_AUTO_VALUE && current_pwm_enable != default_value {
+        if let Err(err) = write_pwm_enable(&path_pwm_enable, default_value).await {
+            warn!("Failed to reset pwm_enable to default: {err}");
+        }
     }
     debug!(
-        "Reset Hwmon value at {}/pwm{}_enable to starting default value of {default_value}",
+        "Reset Hwmon value at {}/pwm{}_enable to default/auto value",
         base_path.display(),
         channel_info.number
     );
@@ -777,7 +787,7 @@ mod tests {
             };
 
             // when:
-            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
 
             // then:
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
@@ -808,7 +818,7 @@ mod tests {
             };
 
             // when:
-            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
 
             // then:
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
@@ -817,6 +827,43 @@ mod tests {
             teardown(&ctx);
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_to_default_auto() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            // current value is already auto (2)
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
+                .await
+                .unwrap();
+            // default is manual (1) but should not override auto
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(1),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
+            };
+
+            // when:
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
+
+            // then:
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            // remains on auto (2)
+            assert_eq!(current_pwm_enable, "2");
         });
     }
 

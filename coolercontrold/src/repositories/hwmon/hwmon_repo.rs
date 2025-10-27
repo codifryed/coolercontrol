@@ -606,7 +606,8 @@ impl Repository for HwmonRepo {
                         &channel_info.name,
                     )
                     .await?;
-                let _ = fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await;
+                let _ =
+                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await;
                 drop(device_permit);
             }
         }
@@ -623,7 +624,7 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
+        fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
     }
 
     async fn apply_setting_manual_control(

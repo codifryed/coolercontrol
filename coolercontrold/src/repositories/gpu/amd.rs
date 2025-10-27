@@ -632,7 +632,7 @@ impl GpuAMD {
                     channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                 })
                 .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-            fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
+            fans::set_pwm_enable_to_default_or_auto(&amd_hwmon_info.hwmon.path, channel_info).await
         }
     }
 
