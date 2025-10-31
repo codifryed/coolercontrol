@@ -24,11 +24,13 @@ ci-test:
 	@#cargo audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
     
 vendor:
-	@cargo vendor --locked
+	@mkdir .cargo
+	@cargo vendor --locked > .cargo/config.toml
 
 clean:
 	@-$(RM) -rf target
 	@-$(RM) -rf vendor
+	@-$(RM) -rf .cargo
 	@-$(RM) -rf resources/app/*
 
 install:

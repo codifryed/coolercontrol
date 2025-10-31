@@ -136,7 +136,7 @@ assets-daemon:
 	@mkdir -p assets-built
 	@$(MAKE) -C $(daemon_dir) vendor
 	@cp $(daemon_dir)/target/release/coolercontrold ./assets-built/
-	@cd $(daemon_dir) && tar --zstd -cf ../assets-built/coolercontrold-vendor.tzst vendor
+	@cd $(daemon_dir) && tar -czf ../assets-built/coolercontrold-vendor.tar.gz vendor .config
 
 assets-ui:
 	@mkdir -p assets-built
