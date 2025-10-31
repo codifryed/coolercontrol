@@ -1,0 +1,1 @@
+../packaging/fedora/coolercontrold-rc1.spec

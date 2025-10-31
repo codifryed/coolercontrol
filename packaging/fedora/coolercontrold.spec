@@ -1,14 +1,15 @@
+%bcond check 1
 %global project coolercontrol
 
 # prevent library files from being installed
-%global __cargo_is_lib() 0
+%global cargo_install_lib 0
 
 Name:           %{project}d
 Version:        3.0.1
-Release:        1%{?dist}
-Summary:        Monitor and control your cooling devices
+Release:        %autorelease
+Summary:        Powerful cooling control and monitoring for Linux
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
-
+ExclusiveArch:  %{arm} x86_64
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
 
@@ -16,54 +17,58 @@ BuildRequires:  systemd-rpm-macros
 BuildRequires:  cargo-rpm-macros >= 24
 BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
-BuildRequires:  nodejs
-BuildRequires:  npm
 Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 
-VCS:        {{{ git_dir_vcs }}}
-Source:     {{{ git_dir_pack }}}
+Source0:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-%{version}.tar.gz
+#Source1:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-vendor.tar.gz
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
-
-It offers an easy-to-use user interface with various control features and also provides live thermal performance details.
+It offers an easy-to-use user interface with various control features 
+and also provides live thermal performance details.
 
 %prep
-{{{ git_dir_setup_macro }}}
-# non-Inet rust and npm dependencies are a WIP
+%autosetup -n %{name}-%{version}/%{name} -a 0
+#tar -xzf %{SOURCE1}
+#%cargo_prep --vendor
+%cargo_prep
 
 %generate_buildrequires
+%cargo_generate_buildrequires
 
 %build
-# build web ui files:
-make build-ui
-cp -rfp %{project}-ui/dist/* %{name}/resources/app/
-(cd %{name}; /usr/bin/cargo build --locked -j${RPM_BUILD_NCPUS} --profile release)
+%cargo_build
+%{cargo_license_summary}
+%{cargo_license} > LICENSE.dependencies
+#{cargo_vendor_manifest}
 
 %install
-install -Dpm 755 %{name}/target/release/%{name} -t %{buildroot}%{_bindir}
-mkdir -p %{buildroot}%{_unitdir}
-cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
+install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
+install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
+%cargo_install
 
+%if %{with check}
 %check
-(cd %{name}; /usr/bin/cargo test --locked -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
+%cargo_test
 %{buildroot}%{_bindir}/%{name} --version
+%endif
 
 %files
 %{_bindir}/%{name}
 %{_unitdir}/%{name}.service
+%{_mandir}/man8/%{name}.8*
 %license LICENSE
-%doc README.md CHANGELOG.md
+%doc CHANGELOG.md
 
 %post
-%systemd_post coolercontrold.service
+%systemd_post %{name}.service
 
 %preun
-%systemd_preun coolercontrold.service
+%systemd_preun %{name}.service
 
 %postun
-%systemd_postun_with_restart coolercontrold.service
+%systemd_postun_with_restart %{name}.service
 
 %changelog
 * Sat Oct 04 2025 Guy Boldon <gb@guyboldon.com> - 3.0.1-1
