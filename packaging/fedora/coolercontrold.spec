@@ -32,7 +32,7 @@ and also provides live thermal performance details.
 %autosetup -n %{name}-%{version}/%{name} -a 0
 #tar -xzf %{SOURCE1}
 #cargo_prep -v vendor
-#cargo_prep
+%cargo_prep
 
 %generate_buildrequires
 #cargo_generate_buildrequires
