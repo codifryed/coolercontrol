@@ -21,7 +21,7 @@ Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 
 Source0:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-%{version}.tar.gz
-#Source1:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-vendor.tar.gz
+Source1:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-vendor.tar.gz
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
@@ -30,9 +30,9 @@ and also provides live thermal performance details.
 
 %prep
 %autosetup -n %{name}-%{version}/%{name} -a 0
-#tar -xzf %{SOURCE1}
-#cargo_prep -v vendor
-%cargo_prep
+%tar -xzf %{SOURCE1}
+%cargo_prep -v vendor
+#cargo_prep
 
 %generate_buildrequires
 #cargo_generate_buildrequires
@@ -41,7 +41,7 @@ and also provides live thermal performance details.
 %cargo_build
 %{cargo_license_summary}
 %{cargo_license} > LICENSE.dependencies
-#{cargo_vendor_manifest}
+%{cargo_vendor_manifest}
 
 %install
 install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
