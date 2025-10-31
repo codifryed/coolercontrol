@@ -5,7 +5,7 @@
 #global _vpath_srcdir coolercontrol
 
 Name:           coolercontrol
-Version:        3.0.2-rc1
+Version:        3.0.2~rc1
 Release:        %autorelease
 Summary:        Powerful cooling control and monitoring for Linux
 ExclusiveArch:  %{arm} x86_64
