@@ -9,6 +9,7 @@
         "test:unit": "vitest",
         "test": "run-s type-check test:unit",
         "build-only": "vite build",
+        "build-daemon-ui": "vite build --outDir ../coolercontrold/resources/app",
         "type-check": "vue-tsc --noEmit --composite false"
     },
     "dependencies": {
