@@ -65,6 +65,7 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
       echo "Job - ${CI_JOB_NAME}"
       echo "Pipeline Source - ${CI_PIPELINE_SOURCE}"
       echo "Commit - ${CI_COMMIT_SHA}"
+      echo "Ref - ${CI_COMMIT_REF_NAME}"
       echo "Tag - ${CI_COMMIT_TAG}"
 
 ############################################################################################
@@ -220,6 +221,24 @@ build_arm64:
       - assets-built/coolercontrol-ui-vendor.tar.gz
     expire_in: 5 days
 
+####################################### source assets
+build_source_assets:
+  <<: [*main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  before_script:
+    - npm --version
+    - node --version
+  script:
+    - packaging/release-source.sh '${CI_PROJECT_URL}' '${CI_COMMIT_REF_NAME}'
+  artifacts:
+    name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
+    paths:
+      - coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz
+    expire_in: 14 days
 
 ####################################### Debian >=BookWorm Base Package
 build_deb_bookworm_amd64:
@@ -797,9 +816,11 @@ upload_package_appimage:
   image: curlimages/curl:latest
   dependencies:
     - build_appimages
+    - build_source_assets
   needs:
     - build_appimages
     - test_appimages
+    - build_source_assets
   rules:
     - if: $CI_COMMIT_TAG
   script:
@@ -808,6 +829,7 @@ upload_package_appimage:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_package_appimage_beta:
@@ -815,9 +837,11 @@ upload_package_appimage_beta:
   image: curlimages/curl:latest
   dependencies:
     - build_appimages
+    - build_source_assets
   needs:
     - build_appimages
     - test_appimages
+    - build_source_assets
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
@@ -826,6 +850,7 @@ upload_package_appimage_beta:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_artifacts_arm64:
@@ -1064,6 +1089,10 @@ create_release:
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
           link_type: other
         # Assets:
+        - name: Official Source Tarball
+          filepath: '/packages/coolercontrol-${CI_COMMIT_TAG}.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_TAG}.tar.gz'
+          link_type: other
         - name: Daemon Binary x86_64
           filepath: '/packages/coolercontrold_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}'
