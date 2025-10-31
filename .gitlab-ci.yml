@@ -141,7 +141,7 @@ test_all:
 build_source_assets:
   <<: [*main_image_template]
   stage: build
-  depends:
+  dependencies:
     - test_all
   needs:
     - test_all
