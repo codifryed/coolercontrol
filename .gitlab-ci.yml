@@ -150,7 +150,8 @@ build_source_assets:
     - node --version
   script:
     - packaging/release-source.sh '${CI_PROJECT_URL}' '${CI_COMMIT_REF_NAME}'
-    - curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
   artifacts:
     name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
     paths:
