@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # This script creates a source taball that contains a number of files that are not directly in
 # version control:
@@ -33,7 +33,7 @@ SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
 
 pushd coolercontrol-ui
 npm ci --prefer-offline
-npm exec vite build -- --outDir ../coolercontrold/resources/app
+npm exec vite build -- --outDir ../coolercontrold/resources/app --emptyOutDir
 popd
 # This is needed to produce reproducable checksums for the tarball
 # See: https://reproducible-builds.org/docs/archives/
@@ -42,7 +42,7 @@ tar --sort=name \
     --owner=0 --group=0 --numeric-owner \
     --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
     --exclude-vcs \
-    --transform "s,^\.,coolercontrol-$REF," \
-    -czf "$(echo ~1)"/"${TARBALL_FILE}" .
+    --transform "s,^\.,coolercontrol-${REF}," \
+    -czf ~1/"${TARBALL_FILE}" .
 popd
 sha256sum "${TARBALL_FILE}"
