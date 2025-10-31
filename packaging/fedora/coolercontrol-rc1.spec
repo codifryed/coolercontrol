@@ -61,7 +61,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{_metainfodir}/%{ap_id}.metainfo.xml
 %{_mandir}/man1/%{name}.1*
 %license LICENSE
-%doc README.md CHANGELOG.md
+%doc CHANGELOG.md
 
 %changelog
 %autochangelog
