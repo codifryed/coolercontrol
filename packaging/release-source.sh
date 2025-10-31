@@ -42,7 +42,7 @@ tar --sort=name \
     --owner=0 --group=0 --numeric-owner \
     --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime \
     --exclude-vcs \
-    --transform "s,^\.,coolercontrol-${REF}," \
+    --transform "s,^\./,coolercontrol-${REF}/," \
     -czf ~1/"${TARBALL_FILE}" .
 popd
 sha256sum "${TARBALL_FILE}"
