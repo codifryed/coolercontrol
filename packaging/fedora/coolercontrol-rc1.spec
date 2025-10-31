@@ -23,7 +23,7 @@ BuildRequires:  cmake(Qt6WebChannel)
 Requires:       hicolor-icon-theme > 0
 Recommends:     coolercontrold = %{version}
 
-Source:          https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/coolercontrol/%{branch}/coolercontrol-%{branch}.tar.gz
+Source:         https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{name}/%{branch}/%{name}-%{branch}.tar.gz
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
@@ -46,7 +46,7 @@ install -Dpm 644 metadata/%{ap_id}.svg -t %{buildroot}%{_datadir}/icons/hicolor/
 install -Dpm 644 metadata/%{ap_id}-symbolic.svg -t %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
 install -Dpm 644 metadata/%{ap_id}.png -t %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 install -Dpm 644 metadata/%{ap_id}.metainfo.xml -t %{buildroot}%{_metainfodir}
-install -Dpm 644 man/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
+install -Dpm 644 man/%{name}.1 -t %{buildroot}%{_mandir}/man1
 
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
