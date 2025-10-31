@@ -1,8 +1,7 @@
-%global branch packaging-improve
+%global branch main
 %global project_id 30707566
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
-#global _vpath_srcdir coolercontrol
 
 Name:           coolercontrol
 Version:        3.0.2~rc1

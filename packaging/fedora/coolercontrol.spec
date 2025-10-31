@@ -1,15 +1,13 @@
-%global project coolercontrol
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
-%global _vpath_srcdir coolercontrol
 
-Name:           %{project}
+Name:           coolercontrol
 Version:        3.0.1
-Release:        1%{?dist}
-Summary:        Monitor and control your cooling devices
-
+Release:        %autorelease
+Summary:        Powerful cooling control and monitoring for Linux
+ExclusiveArch:  %{arm} x86_64
 License:        GPL-3.0-or-later
-URL:            https://gitlab.com/%{project}/%{project}
+URL:            https://gitlab.com/%{name}/%{name}
 
 BuildRequires:  libappstream-glib
 BuildRequires:  desktop-file-utils
@@ -21,21 +19,17 @@ BuildRequires:  cmake(Qt6WebEngineCore)
 BuildRequires:  cmake(Qt6WebEngineWidgets)
 BuildRequires:  cmake(Qt6WebChannel)
 Requires:       hicolor-icon-theme > 0
-Requires:       qt6-qtbase
-Requires:       qt6-qtwebengine
-Requires:       qt6-qtwebchannel
-Requires:       coolercontrold = %{version}
+Recommends:     coolercontrold = %{version}
 
-VCS:        {{{ git_dir_vcs }}}
-Source:     {{{ git_dir_pack }}}
+Source:          https://gitlab.com/%{name}/%{name}/-/releases/%{version}/downloads/packages/%{name}-%{version}.tar.gz
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
-
-It offers an easy-to-use user interface with various control features and also provides live thermal performance details.
+It offers an easy-to-use user interface with various control features 
+and also provides live thermal performance details.
 
 %prep
-{{{ git_dir_setup_macro }}}
+%autosetup -n %{name}-%{version}/%{qt_dir} -a 0
 
 %generate_buildrequires
 
@@ -45,15 +39,12 @@ It offers an easy-to-use user interface with various control features and also p
 
 %install
 %cmake_install
-desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
-cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
-cp -p packaging/metadata/%{ap_id}-symbolic.svg %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps/
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
-cp -p packaging/metadata/%{ap_id}.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
-mkdir -p %{buildroot}%{_metainfodir}
-cp -p packaging/metadata/%{ap_id}.metainfo.xml %{buildroot}%{_metainfodir}/
+desktop-file-install --dir=%{buildroot}%{_datadir}/applications metadata/%{ap_id}.desktop
+install -Dpm 644 metadata/%{ap_id}.svg -t %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
+install -Dpm 644 metadata/%{ap_id}-symbolic.svg -t %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
+install -Dpm 644 metadata/%{ap_id}.png -t %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+install -Dpm 644 metadata/%{ap_id}.metainfo.xml -t %{buildroot}%{_metainfodir}
+install -Dpm 644 man/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
 
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
@@ -65,8 +56,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{_datadir}/icons/hicolor/symbolic/apps/%{ap_id}-symbolic.svg
 %{_datadir}/icons/hicolor/256x256/apps/%{ap_id}.png
 %{_metainfodir}/%{ap_id}.metainfo.xml
+%{_mandir}/man1/%{name}.1*
 %license LICENSE
-%doc README.md CHANGELOG.md
+%doc CHANGELOG.md
 
 %changelog
 * Sat Oct 04 2025 Guy Boldon <gb@guyboldon.com> - 3.0.1-1
