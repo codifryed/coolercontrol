@@ -140,7 +140,7 @@ assets-daemon:
 
 assets-ui:
 	@mkdir -p assets-built
-	@cd $(ui_dir) && tar --zstd -cf ../assets-built/coolercontrol-ui-vendor.tzst node_modules
+	@cd $(ui_dir) && tar -czf ../assets-built/coolercontrol-ui-vendor.tar.gz node_modules
 
 assets-qt: build-qt
 	@mkdir -p assets-built

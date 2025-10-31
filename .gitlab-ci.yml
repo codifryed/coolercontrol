@@ -187,8 +187,8 @@ build_appimages:
       - CoolerControlD-x86_64.AppImage
       - assets-built/coolercontrold
       - assets-built/coolercontrol
-      - assets-built/coolercontrold-vendor.tzst
-      - assets-built/coolercontrol-ui-vendor.tzst
+      - assets-built/coolercontrold-vendor.tar.gz
+      - assets-built/coolercontrol-ui-vendor.tar.gz
     expire_in: 5 days
 
 ####################################### aarch64 build assets (Ubuntu 22.04)
@@ -216,8 +216,8 @@ build_arm64:
   artifacts:
     paths:
       - assets-built/coolercontrold
-      - assets-built/coolercontrold-vendor.tzst
-      - assets-built/coolercontrol-ui-vendor.tzst
+      - assets-built/coolercontrold-vendor.tar.gz
+      - assets-built/coolercontrol-ui-vendor.tar.gz
     expire_in: 5 days
 
 
@@ -806,8 +806,8 @@ upload_package_appimage:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_package_appimage_beta:
@@ -824,8 +824,8 @@ upload_package_appimage_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_artifacts_arm64:
@@ -841,8 +841,8 @@ upload_artifacts_arm64:
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
 upload_artifacts_arm64_beta:
   stage: upload_packages
@@ -857,8 +857,8 @@ upload_artifacts_arm64_beta:
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol_aarch64-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold_aarch64-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
 upload_package_deb_bookworm_amd64:
   stage: upload_packages
@@ -1073,22 +1073,22 @@ create_release:
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}'
           link_type: other
         - name: Daemon Vendored Dependencies x86_64
-          filepath: '/packages/coolercontrold-vendor.tzst'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
+          filepath: '/packages/coolercontrold-vendor.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz'
           link_type: other
         - name: UI Build Assets x86_64
-          filepath: '/packages/coolercontrol-ui.tzst'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst'
+          filepath: '/packages/coolercontrol-ui-vendor.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz'
           link_type: other
         - name: Daemon Binary aarch64
           filepath: '/packages/coolercontrold_aarch64_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}'
           link_type: other
         - name: Daemon Vendored Dependencies aarch64
-          filepath: '/packages/coolercontrold_aarch64-vendor.tzst'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tzst'
+          filepath: '/packages/coolercontrold_aarch64-vendor.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tar.gz'
           link_type: other
         - name: UI Build Assets aarch64
-          filepath: '/packages/coolercontrol_aarch64-ui.tzst'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tzst'
+          filepath: '/packages/coolercontrol_aarch64-ui-vendor.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz'
           link_type: other
