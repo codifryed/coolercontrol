@@ -501,7 +501,7 @@ impl GpuNVidia {
         channel_infos: &mut HashMap<String, ChannelInfo>,
         nvidia_freq_infos: &mut Vec<Clock>,
     ) {
-        if nvml_device.clock_info(clock_type.clone()).is_ok() {
+        if nvml_device.clock_info(clock_type).is_ok() {
             channel_infos.insert(
                 clock_name.to_string(),
                 ChannelInfo {
@@ -1002,8 +1002,8 @@ impl GpuNVidia {
                 Error(err) => {
                     return Err(anyhow!(
                         "Could not communicate with nvidia-settings. \
-                        If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
-                        err));
+                        If you have a Nvidia card nvidia-settings needs to be installed for fan control. {err}"
+                        ));
                 }
             }
         }
@@ -1149,8 +1149,7 @@ impl GpuNVidia {
                     self.xauthority_path.replace(xauthority_path);
                 }
                 Err(anyhow!(
-                    "Error communicating with nvidia-settings: {}",
-                    stderr
+                    "Error communicating with nvidia-settings: {stderr}"
                 ))
             }
             Success { stdout, stderr } => {
@@ -1160,8 +1159,7 @@ impl GpuNVidia {
                 } else {
                     Err(anyhow!(
                         "Error output received when trying to set nvidia fan speed settings. \
-                    Some errors don't affect setting the fan speed. YMMV: {}",
-                        stderr
+                    Some errors don't affect setting the fan speed. YMMV: {stderr}"
                     ))
                 }
             }

@@ -253,7 +253,7 @@ impl ModeController {
         })
         .await?;
         self.config.save_config_file().await?;
-        self.update_active_modes(mode_uid.to_string());
+        self.update_active_modes(mode_uid.clone());
         self.save_modes_data().await?;
         self.broadcast_active_mode(
             Some(&mode.uid),
@@ -470,7 +470,7 @@ impl ModeController {
             mode.all_device_settings = self.get_all_device_settings()?;
             mode.clone()
         };
-        self.update_active_modes(mode_uid.to_string());
+        self.update_active_modes(mode_uid.clone());
         self.save_modes_data().await?;
         self.broadcast_active_mode(
             Some(&mode.uid),

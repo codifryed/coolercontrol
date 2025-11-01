@@ -344,19 +344,24 @@ pub enum FunctionType {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Display,
+    EnumString,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
 pub enum ProfileMixFunctionType {
     Min,
+    #[default]
     Max,
     Avg,
     Diff,
-}
-
-impl Default for ProfileMixFunctionType {
-    fn default() -> Self {
-        Self::Max
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]

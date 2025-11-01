@@ -103,6 +103,7 @@ int main(int argc, char* argv[]) {
   QApplication::setDesktopFileName(APP_ID.data());
   QApplication::setApplicationVersion(COOLER_CONTROL_VERSION.data());
   QApplication::setQuitOnLastWindowClosed(false);
+  parseCLIOptions(a);
   // single-instance
   auto connection = QDBusConnection::sessionBus();
   if (connection.isConnected()) {
@@ -123,7 +124,6 @@ int main(int argc, char* argv[]) {
   } else {
     qWarning("Cannot connect to the D-Bus session bus.");
   }
-  parseCLIOptions(a);
 
   MainWindow w;
   w.setWindowTitle("CoolerControl");

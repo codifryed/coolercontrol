@@ -1360,7 +1360,7 @@ impl Config {
             .iter()
             .position(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile_uid);
         match index_to_delete {
-            None => Err(anyhow!("Profile to delete not found: {}", profile_uid)),
+            None => Err(anyhow!("Profile to delete not found: {profile_uid}")),
             Some(position) => {
                 profiles_array.remove(position);
                 Ok(())
@@ -1713,7 +1713,7 @@ impl Config {
             .iter()
             .position(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function_uid);
         match index_to_delete {
-            None => Err(anyhow!("Function to delete not found: {}", function_uid)),
+            None => Err(anyhow!("Function to delete not found: {function_uid}")),
             Some(position) => {
                 functions_array.remove(position);
                 Ok(())

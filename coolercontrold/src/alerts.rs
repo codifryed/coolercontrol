@@ -457,7 +457,7 @@ impl AlertController {
                 )
             };
 
-            alerts_to_fire.push((alert.clone(), message.to_string()));
+            alerts_to_fire.push((alert.clone(), message.clone()));
         }
         alerts_to_fire
     }
