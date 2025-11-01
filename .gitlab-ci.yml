@@ -163,6 +163,7 @@ build_source_assets:
     name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
     paths:
       - coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz
+      - coolercontrold-vendor.tar.gz
     expire_in: 14 days
 
 ############################################################################################
