@@ -20,7 +20,7 @@ BuildRequires:  pkgconfig(libdrm)
 Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 
-Source0:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-%{version}.tar.gz
+Source0:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{project}-%{version}.tar.gz
 Source1:        https://gitlab.com/%{project}/%{project}/-/releases/%{version}/downloads/packages/%{name}-vendor.tar.gz
 
 %description
@@ -30,8 +30,8 @@ devices. It features an intuitive interface, flexible control options, and live 
 your system quiet, cool, and stable.
 
 %prep
-%autosetup -n %{name}-%{version}/%{name} -a 0
-%tar -xzf %{SOURCE1}
+%autosetup -n %{project}-%{version}/%{name} -a 0
+tar -xzf %{SOURCE1}
 %cargo_prep -v vendor
 #cargo_prep
 
