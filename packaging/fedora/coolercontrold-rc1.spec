@@ -1,5 +1,5 @@
 %bcond check 1
-%global branch main
+%global branch test-crate-pkgs
 %global project_id 30707566
 %global project coolercontrol
 
@@ -33,12 +33,12 @@ your system quiet, cool, and stable.
 
 %prep
 %autosetup -n %{project}-%{branch}/%{name} -a 0
-tar -xzf %{SOURCE1}
-%cargo_prep -v vendor
-#cargo_prep
+#tar -xzf %{SOURCE1}
+#cargo_prep -v vendor
+%cargo_prep
 
 %generate_buildrequires
-#cargo_generate_buildrequires
+%cargo_generate_buildrequires
 
 %build
 %cargo_build
