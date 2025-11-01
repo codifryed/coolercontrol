@@ -46,7 +46,7 @@ pub const HWMON_DEVICE_NAME_BLACKLIST: [&str; 1] = [
     "amdgpu", // GPU Repo handles this
 ];
 const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
-pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
+pub const DEVICE_NAME_THINK_PAD: &str = "thinkpad";
 
 struct GlobPaths {
     pwm: String,

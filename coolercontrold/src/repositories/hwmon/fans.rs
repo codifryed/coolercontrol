@@ -18,8 +18,10 @@
 
 use crate::cc_fs;
 use crate::device::ChannelStatus;
-use crate::repositories::hwmon::devices;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    AutoCurveInfo, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+};
+use crate::repositories::hwmon::{auto_curve, devices};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
@@ -31,6 +33,8 @@ use std::path::{Path, PathBuf};
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
+pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
@@ -49,6 +53,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
         init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
+    auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
         "Hwmon pwm fans detected: {fans:?} for {}",
         base_path.display()
@@ -115,6 +120,7 @@ async fn init_pwm_fan(
         label,
         pwm_mode_supported,
         pwm_writable,
+        auto_curve: AutoCurveInfo::None,
     });
     Ok(())
 }
@@ -184,6 +190,7 @@ async fn init_rpm_only_fan(
         label,
         pwm_mode_supported: false,
         pwm_writable: false,
+        auto_curve: AutoCurveInfo::None,
     });
     Ok(())
 }
@@ -412,7 +419,11 @@ fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
-pub async fn set_pwm_enable_to_default(
+/// This sets `pwm_enable` to the default value,
+/// unless it's currently set to "auto-mode" (>1), then it will be left on auto mode.
+/// This is mostly used when shutting down the service to revert to the default value,
+/// but not necessarily and not all devices support an auto setting.
+pub async fn set_pwm_enable_to_default_or_auto(
     base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
@@ -420,11 +431,17 @@ pub async fn set_pwm_enable_to_default(
         // not all devices have pwm_enable available
         return Ok(());
     };
-    if let Err(err) = set_pwm_enable_if_not_already(default_value, base_path, channel_info).await {
-        warn!("Failed to reset pwm_enable to default: {err}");
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
+        .await
+        .and_then(check_parsing_8)?;
+    if current_pwm_enable < PWM_ENABLE_AUTO_VALUE && current_pwm_enable != default_value {
+        if let Err(err) = write_pwm_enable(&path_pwm_enable, default_value).await {
+            warn!("Failed to reset pwm_enable to default: {err}");
+        }
     }
     debug!(
-        "Reset Hwmon value at {}/pwm{}_enable to starting default value of {default_value}",
+        "Reset Hwmon value at {}/pwm{}_enable to default/auto value",
         base_path.display(),
         channel_info.number
     );
@@ -517,7 +534,7 @@ fn pwm_value_to_duty(pwm_value: u8) -> f64 {
 
 /// Converts a duty value (0-100%) to a pwm value (0-255)
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn duty_to_pwm_value(speed_duty: u8) -> u8 {
+pub fn duty_to_pwm_value(speed_duty: u8) -> u8 {
     let clamped_duty = f64::from(speed_duty.clamp(0, 100));
     // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
     ((clamped_duty * 25.5).round() / 10.0).round() as u8
@@ -766,10 +783,11 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
-            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
 
             // then:
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
@@ -796,10 +814,11 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
-            let result = set_pwm_enable_to_default(test_base_path, &channel_info).await;
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
 
             // then:
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
@@ -808,6 +827,43 @@ mod tests {
             teardown(&ctx);
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_enable_to_default_auto() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            // current value is already auto (2)
+            cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
+                .await
+                .unwrap();
+            // default is manual (1) but should not override auto
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(1),
+                name: String::new(),
+                label: None,
+                pwm_mode_supported: false,
+                pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
+            };
+
+            // when:
+            let result = set_pwm_enable_to_default_or_auto(test_base_path, &channel_info).await;
+
+            // then:
+            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            // remains on auto (2)
+            assert_eq!(current_pwm_enable, "2");
         });
     }
 
@@ -829,6 +885,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -861,6 +918,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -895,6 +953,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -933,6 +992,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -968,6 +1028,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:
@@ -1009,6 +1070,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1065,6 +1127,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1125,6 +1188,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -1181,6 +1245,7 @@ mod tests {
                 label: None,
                 pwm_mode_supported: false,
                 pwm_writable: true,
+                auto_curve: AutoCurveInfo::None,
             };
 
             // when:

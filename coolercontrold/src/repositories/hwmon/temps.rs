@@ -18,7 +18,7 @@
 
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::cc_fs;
 use crate::device::TempStatus;
@@ -34,7 +34,7 @@ const TEMP_SANITY_MIN: f64 = 0.0;
 const TEMP_SANITY_MAX: f64 = 140.0;
 
 /// Initialize all applicable temp sensors
-pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     if temps_used_by_another_repo(device_name) {
         return Ok(vec![]);
     }

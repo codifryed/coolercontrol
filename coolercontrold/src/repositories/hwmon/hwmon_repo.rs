@@ -18,11 +18,11 @@
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType,
-    SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID,
+    DriverInfo, DriverType, SpeedOptions, Status, TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
-use crate::repositories::hwmon::{devices, drivetemp, fans, power, temps};
+use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
@@ -72,6 +72,7 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub pwm_mode_supported: bool,
     pub pwm_writable: bool,
+    pub auto_curve: AutoCurveInfo,
 }
 
 impl Default for HwmonChannelInfo {
@@ -84,8 +85,17 @@ impl Default for HwmonChannelInfo {
             label: None,
             pwm_mode_supported: false,
             pwm_writable: true,
+            auto_curve: AutoCurveInfo::None,
         }
     }
+}
+
+/// Indicated support for hwmon auto curves (firmware profiles)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AutoCurveInfo {
+    None,
+    PWM { point_length: u8 },
+    Temp { temp_lengths: HashMap<TempName, u8> },
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -107,7 +117,7 @@ pub struct HwmonRepo {
     preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 
     /// Permits for each `HWMon` device. This is useful for slower devices.
-    /// `coolercontrol-liqctld` already has an in-built device queue - where only one read or write
+    /// `liqctld` already has an in-built device queue - where only one read or write
     /// request can be sent to the device at a time. This is that same idea but for hwmon devices.
     /// This also ensures that polling loops don't overlap and stack if the device hasn't finished
     /// responding from the previous polling loop.
@@ -181,9 +191,10 @@ impl HwmonRepo {
                     )
                 })
                 .collect();
+            let mut profile_max_length = 21; // Default
             let mut channels = HashMap::new();
             let mut thinkpad_fan_control = (
-                driver.name == devices::THINKPAD_DEVICE_NAME
+                driver.name == devices::DEVICE_NAME_THINK_PAD
                 // first check if this is a ThinkPad
             )
                 .then_some(false);
@@ -196,10 +207,28 @@ impl HwmonRepo {
                                 fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
                             );
                         }
+                        let extension = match &channel.auto_curve {
+                            AutoCurveInfo::None => None,
+                            AutoCurveInfo::PWM { point_length } => {
+                                if point_length < &profile_max_length {
+                                    profile_max_length = *point_length;
+                                }
+                                Some(ChannelExtensionNames::AutoHWCurve)
+                            }
+                            AutoCurveInfo::Temp { temp_lengths } => {
+                                for point_length in temp_lengths.values() {
+                                    if point_length < &profile_max_length {
+                                        profile_max_length = *point_length;
+                                    }
+                                }
+                                Some(ChannelExtensionNames::AutoHWCurve)
+                            }
+                        };
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
                                 fixed_enabled: channel.pwm_writable,
+                                extension,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -221,7 +250,7 @@ impl HwmonRepo {
                 channels,
                 temp_min: 0,
                 temp_max: 150,
-                profile_max_length: 21,
+                profile_max_length,
                 model: driver.model.clone(),
                 thinkpad_fan_control,
                 driver_info: DriverInfo {
@@ -577,7 +606,8 @@ impl Repository for HwmonRepo {
                         &channel_info.name,
                     )
                     .await?;
-                let _ = fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await;
+                let _ =
+                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await;
                 drop(device_permit);
             }
         }
@@ -594,7 +624,7 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
+        fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
     }
 
     async fn apply_setting_manual_control(
@@ -638,7 +668,7 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        if hwmon_driver.name == devices::THINKPAD_DEVICE_NAME {
+        if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
             return fans::thinkpad::apply_speed_fixed(
                 &self.config,
                 hwmon_driver,
@@ -659,14 +689,55 @@ impl Repository for HwmonRepo {
 
     async fn apply_setting_speed_profile(
         &self,
-        _device_uid: &UID,
-        _channel_name: &str,
-        _temp_source: &TempSource,
-        _speed_profile: &[(f64, u8)],
+        device_uid: &UID,
+        channel_name: &str,
+        temp_source: &TempSource,
+        speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        Err(anyhow!(
-            "Applying Speed Profiles are not supported for HWMON devices"
-        ))
+        let (hwmon_driver, fan_channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
+        if fan_channel_info.auto_curve == AutoCurveInfo::None {
+            return Err(anyhow!(
+                "Applying Internal Profile Error: device_uid: {device_uid} channel: {channel_name} does not support auto curves."
+            ));
+        }
+        if &temp_source.device_uid != device_uid {
+            return Err(anyhow!(
+                "Applying Internal Profile Error: temp_source device_uid: {} does not match this device. \
+                Auto curves temperature sources must be internal to the device.",
+                temp_source.device_uid
+            ));
+        }
+        let temp_channel_info = hwmon_driver
+            .channels
+            .iter()
+            .find(|channel| {
+                channel.hwmon_type == HwmonChannelType::Temp
+                    && channel.name == temp_source.temp_name
+            })
+            .with_context(|| {
+                format!("Searching for temp channel name: {}", temp_source.temp_name)
+            })?;
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
+        debug!(
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
+        auto_curve::apply_curve(
+            &hwmon_driver.path,
+            fan_channel_info,
+            speed_profile,
+            temp_channel_info,
+            &hwmon_driver.name,
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Error on {}:{channel_name} for speed profile {speed_profile:?} - {err}",
+                hwmon_driver.name
+            )
+        })
     }
 
     async fn apply_setting_lighting(
