@@ -55,7 +55,7 @@ ci-install:
 	@./trunk install --ci
 	@cargo install gitlab-report --locked
  
-ci-test: validate-metadata ci-test-daemon ci-test-ui ci-test-qt
+ci-test: validate-metadata ci-test-ui ci-test-daemon ci-test-qt
 
 ci-test-daemon:
 	@$(MAKE) -C $(daemon_dir) ci-test
