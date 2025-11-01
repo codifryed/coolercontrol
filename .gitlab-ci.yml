@@ -124,7 +124,7 @@ test_all:
     # For Trunk to detect changes, it needs to compare to main and gitlab does a shallow clone by default:
     #- git fetch origin main
     - make ci-check
-    - make ci-test -j4
+    - make ci-test -j1
   artifacts:
     when: always
     reports:
