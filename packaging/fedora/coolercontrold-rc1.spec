@@ -1,5 +1,5 @@
 %bcond check 1
-%global branch packaging-improve
+%global branch main
 %global project_id 30707566
 %global project coolercontrol
 
