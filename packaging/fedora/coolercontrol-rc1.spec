@@ -1,4 +1,4 @@
-%global branch main
+%global branch packaging-improve
 %global project_id 30707566
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
@@ -6,7 +6,7 @@
 Name:           coolercontrol
 Version:        3.0.2~rc1
 Release:        %autorelease
-Summary:        Powerful cooling control and monitoring for Linux
+Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  %{arm} x86_64
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{name}/%{name}
@@ -26,9 +26,10 @@ Recommends:     coolercontrold = %{version}
 Source:         https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{name}/%{branch}/%{name}-%{branch}.tar.gz
 
 %description
-CoolerControl is a program to monitor and control your cooling devices.
-It offers an easy-to-use user interface with various control features 
-and also provides live thermal performance details.
+This is the desktop application for CoolerControl.
+CoolerControl is an open-source application for monitoring and controlling supported cooling
+devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+your system quiet, cool, and stable.
 
 %prep
 %autosetup -n %{name}-%{branch}/%{qt_dir} -a 0

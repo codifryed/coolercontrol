@@ -50,6 +50,10 @@ Powerful cooling control and monitoring for Linux 🐧
 </div>
 <br/>
 
+CoolerControl is an open-source application for monitoring and controlling supported cooling
+devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+your system quiet, cool, and stable.
+
 ## ✨ Features
 
 - Highly configurable GUI with dashboards

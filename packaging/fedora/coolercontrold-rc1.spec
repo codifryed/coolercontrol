@@ -9,7 +9,7 @@
 Name:           %{project}d
 Version:        3.0.2~rc1
 Release:        %autorelease
-Summary:        Powerful cooling control and monitoring for Linux
+Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
 ExclusiveArch:  %{arm} x86_64
 License:        GPL-3.0-or-later
@@ -26,9 +26,10 @@ Source0:        https://gitlab.com/api/v4/projects/%{project_id}/packages/generi
 Source1:        https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{project}/%{branch}/%{name}-vendor.tar.gz
 
 %description
-CoolerControl is a program to monitor and control your cooling devices.
-It offers an easy-to-use user interface with various control features 
-and also provides live thermal performance details.
+This is the system daemon for CoolerControl.
+CoolerControl is an open-source application for monitoring and controlling supported cooling
+devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+your system quiet, cool, and stable.
 
 %prep
 %autosetup -n %{project}-%{branch}/%{name} -a 0
