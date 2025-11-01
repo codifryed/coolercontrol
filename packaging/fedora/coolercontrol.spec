@@ -5,7 +5,7 @@ Name:           coolercontrol
 Version:        3.0.1
 Release:        %autorelease
 Summary:        Powerful cooling control and monitoring
-ExclusiveArch:  %{arm} x86_64
+ExclusiveArch:  x86_64 aarch64
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{name}/%{name}
 
