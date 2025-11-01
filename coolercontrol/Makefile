@@ -10,7 +10,7 @@ build:
 test:
 	@echo "success"
 
-ci-test:
+ci-test: build
 	@echo "success"
 
 clean:
