@@ -158,7 +158,7 @@ appimage-daemon:
 	@$(RM) -f $(appimage_daemon_name)
 	@$(RM) -rf $(appimage_daemon_dir)
 	@git clone --depth=1 https://gitlab.com/coolercontrol/appimage-resources.git /tmp/resources
-	@/tmp/resources/python3.* --appimage-extract
+	@/tmp/resources/python3.*-manylinux2014_x86_64.AppImage --appimage-extract
 	@squashfs-root/AppRun -s -m pip install --upgrade --no-warn-script-location liquidctl
 	@$(RM) -f squashfs-root/AppRun
 	@$(RM) -f squashfs-root/.DirIcon
