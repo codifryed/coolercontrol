@@ -149,12 +149,16 @@ build_source_assets:
     - if: $CI_COMMIT_TAG == null
   needs: []
   before_script:
+    - cargo --version
+    - rustc --version
     - npm --version
     - node --version
   script:
     - packaging/release-source.sh ${CI_PROJECT_URL} ${CI_COMMIT_REF_NAME}
+    - make vendor
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
   artifacts:
     name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
     paths:
@@ -212,7 +216,6 @@ build_appimages:
       - CoolerControlD-x86_64.AppImage
       - assets-built/coolercontrold
       - assets-built/coolercontrol
-      - assets-built/coolercontrold-vendor.tar.gz
       - assets-built/coolercontrol-ui-vendor.tar.gz
     expire_in: 5 days
 
@@ -241,7 +244,6 @@ build_arm64:
   artifacts:
     paths:
       - assets-built/coolercontrold
-      - assets-built/coolercontrold-vendor.tar.gz
       - assets-built/coolercontrol-ui-vendor.tar.gz
     expire_in: 5 days
 
@@ -830,7 +832,6 @@ upload_package_appimage:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_${CI_COMMIT_TAG}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
@@ -848,7 +849,6 @@ upload_package_appimage_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
@@ -865,7 +865,6 @@ upload_artifacts_arm64:
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
 upload_artifacts_arm64_beta:
@@ -881,7 +880,6 @@ upload_artifacts_arm64_beta:
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol_aarch64-ui-vendor.tar.gz"
 
 upload_package_deb_bookworm_amd64:
@@ -1041,6 +1039,7 @@ create_release:
     - push_dh-alpine
     #- push_dh-alpine_amd64
     #- push_dh-alpine_arm64
+    - build_source_assets
   before_script:
     - echo 'Starting release job'
   rules:
@@ -1100,7 +1099,7 @@ create_release:
           filepath: '/packages/coolercontrol_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrol_${CI_COMMIT_TAG}'
           link_type: other
-        - name: Daemon Vendored Dependencies x86_64
+        - name: Daemon Vendored Cargo Dependencies
           filepath: '/packages/coolercontrold-vendor.tar.gz'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz'
           link_type: other
@@ -1111,10 +1110,6 @@ create_release:
         - name: Daemon Binary aarch64
           filepath: '/packages/coolercontrold_aarch64_${CI_COMMIT_TAG}'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64_${CI_COMMIT_TAG}'
-          link_type: other
-        - name: Daemon Vendored Dependencies aarch64
-          filepath: '/packages/coolercontrold_aarch64-vendor.tar.gz'
-          url: '${PACKAGE_REGISTRY_URL}/coolercontrold_aarch64-vendor.tar.gz'
           link_type: other
         - name: UI Build Assets aarch64
           filepath: '/packages/coolercontrol_aarch64-ui-vendor.tar.gz'

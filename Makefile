@@ -134,9 +134,7 @@ assets: assets-daemon assets-ui assets-qt
 
 assets-daemon:
 	@mkdir -p assets-built
-	@$(MAKE) -C $(daemon_dir) vendor
 	@cp $(daemon_dir)/target/release/coolercontrold ./assets-built/
-	@cd $(daemon_dir) && tar -czf ../assets-built/coolercontrold-vendor.tar.gz vendor .cargo
 
 assets-ui:
 	@mkdir -p assets-built
@@ -145,6 +143,11 @@ assets-ui:
 assets-qt: build-qt
 	@mkdir -p assets-built
 	@cp $(qt_dir)/build/coolercontrol ./assets-built/
+
+# Create Cargo vendored crates
+vendor:
+	@$(MAKE) -C $(daemon_dir) vendor
+	@cd $(daemon_dir) && tar -czf ../coolercontrold-vendor.tar.gz vendor .cargo
 
 # AppImages:
 ############################################################################################################################################
