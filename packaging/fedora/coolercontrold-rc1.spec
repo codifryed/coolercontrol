@@ -23,7 +23,7 @@ Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 
 Source0:        https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{project}/%{branch}/%{project}-%{branch}.tar.gz
-Source1:        https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{project}/%{branch}/%{name}-vendor.tar.gz
+#Source1:        https://gitlab.com/api/v4/projects/%{project_id}/packages/generic/%{project}/%{branch}/%{name}-vendor.tar.gz
 
 %description
 This is the system daemon for CoolerControl.
