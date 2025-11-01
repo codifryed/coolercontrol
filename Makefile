@@ -157,15 +157,14 @@ appimages: appimage-daemon
 appimage-daemon:
 	@$(RM) -f $(appimage_daemon_name)
 	@$(RM) -rf $(appimage_daemon_dir)
-	@packaging/appimage/python3.* --appimage-extract
+	@git clone --depth=1 https://gitlab.com/coolercontrol/appimage-resources.git /tmp/resources
+	@/tmp/resources/python3.* --appimage-extract
 	@squashfs-root/AppRun -s -m pip install --upgrade --no-warn-script-location liquidctl
 	@$(RM) -f squashfs-root/AppRun
 	@$(RM) -f squashfs-root/.DirIcon
 	@$(RM) -f squashfs-root/python.png
 	@$(RM) -f squashfs-root/python3.*.desktop
 	@mv squashfs-root $(appimage_daemon_dir)
-	@cp -f packaging/appimage/appimagetool-x86_64.appimage /tmp/
-	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.appimage
 	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)/usr/bin/
 	@mkdir -p $(appimage_daemon_dir)/usr/share/applications
 	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
@@ -179,7 +178,7 @@ appimage-daemon:
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_daemon_dir)/usr/share/metainfo
 	@ln -s coolercontrold.png $(appimage_daemon_dir)/.DirIcon
 	@ln -s usr/bin/coolercontrold $(appimage_daemon_dir)/AppRun
-	@/tmp/appimagetool-x86_64.appimage -n --sign $(appimage_daemon_dir) $(appimage_daemon_name)
+	@/tmp/resources/appimagetool-x86_64.AppImage -n --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
 
 # Release
