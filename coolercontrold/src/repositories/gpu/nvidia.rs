@@ -479,7 +479,10 @@ impl GpuNVidia {
             let device = Rc::new(RefCell::new(device_raw));
             self.nvidia_devices.insert(type_index, Rc::clone(&device));
             let fan_range = match device_lock.min_max_fan_speed() {
-                Ok((min, max)) => NvidiaFanRange::new(Duty::try_from(min)?, Duty::try_from(max)?),
+                Ok((min, max)) => {
+                    debug!("Nvidia NVML returned Fan range: {min} - {max}");
+                    NvidiaFanRange::new(Duty::try_from(min)?, Duty::try_from(max)?)
+                }
                 Err(_) => NvidiaFanRange::default(),
             };
             let fan_ranges = fan_indices
