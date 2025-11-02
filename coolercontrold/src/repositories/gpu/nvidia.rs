@@ -1302,6 +1302,7 @@ impl NvidiaFanRange {
             self.range.start(),
             self.range.end()
         );
+        self.zero_logged.set(true);
     }
 
     pub fn log_outside_warning_once(&self, fan_duty: Duty) {
