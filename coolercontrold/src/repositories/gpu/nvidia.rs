@@ -18,7 +18,8 @@
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
-use std::ops::{Add, Not, Sub};
+use std::default::Default;
+use std::ops::{Add, Not, RangeInclusive, Sub};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -228,7 +229,7 @@ impl GpuNVidia {
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
+    #[allow(clippy::too_many_lines)]
     pub fn retrieve_nvml_devices(
         &mut self,
         starting_nvidia_index: u8,
@@ -294,7 +295,7 @@ impl GpuNVidia {
             let mut channel_infos = HashMap::new();
             let mut channel_status = Vec::new();
             let mut fan_indices = Vec::new();
-            let num_fans = device_lock.num_fans().unwrap_or_default() as u8;
+            let num_fans = u8::try_from(device_lock.num_fans().unwrap_or_default())?;
             for fan_index in 0..num_fans {
                 let fan_index_u32 = u32::from(fan_index);
                 let Ok(fan_speed) = device_lock.fan_speed(fan_index_u32) else {
@@ -477,6 +478,18 @@ impl GpuNVidia {
 
             let device = Rc::new(RefCell::new(device_raw));
             self.nvidia_devices.insert(type_index, Rc::clone(&device));
+            let fan_range = match device_lock.min_max_fan_speed() {
+                Ok((min, max)) => {
+                    debug!("Nvidia NVML returned Fan range: {min} - {max}");
+                    NvidiaFanRange::new(Duty::try_from(min)?, Duty::try_from(max)?)
+                }
+                Err(_) => NvidiaFanRange::default(),
+            };
+            let fan_ranges = fan_indices
+                .iter()
+                .copied()
+                .map(|fan_index| (fan_index, fan_range.clone()))
+                .collect();
             self.nvidia_device_infos.insert(
                 uid.clone(),
                 Rc::new(NvidiaDeviceInfo {
@@ -486,6 +499,7 @@ impl GpuNVidia {
                     temps: nvidia_temp_infos,
                     freqs: nvidia_freq_infos,
                     power: nvidia_power_supported,
+                    fan_ranges,
                 }),
             );
             devices.insert(uid, device);
@@ -694,6 +708,19 @@ impl GpuNVidia {
             .expect("Device should exist");
         let fan_index = Self::parse_fan_index(channel_name)?;
         Self::verify_fan_index(nv_info, fan_index)?;
+        let fan_range = nv_info.get_fan_range(fan_index)?;
+        if fan_range.is_outside(fan_duty) {
+            if fan_duty == 0 {
+                fan_range.log_zero_info_once();
+                nvml_device
+                    .borrow_mut()
+                    .set_default_fan_speed(u32::from(fan_index))?;
+                return Ok(());
+            }
+            // we set the fan speed anyway, as it doesn't appear to produce an error, and will
+            // set the fan control policy to manual automatically.
+            fan_range.log_outside_warning_once(fan_duty);
+        }
         nvml_device
             .borrow_mut()
             .set_fan_speed(u32::from(fan_index), u32::from(fan_duty))?;
@@ -913,6 +940,11 @@ impl GpuNVidia {
                             )
                         })?
                         .to_owned();
+                    let fan_ranges = fan_indices
+                        .iter()
+                        .copied()
+                        .map(|fan_index| (fan_index, NvidiaFanRange::default()))
+                        .collect();
                     self.nvidia_device_infos.insert(
                         uid.clone(),
                         Rc::new(NvidiaDeviceInfo {
@@ -922,6 +954,7 @@ impl GpuNVidia {
                             temps: Vec::new(),
                             freqs: Vec::new(),
                             power: false,
+                            fan_ranges,
                         }),
                     );
                     devices.insert(uid, device);
@@ -1003,7 +1036,7 @@ impl GpuNVidia {
                     return Err(anyhow!(
                         "Could not communicate with nvidia-settings. \
                         If you have a Nvidia card nvidia-settings needs to be installed for fan control. {err}"
-                        ));
+                    ));
                 }
             }
         }
@@ -1218,10 +1251,83 @@ pub struct NvidiaDeviceInfo {
     pub gpu_index: GpuIndex,
     pub display_id: DisplayId,
     pub fan_indices: Vec<FanIndex>,
+    fan_ranges: HashMap<FanIndex, NvidiaFanRange>,
     /// The names of the temperature sensors that have been successfully found (NVML)
     pub temps: Vec<String>,
     /// The Clock type sensors that have been successfully found (NVML)
     pub freqs: Vec<Clock>,
     /// Whether power is supported
     pub power: bool,
+}
+
+impl NvidiaDeviceInfo {
+    pub fn get_fan_range(&self, fan_index: FanIndex) -> Result<&NvidiaFanRange> {
+        self.fan_ranges
+            .get(&fan_index)
+            .ok_or_else(|| anyhow!("Fan speed range not found with Index: {fan_index}"))
+    }
+}
+
+#[derive(Debug, Clone)]
+/// A range of allowed fan speeds for a specific fan
+pub struct NvidiaFanRange {
+    range: RangeInclusive<Duty>,
+
+    /// Whether a log has been output if the user has attempted to set a fan speed
+    /// outside the allowed rage. This is to prevent log spam.
+    outside_logged: Cell<bool>,
+
+    /// Whether a log has been output if the user has attempted to set a fan speed
+    /// to 0, which is not in the allowed range, and we have attempted to use auto
+    /// mode to simulate 0 rpm. This is to prevent log spam.
+    zero_logged: Cell<bool>,
+}
+
+impl NvidiaFanRange {
+    pub fn new(start_duty: Duty, end_duty: Duty) -> Self {
+        Self {
+            range: RangeInclusive::new(start_duty, end_duty),
+            ..Default::default()
+        }
+    }
+
+    pub fn is_outside(&self, fan_duty: Duty) -> bool {
+        self.range.contains(&fan_duty).not()
+    }
+
+    pub fn log_zero_info_once(&self) {
+        if self.zero_logged.get() {
+            return;
+        }
+        info!(
+            "Your Nvidia GPU does not allow setting a manual fan speed of 0% ({} - {}). \
+            Attempting to use auto-mode to enable zero rpm.",
+            self.range.start(),
+            self.range.end()
+        );
+        self.zero_logged.set(true);
+    }
+
+    pub fn log_outside_warning_once(&self, fan_duty: Duty) {
+        if self.outside_logged.get() {
+            return;
+        }
+        warn!(
+            "The fan speed {fan_duty}% is not in the allowed Nvidia speed range: {} - {}. \
+                Adjust your Profile to only use a duty within this range.",
+            self.range.start(),
+            self.range.end()
+        );
+        self.outside_logged.set(true);
+    }
+}
+
+impl Default for NvidiaFanRange {
+    fn default() -> Self {
+        Self {
+            range: RangeInclusive::new(0, 100),
+            outside_logged: Cell::new(false),
+            zero_logged: Cell::new(false),
+        }
+    }
 }
