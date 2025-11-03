@@ -2,7 +2,7 @@
 %global ap_id org.coolercontrol.CoolerControl
 
 Name:           coolercontrol
-Version:        3.0.1
+Version:        3.0.2
 Release:        %autorelease
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64
@@ -62,6 +62,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc CHANGELOG.md
 
 %changelog
+* Mon Nov 03 2025 Guy Boldon <gb@guyboldon.com> - 3.0.2-1
+- 3.0.2 Release
+
 * Sat Oct 04 2025 Guy Boldon <gb@guyboldon.com> - 3.0.1-1
 - 3.0.1 Release
 
