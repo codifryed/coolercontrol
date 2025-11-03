@@ -2,7 +2,6 @@
 
 # This script creates a source taball that contains a number of files that are not directly in
 # version control:
-#   - node_modules submodule
 #   - pre-compiled HTML and JS code
 #
 # (We are not packaging node modules)
@@ -23,7 +22,6 @@ TARBALL_FILE=coolercontrol-"${REF}".tar.gz
 
 git clone \
     --depth=1 \
-    --recurse-submodules=coolercontrol-ui/node_modules \
     -b "${REF}" \
     "${URL}" \
     "${REPO_DIR}"
@@ -34,6 +32,7 @@ SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct)
 pushd coolercontrol-ui
 npm ci --prefer-offline
 npm exec vite build -- --outDir ../coolercontrold/resources/app --emptyOutDir
+rm -rf node_modules
 popd
 # This is needed to produce reproducable checksums for the tarball
 # See: https://reproducible-builds.org/docs/archives/
