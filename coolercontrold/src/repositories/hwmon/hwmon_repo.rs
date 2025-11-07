@@ -22,7 +22,7 @@ use crate::device::{
     DriverInfo, DriverType, SpeedOptions, Status, TempInfo, TempName, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
-use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps};
+use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
@@ -701,7 +701,7 @@ impl Repository for HwmonRepo {
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
-            return fans::thinkpad::apply_speed_fixed(
+            return thinkpad::apply_speed_fixed(
                 &self.config,
                 hwmon_driver,
                 channel_info,
