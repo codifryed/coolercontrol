@@ -19,16 +19,17 @@
 use crate::cc_fs;
 use crate::device::ChannelStatus;
 use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use crate::repositories::hwmon::{auto_curve, devices};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -43,15 +44,16 @@ macro_rules! format_pwm_mode { ($($arg:tt)*) => {{ format!("pwm{}_mode", $($arg)
 macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
 
 /// Initialize all applicable fans
-pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
-    let mut fans = vec![];
+pub async fn init_fans(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let dir_entries = cc_fs::read_dir(base_path)?;
+    let mut fan_caps = HashMap::new();
     for entry in dir_entries {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        init_pwm_fan(base_path, file_name, &mut fans, device_name).await?;
-        init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
+        detect_pwm(base_path, file_name, &mut fan_caps).await?;
+        detect_rpm(base_path, file_name, &mut fan_caps).await?;
     }
+    let mut fans = init_hwmon_fans(base_path, device_name, fan_caps).await?;
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
     auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
@@ -61,31 +63,11 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
     Ok(fans)
 }
 
-/// Initialize a PWM fan if certain conditions are met.
-/// Most all fans that are controllable have a pwm file.
-///
-/// This function initializes a PWM fan if the given `file_name` matches the PWM file pattern.
-/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
-///
-/// # Arguments
-///
-/// * `base_path` - A reference to a `PathBuf` representing the base directory.
-/// * `file_name` - A string slice representing the name of the file to check.
-/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
-/// * `device_name` - A string slice representing the name of the device.
-///
-/// # Returns
-///
-/// A `Result` indicating success or failure.
-///
-/// # Errors
-///
-/// This function will return an error if it fails to read or parse any of the fan attributes.
-async fn init_pwm_fan(
+/// Detects if a fan has pwm capability and pwm-write capabilities.
+async fn detect_pwm(
     base_path: &Path,
     file_name: &str,
-    fans: &mut Vec<HwmonChannelInfo>,
-    device_name: &str,
+    fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
 ) -> Result<()> {
     let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
     if regex_pwm_file.is_match(file_name).not() {
@@ -104,52 +86,20 @@ async fn init_pwm_fan(
     {
         return Ok(()); // skip if pwm file isn't readable
     }
-    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
     let pwm_writable = determine_pwm_writable(base_path, channel_number);
-    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(channel_number);
-    let label = get_fan_channel_label(base_path, &channel_number).await;
-    // deprecated setting:
-    let pwm_mode_supported = false;
-    // determine_pwm_mode_support(base_path, &channel_number).await;
-    fans.push(HwmonChannelInfo {
-        hwmon_type: HwmonChannelType::Fan,
-        number: channel_number,
-        pwm_enable_default,
-        name: channel_name,
-        label,
-        pwm_mode_supported,
-        pwm_writable,
-        auto_curve: AutoCurveInfo::None,
-    });
+    let caps = fan_caps
+        .entry(channel_number)
+        .or_insert(HwmonChannelCapabilities::empty());
+    caps.insert(HwmonChannelCapabilities::PWM);
+    caps.set(HwmonChannelCapabilities::FAN_WRITABLE, pwm_writable);
     Ok(())
 }
 
-/// Initialize an RPM-only fan.
-/// There some fans that are RPM only (display-only), and do not have a pwm file for controlling.
-///
-/// This function initializes an RPM-only fan if the given `file_name` matches the RPM file pattern.
-/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
-///
-/// # Arguments
-///
-/// * `base_path` - A reference to a `PathBuf` representing the base directory.
-/// * `file_name` - A string slice representing the name of the file to check.
-/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
-/// * `device_name` - A string slice representing the name of the device.
-///
-/// # Returns
-///
-/// A `Result` indicating success or failure.
-///
-/// # Errors
-///
-/// This function will return an error if it fails to read or parse any of the fan attributes.
-async fn init_rpm_only_fan(
+/// Detects if a fan has rpm display capability.
+async fn detect_rpm(
     base_path: &Path,
     file_name: &str,
-    fans: &mut Vec<HwmonChannelInfo>,
-    device_name: &str,
+    fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
 ) -> Result<()> {
     let regex_fan_input_file = Regex::new(PATTERN_FAN_INPUT_FILE_NUMBER)?;
     if regex_fan_input_file.is_match(file_name).not() {
@@ -162,37 +112,49 @@ async fn init_rpm_only_fan(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_pwm_duty(base_path, &channel_number, false)
-        .await
-        .is_some()
-    {
-        return Ok(()); // skip if this has a pwm file (it's a pwm fan w/ rpm)
-    }
     if get_fan_rpm(base_path, &channel_number, true)
         .await
         .is_none()
     {
         return Ok(()); // skip if rpm file isn't readable
     }
-    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
-    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(channel_number);
-    let label = get_fan_channel_label(base_path, &channel_number).await;
-    info!(
-        "Uncontrollable RPM-only fan found at {}/{file_name}",
-        base_path.display()
-    );
-    fans.push(HwmonChannelInfo {
-        hwmon_type: HwmonChannelType::Fan,
-        number: channel_number,
-        pwm_enable_default,
-        name: channel_name,
-        label,
-        pwm_mode_supported: false,
-        pwm_writable: false,
-        auto_curve: AutoCurveInfo::None,
-    });
+    fan_caps
+        .entry(channel_number)
+        .or_insert(HwmonChannelCapabilities::empty())
+        .insert(HwmonChannelCapabilities::RPM);
     Ok(())
+}
+
+async fn init_hwmon_fans(
+    base_path: &Path,
+    device_name: &str,
+    fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+) -> Result<Vec<HwmonChannelInfo>> {
+    let mut fans = vec![];
+    for (channel_number, fan_cap) in fan_caps {
+        let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
+        let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
+        let channel_name = get_fan_channel_name(channel_number);
+        let label = get_fan_channel_label(base_path, &channel_number).await;
+        // deprecated setting:
+        // determine_pwm_mode_support(base_path, &channel_number).await;
+        if fan_cap.is_non_controllable_rpm_fan() {
+            info!(
+                "Uncontrollable RPM-only fan found at {}/fan{channel_number}_input",
+                base_path.display()
+            );
+        }
+        fans.push(HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: channel_number,
+            pwm_enable_default,
+            name: channel_name,
+            label,
+            caps: fan_cap,
+            auto_curve: AutoCurveInfo::None,
+        });
+    }
+    Ok(fans)
 }
 
 /// Return the fan statuses for all channels.
@@ -234,7 +196,7 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                     let fan_duty_task =
                         channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
                     let fan_pwm_mode_task = channel_scope.spawn(async {
-                        if channel.pwm_mode_supported {
+                        if channel.caps.has_pwm_mode() {
                             cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
                                 .await
                                 .and_then(check_parsing_8)
@@ -693,10 +655,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable);
+            assert!(fans[0].caps.is_fan_controllable());
         });
     }
 
@@ -725,10 +687,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable);
+            assert!(fans[0].caps.is_fan_controllable());
         });
     }
 
@@ -758,10 +720,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable.not());
+            assert!(fans[0].caps.is_fan_controllable().not());
         });
     }
 
@@ -781,8 +743,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -812,8 +773,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -848,8 +808,7 @@ mod tests {
                 pwm_enable_default: Some(1),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -883,8 +842,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -916,8 +874,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -951,8 +908,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -990,8 +946,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -1026,8 +981,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -1068,8 +1022,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
@@ -1125,8 +1078,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
@@ -1186,8 +1138,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
@@ -1243,8 +1194,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 

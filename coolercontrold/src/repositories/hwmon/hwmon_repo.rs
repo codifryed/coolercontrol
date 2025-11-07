@@ -27,6 +27,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use bitflags::bitflags;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -70,9 +71,8 @@ pub struct HwmonChannelInfo {
     pub pwm_enable_default: Option<u8>,
     pub name: String,
     pub label: Option<String>,
-    pub pwm_mode_supported: bool,
-    pub pwm_writable: bool,
     pub auto_curve: AutoCurveInfo,
+    pub caps: HwmonChannelCapabilities,
 }
 
 impl Default for HwmonChannelInfo {
@@ -83,10 +83,40 @@ impl Default for HwmonChannelInfo {
             pwm_enable_default: None,
             name: String::new(),
             label: None,
-            pwm_mode_supported: false,
-            pwm_writable: true,
             auto_curve: AutoCurveInfo::None,
+            caps: HwmonChannelCapabilities::empty(),
         }
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct HwmonChannelCapabilities: u32 {
+        const FAN_WRITABLE = 1;
+        const PWM = 1 << 1;
+        const RPM = 1 << 2;
+        const PWM_MODE = 1 << 3;
+        // Specialities
+        const APPLE_SMC = 1 << 15;
+    }
+}
+
+impl HwmonChannelCapabilities {
+    pub fn is_fan_controllable(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
+    }
+
+    pub fn has_pwm_mode(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::PWM_MODE)
+    }
+
+    pub fn is_apple_smc(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::APPLE_SMC)
+    }
+
+    pub fn is_non_controllable_rpm_fan(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::RPM)
+            && !self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
     }
 }
 
@@ -227,7 +257,9 @@ impl HwmonRepo {
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                fixed_enabled: channel.pwm_writable,
+                                fixed_enabled: channel
+                                    .caps
+                                    .contains(HwmonChannelCapabilities::FAN_WRITABLE),
                                 extension,
                                 ..Default::default()
                             }),

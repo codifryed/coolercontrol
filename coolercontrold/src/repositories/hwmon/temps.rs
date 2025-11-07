@@ -275,7 +275,6 @@ mod tests {
             assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
             assert_eq!(temps[0].name, "temp1");
             assert_eq!(temps[0].label, Some("Temp 1".to_string()));
-            assert!(!temps[0].pwm_mode_supported);
             assert_eq!(temps[0].pwm_enable_default, None);
             assert_eq!(temps[0].number, 1);
         });

@@ -45,7 +45,9 @@ use crate::device::{Duty, Temp};
 use crate::repositories::hwmon::fans::{
     PWM_ENABLE_AUTO_VALUE, PWM_ENABLE_MANUAL_VALUE, PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
 };
-use crate::repositories::hwmon::hwmon_repo::{AutoCurveInfo, HwmonChannelInfo};
+use crate::repositories::hwmon::hwmon_repo::{
+    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo,
+};
 use crate::repositories::hwmon::{fans, temps};
 use crate::{cc_fs, engine};
 use anyhow::{anyhow, Context, Result};
@@ -93,7 +95,7 @@ pub async fn init_auto_curve_fans(
     device_name: &str,
 ) -> Result<()> {
     for fan in fans {
-        if fan.pwm_writable.not() {
+        if fan.caps.is_fan_controllable().not() {
             continue; // we only support fans that have pwmN controls
         }
         if is_temp_sel(base_path, fan.number) {
@@ -938,7 +940,7 @@ mod tests {
             }
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -994,7 +996,7 @@ mod tests {
 
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -1036,7 +1038,7 @@ mod tests {
 
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -1076,7 +1078,7 @@ mod tests {
 
             let channel = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
             let curve = vec![(30_000u32, 100u8), (40_000u32, 120u8)];
@@ -1190,7 +1192,7 @@ mod tests {
             }
             let channel = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
             let pwms = vec![128u8; POINT_LENGTH_NZXT_KRAKEN3 as usize];
