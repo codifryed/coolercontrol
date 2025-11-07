@@ -167,8 +167,16 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
-        let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
-        let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
+        let fan_duty = if channel.caps.has_pwm() {
+            get_pwm_duty(&driver.path, &channel.number, false).await
+        } else {
+            None
+        };
+        let fan_rpm = if channel.caps.has_rpm() {
+            get_fan_rpm(&driver.path, &channel.number, false).await
+        } else {
+            None
+        };
         fans.push(ChannelStatus {
             name: channel.name.clone(),
             rpm: fan_rpm,
@@ -190,10 +198,20 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
             }
             let fan_task = scope.spawn(async {
                 moro_local::async_scope!(|channel_scope| {
-                    let fan_rpm_task =
-                        channel_scope.spawn(get_fan_rpm(&driver.path, &channel.number, false));
-                    let fan_duty_task =
-                        channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
+                    let fan_rpm_task = channel_scope.spawn(async {
+                        if channel.caps.has_rpm() {
+                            get_fan_rpm(&driver.path, &channel.number, false).await
+                        } else {
+                            None
+                        }
+                    });
+                    let fan_duty_task = channel_scope.spawn(async {
+                        if channel.caps.has_pwm() {
+                            get_pwm_duty(&driver.path, &channel.number, false).await
+                        } else {
+                            None
+                        }
+                    });
                     let fan_pwm_mode_task = channel_scope.spawn(async {
                         if channel.caps.has_pwm_mode() {
                             cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
@@ -259,7 +277,7 @@ async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> 
 }
 
 /// Not all drivers have `pwm_enable` for their fans. In that case there is no "automatic" mode available.
-///  `pwm_enable` setting options:
+///  Example `pwm_enable` setting options: (1 and 2 are the most common)
 ///  - 0 : full speed / off (not used/recommended)
 ///  - 1 : manual control (setting pwm* will adjust fan speed)
 ///  - 2 : automatic (primarily used by on-board/chip fan control, like laptops or mobos without smart fan control)

@@ -106,6 +106,14 @@ impl HwmonChannelCapabilities {
         self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
     }
 
+    pub fn has_pwm(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::PWM)
+    }
+
+    pub fn has_rpm(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::RPM)
+    }
+
     pub fn has_pwm_mode(&self) -> bool {
         self.contains(HwmonChannelCapabilities::PWM_MODE)
     }
