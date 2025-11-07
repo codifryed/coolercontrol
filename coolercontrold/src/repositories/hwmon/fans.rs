@@ -582,7 +582,7 @@ mod tests {
     use crate::config::Config;
     use crate::setting::CoolerControlSettings;
     use serial_test::serial;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
     use uuid::Uuid;
 
