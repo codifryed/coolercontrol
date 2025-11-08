@@ -821,6 +821,7 @@ dependencies = [
  "nvml-wrapper",
  "pciid-parser",
  "pin-project",
+ "prost",
  "psutil",
  "regex",
  "rgb",
@@ -839,7 +840,7 @@ dependencies = [
  "tokio-stream",
  "tokio-uring",
  "tokio-util",
- "toml_edit 0.23.4",
+ "toml_edit 0.23.7",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
@@ -1683,7 +1684,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.6.0",
+ "socket2 0.6.1",
  "tokio",
  "tower-service",
  "tracing",
@@ -2453,7 +2454,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.106",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2543,7 +2544,7 @@ dependencies = [
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
- "syn 2.0.106",
+ "syn 2.0.108",
  "tempfile",
 ]
 
@@ -2557,7 +2558,7 @@ dependencies = [
  "itertools",
  "proc-macro2",
  "quote",
- "syn 2.0.106",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -2610,7 +2611,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.10.0",
  "memchr",
  "unicase",
 ]
@@ -3665,7 +3666,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.106",
+ "syn 2.0.108",
 ]
 
 [[package]]
@@ -3690,7 +3691,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "quote",
- "syn 2.0.106",
+ "syn 2.0.108",
  "tempfile",
  "tonic-build",
 ]
