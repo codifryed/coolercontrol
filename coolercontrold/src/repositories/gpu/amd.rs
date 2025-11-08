@@ -159,7 +159,7 @@ impl GpuAMD {
                     model,
                     u_id,
                     channels,
-                    block_dev_path: None,
+                    ..Default::default()
                 },
                 device_path,
                 fan_curve_info,

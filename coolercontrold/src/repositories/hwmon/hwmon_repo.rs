@@ -19,9 +19,11 @@ use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID,
-    DriverInfo, DriverType, SpeedOptions, Status, TempInfo, TempName, TempStatus, TypeIndex, UID,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
+    TypeIndex, UID,
 };
-use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
+use crate::repositories::hwmon::apple_smc::AppleSMC;
+use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -146,6 +148,7 @@ pub struct HwmonDriverInfo {
     /// this is used specifically for the `drivetemp` module,
     /// which has an associated block device path if found.
     pub block_dev_path: Option<PathBuf>,
+    pub apple_smc: AppleSMC,
 }
 
 /// A Repository for `HWMon` Devices
@@ -464,13 +467,17 @@ impl Repository for HwmonRepo {
             let disabled_channels =
                 cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
-            match fans::init_fans(&path, &device_name).await {
-                Ok(fans) => channels.extend(
-                    fans.into_iter()
-                        .filter(|fan| disabled_channels.contains(&fan.name).not())
-                        .collect::<Vec<HwmonChannelInfo>>(),
-                ),
-                Err(err) => error!("Error initializing Hwmon Fans: {err}"),
+            if device_name == DEVICE_NAME_APPLE_SMC {
+                AppleSMC::init_fans(&path, &mut channels, &disabled_channels).await;
+            } else {
+                match fans::init_fans(&path, &device_name).await {
+                    Ok(fans) => channels.extend(
+                        fans.into_iter()
+                            .filter(|fan| disabled_channels.contains(&fan.name).not())
+                            .collect::<Vec<HwmonChannelInfo>>(),
+                    ),
+                    Err(err) => error!("Error initializing Hwmon Fans: {err}"),
+                }
             }
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
@@ -504,6 +511,11 @@ impl Repository for HwmonRepo {
             } else {
                 None
             };
+            let apple_smc = if device_name == DEVICE_NAME_APPLE_SMC {
+                AppleSMC::new(&path, &channels).await
+            } else {
+                AppleSMC::not_applicable()
+            };
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -516,6 +528,7 @@ impl Repository for HwmonRepo {
                 u_id,
                 channels,
                 block_dev_path,
+                apple_smc,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -581,7 +594,11 @@ impl Repository for HwmonRepo {
                     tokio::select! {
                         () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
-                            let mut channel_statuses = fans::extract_fan_statuses(driver).await;
+                            let mut channel_statuses = if driver.apple_smc.detected {
+                                driver.apple_smc.extract_fan_statuses(driver).await
+                            } else {
+                                fans::extract_fan_statuses(driver).await
+                            };
                             channel_statuses.extend(power::extract_power_status(driver).await);
                             let temp_statuses = if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
                                 drivetemp::default_suspended_temps(driver)
@@ -664,7 +681,14 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+        if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_to_auto_control(channel_info.number)
+                .await
+        } else {
+            fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+        }
     }
 
     async fn apply_setting_manual_control(
@@ -677,25 +701,32 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable(
-            fans::PWM_ENABLE_MANUAL_VALUE,
-            &hwmon_driver.path,
-            channel_info,
-        )
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Error on {}:{channel_name} for Manual Control - {err}",
-                hwmon_driver.name
+        if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_to_manual_control(channel_info.number)
+                .await
+        } else {
+            fans::set_pwm_enable(
+                fans::PWM_ENABLE_MANUAL_VALUE,
+                &hwmon_driver.path,
+                channel_info,
             )
-        })
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for Manual Control - {err}",
+                    hwmon_driver.name
+                )
+            })
+        }
     }
 
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,
         channel_name: &str,
-        speed_fixed: u8,
+        speed_fixed: Duty,
     ) -> Result<()> {
         let (hwmon_driver, channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
@@ -709,22 +740,22 @@ impl Repository for HwmonRepo {
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
         if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
-            return thinkpad::apply_speed_fixed(
-                &self.config,
-                hwmon_driver,
-                channel_info,
-                speed_fixed,
-            )
-            .await;
+            thinkpad::apply_speed_fixed(&self.config, hwmon_driver, channel_info, speed_fixed).await
+        } else if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_fan_duty(channel_info.number, speed_fixed)
+                .await
+        } else {
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                        hwmon_driver.name
+                    )
+                })
         }
-        fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
-                    hwmon_driver.name
-                )
-            })
     }
 
     async fn apply_setting_speed_profile(
@@ -732,7 +763,7 @@ impl Repository for HwmonRepo {
         device_uid: &UID,
         channel_name: &str,
         temp_source: &TempSource,
-        speed_profile: &[(f64, u8)],
+        speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
         let (hwmon_driver, fan_channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;

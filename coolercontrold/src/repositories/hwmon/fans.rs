@@ -52,7 +52,7 @@ pub async fn init_fans(base_path: &Path, device_name: &str) -> Result<Vec<HwmonC
         detect_pwm(base_path, file_name, &mut fan_caps).await?;
         detect_rpm(base_path, file_name, &mut fan_caps).await?;
     }
-    let mut fans = init_hwmon_fans(base_path, device_name, fan_caps).await?;
+    let mut fans = caps_to_hwmon_fans(base_path, device_name, fan_caps).await?;
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
     auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
@@ -95,7 +95,7 @@ async fn detect_pwm(
 }
 
 /// Detects if a fan has rpm display capability.
-async fn detect_rpm(
+pub async fn detect_rpm(
     base_path: &Path,
     file_name: &str,
     fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
@@ -124,7 +124,8 @@ async fn detect_rpm(
     Ok(())
 }
 
-async fn init_hwmon_fans(
+/// Converts fan capabilities to `HwmonChannelInfo`
+async fn caps_to_hwmon_fans(
     base_path: &Path,
     device_name: &str,
     fan_caps: HashMap<u8, HwmonChannelCapabilities>,
@@ -258,7 +259,7 @@ async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) ->
         .ok()
 }
 
-async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
+pub async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
     let fan_input_path = base_path.join(format_fan_input!(channel_number));
     cc_fs::read_sysfs(&fan_input_path)
         .await
@@ -308,7 +309,7 @@ pub fn check_parsing_8(content: String) -> Result<u8> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn check_parsing_32(content: String) -> Result<u32> {
+pub fn check_parsing_32(content: String) -> Result<u32> {
     match content.trim().parse::<u32>() {
         Ok(value) => Ok(value),
         Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string()).into()),
@@ -366,7 +367,7 @@ fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Op
 /// Returns:
 ///
 /// an `Option<String>`.
-async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
+pub async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
@@ -394,7 +395,7 @@ async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<
 /// Returns:
 ///
 /// * A `String` that represents a unique channel name/ID.
-fn get_fan_channel_name(channel_number: u8) -> String {
+pub fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
