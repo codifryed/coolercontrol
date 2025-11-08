@@ -45,9 +45,7 @@ use crate::device::{Duty, Temp};
 use crate::repositories::hwmon::fans::{
     PWM_ENABLE_AUTO_VALUE, PWM_ENABLE_MANUAL_VALUE, PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
 };
-use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo,
-};
+use crate::repositories::hwmon::hwmon_repo::{AutoCurveInfo, HwmonChannelInfo};
 use crate::repositories::hwmon::{fans, temps};
 use crate::{cc_fs, engine};
 use anyhow::{anyhow, Context, Result};
@@ -722,6 +720,7 @@ async fn apply_kraken3_curve(
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::repositories::hwmon::hwmon_repo::HwmonChannelCapabilities;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;

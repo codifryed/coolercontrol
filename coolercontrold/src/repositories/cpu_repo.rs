@@ -168,7 +168,7 @@ impl CpuRepo {
         }
     }
 
-    async fn init_cpu_temp(path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
         temps::init_temps(path, include_all_devices).await
     }
