@@ -23,12 +23,17 @@ ci-test:
 	@#cargo audit
 	@#cargo audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
     
+# requires minor dependency patch to pass rh checks
+# See: https://bugzilla.redhat.com/show_bug.cgi?id=1541318#c13
 vendor:
-	@cargo vendor --locked
+	@mkdir .cargo
+	@cargo vendor --locked > .cargo/config.toml
+	@-chmod -x vendor/brotli-decompressor/src/*.rs
 
 clean:
 	@-$(RM) -rf target
 	@-$(RM) -rf vendor
+	@-$(RM) -rf .cargo
 	@-$(RM) -rf resources/app/*
 
 install:

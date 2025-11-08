@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module contains wrappers around `std::fs` functions so they should be called sparkly.
+//! This module contains wrappers around `std::fs` functions so they should be called sparingly.
 //! That being said all these functions should be very quick and save having to clone
 //! the path which Tokio needs to do to pass between threads.
 
@@ -38,6 +38,12 @@ pub fn canonicalize(path: impl AsRef<Path>) -> Result<PathBuf> {
 /// path does not exist or if there is an error resolving the path.
 pub fn metadata(path: impl AsRef<Path>) -> Result<Metadata> {
     Ok(std::fs::metadata(path)?)
+}
+
+/// Returns whether the path exists.
+/// This is a convenience function that wraps `std::fs::exists` and returns a boolean.
+pub fn exists(path: impl AsRef<Path>) -> bool {
+    std::fs::exists(path).is_ok_and(|b| b)
 }
 
 /// Sets the permissions for the given path.

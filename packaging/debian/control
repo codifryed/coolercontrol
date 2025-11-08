@@ -30,8 +30,11 @@ Depends:
 Recommends:
  liquidctl,
  lm-sensors,
-Description: Monitor and control your cooling devices.
- This is the main systemd daemon for CoolerControl.
+Description: Powerful cooling control and monitoring.
+ This is the system daemon for CoolerControl.
+ CoolerControl is an open-source application for monitoring and controlling supported cooling
+ devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+ your system quiet, cool, and stable.
 
 Package: coolercontrol
 Architecture: amd64 arm64
@@ -41,5 +44,8 @@ Depends:
  libqt6webenginecore6-bin,
  ${shlibs:Depends},
  ${misc:Depends},
-Description: Monitor and control your cooling devices.
- This is the GUI standalone application for CoolerControl.
+Description: Powerful cooling control and monitoring.
+ This is the desktop application for CoolerControl.
+ CoolerControl is an open-source application for monitoring and controlling supported cooling
+ devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+ your system quiet, cool, and stable.

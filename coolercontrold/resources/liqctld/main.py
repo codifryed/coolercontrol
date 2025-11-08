@@ -23,6 +23,7 @@ import logging
 import logging as log
 import os
 import queue
+import signal
 import socket
 import sys
 import time
@@ -413,6 +414,7 @@ def _queue_worker(dev_queue: queue.SimpleQueue) -> None:
     try:
         while True:
             device_job: _DeviceJob = dev_queue.get()
+            # our logic for stoping the queue loop
             if device_job is None:
                 return
             device_job.run()
@@ -432,7 +434,7 @@ class DeviceExecutor:
     """
 
     def __init__(self) -> None:
-        self._device_channels: Dict[int, queue.SimpleQueue] = {}
+        self._device_queues: Dict[int, queue.SimpleQueue] = {}
         self._thread_pool: ThreadPoolExecutor = None
 
     def set_number_of_devices(self, number_of_devices: int) -> None:
@@ -441,24 +443,25 @@ class DeviceExecutor:
         self._thread_pool = ThreadPoolExecutor(max_workers=number_of_devices)
         for dev_id in range(1, number_of_devices + 1):
             dev_queue = queue.SimpleQueue()
-            self._device_channels[dev_id] = dev_queue
+            self._device_queues[dev_id] = dev_queue
             self._thread_pool.submit(_queue_worker, dev_queue)
 
     def submit(self, device_id: int, fn: Callable, **kwargs) -> Future:
         future = Future()
         device_job = _DeviceJob(future, fn, **kwargs)
-        self._device_channels[device_id].put(device_job)
+        self._device_queues[device_id].put(device_job)
         return future
 
     def device_queue_empty(self, device_id: int) -> bool:
-        return self._device_channels[device_id].empty()
+        return self._device_queues[device_id].empty()
 
     def shutdown(self) -> None:
-        for channel in self._device_channels.values():
-            channel.put(None)  # ends queue_worker loops
+        for channel in self._device_queues.values():
+            channel.put(None)  # our logic to end queue_worker loops
         if self._thread_pool is not None:
+            # blocks until all threads are no longer processing work
             self._thread_pool.shutdown()
-        self._device_channels.clear()
+        self._device_queues.clear()
 
 
 #####################################################################
@@ -1019,11 +1022,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
     # post("/quit")
     def quit_server(self):
         log.info("Quit command received. Shutting down.")
+        # shutdown device service first so that all jobs finish processing before
+        # shutting down the server. The daemon should no longer be sending device requests
+        # after making this request.
+        self.device_service.shutdown()
         self._send(HTTPStatus.OK, json.dumps({}))
+        self.server.shutting_down = True
         self.server.shutdown()
         # this also handles socket close:
         self.server.server_close()
-        self.device_service.shutdown()
 
     # get("/devices")
     def get_devices(self):
@@ -1224,6 +1231,7 @@ def server_run(device_service: DeviceService) -> None:
     server = ThreadingHTTPServer(SOCKET_ADDRESS, HTTPHandler, False)
     server.log_level = log.getLogger().getEffectiveLevel()
     server.device_service = device_service
+    server.shutting_down = False
     server.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.socket.bind(SOCKET_ADDRESS)
     # restrict access to the socket
@@ -1231,6 +1239,22 @@ def server_run(device_service: DeviceService) -> None:
     # creates a listener thread for each connection:
     queue_size = max(1, len(device_service.devices))
     server.socket.listen(queue_size)
+
+    def shutdown_gracefully(_signum, _frame) -> None:
+        for _ in range(40):  # max 8 seconds
+            if server.shutting_down:
+                return
+            else:
+                # Give the server a moment to receive the quit request and shutdown
+                time.sleep(0.2)
+        # If we get here, we've exceeded the timeout, so try to force the shutdown
+        server.device_service.shutdown()
+        # we shouldn't block here, as we're on the main thread, so we set the internal boolean
+        server.__shutdown_request = True
+        server.server_close()
+
+    signal.signal(signal.SIGINT, shutdown_gracefully)
+    signal.signal(signal.SIGTERM, shutdown_gracefully)
     server.serve_forever()
 
 

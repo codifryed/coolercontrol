@@ -31,7 +31,7 @@ COPY ../../../../Makefile .
 RUN make build-daemon
 
 
-FROM python AS liquidctl-builder
+FROM python:3.13 AS liquidctl-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
@@ -47,7 +47,7 @@ RUN apt update && apt install -y --no-install-recommends \
 RUN pip install --upgrade --user liquidctl
 
 
-FROM python:slim
+FROM python:3.13-slim
 
 ENV PATH=/usr/local/bin:$PATH
 ENV CC_PORT=11987

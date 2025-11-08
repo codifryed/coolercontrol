@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [3.0.2] - 2025-11-03
+
+### Added
+
+- firmware profile support for various HWMon drivers (!366)
+- simulated zero-rpm mode for Nvidia GPUs that don't support 0% manual fan speed (#523)
+
+### Changed
+
+- minor liqctld improvements (!363)
+- improved downstream packaging support (!364, !365, !369)
+- improved UI reconnection logic (!368, #520)
+
+### Fixed
+
+- legacy Asetec/Kraken device support (#515)
+- liqctld shutdown issue (!367)
+
 ## [3.0.1] - 2025-10-04
 
 ### Changed

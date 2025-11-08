@@ -1,6 +1,6 @@
 [package]
 name = "coolercontrold"
-version = "3.0.2"
+version = "3.0.3"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
 # MSRV for all included libraries
@@ -22,12 +22,12 @@ io_uring = ["dep:tokio-uring"]
 log = "0.4.28"
 env_logger = "0.11.8"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.47", features = [
+clap = { version = "4.5.49", features = [
   "derive",
-] } # Command line argument parser
-anyhow = "1.0.99"
+] } # Command line argument parser - pkg
+anyhow = "1.0.100"
 derive_more = { version = "2.0.1", features = ["display", "error"] }
-tokio = { version = "1.47.1", default-features = false, features = [
+tokio = { version = "1.48.0", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -47,8 +47,9 @@ tokio-stream = { version = "0.1.17", default-features = false, features = [
 ] }
 moro-local = "0.4.0"
 async-trait = "0.1.89"
-axum = { version = "0.8.4", features = ["multipart", "macros", "query"] }
-axum-extra = { version = "0.10.1", features = ["typed-header"] }
+bitflags = { version = "2.9.4", features = ["serde"] }
+axum = { version = "0.8.6", features = ["multipart", "macros", "query"] }
+axum-extra = { version = "0.10.3", features = ["typed-header"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.2" }
 tower-http = { version = "0.6.6", features = [
@@ -60,11 +61,9 @@ tower-http = { version = "0.6.6", features = [
   "compression-full",
 ] }
 tower-sessions = { version = "0.14.0", features = ["private"] }
-# Our own fork which handles our specific use case:
-tower_governor = { git = "https://github.com/codifryed/tower-governor", branch = "0.7", features = [
-  "axum",
-  "tracing",
-] }
+# disable the quanta feature, as it introduces a bug in the rate limiter when resuming from sleep:
+governor = { version = "0.10.1", default-features = false, features = ["std"] }
+pin-project = "1.1.10"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [
@@ -81,20 +80,20 @@ mime = "0.3.17"
 axum_typed_multipart = "0.16.4"
 # possible openApi improvement, but doesn't work for us currently:
 #aide-axum-typed-multipart-2 = "0.16.0"
-tempfile = "3.22.0"
+tempfile = "3.23.0"
 hyper = { version = "1.7.0", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.16", default-features = false, features = [
+hyper-util = { version = "0.1.17", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
 http-body-util = "0.1.3"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
-zbus = { version = "5.11.0", default-features = false, features = [
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+zbus = { version = "5.12.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 futures-util = { version = "0.3.31", default-features = false, features = [
@@ -108,21 +107,21 @@ chrono = { version = "0.4.42", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.27.2", features = ["derive"] } # Enum -> String
-regex = "1.11.2"
+regex = "1.11.3" # pkg
 cached = { version = "0.56.0", default-features = false, features = [
   "proc_macro",
   "ahash",
   "async",
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-const_format = "0.2.34" # allows combining string constants
+const_format = "0.2.35" # allows combining string constants
 psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.107.0"
-# our own fork: (additional Nix support, etc.)
-nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "coolercontrol-2-0" }
+# nu-glob 0.108.0 requires >= Rust 1.88
+nu-glob = "=0.107.0"
+nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
 toml_edit = "0.23.4"
 nix = { version = "0.30.1", default-features = false, features = [
@@ -135,7 +134,7 @@ pciid-parser = "0.8.0"
 libdrm_amdgpu_sys = { version = "0.8.8", default-features = false, features = [
   "dynamic_loading",
 ] }
-hashlink = "0.10.0"
+hashlink = "0.10.0" # pkg
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.3", default-features = false, features = [
@@ -155,7 +154,7 @@ image = { version = "0.25.8", default-features = false, features = [
 gifski = { version = "1.34.0", default-features = false, features = [
   "gifsicle",
 ] } # gif processing
-imgref = "1.11.0" # for gif processing
+imgref = "1.12.0" # for gif processing
 rgb = "0.8.52" # for gif processing
 uuid = { version = "1.18.1", features = ["v4"] }
 # service plugin dependencies

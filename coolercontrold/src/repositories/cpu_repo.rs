@@ -168,7 +168,7 @@ impl CpuRepo {
         }
     }
 
-    async fn init_cpu_temp(path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
+    async fn init_cpu_temp(path: &Path) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
         temps::init_temps(path, include_all_devices).await
     }
@@ -645,7 +645,7 @@ impl CpuRepo {
                     model,
                     u_id,
                     channels,
-                    block_dev_path: None,
+                    ..Default::default()
                 };
                 hwmon_devices.insert(physical_id, hwmon_driver_info);
                 if num_cpu_devices_left_to_find > 1 {

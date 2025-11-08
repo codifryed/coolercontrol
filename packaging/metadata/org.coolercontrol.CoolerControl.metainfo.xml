@@ -13,9 +13,9 @@
 
     <description>
         <p>
-            CoolerControl is a feature-rich cooling device control application for Linux. It has a 
-            system daemon for background device management, as well as a GUI to expertly customize 
-            your settings.
+            CoolerControl is an open-source application for monitoring and controlling supported cooling
+            devices. It features an intuitive interface, flexible control options, and live thermal data to keep
+            your system quiet, cool, and stable.
         </p>
     </description>
     <categories>
@@ -43,6 +43,7 @@
     <launchable type="service">coolercontrold.service</launchable>
 
     <releases>
+        <release version="3.0.2" date="2025-11-03"/>
         <release version="3.0.1" date="2025-10-04"/>
         <release version="3.0.0" date="2025-10-03"/>
         <release version="2.2.2" date="2025-07-18"/>

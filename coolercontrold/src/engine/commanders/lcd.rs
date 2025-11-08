@@ -409,7 +409,7 @@ impl LcdCommander {
         let image_path = Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_SINGLE_TEMP);
         // std blocking save being used here:
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
-            return Err(anyhow!("{}", e.to_string()));
+            return Err(anyhow!("{e}"));
         }
         trace!("Image saved in: {:?}", now.elapsed());
         Ok((

@@ -147,12 +147,11 @@ impl Engine {
                 Ok((device_lock, repo))
             } else {
                 Err(anyhow!(
-                    "Repository: {:?} for device is currently not running!",
-                    device_type
+                    "Repository: {device_type:?} for device is currently not running!"
                 ))
             }
         } else {
-            Err(anyhow!("Device Not Found: {}", device_uid))
+            Err(anyhow!("Device Not Found: {device_uid}"))
         }
     }
 
@@ -444,8 +443,7 @@ impl Engine {
             .is_empty();
         if lcd_not_enabled {
             return Err(anyhow!(
-                "LCD Screen modes not enabled for this device: {}",
-                device_uid
+                "LCD Screen modes not enabled for this device: {device_uid}"
             ));
         }
         let result = if lcd_settings.mode == "temp" {
@@ -597,7 +595,7 @@ impl Engine {
                         continue;
                     }
                     let reset_setting = Setting {
-                        channel_name: ch.to_string(),
+                        channel_name: ch.clone(),
                         reset_to_default: Some(true),
                         ..Default::default()
                     };

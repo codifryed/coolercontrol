@@ -56,7 +56,7 @@ impl DeviceSupport for Kraken2Support {
                     None
                 };
                 channels.insert(
-                    speed_channel.to_string(),
+                    speed_channel.clone(),
                     ChannelInfo {
                         speed_options: Some(SpeedOptions {
                             min_duty: 0,

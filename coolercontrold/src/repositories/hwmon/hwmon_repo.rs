@@ -18,15 +18,18 @@
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID, DriverInfo, DriverType,
-    SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID,
+    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
+    TypeIndex, UID,
 };
-use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
-use crate::repositories::hwmon::{devices, drivetemp, fans, power, temps};
+use crate::repositories::hwmon::apple_smc::AppleSMC;
+use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use bitflags::bitflags;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -70,8 +73,8 @@ pub struct HwmonChannelInfo {
     pub pwm_enable_default: Option<u8>,
     pub name: String,
     pub label: Option<String>,
-    pub pwm_mode_supported: bool,
-    pub pwm_writable: bool,
+    pub auto_curve: AutoCurveInfo,
+    pub caps: HwmonChannelCapabilities,
 }
 
 impl Default for HwmonChannelInfo {
@@ -82,10 +85,57 @@ impl Default for HwmonChannelInfo {
             pwm_enable_default: None,
             name: String::new(),
             label: None,
-            pwm_mode_supported: false,
-            pwm_writable: true,
+            auto_curve: AutoCurveInfo::None,
+            caps: HwmonChannelCapabilities::empty(),
         }
     }
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct HwmonChannelCapabilities: u32 {
+        const FAN_WRITABLE = 1;
+        const PWM = 1 << 1;
+        const RPM = 1 << 2;
+        const PWM_MODE = 1 << 3;
+        // Specialities
+        const APPLE_SMC = 1 << 15;
+    }
+}
+
+impl HwmonChannelCapabilities {
+    pub fn is_fan_controllable(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
+    }
+
+    pub fn has_pwm(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::PWM)
+    }
+
+    pub fn has_rpm(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::RPM)
+    }
+
+    pub fn has_pwm_mode(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::PWM_MODE)
+    }
+
+    pub fn is_apple_smc(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::APPLE_SMC)
+    }
+
+    pub fn is_non_controllable_rpm_fan(&self) -> bool {
+        self.contains(HwmonChannelCapabilities::RPM)
+            && !self.contains(HwmonChannelCapabilities::FAN_WRITABLE)
+    }
+}
+
+/// Indicated support for hwmon auto curves (firmware profiles)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AutoCurveInfo {
+    None,
+    PWM { point_length: u8 },
+    Temp { temp_lengths: HashMap<TempName, u8> },
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +148,7 @@ pub struct HwmonDriverInfo {
     /// this is used specifically for the `drivetemp` module,
     /// which has an associated block device path if found.
     pub block_dev_path: Option<PathBuf>,
+    pub apple_smc: AppleSMC,
 }
 
 /// A Repository for `HWMon` Devices
@@ -107,7 +158,7 @@ pub struct HwmonRepo {
     preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 
     /// Permits for each `HWMon` device. This is useful for slower devices.
-    /// `coolercontrol-liqctld` already has an in-built device queue - where only one read or write
+    /// `liqctld` already has an in-built device queue - where only one read or write
     /// request can be sent to the device at a time. This is that same idea but for hwmon devices.
     /// This also ensures that polling loops don't overlap and stack if the device hasn't finished
     /// responding from the previous polling loop.
@@ -181,9 +232,10 @@ impl HwmonRepo {
                     )
                 })
                 .collect();
+            let mut profile_max_length = 21; // Default
             let mut channels = HashMap::new();
             let mut thinkpad_fan_control = (
-                driver.name == devices::THINKPAD_DEVICE_NAME
+                driver.name == devices::DEVICE_NAME_THINK_PAD
                 // first check if this is a ThinkPad
             )
                 .then_some(false);
@@ -196,10 +248,30 @@ impl HwmonRepo {
                                 fans::set_pwm_enable(2, &driver.path, channel).await.is_ok(),
                             );
                         }
+                        let extension = match &channel.auto_curve {
+                            AutoCurveInfo::None => None,
+                            AutoCurveInfo::PWM { point_length } => {
+                                if point_length < &profile_max_length {
+                                    profile_max_length = *point_length;
+                                }
+                                Some(ChannelExtensionNames::AutoHWCurve)
+                            }
+                            AutoCurveInfo::Temp { temp_lengths } => {
+                                for point_length in temp_lengths.values() {
+                                    if point_length < &profile_max_length {
+                                        profile_max_length = *point_length;
+                                    }
+                                }
+                                Some(ChannelExtensionNames::AutoHWCurve)
+                            }
+                        };
                         let channel_info = ChannelInfo {
                             label: channel.label.clone(),
                             speed_options: Some(SpeedOptions {
-                                fixed_enabled: channel.pwm_writable,
+                                fixed_enabled: channel
+                                    .caps
+                                    .contains(HwmonChannelCapabilities::FAN_WRITABLE),
+                                extension,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -221,7 +293,7 @@ impl HwmonRepo {
                 channels,
                 temp_min: 0,
                 temp_max: 150,
-                profile_max_length: 21,
+                profile_max_length,
                 model: driver.model.clone(),
                 thinkpad_fan_control,
                 driver_info: DriverInfo {
@@ -395,13 +467,17 @@ impl Repository for HwmonRepo {
             let disabled_channels =
                 cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
-            match fans::init_fans(&path, &device_name).await {
-                Ok(fans) => channels.extend(
-                    fans.into_iter()
-                        .filter(|fan| disabled_channels.contains(&fan.name).not())
-                        .collect::<Vec<HwmonChannelInfo>>(),
-                ),
-                Err(err) => error!("Error initializing Hwmon Fans: {err}"),
+            if device_name == DEVICE_NAME_APPLE_SMC {
+                AppleSMC::init_fans(&path, &mut channels, &disabled_channels).await;
+            } else {
+                match fans::init_fans(&path, &device_name).await {
+                    Ok(fans) => channels.extend(
+                        fans.into_iter()
+                            .filter(|fan| disabled_channels.contains(&fan.name).not())
+                            .collect::<Vec<HwmonChannelInfo>>(),
+                    ),
+                    Err(err) => error!("Error initializing Hwmon Fans: {err}"),
+                }
             }
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
@@ -435,6 +511,11 @@ impl Repository for HwmonRepo {
             } else {
                 None
             };
+            let apple_smc = if device_name == DEVICE_NAME_APPLE_SMC {
+                AppleSMC::new(&path, &channels).await
+            } else {
+                AppleSMC::not_applicable()
+            };
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
@@ -447,6 +528,7 @@ impl Repository for HwmonRepo {
                 u_id,
                 channels,
                 block_dev_path,
+                apple_smc,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
@@ -512,7 +594,11 @@ impl Repository for HwmonRepo {
                     tokio::select! {
                         () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
-                            let mut channel_statuses = fans::extract_fan_statuses(driver).await;
+                            let mut channel_statuses = if driver.apple_smc.detected {
+                                driver.apple_smc.extract_fan_statuses(driver).await
+                            } else {
+                                fans::extract_fan_statuses(driver).await
+                            };
                             channel_statuses.extend(power::extract_power_status(driver).await);
                             let temp_statuses = if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
                                 drivetemp::default_suspended_temps(driver)
@@ -577,7 +663,8 @@ impl Repository for HwmonRepo {
                         &channel_info.name,
                     )
                     .await?;
-                let _ = fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await;
+                let _ =
+                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await;
                 drop(device_permit);
             }
         }
@@ -594,7 +681,14 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
+        if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_to_auto_control(channel_info.number)
+                .await
+        } else {
+            fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+        }
     }
 
     async fn apply_setting_manual_control(
@@ -607,25 +701,32 @@ impl Repository for HwmonRepo {
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
-        fans::set_pwm_enable(
-            fans::PWM_ENABLE_MANUAL_VALUE,
-            &hwmon_driver.path,
-            channel_info,
-        )
-        .await
-        .map_err(|err| {
-            anyhow!(
-                "Error on {}:{channel_name} for Manual Control - {err}",
-                hwmon_driver.name
+        if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_to_manual_control(channel_info.number)
+                .await
+        } else {
+            fans::set_pwm_enable(
+                fans::PWM_ENABLE_MANUAL_VALUE,
+                &hwmon_driver.path,
+                channel_info,
             )
-        })
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for Manual Control - {err}",
+                    hwmon_driver.name
+                )
+            })
+        }
     }
 
     async fn apply_setting_speed_fixed(
         &self,
         device_uid: &UID,
         channel_name: &str,
-        speed_fixed: u8,
+        speed_fixed: Duty,
     ) -> Result<()> {
         let (hwmon_driver, channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
@@ -638,35 +739,76 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
         );
-        if hwmon_driver.name == devices::THINKPAD_DEVICE_NAME {
-            return fans::thinkpad::apply_speed_fixed(
-                &self.config,
-                hwmon_driver,
-                channel_info,
-                speed_fixed,
-            )
-            .await;
+        if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
+            thinkpad::apply_speed_fixed(&self.config, hwmon_driver, channel_info, speed_fixed).await
+        } else if hwmon_driver.apple_smc.detected {
+            hwmon_driver
+                .apple_smc
+                .set_fan_duty(channel_info.number, speed_fixed)
+                .await
+        } else {
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                        hwmon_driver.name
+                    )
+                })
         }
-        fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
-                    hwmon_driver.name
-                )
-            })
     }
 
     async fn apply_setting_speed_profile(
         &self,
-        _device_uid: &UID,
-        _channel_name: &str,
-        _temp_source: &TempSource,
-        _speed_profile: &[(f64, u8)],
+        device_uid: &UID,
+        channel_name: &str,
+        temp_source: &TempSource,
+        speed_profile: &[(Temp, Duty)],
     ) -> Result<()> {
-        Err(anyhow!(
-            "Applying Speed Profiles are not supported for HWMON devices"
-        ))
+        let (hwmon_driver, fan_channel_info, type_index) =
+            self.get_hwmon_info(device_uid, channel_name)?;
+        if fan_channel_info.auto_curve == AutoCurveInfo::None {
+            return Err(anyhow!(
+                "Applying Internal Profile Error: device_uid: {device_uid} channel: {channel_name} does not support auto curves."
+            ));
+        }
+        if &temp_source.device_uid != device_uid {
+            return Err(anyhow!(
+                "Applying Internal Profile Error: temp_source device_uid: {} does not match this device. \
+                Auto curves temperature sources must be internal to the device.",
+                temp_source.device_uid
+            ));
+        }
+        let temp_channel_info = hwmon_driver
+            .channels
+            .iter()
+            .find(|channel| {
+                channel.hwmon_type == HwmonChannelType::Temp
+                    && channel.name == temp_source.temp_name
+            })
+            .with_context(|| {
+                format!("Searching for temp channel name: {}", temp_source.temp_name)
+            })?;
+        let _device_permit = self
+            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
+            .await?;
+        debug!(
+            "Applying HWMON device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
+        auto_curve::apply_curve(
+            &hwmon_driver.path,
+            fan_channel_info,
+            speed_profile,
+            temp_channel_info,
+            &hwmon_driver.name,
+        )
+        .await
+        .map_err(|err| {
+            anyhow!(
+                "Error on {}:{channel_name} for speed profile {speed_profile:?} - {err}",
+                hwmon_driver.name
+            )
+        })
     }
 
     async fn apply_setting_lighting(

@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+pub mod apple_smc;
+pub mod auto_curve;
 pub mod devices;
 mod drivetemp;
 pub mod fans;
@@ -24,3 +26,4 @@ pub mod hwmon_repo;
 pub mod power;
 pub mod power_cap;
 pub mod temps;
+mod thinkpad;

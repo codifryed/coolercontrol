@@ -72,7 +72,10 @@ enum PowerState {
 pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
     get_block_device_path(path).and_then(|path| {
         if !path.exists() {
-            return Err(anyhow!("Block device path does not exist: {path:?}"));
+            return Err(anyhow!(
+                "Block device path does not exist: {}",
+                path.display()
+            ));
         }
         Ok(path)
     })
@@ -126,7 +129,8 @@ fn get_block_device_path(path: &Path) -> Result<PathBuf> {
     }
     let Some(device_name) = block_device_name else {
         return Err(anyhow!(
-            "No block device name found in {block_hwmon_path:?}"
+            "No block device name found in {}",
+            block_hwmon_path.display()
         ));
     };
     let block_device_path = PathBuf::from("/dev").join(device_name);

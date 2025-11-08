@@ -46,7 +46,8 @@ pub const HWMON_DEVICE_NAME_BLACKLIST: [&str; 1] = [
     "amdgpu", // GPU Repo handles this
 ];
 const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
-pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
+pub const DEVICE_NAME_THINK_PAD: &str = "thinkpad";
+pub const DEVICE_NAME_APPLE_SMC: &str = "applesmc";
 
 struct GlobPaths {
     pwm: String,
@@ -261,7 +262,7 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]
 async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
     let device_details = get_device_uevent_details(&driver.path).await;
     if let Some(dev_name) = device_details.get("DEVNAME") {
-        dev_name.to_string()
+        dev_name.clone()
     } else if let Some(minor_num) = device_details.get("MINOR") {
         format!("{}{}", driver.name, minor_num)
     } else if let Some(model) = driver.model.clone() {
