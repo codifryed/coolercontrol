@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -29,6 +30,7 @@ use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repositories};
+use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
 use log::{error, info, warn};
@@ -367,6 +369,12 @@ async fn initialize_device_repos(
                 Err(err) => error!("Error initializing HWMON Repo: {err}"),
             }
         });
+        init_scope.spawn(async {
+            match init_service_plugin_repo(config.clone()).await {
+                Ok(repo) => repos.external = Some(Rc::new(repo)),
+                Err(err) => error!("Error initializing Service Plugin Repo: {err}"),
+            }
+        });
     })
     .await;
     // should be last as it uses all other device temps
@@ -410,6 +418,12 @@ async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Resul
     let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
+}
+
+async fn init_service_plugin_repo(config: Rc<Config>) -> Result<ServicePluginRepo> {
+    let mut external_repo = ServicePluginRepo::new(config)?;
+    external_repo.initialize_devices().await?;
+    Ok(external_repo)
 }
 
 async fn init_custom_sensors_repo(

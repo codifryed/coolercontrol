@@ -269,7 +269,7 @@ pub enum DeviceType {
     Liquidctl,
     Hwmon,
     CustomSensors,
-    External,
+    ServicePlugin,
 }
 
 /// Needed Device info per device

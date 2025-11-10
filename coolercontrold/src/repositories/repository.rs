@@ -120,7 +120,7 @@ impl Repositories {
             DeviceType::GPU => Self::clone_rc(self.gpu.as_ref()),
             DeviceType::Liquidctl => Self::clone_rc(self.liquidctl.as_ref()),
             DeviceType::Hwmon => Self::clone_rc(self.hwmon.as_ref()),
-            DeviceType::External => Self::clone_rc(self.external.as_ref()),
+            DeviceType::ServicePlugin => Self::clone_rc(self.external.as_ref()),
             DeviceType::CustomSensors => Self::clone_rc(self.custom_sensors.as_ref()),
         }
     }
