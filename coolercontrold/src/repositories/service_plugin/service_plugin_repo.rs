@@ -56,21 +56,35 @@ const SERVICE_CONFIG_FILE_NAME: &str = "config.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 
+// This is pretty much the client device model stuff... import???
+struct ServiceDeviceInfo {
+    device_id: DeviceUID,
+    channels: HashMap<ChannelName, ChannelInfo>,
+    temps: HashMap<TempName, TempInfo>,
+}
+
 #[derive(Debug)]
 struct DeviceServiceInfo {
     id: ServiceId,
     config: ServiceConfig,
     version: String,
     client: RefCell<DeviceServiceClient<Channel>>,
+    // running: RefCell<bool>, // todo: maybe a status enum if more options needed
+    // todo: I'm not sure if we should save the proto dto's in memory, or if we should just
+    //  convert the data into out internal structs and add any extra data we need, like the Service Device IDs to another struct...
     devices: HashMap<ServiceDeviceID, models::v1::Device>,
 }
 
 pub struct ServicePluginRepo {
+    // todo: handle blacklisting
     config: Rc<Config>,
     service_manager: Manager,
     services: HashMap<ServiceId, DeviceServiceInfo>,
+    // todo: need our own ServiceInfo - can we NOT use Rc here? (maybe)
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceInfo>)>,
+    // todo: we probably want to use DeviceUID instead of typeIndex (not necessarily stable)
     preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    // todo: we probably want to use DeviceUID instead of typeIndex (not necessarily stable)
     device_permits: HashMap<TypeIndex, Semaphore>,
 }
 
@@ -194,6 +208,7 @@ impl Repository for ServicePluginRepo {
         DeviceType::ServicePlugin
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Service Plugins Initialization");
         let start_initialization = Instant::now();
@@ -237,6 +252,7 @@ impl Repository for ServicePluginRepo {
                 );
                 continue;
             }
+            // todo: Integration Services should probably be started last and maybe even after the daemon has come up (after a delay in it's own Task)
             if service_config.service_type == ServiceType::Integration {
                 continue;
             }
@@ -315,6 +331,7 @@ impl Repository for ServicePluginRepo {
                             devices,
                         },
                     );
+                    // todo: get status for devices and add to status maps
                 }
                 Err(err) => {
                     error!(
@@ -373,19 +390,25 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn devices(&self) -> DeviceList {
+        // todo
         vec![]
     }
 
     async fn preload_statuses(self: Rc<Self>) {
+        // todo
     }
 
     async fn update_statuses(&self) -> Result<()> {
+        // todo
         Ok(())
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn shutdown(&self) -> Result<()> {
+        // todo: it should be ok to hold this refcell over this await, but see if we can fix it.
         for service in self.services.values() {
             let request = tonic::Request::new(ShutdownRequest {});
+            // todo: probably need to wrap the client in an Arc, becuase of this: (borrow over await)
             if let Err(status) = service.client.borrow_mut().shutdown(request).await {
                 error!(
                     "Error shutting down plugin service: {} - {status}",
@@ -393,6 +416,35 @@ impl Repository for ServicePluginRepo {
                 );
             }
             debug!("Plugin Service {} internal shutdown complete", service.id);
+            // TESTING:
+            // let _ = self.service_manager.status(ServiceStatusCtx {
+            //     label: service.system_service_label.clone(),
+            // }).inspect(|status| {
+            //     info!("Service Status: {status:?}");
+            // });
+            // FIXME: Ok, so tokio Command WORKS - and I'm not entirely sure why... something
+            //  - The truth is, the lib is using blocking commands, that if freeze, will freeze & block
+            //    our whole process. Not good - we probably should implement our own tokio-ified version
+            //    of this for just openrc and systemd... (systemd has many options, like dbus, but openrc not - and it'd be nice if it worked for both)
+            //    - I GUESS, we could use a different impl for systemd (non-shell command) and use the shell commands for openrc
+            //    - I know we could create a better impl for us too
+            //    - I just don't like that it's going to be a good amount of work to deal with.
+            // if self.service_manager.is_systemd() {
+            //     let result = Command::new("systemctl")
+            //         .env("LC_ALL", "C")
+            //         .arg("stop")
+            //         // todo: get service name from label...
+            //         .arg("coolercontrol-service_id")
+            //         // .arg("-c")
+            //         // .arg("systemctl stop coolercontrol-service_id")
+            //         .kill_on_drop(true)
+            //         .stdin(Stdio::null())
+            //         .stdout(Stdio::null())
+            //         .stderr(Stdio::null())
+            //         .status()
+            //         .await;
+            //     info!("Exit Status: {result:?}");
+            // }
             let _ = self.service_manager.remove(&service.id).await;
             info!("Plugin Service {} stopped.", service.id);
         }
@@ -401,6 +453,7 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -409,6 +462,7 @@ impl Repository for ServicePluginRepo {
         device_uid: &UID,
         channel_name: &str,
     ) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -418,6 +472,7 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         speed_fixed: u8,
     ) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -428,6 +483,7 @@ impl Repository for ServicePluginRepo {
         temp_source: &TempSource,
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -437,6 +493,7 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         lighting: &LightingSettings,
     ) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -446,17 +503,21 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
+        // todo
         Ok(())
     }
+
     async fn apply_setting_pwm_mode(
         &self,
         device_uid: &UID,
         channel_name: &str,
         pwm_mode: u8,
     ) -> Result<()> {
+        // todo
         Ok(())
     }
 
     async fn reinitialize_devices(&self) {
+        // todo
     }
 }
