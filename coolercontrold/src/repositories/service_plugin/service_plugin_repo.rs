@@ -721,6 +721,28 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn update_statuses(&self) -> Result<()> {
+        for (device_uid, (device_lock, _)) in &self.devices {
+            let (temps, channels) = self
+                .preloaded_statuses
+                .borrow()
+                .get(device_uid)
+                .map(|data| {
+                    let temps = data.temps.values().cloned().collect();
+                    let channels = data.channels.values().cloned().collect();
+                    (temps, channels)
+                })
+                .expect("Preloaded Data should always be present");
+            let status = Status {
+                temps,
+                channels,
+                ..Default::default()
+            };
+            trace!(
+                "Hwmon device: {} status was updated with: {status:?}",
+                device_lock.borrow().name
+            );
+            device_lock.borrow_mut().set_status(status);
+        }
         Ok(())
     }
 
