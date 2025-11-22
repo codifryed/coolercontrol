@@ -857,7 +857,7 @@ impl Repository for ServicePluginRepo {
             .client
             .fixed_duty(device_uid, channel_name, speed_fixed)
             .await
-            .map_err(|status| anyhow!("Error enabling manual control for device channel: {status}"))
+            .map_err(|status| anyhow!("Error applying fixed speed for device channel: {status}"))
     }
 
     async fn apply_setting_speed_profile(
@@ -921,7 +921,7 @@ impl Repository for ServicePluginRepo {
             .client
             .speed_profile(device_uid, channel_name, temp_source, speed_profile)
             .await
-            .map_err(|status| anyhow!("Error enabling manual control for device channel: {status}"))
+            .map_err(|status| anyhow!("Error applying speed profile for device channel: {status}"))
     }
 
     async fn apply_setting_lighting(
