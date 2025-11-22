@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package coolercontrol.device_service.v1;
-
-message InitializeDevicesRequest {}
-
-message InitializeDevicesResponse {}

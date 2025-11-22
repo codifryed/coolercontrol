@@ -49,6 +49,7 @@ currently, and is something we might take advantage of in the future.
 - make
 - cargo/rust >= 1.81.0
 - libdrm-dev
+- protoc (protobuf-compiler)
 - To build the web assets:
   - nodejs >= 22.0.0
   - npm

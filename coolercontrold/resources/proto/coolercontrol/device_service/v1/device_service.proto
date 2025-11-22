@@ -6,7 +6,7 @@ import "coolercontrol/device_service/v1/custom_function_one.proto";
 import "coolercontrol/device_service/v1/enable_manual_fan_control.proto";
 import "coolercontrol/device_service/v1/fixed_duty.proto";
 import "coolercontrol/device_service/v1/health.proto";
-import "coolercontrol/device_service/v1/initialize_devices.proto";
+import "coolercontrol/device_service/v1/initialize_device.proto";
 import "coolercontrol/device_service/v1/lcd.proto";
 import "coolercontrol/device_service/v1/lighting.proto";
 import "coolercontrol/device_service/v1/list_devices.proto";
@@ -19,18 +19,17 @@ service DeviceService {
   // Used to confirm service connection and retrieve service health information.
   rpc Health(HealthRequest) returns (HealthResponse);
 
-  // This is the first message sent to the device service after establishing a connection
-  // and is used to detect and initialize the service's devices.
-  // It is guaranteed to be called before any other messages are sent to the device service.
-  // It will also be called after resuming from sleep, as many firmwares are rest.
-  rpc InitializeDevices(InitializeDevicesRequest) returns (InitializeDevicesResponse);
+  // This is called to retrieve the list of devices and their capabilities detected by the device
+  // service. This is generally the first message sent to the device service after establishing a
+  // connection.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+
+  // This is called and used by some devices to initialize hardware, before starting to send
+  // commands to it. It is also be called after resuming from sleep, as many firmwares are rest.
+  rpc InitializeDevice(InitializeDeviceRequest) returns (InitializeDeviceResponse);
 
   // This is used to gracefully shutdown the device service.
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
-
-  // This is called to retrieve the list of devices and their capabilities detected by the device
-  // service.
-  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
 
   // Request the current status of all device channels for all devices. (temps, fan speeds, etc)
   rpc Status(StatusRequest) returns (StatusResponse);
