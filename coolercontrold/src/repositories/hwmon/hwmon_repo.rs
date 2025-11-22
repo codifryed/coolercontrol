@@ -460,7 +460,7 @@ impl Repository for HwmonRepo {
                 .get_cc_settings_for_device(&device_uid)
                 .ok()
                 .flatten();
-            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+            if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
                 info!("Skipping disabled device: {device_name} with UID: {device_uid}");
                 continue;
             }

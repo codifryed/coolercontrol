@@ -859,7 +859,7 @@ impl Repository for LiquidctlRepo {
                     lc_status.unwrap(),
                     device.type_index,
                 );
-                trace!("Device: {} status updated: {:?}", device.name, status);
+                trace!("Device: {} status updated: {status:?}", device.name);
                 status
             };
             device_lock.borrow_mut().set_status(status);
