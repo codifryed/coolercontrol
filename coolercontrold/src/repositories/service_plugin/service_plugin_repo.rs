@@ -782,7 +782,6 @@ impl Repository for ServicePluginRepo {
             .client
             .reset_channel(device_uid, channel_name)
             .await
-            .map(|_| ())
             .map_err(|status| anyhow!("Error resetting device channel: {status}"))
     }
 
@@ -791,7 +790,33 @@ impl Repository for ServicePluginRepo {
         device_uid: &UID,
         channel_name: &str,
     ) -> Result<()> {
-        Ok(())
+        let (device_lock, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        {
+            let device = device_lock.borrow();
+            let channel_info = device
+                .info
+                .channels
+                .get(channel_name)
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            if channel_info
+                .speed_options
+                .as_ref()
+                .is_some_and(|opt| opt.fixed_enabled)
+                .not()
+            {
+                return Err(anyhow!(
+                    "Channel: {channel_name} does not support manual control"
+                ));
+            }
+        }
+        device_service
+            .client
+            .enable_manual_fan_control(device_uid, channel_name)
+            .await
+            .map_err(|status| anyhow!("Error enabling manual control for device channel: {status}"))
     }
 
     async fn apply_setting_speed_fixed(
