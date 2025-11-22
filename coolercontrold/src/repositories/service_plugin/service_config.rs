@@ -18,17 +18,18 @@
 
 use crate::repositories::service_plugin::service_plugin_repo::DEFAULT_PLUGINS_PATH;
 use anyhow::{anyhow, Context, Result};
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ServiceConfig {
-    pub id: String,
-    pub service_type: ServiceType,
-    pub executable: PathBuf,
-    pub args: Vec<String>,
-    pub uds: PathBuf,
-    pub privileged: bool,
+    pub id: String,                  // required for all service plugins
+    pub service_type: ServiceType,   // required for all service plugins
+    pub executable: Option<PathBuf>, // required IF user wants to have the service managed
+    pub args: Vec<String>,           // if needed (set log level, etc.)
+    pub address: ConnectionType,     // required for all device service plugins
+    pub privileged: bool,            // for device service plugins (false by default)
 }
 
 impl ServiceConfig {
@@ -48,14 +49,17 @@ impl ServiceConfig {
             "integration" => ServiceType::Integration,
             _ => return Err(anyhow!("Invalid service type")),
         };
-        let executable_str = document
+        let executable = document
             .get("executable")
             .and_then(|item| item.as_str())
-            .with_context(|| "Service Config executable should be present")?;
-        let mut executable = PathBuf::from(executable_str);
-        if executable.is_relative() {
-            executable = Path::new(DEFAULT_PLUGINS_PATH).join(&id).join(executable);
-        }
+            .filter(|exe| exe.trim().is_empty().not())
+            .map(|exe| {
+                let mut exe_path = PathBuf::from(exe);
+                if exe_path.is_relative() {
+                    exe_path = Path::new(DEFAULT_PLUGINS_PATH).join(&id).join(exe_path);
+                }
+                exe_path
+            });
         let args_str = document
             .get("args")
             .and_then(|item| item.as_str())
@@ -65,15 +69,26 @@ impl ServiceConfig {
             .split_whitespace()
             .map(std::string::ToString::to_string)
             .collect();
-        let uds_str = document
-            .get("uds")
-            .and_then(|item| item.as_str())
-            .unwrap_or_default()
-            .trim();
-        let uds = if uds_str.is_empty() {
-            PathBuf::from(format!("/run/coolercontrol-plugin-{id}.sock"))
-        } else {
-            PathBuf::from(uds_str)
+        let address_opt = document
+            .get("address")
+            .and_then(|item| item.as_str().map(str::trim))
+            .filter(|_| service_type == ServiceType::Device);
+        let address = match address_opt {
+            None => ConnectionType::None,
+            Some(address) => {
+                if address.is_empty() {
+                    ConnectionType::Uds(PathBuf::from(format!(
+                        "/run/coolercontrol-plugin-{id}.sock"
+                    )))
+                } else {
+                    let check_path = PathBuf::from(address);
+                    if check_path.is_absolute() {
+                        ConnectionType::Uds(check_path)
+                    } else {
+                        ConnectionType::Tcp(address.to_string())
+                    }
+                }
+            }
         };
         let privileged = document
             .get("privileged")
@@ -84,14 +99,25 @@ impl ServiceConfig {
             service_type,
             executable,
             args,
-            uds,
+            address,
             privileged,
         })
     }
+
+    pub fn is_managed(&self) -> bool {
+        self.executable.is_some()
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ServiceType {
     Device,
     Integration,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ConnectionType {
+    None,
+    Uds(PathBuf),
+    Tcp(String),
 }
