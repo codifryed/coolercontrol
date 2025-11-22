@@ -29,7 +29,7 @@ use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
 use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
-use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -399,6 +399,124 @@ impl ServicePluginRepo {
         });
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
+    async fn init_devices_concurrently(
+        &self,
+        devices: &Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
+        devices_to_remove: &Rc<RefCell<Vec<DeviceUID>>>,
+        preloaded_statuses: &Rc<RefCell<HashMap<DeviceUID, PreloadData>>>,
+        failsafe_statuses: &Rc<RefCell<HashMap<DeviceUID, FailsafeStatusData>>>,
+        poll_rate: f64,
+    ) {
+        // This is ok for initialization:
+        let devices_lock = devices.borrow();
+        moro_local::async_scope!(|device_init_scope| {
+            for (device_uid, (device, service)) in devices_lock.iter() {
+                let devices_to_remove = Rc::clone(devices_to_remove);
+                let preloaded_statuses = Rc::clone(preloaded_statuses);
+                let failsafe_statuses = Rc::clone(failsafe_statuses);
+                let cc_device_setting = self
+                    .config
+                    .get_cc_settings_for_device(device_uid)
+                    .ok()
+                    .flatten();
+                if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
+                    info!(
+                        "Skipping disabled device: {} with UID: {device_uid}",
+                        device.borrow().name
+                    );
+                    devices_to_remove.borrow_mut().push(device_uid.clone());
+                    continue;
+                }
+                device_init_scope.spawn(Self::init_single_device(
+                    device_uid,
+                    device,
+                    service,
+                    devices_to_remove,
+                    preloaded_statuses,
+                    failsafe_statuses,
+                    cc_device_setting,
+                    poll_rate,
+                ));
+            }
+        })
+        .await;
+    }
+
+    /// Used to concurrently initialize device data for a single device
+    async fn init_single_device(
+        device_uid: &DeviceUID,
+        device: &DeviceLock,
+        service: &Rc<DeviceServiceConnection>,
+        devices_to_remove: Rc<RefCell<Vec<DeviceUID>>>,
+        preloaded_statuses: Rc<RefCell<HashMap<DeviceUID, PreloadData>>>,
+        failsafe_statuses: Rc<RefCell<HashMap<DeviceUID, FailsafeStatusData>>>,
+        cc_device_setting: Option<CCDeviceSettings>,
+        poll_rate: f64,
+    ) {
+        if let Err(err) = service.client.initialize_device(device_uid).await {
+            error!(
+                "Error initializing device {device_uid} from Service {}. Skipping. - {err}",
+                service.id
+            );
+            devices_to_remove.borrow_mut().push(device_uid.clone());
+            return;
+        }
+        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await
+        else {
+            error!(
+                "Error getting device status for {device_uid} from Service {}. Skipping.",
+                service.id
+            );
+            devices_to_remove.borrow_mut().push(device_uid.clone());
+            return;
+        };
+        let disabled_channels =
+            cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
+        channel_statuses.retain(|s| disabled_channels.contains(&s.name).not());
+        temp_statuses.retain(|s| disabled_channels.contains(&s.name).not());
+        device
+            .borrow_mut()
+            .info
+            .channels
+            .retain(|name, _info| disabled_channels.contains(name).not());
+
+        let (channel_failsafes, temp_failsafes) =
+            Self::create_failsafe_data(&channel_statuses, &temp_statuses);
+        failsafe_statuses.borrow_mut().insert(
+            device_uid.clone(),
+            FailsafeStatusData {
+                count: 0,
+                logged: false,
+                channel_failsafes,
+                temp_failsafes,
+            },
+        );
+        let preload_data = PreloadData {
+            channels: channel_statuses
+                .iter()
+                .cloned()
+                .map(|s| (s.name.clone(), s))
+                .collect(),
+            temps: temp_statuses
+                .iter()
+                .cloned()
+                .map(|t| (t.name.clone(), t))
+                .collect(),
+        };
+        preloaded_statuses
+            .borrow_mut()
+            .insert(device_uid.clone(), preload_data);
+        let status = Status {
+            channels: channel_statuses,
+            temps: temp_statuses,
+            ..Default::default()
+        };
+        device
+            .borrow_mut()
+            .initialize_status_history_with(status, poll_rate);
+    }
+
     /// Creates failsafe data for all channels with initial status output.
     fn create_failsafe_data(
         channel_statuses: &[ChannelStatus],
@@ -551,7 +669,7 @@ impl Repository for ServicePluginRepo {
         let services = Rc::new(RefCell::new(HashMap::new()));
         let devices = Rc::new(RefCell::new(HashMap::new()));
         let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
-        let missing_status = Rc::new(RefCell::new(HashMap::new()));
+        let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
         let poll_rate = self.config.get_settings()?.poll_rate;
         moro_local::async_scope!(|service_init_scope| {
             for (service_id, service_config) in Self::find_service_configs().await {
@@ -574,74 +692,14 @@ impl Repository for ServicePluginRepo {
         .await;
 
         let devices_to_remove = Rc::new(RefCell::new(Vec::new()));
-        {
-            // This is ok for initialization:
-            #[allow(clippy::await_holding_refcell_ref)]
-            let devices_lock = devices.borrow();
-            moro_local::async_scope!(|device_init_scope| {
-                for (device_uid, (device, service)) in devices_lock.iter() {
-                    let devices_to_remove = Rc::clone(&devices_to_remove);
-                    let preloaded_statuses = Rc::clone(&preloaded_statuses);
-                    let missing_status = Rc::clone(&missing_status);
-                    let cc_device_setting = self
-                        .config
-                        .get_cc_settings_for_device(device_uid)
-                        .ok()
-                        .flatten();
-                    if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
-                        info!("Skipping disabled device: {} with UID: {device_uid}", device.borrow().name);
-                        devices_to_remove.borrow_mut().push(device_uid.clone());
-                        continue;
-                    }
-                    device_init_scope.spawn(async move {
-                        if let Err(err) = service.client.initialize_device(device_uid).await {
-                            error!("Error initializing device {device_uid} from Service {}. Skipping. - {err}", service.id);
-                            devices_to_remove.borrow_mut().push(device_uid.clone());
-                            return;
-                        }
-                        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await else {
-                            error!("Error getting device status for {device_uid} from Service {}. Skipping.", service.id);
-                            devices_to_remove.borrow_mut().push(device_uid.clone());
-                            return;
-                        };
-                        let disabled_channels = cc_device_setting
-                                .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
-                        channel_statuses.retain(|s| disabled_channels.contains(&s.name).not());
-                        temp_statuses.retain(|s| disabled_channels.contains(&s.name).not());
-                        device.borrow_mut().info.channels.retain(|name, _info| disabled_channels.contains(name).not());
-
-                        let (channel_failsafes, temp_failsafes) = Self::create_failsafe_data(&channel_statuses, &temp_statuses);
-                        missing_status.borrow_mut().insert(
-                            device_uid.clone(),
-                            FailsafeStatusData {
-                                count: 0,
-                                logged: false,
-                                channel_failsafes,
-                                temp_failsafes,
-                            }
-                        );
-                        let preload_data = PreloadData {
-                            channels: channel_statuses.iter().cloned().map(|s| {
-                                (s.name.clone(), s)
-                            }).collect(),
-                            temps: temp_statuses.iter().cloned().map(|t| {
-                                (t.name.clone(), t)
-                            }).collect()
-                        };
-                        preloaded_statuses.borrow_mut().insert(
-                            device_uid.clone(),
-                            preload_data,
-                        );
-                        let status = Status {
-                            channels: channel_statuses,
-                            temps: temp_statuses,
-                            ..Default::default()
-                        };
-                        device.borrow_mut().initialize_status_history_with(status, poll_rate);
-                    });
-                }
-            }).await;
-        }
+        self.init_devices_concurrently(
+            &devices,
+            &devices_to_remove,
+            &preloaded_statuses,
+            &failsafe_statuses,
+            poll_rate,
+        )
+        .await;
         for device_uid in devices_to_remove.borrow().iter() {
             devices.borrow_mut().remove(device_uid);
         }
@@ -654,6 +712,8 @@ impl Repository for ServicePluginRepo {
             .into_inner();
         self.preloaded_statuses =
             Rc::into_inner(preloaded_statuses).expect("All status references should be gone");
+        self.failsafe_statuses = Rc::into_inner(failsafe_statuses)
+            .expect("All failsafe_statuses references should be gone");
         if let Ok(cc_device_settings) = self.config.get_all_cc_devices_settings() {
             for (device_uid, cc_device_settings) in cc_device_settings {
                 self.disabled_channels
