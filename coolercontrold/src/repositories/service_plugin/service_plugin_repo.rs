@@ -769,7 +769,21 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
-        Ok(())
+        let (_, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        debug!(
+            "Applying Device Service Plugin: {} device: {device_uid} channel: {channel_name}; \
+            Resetting to Original fan control mode",
+            device_service.id,
+        );
+        device_service
+            .client
+            .reset_channel(device_uid, channel_name)
+            .await
+            .map(|_| ())
+            .map_err(|status| anyhow!("Error resetting device channel: {status}"))
     }
 
     async fn apply_setting_manual_control(
