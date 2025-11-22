@@ -18,8 +18,8 @@
 
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{
-    ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp, TempStatus, Watts, RPM,
-    UID,
+    ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp,
+    TempStatus, Watts, RPM, UID,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
@@ -867,7 +867,61 @@ impl Repository for ServicePluginRepo {
         temp_source: &TempSource,
         speed_profile: &[(f64, u8)],
     ) -> Result<()> {
-        Ok(())
+        let (device_lock, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        {
+            let device = device_lock.borrow();
+            let channel_info = device
+                .info
+                .channels
+                .get(channel_name)
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            if channel_info
+                .speed_options
+                .as_ref()
+                .is_some_and(|opt| {
+                    opt.extension
+                        .as_ref()
+                        .is_some_and(|ext| ext == &ChannelExtensionNames::AutoHWCurve)
+                })
+                .not()
+            {
+                return Err(anyhow!(
+                    "Channel: {channel_name} does not support firmware profiles"
+                ));
+            }
+            if &temp_source.device_uid != device_uid {
+                return Err(anyhow!(
+                    "Applying Internal Profile Error: temp_source device_uid: {} does not match this device. \
+                    Auto curves temperature sources must be internal to the device.",
+                    temp_source.device_uid
+                ));
+            }
+            if self
+                .failsafe_statuses
+                .borrow()
+                .get(device_uid)
+                .is_some_and(|d| d.temp_failsafes.contains_key(&temp_source.temp_name))
+                .not()
+            {
+                return Err(anyhow!(
+                    "Applying Internal Profile Error: temp_source channel: {} does not match a \
+                    channel on this device. Auto curves temperature sources must be internal \
+                    to the device.",
+                    temp_source.temp_name
+                ));
+            }
+        }
+        debug!(
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; Speed Profile: {speed_profile:?}"
+        );
+        device_service
+            .client
+            .speed_profile(device_uid, channel_name, temp_source, speed_profile)
+            .await
+            .map_err(|status| anyhow!("Error enabling manual control for device channel: {status}"))
     }
 
     async fn apply_setting_lighting(
