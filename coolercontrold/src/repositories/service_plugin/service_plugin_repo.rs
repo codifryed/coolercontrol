@@ -930,7 +930,33 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         lighting: &LightingSettings,
     ) -> Result<()> {
-        Ok(())
+        let (device_lock, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        {
+            let device = device_lock.borrow();
+            let channel_info = device
+                .info
+                .channels
+                .get(channel_name)
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            if channel_info.lighting_modes.is_empty() {
+                return Err(anyhow!(
+                    "Channel: {channel_name} does not support lighting modes"
+                ));
+            }
+        }
+        debug!(
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; Lighting: {lighting:?}"
+        );
+        device_service
+            .client
+            .lighting(device_uid, channel_name, lighting)
+            .await
+            .map_err(|status| {
+                anyhow!("Error applying lighting settings for device channel: {status}")
+            })
     }
 
     async fn apply_setting_lcd(
@@ -939,8 +965,35 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         lcd: &LcdSettings,
     ) -> Result<()> {
-        Ok(())
+        let (device_lock, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        {
+            let device = device_lock.borrow();
+            let channel_info = device
+                .info
+                .channels
+                .get(channel_name)
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            if channel_info.lcd_modes.is_empty() {
+                return Err(anyhow!(
+                    "Channel: {channel_name} does not support LCD modes"
+                ));
+            }
+        }
+        debug!(
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; LCD: {lcd:?}"
+        );
+        device_service
+            .client
+            .lcd(device_uid, channel_name, lcd)
+            .await
+            .map_err(|status| {
+                anyhow!("Error applying lighting settings for device channel: {status}")
+            })
     }
+
     async fn apply_setting_pwm_mode(
         &self,
         _device_uid: &UID,
