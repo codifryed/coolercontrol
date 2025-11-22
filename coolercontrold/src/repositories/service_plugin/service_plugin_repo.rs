@@ -832,11 +832,13 @@ impl Repository for ServicePluginRepo {
     }
     async fn apply_setting_pwm_mode(
         &self,
-        device_uid: &UID,
-        channel_name: &str,
-        pwm_mode: u8,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _pwm_mode: u8,
     ) -> Result<()> {
-        Ok(())
+        Err(anyhow!(
+            "Applying pwm_mode setting is not supported for Service Plugin devices"
+        ))
     }
 
     async fn reinitialize_devices(&self) {
