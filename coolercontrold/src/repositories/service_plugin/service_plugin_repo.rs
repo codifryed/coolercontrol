@@ -825,7 +825,39 @@ impl Repository for ServicePluginRepo {
         channel_name: &str,
         speed_fixed: u8,
     ) -> Result<()> {
-        Ok(())
+        if speed_fixed > 100 {
+            return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
+        }
+        let (device_lock, device_service) = self
+            .devices
+            .get(device_uid)
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
+        {
+            let device = device_lock.borrow();
+            let channel_info = device
+                .info
+                .channels
+                .get(channel_name)
+                .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+            if channel_info
+                .speed_options
+                .as_ref()
+                .is_some_and(|opt| opt.fixed_enabled)
+                .not()
+            {
+                return Err(anyhow!(
+                    "Channel: {channel_name} does not support setting fixed speeds"
+                ));
+            }
+        }
+        debug!(
+            "Applying Service Plugin device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
+        );
+        device_service
+            .client
+            .fixed_duty(device_uid, channel_name, speed_fixed)
+            .await
+            .map_err(|status| anyhow!("Error enabling manual control for device channel: {status}"))
     }
 
     async fn apply_setting_speed_profile(
