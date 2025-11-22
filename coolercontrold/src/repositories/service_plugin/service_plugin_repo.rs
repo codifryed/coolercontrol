@@ -1067,5 +1067,18 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn reinitialize_devices(&self) {
+        moro_local::async_scope!(|device_init_scope| {
+            for (device_uid, (_device_lock, service)) in &self.devices {
+                device_init_scope.spawn(async move {
+                    if let Err(err) = service.client.initialize_device(device_uid).await {
+                        warn!(
+                            "Error initializing device {device_uid} from Service {} - {err}",
+                            service.id
+                        );
+                    }
+                });
+            }
+        })
+        .await;
     }
 }
