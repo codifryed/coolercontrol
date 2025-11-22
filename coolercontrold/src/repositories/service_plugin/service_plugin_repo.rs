@@ -18,15 +18,12 @@
 
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{
-    ChannelInfo, ChannelName, ChannelStatus, DeviceType, DeviceUID, TempInfo, TempName, TempStatus,
-    TypeIndex, UID,
+    ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp, TempStatus, Watts, RPM,
+    UID,
 };
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::repositories::service_plugin::device_service::v1::device_service_client::DeviceServiceClient;
-use crate::repositories::service_plugin::device_service::v1::{
-    health_response, HealthRequest, InitializeDevicesRequest, ListDevicesRequest, ShutdownRequest,
-};
-use crate::repositories::service_plugin::models;
+use crate::repositories::service_plugin::client::DeviceServiceClient;
+use crate::repositories::service_plugin::device_service::v1::health_response;
 use crate::repositories::service_plugin::service_config::{ServiceConfig, ServiceType};
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -34,7 +31,7 @@ use crate::repositories::service_plugin::service_management::manager::{
 use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use const_format::concatcp;
 use log::{debug, error, info, trace, warn, LevelFilter};
@@ -44,34 +41,52 @@ use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
-use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
 use toml_edit::DocumentMut;
-use tonic::transport::Channel;
 
-type ServiceDeviceID = String;
+pub type ServiceDeviceID = String;
 
 pub const DEFAULT_PLUGINS_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/plugins");
 const SERVICE_CONFIG_FILE_NAME: &str = "config.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
+const DELAY_SERVICE_START_SECONDS: usize = 4;
+const MISSING_STATUS_THRESHOLD: usize = 8;
+const MISSING_TEMP_FAILSAFE: Temp = 100.;
+const MISSING_DUTY_FAILSAFE: f64 = 0.;
+const MISSING_RPM_FAILSAFE: RPM = 0;
+const MISSING_WATTS_FAILSAFE: Watts = 0.;
+const MISSING_FREQ_FAILSAFE: Mhz = 0;
 
 #[derive(Debug)]
-struct DeviceServiceInfo {
+struct DeviceServiceConnection {
     id: ServiceId,
-    config: ServiceConfig,
     version: String,
-    client: RefCell<DeviceServiceClient<Channel>>,
-    devices: HashMap<ServiceDeviceID, models::v1::Device>,
+    client: DeviceServiceClient,
 }
 
 pub struct ServicePluginRepo {
     config: Rc<Config>,
     service_manager: Manager,
-    services: HashMap<ServiceId, DeviceServiceInfo>,
-    devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceInfo>)>,
-    preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
-    device_permits: HashMap<TypeIndex, Semaphore>,
+    services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceConfig)>,
+    devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
+    preloaded_statuses: RefCell<HashMap<DeviceUID, PreloadData>>,
+    failsafe_statuses: RefCell<HashMap<DeviceUID, FailsafeStatusData>>,
+    disabled_channels: HashMap<DeviceUID, Vec<String>>,
+}
+
+struct PreloadData {
+    channels: HashMap<ChannelName, ChannelStatus>,
+    temps: HashMap<ChannelName, TempStatus>,
+}
+
+struct FailsafeStatusData {
+    count: usize,
+    logged: bool,
+
+    /// These are failsafes metrics for each channel, should it's status be missing.
+    channel_failsafes: HashMap<ChannelName, ChannelStatus>,
+    temp_failsafes: HashMap<ChannelName, TempStatus>,
 }
 
 impl ServicePluginRepo {
@@ -83,11 +98,12 @@ impl ServicePluginRepo {
             services: HashMap::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
-            device_permits: HashMap::new(),
+            failsafe_statuses: RefCell::new(HashMap::new()),
+            disabled_channels: HashMap::new(),
         })
     }
 
-    async fn find_service_configs(&self) -> HashMap<ServiceId, ServiceConfig> {
+    async fn find_service_configs() -> HashMap<ServiceId, ServiceConfig> {
         let plugins_dir = Path::new(DEFAULT_PLUGINS_PATH);
         let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
@@ -186,46 +202,189 @@ impl ServicePluginRepo {
             }
         }
     }
-}
 
-#[async_trait(?Send)]
-impl Repository for ServicePluginRepo {
-    fn device_type(&self) -> DeviceType {
-        DeviceType::ServicePlugin
-    }
-
-    async fn initialize_devices(&mut self) -> Result<()> {
-        debug!("Starting Service Plugins Initialization");
-        let start_initialization = Instant::now();
-        let services = self.find_service_configs().await;
-        for (service_id, service_config) in services {
-            let username = service_config
-                .privileged
-                .not()
-                .then_some(CC_PLUGIN_USER.to_string());
-            // This is the only way to reload this daemon unit if already installed:
-            let _ = self.service_manager.remove(&service_id).await;
-            self.service_manager
+    #[allow(clippy::too_many_lines)]
+    async fn initialize_service(
+        service_id: ServiceId,
+        service_config: ServiceConfig,
+        service_manager: Rc<Manager>,
+        services: Rc<
+            RefCell<HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceConfig)>>,
+        >,
+        devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
+        poll_rate: f64,
+    ) {
+        let username = service_config
+            .privileged
+            .not()
+            .then_some(CC_PLUGIN_USER.to_string());
+        // This will also reload this daemon unit if already installed:
+        let _ = service_manager.remove(&service_id).await;
+        if let Some(exe) = &service_config.executable {
+            if let Err(e) = service_manager
                 .add(ServiceDefinition {
                     service_id: service_id.clone(),
-                    executable: service_config.executable.clone(),
+                    executable: exe.clone(),
                     args: service_config.args.clone(),
                     username,
                     wrk_dir: None,
                     envs: Some(Self::env_log_level()),
                     disable_restart_on_failure: false,
                 })
-                .await?;
-            if let Err(err) = self.service_manager.start(&service_id).await {
-                error!("Error starting plugin service: {err}");
-                continue;
+                .await
+            {
+                error!(
+                    "Error adding plugin service. This service {service_id} will be skipped: {e}"
+                );
+                return;
             }
-            // check the service status and wait for 5 seconds for the service to be Running before giving up:
+        }
+        match service_config.service_type {
+            ServiceType::Integration => {
+                if service_config.is_managed() {
+                    Self::start_integration_service(&service_id, &service_manager);
+                }
+                // Integration services may not have client connection, but are possibly still managed
+                services
+                    .borrow_mut()
+                    .insert(service_id, (None, service_config));
+                return; // Integration service startup queued, no other action required
+            }
+            ServiceType::Device => {
+                if service_config.is_managed() {
+                    if let Err(err) = service_manager.start(&service_id).await {
+                        error!(
+                            "Error starting plugin service. This service {service_id} will be skipped: {err}"
+                        );
+                        let _ = service_manager.remove(&service_id).await;
+                        return;
+                    }
+                }
+            }
+        }
+        if service_config.is_managed() {
             let mut wait_secs = 0;
             while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
-                // We wait a moment in case the service crashes right after startup
+                // It takes a moment for the status to come up, also for service crashing.
                 sleep(Duration::from_secs(1)).await;
-                let status = self.service_manager.status(&service_id).await;
+                let status = service_manager.status(&service_id).await;
+                if status.is_ok_and(|status| status == ServiceStatus::Running) {
+                    break;
+                }
+                wait_secs += 1;
+            }
+            if wait_secs == TIMEOUT_SERVICE_START_SECONDS {
+                error!(
+                    "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds. This service will be skipped."
+                );
+                let _ = service_manager.remove(&service_id).await;
+                return;
+            }
+        }
+        match DeviceServiceClient::connect(&service_config).await {
+            Ok(mut client) => {
+                let mut version = String::new();
+                let mut retries = 0;
+                while retries < TIMEOUT_SERVICE_START_SECONDS {
+                    match client.health().await {
+                        Ok(response) => {
+                            match response.status() {
+                                health_response::Status::Ok => {
+                                    debug!("Service {} is healthy", response.name);
+                                }
+                                health_response::Status::Warning => {
+                                    warn!("Service {} has warnings", response.name);
+                                }
+                                health_response::Status::Error => {
+                                    error!("Service {} has errors", response.name);
+                                }
+                                _ => {
+                                    error!(
+                                        "Service {service_id} has unknown status. Shutting Service down."
+                                    );
+                                    if let Err(status) = client.shutdown().await {
+                                        error!(
+                                            "Error shutting down plugin service: {service_id} - {status}"
+                                        );
+                                    }
+                                    let _ = service_manager.remove(&service_id).await;
+                                    return;
+                                }
+                            }
+                            version = response.version;
+                            break;
+                        }
+                        Err(status) => {
+                            debug!("Health request returned status: {status}, retrying...");
+                            retries += 1;
+                        }
+                    }
+                }
+                let devices_response = match client.list_devices(poll_rate).await {
+                    Ok(devices_response) => devices_response,
+                    Err(err) => {
+                        error!("Error listing devices for {service_id}: {err}");
+                        return;
+                    }
+                };
+                let device_ids = devices_response
+                    .iter()
+                    .map(|(service_device_id, device)| {
+                        (device.uid.clone(), service_device_id.clone())
+                    })
+                    .collect();
+                client.with_device_ids(device_ids);
+                let device_service_conn = Rc::new(DeviceServiceConnection {
+                    id: service_id.clone(),
+                    version,
+                    client,
+                });
+                for (_, device) in devices_response {
+                    devices.borrow_mut().insert(
+                        device.uid.clone(),
+                        (
+                            Rc::new(RefCell::new(device)),
+                            Rc::clone(&device_service_conn),
+                        ),
+                    );
+                }
+                info!(
+                    "Plugin Service {} successfully started and connected.",
+                    service_id.to_service_name()
+                );
+                services
+                    .borrow_mut()
+                    .insert(service_id, (Some(device_service_conn), service_config));
+            }
+            Err(err) => {
+                error!(
+                    "Could not establish a connection to the plugin service: {service_id} \
+                            Make sure it is running and the socket: {:?} is accessible - {err:?}",
+                    service_config.address
+                );
+                if service_config.is_managed() {
+                    let _ = service_manager.remove(&service_id).await;
+                }
+                info!("Plugin Service {} stopped.", service_id.to_service_name());
+            }
+        }
+    }
+
+    /// Starts an integration service in a detached task.
+    /// This is used to start integration services after the daemon's API is up.
+    fn start_integration_service(service_id: &ServiceId, service_manager: &Manager) {
+        let service_id = service_id.clone();
+        let service_manager = service_manager.clone();
+        tokio::task::spawn_local(async move {
+            sleep(Duration::from_secs(DELAY_SERVICE_START_SECONDS as u64)).await;
+            if let Err(err) = service_manager.start(&service_id).await {
+                error!("Error starting plugin service: {err}");
+                return;
+            }
+            let mut wait_secs = 0;
+            while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
+                sleep(Duration::from_secs(1)).await;
+                let status = service_manager.status(&service_id).await;
                 if status.is_ok_and(|status| status == ServiceStatus::Running) {
                     break;
                 }
@@ -235,102 +394,270 @@ impl Repository for ServicePluginRepo {
                 error!(
                     "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds"
                 );
-                continue;
             }
-            if service_config.service_type == ServiceType::Integration {
-                continue;
+        });
+    }
+
+    /// Creates failsafe data for all channels with initial status output.
+    fn create_failsafe_data(
+        channel_statuses: &[ChannelStatus],
+        temp_statuses: &[TempStatus],
+    ) -> (HashMap<String, ChannelStatus>, HashMap<String, TempStatus>) {
+        let channel_failsafes = channel_statuses
+            .iter()
+            .map(|s| {
+                let status = ChannelStatus {
+                    name: s.name.clone(),
+                    rpm: s.rpm.and(Some(MISSING_RPM_FAILSAFE)),
+                    duty: s.duty.and(Some(MISSING_DUTY_FAILSAFE)),
+                    freq: s.freq.and(Some(MISSING_FREQ_FAILSAFE)),
+                    watts: s.watts.and(Some(MISSING_WATTS_FAILSAFE)),
+                    pwm_mode: s.pwm_mode,
+                };
+                (s.name.clone(), status)
+            })
+            .collect();
+        let temp_failsafes = temp_statuses
+            .iter()
+            .map(|t| {
+                (
+                    t.name.clone(),
+                    TempStatus {
+                        name: t.name.clone(),
+                        temp: MISSING_TEMP_FAILSAFE,
+                    },
+                )
+            })
+            .collect();
+        (channel_failsafes, temp_failsafes)
+    }
+
+    async fn preload_device_status(
+        self: Rc<Self>,
+        device_uid: DeviceUID,
+        service: &Rc<DeviceServiceConnection>,
+    ) {
+        let Ok((mut channel_statuses, mut temp_statuses)) =
+            service.client.status(&device_uid).await
+        else {
+            let mut missing_lock = self.failsafe_statuses.borrow_mut();
+            let msd = missing_lock
+                .get_mut(&device_uid)
+                .expect("Missing Status data should exist for existing Devices");
+            msd.count += 1;
+            if msd.count > MISSING_STATUS_THRESHOLD {
+                if msd.logged.not() {
+                    error!(
+                        "There is a significant issue with retrieving status data for \
+                                    device: {device_uid}, from service: {}. Setting critical values \
+                                    for this device.",
+                        service.id
+                    );
+                    msd.logged = true;
+                }
+                // insert ALL failsafe channels
+                let preload_data = PreloadData {
+                    channels: msd.channel_failsafes.clone(),
+                    temps: msd.temp_failsafes.clone(),
+                };
+                self.preloaded_statuses
+                    .borrow_mut()
+                    .insert(device_uid, preload_data);
             }
-            let unix_path = format!("unix://{}", service_config.uds.display());
-            match DeviceServiceClient::connect(unix_path).await {
-                Ok(mut client) => {
-                    let mut version = String::new();
-                    let mut retries = 0;
-                    while retries < TIMEOUT_SERVICE_START_SECONDS {
-                        let request = tonic::Request::new(HealthRequest {});
-                        let result = client.health(request).await;
-                        match result {
-                            Ok(response) => {
-                                let health_response = response.into_inner();
-                                match health_response.status() {
-                                    health_response::Status::Ok => {
-                                        debug!("Service {} is healthy", health_response.name);
-                                    }
-                                    health_response::Status::Warning => {
-                                        warn!("Service {} has warnings", health_response.name);
-                                    }
-                                    health_response::Status::Error => {
-                                        error!("Service {} has errors", health_response.name);
-                                    }
-                                    _ => {
-                                        error!(
-                                            "Service {service_id} has unknown status. Shutting Service down."
-                                        );
-                                        let shutdown_request =
-                                            tonic::Request::new(ShutdownRequest {});
-                                        if let Err(status) = client.shutdown(shutdown_request).await
-                                        {
-                                            error!(
-                                                "Error shutting down plugin service: {service_id} - {status}"
-                                            );
-                                        }
-                                        continue;
-                                    }
-                                }
-                                version = health_response.version;
-                                break;
-                            }
-                            Err(status) => {
-                                debug!("Health request returned status: {status}, retrying...");
-                                retries += 1;
-                            }
-                        }
+            return;
+        };
+        channel_statuses.retain(|s| {
+            self.disabled_channels
+                .get(&device_uid)
+                .is_some_and(|disabled_channels| disabled_channels.contains(&s.name).not())
+        });
+        temp_statuses.retain(|s| {
+            self.disabled_channels
+                .get(&device_uid)
+                .is_some_and(|disabled_channels| disabled_channels.contains(&s.name).not())
+        });
+        {
+            let mut missing_lock = self.failsafe_statuses.borrow_mut();
+            let msd = missing_lock
+                .get_mut(&device_uid)
+                .expect("Missing Status data should exist for existing Devices");
+            let mut has_missing_statuses = false;
+            for (f_name, f_status) in &msd.channel_failsafes {
+                if channel_statuses.iter().all(|status| &status.name != f_name) {
+                    if has_missing_statuses.not() {
+                        has_missing_statuses = true;
+                        msd.count += 1;
                     }
-                    let request = tonic::Request::new(InitializeDevicesRequest {});
-                    let result = client.initialize_devices(request).await;
-                    if let Err(err) = result {
-                        error!("Error initializing devices for {service_id}: {err}");
+                    if msd.count > MISSING_STATUS_THRESHOLD {
+                        channel_statuses.push(f_status.clone());
+                    }
+                }
+            }
+            for (f_name, f_status) in &msd.temp_failsafes {
+                if temp_statuses.iter().all(|status| &status.name != f_name) {
+                    if has_missing_statuses.not() {
+                        has_missing_statuses = true;
+                        msd.count += 1;
+                    }
+                    if msd.count > MISSING_STATUS_THRESHOLD {
+                        temp_statuses.push(f_status.clone());
+                    }
+                }
+            }
+            if has_missing_statuses {
+                if msd.count > MISSING_STATUS_THRESHOLD && msd.logged.not() {
+                    error!(
+                        "There is a significant issue with retrieving status data for \
+                                    device: {device_uid}, from service: {}. Setting critical values \
+                                    for this device.",
+                        service.id
+                    );
+                    msd.logged = true;
+                }
+            } else if msd.count > 0 {
+                // reset count on expected response
+                msd.count = 0;
+            }
+        }
+        let preload_data = PreloadData {
+            channels: channel_statuses
+                .into_iter()
+                .map(|s| (s.name.clone(), s))
+                .collect(),
+            temps: temp_statuses
+                .into_iter()
+                .map(|t| (t.name.clone(), t))
+                .collect(),
+        };
+        self.preloaded_statuses
+            .borrow_mut()
+            .insert(device_uid, preload_data);
+    }
+}
+
+#[async_trait(?Send)]
+impl Repository for ServicePluginRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::ServicePlugin
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn initialize_devices(&mut self) -> Result<()> {
+        debug!("Starting Device Service Plugins Initialization");
+        let start_initialization = Instant::now();
+        // We use Rc to load things concurrently, then move them into the main struct
+        let service_manager = Rc::new(self.service_manager.clone());
+        let services = Rc::new(RefCell::new(HashMap::new()));
+        let devices = Rc::new(RefCell::new(HashMap::new()));
+        let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
+        let missing_status = Rc::new(RefCell::new(HashMap::new()));
+        let poll_rate = self.config.get_settings()?.poll_rate;
+        moro_local::async_scope!(|service_init_scope| {
+            for (service_id, service_config) in Self::find_service_configs().await {
+                let service_manager = Rc::clone(&service_manager);
+                let services = Rc::clone(&services);
+                let devices = Rc::clone(&devices);
+                service_init_scope.spawn(async move {
+                    Self::initialize_service(
+                        service_id,
+                        service_config,
+                        service_manager,
+                        services,
+                        devices,
+                        poll_rate,
+                    )
+                    .await;
+                });
+            }
+        })
+        .await;
+
+        let devices_to_remove = Rc::new(RefCell::new(Vec::new()));
+        {
+            // This is ok for initialization:
+            #[allow(clippy::await_holding_refcell_ref)]
+            let devices_lock = devices.borrow();
+            moro_local::async_scope!(|device_init_scope| {
+                for (device_uid, (device, service)) in devices_lock.iter() {
+                    let devices_to_remove = Rc::clone(&devices_to_remove);
+                    let preloaded_statuses = Rc::clone(&preloaded_statuses);
+                    let missing_status = Rc::clone(&missing_status);
+                    let cc_device_setting = self
+                        .config
+                        .get_cc_settings_for_device(device_uid)
+                        .ok()
+                        .flatten();
+                    if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
+                        info!("Skipping disabled device: {} with UID: {device_uid}", device.borrow().name);
+                        devices_to_remove.borrow_mut().push(device_uid.clone());
                         continue;
                     }
-                    let request = tonic::Request::new(ListDevicesRequest {});
-                    let result = client.list_devices(request).await;
-                    let list = match result {
-                        Ok(response) => response.into_inner(),
-                        Err(err) => {
-                            error!("Error listing devices for {service_id}: {err}");
-                            continue;
+                    device_init_scope.spawn(async move {
+                        if let Err(err) = service.client.initialize_device(device_uid).await {
+                            error!("Error initializing device {device_uid} from Service {}. Skipping. - {err}", service.id);
+                            devices_to_remove.borrow_mut().push(device_uid.clone());
+                            return;
                         }
-                    };
-                    let devices = list
-                        .devices
-                        .into_iter()
-                        .map(|device| (device.id.clone(), device))
-                        .collect();
-                    self.services.insert(
-                        service_id.clone(),
-                        DeviceServiceInfo {
-                            id: service_id.clone(),
-                            version,
-                            config: service_config,
-                            client: RefCell::new(client),
-                            devices,
-                        },
-                    );
+                        let Ok((mut channel_statuses, mut temp_statuses)) = service.client.status(device_uid).await else {
+                            error!("Error getting device status for {device_uid} from Service {}. Skipping.", service.id);
+                            devices_to_remove.borrow_mut().push(device_uid.clone());
+                            return;
+                        };
+                        let disabled_channels = cc_device_setting
+                                .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
+                        channel_statuses.retain(|s| disabled_channels.contains(&s.name).not());
+                        temp_statuses.retain(|s| disabled_channels.contains(&s.name).not());
+                        device.borrow_mut().info.channels.retain(|name, _info| disabled_channels.contains(name).not());
+
+                        let (channel_failsafes, temp_failsafes) = Self::create_failsafe_data(&channel_statuses, &temp_statuses);
+                        missing_status.borrow_mut().insert(
+                            device_uid.clone(),
+                            FailsafeStatusData {
+                                count: 0,
+                                logged: false,
+                                channel_failsafes,
+                                temp_failsafes,
+                            }
+                        );
+                        let preload_data = PreloadData {
+                            channels: channel_statuses.iter().cloned().map(|s| {
+                                (s.name.clone(), s)
+                            }).collect(),
+                            temps: temp_statuses.iter().cloned().map(|t| {
+                                (t.name.clone(), t)
+                            }).collect()
+                        };
+                        preloaded_statuses.borrow_mut().insert(
+                            device_uid.clone(),
+                            preload_data,
+                        );
+                        let status = Status {
+                            channels: channel_statuses,
+                            temps: temp_statuses,
+                            ..Default::default()
+                        };
+                        device.borrow_mut().initialize_status_history_with(status, poll_rate);
+                    });
                 }
-                Err(err) => {
-                    error!(
-                        "Could not establish a connection to the plugin service: {service_id} \
-                        Make sure it is running and the socket: {} is accessible - {err:?}",
-                        service_config.uds.display()
-                    );
-                    let _ = self.service_manager.stop(&service_id).await;
-                    info!("Plugin Service {} stopped.", service_id.to_service_name());
-                    let _ = self.service_manager.remove(&service_id).await;
-                }
+            }).await;
+        }
+        for device_uid in devices_to_remove.borrow().iter() {
+            devices.borrow_mut().remove(device_uid);
+        }
+
+        self.services = Rc::into_inner(services)
+            .expect("All services references should be gone")
+            .into_inner();
+        self.devices = Rc::into_inner(devices)
+            .expect("All devices references should be gone")
+            .into_inner();
+        self.preloaded_statuses =
+            Rc::into_inner(preloaded_statuses).expect("All status references should be gone");
+        if let Ok(cc_device_settings) = self.config.get_all_cc_devices_settings() {
+            for (device_uid, cc_device_settings) in cc_device_settings {
+                self.disabled_channels
+                    .insert(device_uid, cc_device_settings.get_disabled_channels());
             }
-            info!(
-                "Plugin Service {} successfully started and connected.",
-                service_id.to_service_name()
-            );
         }
 
         let mut init_devices = HashMap::new();
@@ -373,10 +700,24 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn devices(&self) -> DeviceList {
-        vec![]
+        self.devices
+            .values()
+            .map(|(device, _)| device.clone())
+            .collect()
     }
 
     async fn preload_statuses(self: Rc<Self>) {
+        let start_update = Instant::now();
+        moro_local::async_scope!(|status_scope| {
+            for (device_uid, (_device_lock, service)) in &self.devices {
+                let self = Rc::clone(&self);
+                status_scope.spawn(self.preload_device_status(device_uid.clone(), service));
+            }
+        });
+        trace!(
+            "STATUS PRELOAD Time taken for all Device Service devices: {:?}",
+            start_update.elapsed()
+        );
     }
 
     async fn update_statuses(&self) -> Result<()> {
@@ -384,18 +725,23 @@ impl Repository for ServicePluginRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        for service in self.services.values() {
-            let request = tonic::Request::new(ShutdownRequest {});
-            if let Err(status) = service.client.borrow_mut().shutdown(request).await {
-                error!(
-                    "Error shutting down plugin service: {} - {status}",
-                    service.id
-                );
+        moro_local::async_scope!(|scope| {
+            for (service_id, (optional_service_connection, service_config)) in &self.services {
+                scope.spawn(async move {
+                    if let Some(service) = optional_service_connection {
+                        if let Err(status) = service.client.shutdown().await {
+                            error!("Error shutting down plugin service: {service_id} - {status}");
+                        }
+                        debug!("Plugin Service {service_id} internal shutdown complete");
+                    }
+                    if service_config.is_managed() {
+                        let _ = self.service_manager.remove(service_id).await;
+                    }
+                    info!("Plugin Service {service_id} stopped.");
+                });
             }
-            debug!("Plugin Service {} internal shutdown complete", service.id);
-            let _ = self.service_manager.remove(&service.id).await;
-            info!("Plugin Service {} stopped.", service.id);
-        }
+        })
+        .await;
         info!("Service Plugins Repository shutdown");
         Ok(())
     }
