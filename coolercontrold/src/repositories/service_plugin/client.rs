@@ -585,6 +585,7 @@ impl DeviceServiceClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn custom_function_one(&self) -> Result<()> {
         tokio::select! {
             () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(

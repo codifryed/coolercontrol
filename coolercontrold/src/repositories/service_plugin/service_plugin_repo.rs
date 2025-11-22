@@ -349,8 +349,9 @@ impl ServicePluginRepo {
                     );
                 }
                 info!(
-                    "Plugin Service {} successfully started and connected.",
-                    service_id.to_service_name()
+                    "Plugin Service {} v{} successfully started and connected.",
+                    service_id.to_service_name(),
+                    device_service_conn.version
                 );
                 services
                     .borrow_mut()
