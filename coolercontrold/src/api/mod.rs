@@ -223,6 +223,8 @@ async fn create_api_server(
     .await?;
     Ok(())
 }
+
+#[allow(clippy::default_trait_access)]
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
     api.title("CoolerControl Daemon API")
         .summary("CoolerControl Rest Endpoints")

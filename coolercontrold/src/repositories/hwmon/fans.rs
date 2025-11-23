@@ -19,23 +19,23 @@
 use crate::cc_fs;
 use crate::device::ChannelStatus;
 use crate::repositories::hwmon::hwmon_repo::{
-    AutoCurveInfo, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
+    AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use crate::repositories::hwmon::{auto_curve, devices};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 pub const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 pub const PWM_ENABLE_AUTO_VALUE: u8 = 2;
 pub const PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE: u8 = 5;
-const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
 macro_rules! format_pwm { ($($arg:tt)*) => {{ format!("pwm{}", $($arg)*) }}; }
@@ -43,15 +43,16 @@ macro_rules! format_pwm_mode { ($($arg:tt)*) => {{ format!("pwm{}_mode", $($arg)
 macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
 
 /// Initialize all applicable fans
-pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
-    let mut fans = vec![];
+pub async fn init_fans(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let dir_entries = cc_fs::read_dir(base_path)?;
+    let mut fan_caps = HashMap::new();
     for entry in dir_entries {
         let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        init_pwm_fan(base_path, file_name, &mut fans, device_name).await?;
-        init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
+        detect_pwm(base_path, file_name, &mut fan_caps).await?;
+        detect_rpm(base_path, file_name, &mut fan_caps).await?;
     }
+    let mut fans = caps_to_hwmon_fans(base_path, device_name, fan_caps).await?;
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
     auto_curve::init_auto_curve_fans(base_path, &mut fans, device_name).await?;
     trace!(
@@ -61,31 +62,11 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
     Ok(fans)
 }
 
-/// Initialize a PWM fan if certain conditions are met.
-/// Most all fans that are controllable have a pwm file.
-///
-/// This function initializes a PWM fan if the given `file_name` matches the PWM file pattern.
-/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
-///
-/// # Arguments
-///
-/// * `base_path` - A reference to a `PathBuf` representing the base directory.
-/// * `file_name` - A string slice representing the name of the file to check.
-/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
-/// * `device_name` - A string slice representing the name of the device.
-///
-/// # Returns
-///
-/// A `Result` indicating success or failure.
-///
-/// # Errors
-///
-/// This function will return an error if it fails to read or parse any of the fan attributes.
-async fn init_pwm_fan(
+/// Detects if a fan has pwm capability and pwm-write capabilities.
+async fn detect_pwm(
     base_path: &Path,
     file_name: &str,
-    fans: &mut Vec<HwmonChannelInfo>,
-    device_name: &str,
+    fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
 ) -> Result<()> {
     let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
     if regex_pwm_file.is_match(file_name).not() {
@@ -104,52 +85,20 @@ async fn init_pwm_fan(
     {
         return Ok(()); // skip if pwm file isn't readable
     }
-    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
     let pwm_writable = determine_pwm_writable(base_path, channel_number);
-    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(channel_number);
-    let label = get_fan_channel_label(base_path, &channel_number).await;
-    // deprecated setting:
-    let pwm_mode_supported = false;
-    // determine_pwm_mode_support(base_path, &channel_number).await;
-    fans.push(HwmonChannelInfo {
-        hwmon_type: HwmonChannelType::Fan,
-        number: channel_number,
-        pwm_enable_default,
-        name: channel_name,
-        label,
-        pwm_mode_supported,
-        pwm_writable,
-        auto_curve: AutoCurveInfo::None,
-    });
+    let caps = fan_caps
+        .entry(channel_number)
+        .or_insert(HwmonChannelCapabilities::empty());
+    caps.insert(HwmonChannelCapabilities::PWM);
+    caps.set(HwmonChannelCapabilities::FAN_WRITABLE, pwm_writable);
     Ok(())
 }
 
-/// Initialize an RPM-only fan.
-/// There some fans that are RPM only (display-only), and do not have a pwm file for controlling.
-///
-/// This function initializes an RPM-only fan if the given `file_name` matches the RPM file pattern.
-/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
-///
-/// # Arguments
-///
-/// * `base_path` - A reference to a `PathBuf` representing the base directory.
-/// * `file_name` - A string slice representing the name of the file to check.
-/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
-/// * `device_name` - A string slice representing the name of the device.
-///
-/// # Returns
-///
-/// A `Result` indicating success or failure.
-///
-/// # Errors
-///
-/// This function will return an error if it fails to read or parse any of the fan attributes.
-async fn init_rpm_only_fan(
+/// Detects if a fan has rpm display capability.
+pub async fn detect_rpm(
     base_path: &Path,
     file_name: &str,
-    fans: &mut Vec<HwmonChannelInfo>,
-    device_name: &str,
+    fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
 ) -> Result<()> {
     let regex_fan_input_file = Regex::new(PATTERN_FAN_INPUT_FILE_NUMBER)?;
     if regex_fan_input_file.is_match(file_name).not() {
@@ -162,37 +111,50 @@ async fn init_rpm_only_fan(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_pwm_duty(base_path, &channel_number, false)
-        .await
-        .is_some()
-    {
-        return Ok(()); // skip if this has a pwm file (it's a pwm fan w/ rpm)
-    }
     if get_fan_rpm(base_path, &channel_number, true)
         .await
         .is_none()
     {
         return Ok(()); // skip if rpm file isn't readable
     }
-    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
-    let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
-    let channel_name = get_fan_channel_name(channel_number);
-    let label = get_fan_channel_label(base_path, &channel_number).await;
-    info!(
-        "Uncontrollable RPM-only fan found at {}/{file_name}",
-        base_path.display()
-    );
-    fans.push(HwmonChannelInfo {
-        hwmon_type: HwmonChannelType::Fan,
-        number: channel_number,
-        pwm_enable_default,
-        name: channel_name,
-        label,
-        pwm_mode_supported: false,
-        pwm_writable: false,
-        auto_curve: AutoCurveInfo::None,
-    });
+    fan_caps
+        .entry(channel_number)
+        .or_insert(HwmonChannelCapabilities::empty())
+        .insert(HwmonChannelCapabilities::RPM);
     Ok(())
+}
+
+/// Converts fan capabilities to `HwmonChannelInfo`
+async fn caps_to_hwmon_fans(
+    base_path: &Path,
+    device_name: &str,
+    fan_caps: HashMap<u8, HwmonChannelCapabilities>,
+) -> Result<Vec<HwmonChannelInfo>> {
+    let mut fans = vec![];
+    for (channel_number, fan_cap) in fan_caps {
+        let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
+        let pwm_enable_default = adjusted_pwm_default(current_pwm_enable, device_name);
+        let channel_name = get_fan_channel_name(channel_number);
+        let label = get_fan_channel_label(base_path, &channel_number).await;
+        // deprecated setting:
+        // determine_pwm_mode_support(base_path, &channel_number).await;
+        if fan_cap.is_non_controllable_rpm_fan() {
+            info!(
+                "Uncontrollable RPM-only fan found at {}/fan{channel_number}_input",
+                base_path.display()
+            );
+        }
+        fans.push(HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: channel_number,
+            pwm_enable_default,
+            name: channel_name,
+            label,
+            caps: fan_cap,
+            auto_curve: AutoCurveInfo::None,
+        });
+    }
+    Ok(fans)
 }
 
 /// Return the fan statuses for all channels.
@@ -206,8 +168,16 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
-        let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
-        let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
+        let fan_duty = if channel.caps.has_pwm() {
+            get_pwm_duty(&driver.path, &channel.number, false).await
+        } else {
+            None
+        };
+        let fan_rpm = if channel.caps.has_rpm() {
+            get_fan_rpm(&driver.path, &channel.number, false).await
+        } else {
+            None
+        };
         fans.push(ChannelStatus {
             name: channel.name.clone(),
             rpm: fan_rpm,
@@ -229,12 +199,22 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
             }
             let fan_task = scope.spawn(async {
                 moro_local::async_scope!(|channel_scope| {
-                    let fan_rpm_task =
-                        channel_scope.spawn(get_fan_rpm(&driver.path, &channel.number, false));
-                    let fan_duty_task =
-                        channel_scope.spawn(get_pwm_duty(&driver.path, &channel.number, false));
+                    let fan_rpm_task = channel_scope.spawn(async {
+                        if channel.caps.has_rpm() {
+                            get_fan_rpm(&driver.path, &channel.number, false).await
+                        } else {
+                            None
+                        }
+                    });
+                    let fan_duty_task = channel_scope.spawn(async {
+                        if channel.caps.has_pwm() {
+                            get_pwm_duty(&driver.path, &channel.number, false).await
+                        } else {
+                            None
+                        }
+                    });
                     let fan_pwm_mode_task = channel_scope.spawn(async {
-                        if channel.pwm_mode_supported {
+                        if channel.caps.has_pwm_mode() {
                             cc_fs::read_sysfs(driver.path.join(format_pwm_mode!(channel.number)))
                                 .await
                                 .and_then(check_parsing_8)
@@ -279,7 +259,7 @@ async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) ->
         .ok()
 }
 
-async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
+pub async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
     let fan_input_path = base_path.join(format_fan_input!(channel_number));
     cc_fs::read_sysfs(&fan_input_path)
         .await
@@ -298,7 +278,7 @@ async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> 
 }
 
 /// Not all drivers have `pwm_enable` for their fans. In that case there is no "automatic" mode available.
-///  `pwm_enable` setting options:
+///  Example `pwm_enable` setting options: (1 and 2 are the most common)
 ///  - 0 : full speed / off (not used/recommended)
 ///  - 1 : manual control (setting pwm* will adjust fan speed)
 ///  - 2 : automatic (primarily used by on-board/chip fan control, like laptops or mobos without smart fan control)
@@ -329,7 +309,7 @@ pub fn check_parsing_8(content: String) -> Result<u8> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn check_parsing_32(content: String) -> Result<u32> {
+pub fn check_parsing_32(content: String) -> Result<u32> {
     match content.trim().parse::<u32>() {
         Ok(value) => Ok(value),
         Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string()).into()),
@@ -387,7 +367,7 @@ fn adjusted_pwm_default(current_pwm_enable: Option<u8>, device_name: &str) -> Op
 /// Returns:
 ///
 /// an `Option<String>`.
-async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
+pub async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<String> {
     cc_fs::read_txt(base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
@@ -415,7 +395,7 @@ async fn get_fan_channel_label(base_path: &Path, channel_number: &u8) -> Option<
 /// Returns:
 ///
 /// * A `String` that represents a unique channel name/ID.
-fn get_fan_channel_name(channel_number: u8) -> String {
+pub fn get_fan_channel_name(channel_number: u8) -> String {
     format!("fan{channel_number}")
 }
 
@@ -528,7 +508,7 @@ pub async fn set_pwm_duty(
 }
 
 /// Converts a pwm value (0-255) to a duty value (0-100%)
-fn pwm_value_to_duty(pwm_value: u8) -> f64 {
+pub fn pwm_value_to_duty(pwm_value: u8) -> f64 {
     ((f64::from(pwm_value) / 0.255).round() / 10.0).round()
 }
 
@@ -540,88 +520,13 @@ pub fn duty_to_pwm_value(speed_duty: u8) -> u8 {
     ((clamped_duty * 25.5).round() / 10.0).round() as u8
 }
 
-/// submodule for `ThinkPad` fan logic
-pub mod thinkpad {
-    use crate::cc_fs;
-    use crate::config::Config;
-    use crate::repositories::hwmon::fans::{
-        check_parsing_8, set_pwm_duty, set_pwm_enable_if_not_already, PWM_ENABLE_MANUAL_VALUE,
-        PWM_ENABLE_THINKPAD_FULL_SPEED,
-    };
-    use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
-    use anyhow::{anyhow, Result};
-    use log::debug;
-    use std::path::Path;
-    use std::rc::Rc;
-
-    pub async fn apply_speed_fixed(
-        config: &Rc<Config>,
-        hwmon_driver: &Rc<HwmonDriverInfo>,
-        channel_info: &HwmonChannelInfo,
-        speed_fixed: u8,
-    ) -> Result<()> {
-        if speed_fixed == 100 && config.get_settings()?.thinkpad_full_speed {
-            set_to_full_speed(&hwmon_driver.path, channel_info).await
-        } else {
-            set_pwm_enable_if_not_already(
-                PWM_ENABLE_MANUAL_VALUE,
-                &hwmon_driver.path,
-                channel_info,
-            )
-            .await?;
-            set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "Error on {}:{} for duty {speed_fixed} - {err}",
-                        hwmon_driver.name,
-                        channel_info.name
-                    )
-                })
-        }
-    }
-
-    /// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
-    /// for `ThinkPads` where this means "full-speed". See:
-    /// [Kernel Doc](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
-    pub async fn set_to_full_speed(
-        base_path: &Path,
-        channel_info: &HwmonChannelInfo,
-    ) -> Result<()> {
-        // set to 100% first for consistent pwm duty-reporting behavior
-        // (the driver doesn't automatically set the duty to 100% in full-speed mode)
-        set_pwm_duty(base_path, channel_info, 100).await?;
-        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-        let current_pwm_enable = cc_fs::read_sysfs(&path_pwm_enable)
-            .await
-            .and_then(check_parsing_8)?;
-        if current_pwm_enable != PWM_ENABLE_THINKPAD_FULL_SPEED {
-            cc_fs::write_string(&path_pwm_enable, PWM_ENABLE_THINKPAD_FULL_SPEED.to_string())
-                .await
-                .inspect(|()| {
-                    debug!("Applied pwm_enable for {} of {PWM_ENABLE_THINKPAD_FULL_SPEED}", path_pwm_enable.display());
-                })
-                .map_err(|err| {
-                    anyhow!(
-                        "Not able to set pwm_enable of {PWM_ENABLE_THINKPAD_FULL_SPEED}. \
-                        Most likely because of a permissions issue or driver limitation; Error: {err}"
-                    )
-                })?;
-        }
-        Ok(())
-    }
-}
-
 /// Tests
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use crate::setting::CoolerControlSettings;
     use serial_test::serial;
-    use std::path::Path;
-    use std::rc::Rc;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
@@ -693,10 +598,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable);
+            assert!(fans[0].caps.is_fan_controllable());
         });
     }
 
@@ -725,10 +630,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable);
+            assert!(fans[0].caps.is_fan_controllable());
         });
     }
 
@@ -758,10 +663,10 @@ mod tests {
             assert_eq!(fans.len(), 1);
             assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
             assert_eq!(fans[0].name, "fan1");
-            assert!(fans[0].pwm_mode_supported.not());
+            assert!(fans[0].caps.has_pwm_mode().not());
             assert_eq!(fans[0].pwm_enable_default, None);
             assert_eq!(fans[0].number, 1);
-            assert!(fans[0].pwm_writable.not());
+            assert!(fans[0].caps.is_fan_controllable().not());
         });
     }
 
@@ -781,8 +686,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -812,8 +716,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -848,8 +751,7 @@ mod tests {
                 pwm_enable_default: Some(1),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -883,8 +785,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -916,8 +817,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -951,8 +851,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -990,8 +889,7 @@ mod tests {
                 pwm_enable_default: Some(2),
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -1026,8 +924,7 @@ mod tests {
                 pwm_enable_default: None,
                 name: String::new(),
                 label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
             };
 
@@ -1043,230 +940,6 @@ mod tests {
             teardown(&ctx);
             assert!(result.is_ok());
             assert_eq!(current_duty.to_string(), "50");
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn thinkpad_apply_speed() {
-        cc_fs::test_runtime(async {
-            let ctx = setup();
-            // given:
-            let test_base_path = &ctx.test_base_path;
-            cc_fs::write(
-                test_base_path.join("pwm1_enable"),
-                PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
-            )
-            .await
-            .unwrap();
-            cc_fs::write(test_base_path.join("pwm1"), b"0".to_vec())
-                .await
-                .unwrap();
-            let channel_info = HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: 1,
-                pwm_enable_default: Some(2),
-                name: String::new(),
-                label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
-                auto_curve: AutoCurveInfo::None,
-            };
-            let config = Rc::new(Config::init_default_config().unwrap());
-            // set full_speed setting
-            let cc_settings = CoolerControlSettings {
-                thinkpad_full_speed: true,
-                ..Default::default()
-            };
-            config.set_settings(&cc_settings);
-            let hwmon_info = Rc::new(HwmonDriverInfo {
-                path: test_base_path.clone(),
-                ..Default::default()
-            });
-
-            // when:
-            let result = thinkpad::apply_speed_fixed(&config, &hwmon_info, &channel_info, 50).await;
-
-            // then:
-            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-                .await
-                .unwrap();
-            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-                .await
-                .and_then(check_parsing_8)
-                .map(pwm_value_to_duty)
-                .unwrap();
-            teardown(&ctx);
-            assert!(result.is_ok());
-            assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string());
-            assert_eq!(current_duty, 50.);
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn thinkpad_apply_speed_full_speed() {
-        cc_fs::test_runtime(async {
-            let ctx = setup();
-            // given:
-            let test_base_path = &ctx.test_base_path;
-            cc_fs::write(
-                test_base_path.join("pwm1_enable"),
-                PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
-            )
-            .await
-            .unwrap();
-            cc_fs::write(test_base_path.join("pwm1"), b"0".to_vec())
-                .await
-                .unwrap();
-            let channel_info = HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: 1,
-                pwm_enable_default: Some(2),
-                name: String::new(),
-                label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
-                auto_curve: AutoCurveInfo::None,
-            };
-            let config = Rc::new(Config::init_default_config().unwrap());
-            // set full_speed setting
-            let cc_settings = CoolerControlSettings {
-                thinkpad_full_speed: true,
-                ..Default::default()
-            };
-            config.set_settings(&cc_settings);
-            let hwmon_info = Rc::new(HwmonDriverInfo {
-                path: test_base_path.clone(),
-                ..Default::default()
-            });
-
-            // when:
-            let result =
-                thinkpad::apply_speed_fixed(&config, &hwmon_info, &channel_info, 100).await;
-
-            // then:
-            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-                .await
-                .unwrap();
-            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-                .await
-                .and_then(check_parsing_8)
-                .map(pwm_value_to_duty)
-                .unwrap();
-            teardown(&ctx);
-            assert!(result.is_ok());
-            assert_eq!(
-                current_pwm_enable,
-                PWM_ENABLE_THINKPAD_FULL_SPEED.to_string()
-            );
-            assert_eq!(current_duty, 100.);
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn thinkpad_apply_speed_after_full_speed() {
-        cc_fs::test_runtime(async {
-            let ctx = setup();
-            // given:
-            let test_base_path = &ctx.test_base_path;
-            cc_fs::write(
-                test_base_path.join("pwm1_enable"),
-                PWM_ENABLE_THINKPAD_FULL_SPEED.to_string().into_bytes(),
-            )
-            .await
-            .unwrap();
-            cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
-                .await
-                .unwrap();
-            let channel_info = HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: 1,
-                pwm_enable_default: Some(2),
-                name: String::new(),
-                label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
-                auto_curve: AutoCurveInfo::None,
-            };
-            let config = Rc::new(Config::init_default_config().unwrap());
-            // set full_speed setting
-            let cc_settings = CoolerControlSettings {
-                thinkpad_full_speed: true,
-                ..Default::default()
-            };
-            config.set_settings(&cc_settings);
-            let hwmon_info = Rc::new(HwmonDriverInfo {
-                path: test_base_path.clone(),
-                ..Default::default()
-            });
-
-            // when:
-            let result = thinkpad::apply_speed_fixed(&config, &hwmon_info, &channel_info, 50).await;
-
-            // then:
-            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-                .await
-                .unwrap();
-            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-                .await
-                .and_then(check_parsing_8)
-                .map(pwm_value_to_duty)
-                .unwrap();
-            teardown(&ctx);
-            assert!(result.is_ok());
-            assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string(),);
-            assert_eq!(current_duty, 50.);
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn thinkpad_set_full_speed() {
-        cc_fs::test_runtime(async {
-            let ctx = setup();
-            // given:
-            let test_base_path = &ctx.test_base_path;
-            cc_fs::write(
-                test_base_path.join("pwm1_enable"),
-                PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
-            )
-            .await
-            .unwrap();
-            cc_fs::write(test_base_path.join("pwm1"), b"0".to_vec())
-                .await
-                .unwrap();
-            let channel_info = HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: 1,
-                pwm_enable_default: Some(2),
-                name: String::new(),
-                label: None,
-                pwm_mode_supported: false,
-                pwm_writable: true,
-                auto_curve: AutoCurveInfo::None,
-            };
-
-            // when:
-            let result = thinkpad::set_to_full_speed(test_base_path, &channel_info).await;
-
-            // then:
-            let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
-                .await
-                .unwrap();
-            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
-                .await
-                .and_then(check_parsing_8)
-                .map(pwm_value_to_duty)
-                .unwrap();
-            teardown(&ctx);
-            assert!(result.is_ok());
-            assert_eq!(
-                current_pwm_enable,
-                PWM_ENABLE_THINKPAD_FULL_SPEED.to_string()
-            );
-            assert_eq!(current_duty, 100.);
         });
     }
 }

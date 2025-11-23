@@ -93,7 +93,7 @@ pub async fn init_auto_curve_fans(
     device_name: &str,
 ) -> Result<()> {
     for fan in fans {
-        if fan.pwm_writable.not() {
+        if fan.caps.is_fan_controllable().not() {
             continue; // we only support fans that have pwmN controls
         }
         if is_temp_sel(base_path, fan.number) {
@@ -720,6 +720,7 @@ async fn apply_kraken3_curve(
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
+    use crate::repositories::hwmon::hwmon_repo::HwmonChannelCapabilities;
     use serial_test::serial;
     use std::path::{Path, PathBuf};
     use uuid::Uuid;
@@ -938,7 +939,7 @@ mod tests {
             }
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -994,7 +995,7 @@ mod tests {
 
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -1036,7 +1037,7 @@ mod tests {
 
             let mut fan = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
 
@@ -1076,7 +1077,7 @@ mod tests {
 
             let channel = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
             let curve = vec![(30_000u32, 100u8), (40_000u32, 120u8)];
@@ -1190,7 +1191,7 @@ mod tests {
             }
             let channel = HwmonChannelInfo {
                 number: 1,
-                pwm_writable: true,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 ..Default::default()
             };
             let pwms = vec![128u8; POINT_LENGTH_NZXT_KRAKEN3 as usize];

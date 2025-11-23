@@ -47,6 +47,7 @@ pub const HWMON_DEVICE_NAME_BLACKLIST: [&str; 1] = [
 ];
 const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const DEVICE_NAME_THINK_PAD: &str = "thinkpad";
+pub const DEVICE_NAME_APPLE_SMC: &str = "applesmc";
 
 struct GlobPaths {
     pwm: String,
