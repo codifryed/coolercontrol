@@ -79,8 +79,8 @@ use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const SESSION_COOKIE_NAME: &str = "cc";
-const API_RATE_BURST: u32 = 120; // This is enough to handle reconnecting 2 UIs at once
-const API_RATE_REQ_PER_SEC: u64 = 10;
+const API_RATE_BURST: u32 = 120; // Multiple UIs restarted at the same time creates lots of requests
+const API_RATE_REQ_PER_SEC: u64 = 20;
 const API_TIMEOUT_SECS: u64 = 30;
 
 type Port = u16;
