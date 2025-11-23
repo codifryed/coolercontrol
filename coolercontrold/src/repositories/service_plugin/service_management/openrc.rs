@@ -49,7 +49,7 @@ impl OpenRcManager {
             .arg(cmd)
             .output()
             .await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
             .and_then(|output| {
             if output.status.success() {
                 Ok(output)
@@ -73,7 +73,7 @@ impl ServiceManager for OpenRcManager {
         let service_description = service_definition.service_id.to_description();
         let service_path = dir_path.join(&service_name);
         let service_file =
-            create_service_file(&service_description, &service_name, service_definition);
+            create_service_file(&service_description, &service_name, &service_definition);
         cc_fs::write_string(&service_path, service_file).await?;
         cc_fs::set_permissions(
             &service_path,
@@ -133,7 +133,7 @@ fn service_dir_path() -> PathBuf {
 fn create_service_file(
     description: &str,
     provide: &str,
-    service_definition: ServiceDefinition,
+    service_definition: &ServiceDefinition,
 ) -> String {
     let args = service_definition.args.join(" ");
     let program_path = service_definition.executable.to_string_lossy();

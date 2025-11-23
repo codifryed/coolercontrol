@@ -83,7 +83,7 @@ impl SystemdManager {
             .arg(service_id.to_service_name())
             .output()
             .await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
             .and_then(|output| {
                 if output.status.success() {
                     Ok(output.status.code().unwrap_or(-1))
@@ -107,7 +107,7 @@ impl SystemdManager {
             .arg(username)
             .status()
             .await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
             .and_then(|status| {
                 if status.success() {
                     Ok(())
@@ -133,7 +133,7 @@ impl ServiceManager for SystemdManager {
                 debug!("Failed to create plugin user (expected when exists): {err}");
             }
         }
-        let unit_file = create_unit_file(&self.config, service_description, service_definition)?;
+        let unit_file = create_unit_file(&self.config, &service_description, service_definition)?;
         cc_fs::write_string(&service_path, unit_file).await?;
         cc_fs::set_permissions(
             &service_path,
@@ -178,7 +178,7 @@ fn systemd_global_dir_path() -> PathBuf {
 
 fn create_unit_file(
     config: &SystemdConfig,
-    description: String,
+    description: &String,
     service_definition: ServiceDefinition,
 ) -> Result<String> {
     use std::fmt::Write;
