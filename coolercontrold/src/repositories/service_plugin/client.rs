@@ -21,17 +21,17 @@ use crate::device::{
     DriverInfo, DriverType, Duty, LcdInfo, LcdMode, LcdModeType, LightingMode, LightingModeType,
     SpeedOptions, Temp, TempInfo, TempStatus,
 };
-use crate::repositories::service_plugin::device_service::v1::{
+use crate::grpc_api::device_service::v1::{
     device_service_client, CustomFunctionOneRequest, EnableManualFanControlRequest,
     FixedDutyRequest, HealthRequest, HealthResponse, InitializeDeviceRequest, LcdRequest,
     LcdSetting, LightingRequest, LightingSetting, ListDevicesRequest, ListDevicesResponse,
     ResetChannelRequest, Rgb, ShutdownRequest, SpeedProfilePoint, SpeedProfileRequest,
     StatusRequest, StatusResponse,
 };
-use crate::repositories::service_plugin::models;
-use crate::repositories::service_plugin::models::v1::channel_info::Options;
-use crate::repositories::service_plugin::models::v1::status::Metric;
-use crate::repositories::service_plugin::models::v1::ChannelExtensionName;
+use crate::grpc_api::models;
+use crate::grpc_api::models::v1::channel_info::Options;
+use crate::grpc_api::models::v1::status::Metric;
+use crate::grpc_api::models::v1::ChannelExtensionName;
 use crate::repositories::service_plugin::service_config::{ConnectionType, ServiceConfig};
 use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;

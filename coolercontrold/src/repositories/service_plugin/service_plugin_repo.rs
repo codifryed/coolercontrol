@@ -21,9 +21,9 @@ use crate::device::{
     ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp,
     TempStatus, Watts, RPM, UID,
 };
+use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
-use crate::repositories::service_plugin::device_service::v1::health_response;
 use crate::repositories::service_plugin::service_config::{ServiceConfig, ServiceType};
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -725,7 +725,7 @@ impl Repository for ServicePluginRepo {
         for (uid, (device, hwmon_info)) in &self.devices {
             init_devices.insert(uid.clone(), (device.borrow().clone(), hwmon_info.clone()));
         }
-        if log::max_level() == log::LevelFilter::Debug {
+        if log::max_level() == LevelFilter::Debug {
             info!("Initialized Service Plugin Devices: {init_devices:?}");
         } else {
             let device_map: HashMap<_, _> = init_devices

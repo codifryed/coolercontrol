@@ -20,15 +20,3 @@ mod client;
 mod service_config;
 mod service_management;
 pub mod service_plugin_repo;
-
-// Note: the rust module relational hierarchy MUST follow the proto package hierarchy
-pub mod models {
-    pub mod v1 {
-        tonic::include_proto!("coolercontrol.models.v1");
-    }
-}
-pub mod device_service {
-    pub mod v1 {
-        tonic::include_proto!("coolercontrol.device_service.v1");
-    }
-}
