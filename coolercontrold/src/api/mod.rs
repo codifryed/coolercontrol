@@ -21,15 +21,15 @@ mod alerts;
 mod auth;
 mod base;
 mod custom_sensors;
-mod devices;
+pub mod devices;
 mod functions;
-mod limiter;
+pub mod limiter;
 pub mod modes;
 mod profiles;
 mod router;
 mod settings;
 mod sse;
-mod status;
+pub mod status;
 
 use crate::alerts::AlertController;
 use crate::api::actor::{
@@ -39,6 +39,7 @@ use crate::api::actor::{
 use crate::api::limiter::throttler::LimiterConfig;
 use crate::config::Config;
 use crate::engine::main::Engine;
+use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
@@ -78,6 +79,7 @@ use tower_sessions::service::PrivateCookie;
 use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
+const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
 const API_RATE_BURST: u32 = 120; // Multiple UIs restarted at the same time creates lots of requests
 const API_RATE_REQ_PER_SEC: u64 = 20;
@@ -85,6 +87,7 @@ const API_TIMEOUT_SECS: u64 = 30;
 
 type Port = u16;
 
+#[allow(clippy::too_many_lines)]
 pub async fn start_server<'s>(
     all_devices: AllDevices,
     repos: Repos,
@@ -98,7 +101,7 @@ pub async fn start_server<'s>(
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
-    let port = env::var(ENV_PORT)
+    let rest_port = env::var(ENV_PORT)
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or_else(|| {
@@ -108,10 +111,10 @@ pub async fn start_server<'s>(
                 .and_then(|settings| settings.port)
                 .unwrap_or(API_SERVER_PORT_DEFAULT)
         });
-    let ipv4 = determine_ipv4_address(&config, port)
+    let ipv4 = determine_ipv4_address(&config, rest_port)
         .await
         .inspect_err(|err| warn!("IPv4 bind error: {err}"));
-    let ipv6 = determine_ipv6_address(&config, port)
+    let ipv6 = determine_ipv6_address(&config, rest_port)
         .await
         .inspect_err(|err| warn!("IPv6 bind error: {err}"));
     if ipv4.is_err() && ipv6.is_err() {
@@ -129,7 +132,7 @@ pub async fn start_server<'s>(
         all_devices,
         repos,
         &engine,
-        config,
+        Rc::clone(&config),
         &custom_sensors_repo,
         &modes_controller,
         &alert_controller,
@@ -155,6 +158,9 @@ pub async fn start_server<'s>(
         )),
     };
 
+    // REST API
+    let grpc_device_handle = app_state.device_handle.clone();
+    let grpc_status_handle = app_state.status_handle.clone();
     if let Ok(ipv4) = ipv4 {
         main_scope.spawn(create_api_server(
             SocketAddr::from(ipv4),
@@ -172,7 +178,49 @@ pub async fn start_server<'s>(
             session_layer,
             compression_layer,
             limiter_layer,
+            cancel_token.clone(),
+        ));
+    }
+
+    // GRPC API
+    // We use a separate socket because the purpose and scope is quite different comparatively
+    let grpc_port = env::var(ENV_PORT)
+        .ok()
+        .and_then(|p| p.parse::<u16>().map(|p| p + 1).ok())
+        .unwrap_or_else(|| {
+            config
+                .get_settings()
+                .ok()
+                .and_then(|settings| settings.port.map(|p| p + 1))
+                .unwrap_or(GRPC_SERVER_PORT_DEFAULT)
+        });
+    let grpc_ipv4 = determine_ipv4_address(&config, grpc_port)
+        .await
+        .inspect_err(|err| warn!("IPv4 GRPC bind error: {err}"));
+    let grpc_ipv6 = determine_ipv6_address(&config, grpc_port)
+        .await
+        .inspect_err(|err| warn!("IPv6 GRPC bind error: {err}"));
+    if grpc_ipv4.is_err() && grpc_ipv6.is_err() {
+        return Err(anyhow!(
+            "Could not bind GRPC API to any address. External Device services are unavailable."
+        ));
+    }
+    if let Ok(ipv4) = grpc_ipv4 {
+        main_scope.spawn(create_grpc_api_server(
+            SocketAddr::from(ipv4),
+            grpc_device_handle.clone(),
+            grpc_status_handle.clone(),
+            cancel_token.clone(),
+            rest_port,
+        ));
+    }
+    if let Ok(ipv6) = grpc_ipv6 {
+        main_scope.spawn(create_grpc_api_server(
+            SocketAddr::from(ipv6),
+            grpc_device_handle,
+            grpc_status_handle,
             cancel_token,
+            rest_port,
         ));
     }
     Ok(())

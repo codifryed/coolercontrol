@@ -50,6 +50,7 @@ mod cc_fs;
 mod config;
 mod device;
 mod engine;
+mod grpc_api;
 mod logger;
 mod main_loop;
 mod modes;
@@ -176,25 +177,37 @@ fn main() -> Result<()> {
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        let engine = Rc::new(Engine::new(all_devices.clone(), &repos, config.clone()));
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &repos,
+            Rc::clone(&config),
+        ));
         let mode_controller = Rc::new(
-            ModeController::init(config.clone(), all_devices.clone(), engine.clone()).await?,
+            ModeController::init(
+                Rc::clone(&config),
+                Rc::clone(&all_devices),
+                Rc::clone(&engine),
+            )
+            .await?,
         );
 
         moro_local::async_scope!(|main_scope| -> Result<()> {
             mode_controller.handle_settings_at_boot().await;
-            let status_handle =
-                api::actor::StatusHandle::new(all_devices.clone(), run_token.clone(), main_scope);
-            let alert_controller = Rc::new(AlertController::init(all_devices.clone()).await?);
+            let status_handle = api::actor::StatusHandle::new(
+                Rc::clone(&all_devices),
+                run_token.clone(),
+                main_scope,
+            );
+            let alert_controller = Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
             AlertController::watch_for_shutdown(&alert_controller, run_token.clone(), main_scope);
             if let Err(err) = api::start_server(
-                all_devices,
+                Rc::clone(&all_devices),
                 Rc::clone(&repos),
-                engine.clone(),
-                config.clone(),
+                Rc::clone(&engine),
+                Rc::clone(&config),
                 custom_sensors_repo,
-                mode_controller.clone(),
-                alert_controller.clone(),
+                Rc::clone(&mode_controller),
+                Rc::clone(&alert_controller),
                 log_buf_handle,
                 status_handle.clone(),
                 run_token.clone(),

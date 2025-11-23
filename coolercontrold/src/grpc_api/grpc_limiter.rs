@@ -16,34 +16,37 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod throttler;
-
-use crate::api::limiter::throttler::{Limiter, LimiterConfig};
 use ::governor::clock::{Clock, DefaultClock};
-use axum::body::Body;
+use tonic::body::Body;
 
-use axum::http::{HeaderMap, Request, Response, StatusCode};
-use derive_more::{Display, Error};
+use crate::api::limiter::ThrottlingError;
+use axum::http::{HeaderMap, Request, Response};
+use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use pin_project::pin_project;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::{future::Future, mem, pin::Pin};
+use std::{fmt, num::NonZeroU32, time::Duration};
+use std::{future::Future, pin::Pin};
 use tower::{Layer, Service};
 
+const DEFAULT_SINGLE_TOKEN_CLEAR_PERIOD: Duration = Duration::from_millis(500);
+const DEFAULT_BURST_SIZE: u32 = 8;
+
+/// This is specifically for `tonic` and the grpc service.
 #[derive(Clone)]
-pub struct LimiterLayer {
-    pub config: Arc<LimiterConfig>,
+pub struct GRPCLimiterLayer {
+    pub config: Arc<GRPCLimiterConfig>,
 }
 
-impl<S> Layer<S> for LimiterLayer {
-    type Service = Limiter<S>;
+impl<S> Layer<S> for GRPCLimiterLayer {
+    type Service = GRPCLimiter<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        Limiter::new(inner, &self.config)
+        GRPCLimiter::new(inner, &self.config)
     }
 }
 
-impl<S, ReqBody> Service<Request<ReqBody>> for Limiter<S>
+impl<S, ReqBody> Service<Request<ReqBody>> for GRPCLimiter<S>
 where
     S: Service<Request<ReqBody>, Response = Response<Body>>,
 {
@@ -118,63 +121,73 @@ where
     }
 }
 
-#[derive(Debug, Error, Display, Clone)]
-pub enum ThrottlingError {
-    #[display("Rate limit exceeded.")]
-    TooManyRequests {
-        wait_time: u64,
-        headers: Option<HeaderMap>,
-    },
-
-    #[display("Unknown Limiter Error")]
-    Unknown,
+#[derive(Debug, Clone)]
+pub struct GRPCLimiterConfig {
+    limiter: Arc<DefaultDirectRateLimiter>,
+    error_handler: GRPCErrorHandler,
 }
 
-impl ThrottlingError {
-    pub fn as_response<ResB>(&mut self) -> Response<ResB>
-    where
-        ResB: From<String>,
-    {
-        match mem::replace(self, Self::Unknown) {
-            ThrottlingError::TooManyRequests { wait_time, headers } => {
-                let response = Response::new(format!(
-                    "Rate limit exceeded, please wait at least {wait_time}s"
-                ));
-                let (mut parts, body) = response.into_parts();
-                parts.status = StatusCode::TOO_MANY_REQUESTS;
-                if let Some(headers) = headers {
-                    parts.headers = headers;
-                }
-                Response::from_parts(parts, ResB::from(body))
-            }
-            ThrottlingError::Unknown => {
-                let response = Response::new("Rate limit returned unknown error".to_string());
-                let (mut parts, body) = response.into_parts();
-                parts.status = StatusCode::INTERNAL_SERVER_ERROR;
-                Response::from_parts(parts, ResB::from(body))
-            }
+impl GRPCLimiterConfig {
+    pub fn new(single_token_clear_duration: Duration, burst: u32) -> Self {
+        Self {
+            limiter: Arc::new(RateLimiter::direct(
+                Quota::with_period(single_token_clear_duration)
+                    .unwrap()
+                    .allow_burst(NonZeroU32::new(burst).unwrap()),
+            )),
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for GRPCLimiterConfig {
+    fn default() -> Self {
+        Self {
+            limiter: Arc::new(RateLimiter::direct(
+                Quota::with_period(DEFAULT_SINGLE_TOKEN_CLEAR_PERIOD)
+                    .unwrap()
+                    .allow_burst(NonZeroU32::new(DEFAULT_BURST_SIZE).unwrap()),
+            )),
+            error_handler: GRPCErrorHandler::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[allow(clippy::struct_field_names)]
+pub struct GRPCLimiter<S> {
+    pub limiter: Arc<DefaultDirectRateLimiter>,
+    pub inner: S,
+    error_handler: GRPCErrorHandler,
+}
+
+impl<S> GRPCLimiter<S> {
+    pub fn new(inner: S, config: &GRPCLimiterConfig) -> Self {
+        GRPCLimiter {
+            limiter: config.limiter.clone(),
+            inner,
+            error_handler: config.error_handler.clone(),
         }
     }
 
-    pub fn as_response_body(&mut self) -> Response<tonic::body::Body> {
-        match mem::replace(self, Self::Unknown) {
-            ThrottlingError::TooManyRequests { wait_time, headers } => {
-                let response = Response::new(format!(
-                    "Rate limit exceeded, please wait at least {wait_time}s"
-                ));
-                let (mut parts, body) = response.into_parts();
-                parts.status = StatusCode::TOO_MANY_REQUESTS;
-                if let Some(headers) = headers {
-                    parts.headers = headers;
-                }
-                Response::from_parts(parts, tonic::body::Body::new(body))
-            }
-            ThrottlingError::Unknown => {
-                let response = Response::new("Rate limit returned unknown error".to_string());
-                let (mut parts, body) = response.into_parts();
-                parts.status = StatusCode::INTERNAL_SERVER_ERROR;
-                Response::from_parts(parts, tonic::body::Body::new(body))
-            }
-        }
+    pub(crate) fn error_handler(
+        &self,
+    ) -> &(dyn Fn(ThrottlingError) -> Response<Body> + Send + Sync) {
+        &*self.error_handler.0
+    }
+}
+
+#[derive(Clone)]
+struct GRPCErrorHandler(Arc<dyn Fn(ThrottlingError) -> Response<Body> + Send + Sync>);
+
+impl Default for GRPCErrorHandler {
+    fn default() -> Self {
+        Self(Arc::new(|mut e| e.as_response_body()))
+    }
+}
+
+impl fmt::Debug for GRPCErrorHandler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ErrorHandler").finish()
     }
 }
