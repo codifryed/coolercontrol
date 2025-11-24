@@ -36,7 +36,7 @@ use async_trait::async_trait;
 use const_format::concatcp;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::Path;
 use std::rc::Rc;
@@ -72,9 +72,10 @@ pub struct ServicePluginRepo {
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     preloaded_statuses: RefCell<HashMap<DeviceUID, PreloadData>>,
     failsafe_statuses: RefCell<HashMap<DeviceUID, FailsafeStatusData>>,
-    disabled_channels: HashMap<DeviceUID, Vec<String>>,
+    disabled_channels: HashMap<DeviceUID, HashSet<String>>,
 }
 
+#[derive(Debug)]
 struct PreloadData {
     channels: HashMap<ChannelName, ChannelStatus>,
     temps: HashMap<ChannelName, TempStatus>,
@@ -585,16 +586,11 @@ impl ServicePluginRepo {
             }
             return;
         };
-        channel_statuses.retain(|s| {
-            self.disabled_channels
-                .get(&device_uid)
-                .is_some_and(|disabled_channels| disabled_channels.contains(&s.name).not())
-        });
-        temp_statuses.retain(|s| {
-            self.disabled_channels
-                .get(&device_uid)
-                .is_some_and(|disabled_channels| disabled_channels.contains(&s.name).not())
-        });
+        let disabled_channels_for_device = self.disabled_channels.get(&device_uid);
+        channel_statuses
+            .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
+        temp_statuses
+            .retain(|s| Self::retain_enabled_channels(&s.name, disabled_channels_for_device));
         {
             let mut missing_lock = self.failsafe_statuses.borrow_mut();
             let msd = missing_lock
@@ -651,6 +647,15 @@ impl ServicePluginRepo {
         self.preloaded_statuses
             .borrow_mut()
             .insert(device_uid, preload_data);
+    }
+
+    fn retain_enabled_channels(
+        channel_name: &str,
+        disabled_channels_for_device: Option<&HashSet<String>>,
+    ) -> bool {
+        disabled_channels_for_device.is_none()
+            || disabled_channels_for_device
+                .is_some_and(|disabled_channels| disabled_channels.contains(channel_name).not())
     }
 }
 
@@ -715,9 +720,15 @@ impl Repository for ServicePluginRepo {
         self.failsafe_statuses = Rc::into_inner(failsafe_statuses)
             .expect("All failsafe_statuses references should be gone");
         if let Ok(cc_device_settings) = self.config.get_all_cc_devices_settings() {
+            // get_all_cc_device_settings only returns devices that have settings
             for (device_uid, cc_device_settings) in cc_device_settings {
-                self.disabled_channels
-                    .insert(device_uid, cc_device_settings.get_disabled_channels());
+                self.disabled_channels.insert(
+                    device_uid,
+                    cc_device_settings
+                        .get_disabled_channels()
+                        .into_iter()
+                        .collect(),
+                );
             }
         }
 
@@ -774,7 +785,8 @@ impl Repository for ServicePluginRepo {
                 let self = Rc::clone(&self);
                 status_scope.spawn(self.preload_device_status(device_uid.clone(), service));
             }
-        });
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all Device Service devices: {:?}",
             start_update.elapsed()
