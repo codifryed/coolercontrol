@@ -221,7 +221,7 @@ build_arm64:
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:
-    - saas-linux-xlarge-arm64
+    - saas-linux-large-arm64
   needs:
     - compile_artifacts
   rules:
@@ -299,7 +299,7 @@ build_deb_bookworm_arm64:
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:
-    - saas-linux-xlarge-arm64
+    - saas-linux-large-arm64
   needs:
     - compile_artifacts
     # For some reason (emulation?), if the amd64 build is running at the same time, there are problems
@@ -654,7 +654,7 @@ push_dh-alpine_arm64:
   <<: [*main_image_template]
   stage: build
   tags:
-    - saas-linux-xlarge-arm64
+    - saas-linux-large-arm64
   services:
     - docker:dind
   variables:
