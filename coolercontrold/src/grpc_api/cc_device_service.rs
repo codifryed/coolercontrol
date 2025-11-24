@@ -92,7 +92,8 @@ impl CCDeviceService {
         };
         models::v1::Device {
             id: device_dto.uid.clone(),
-            name: device_dto.name,
+            // Sub-CC-Daemons expose their devices with the hostname prefix
+            name: format!("{}-{}", self.hostname, device_dto.name),
             uid_info: Some(device_dto.uid),
             info: Some(device_info),
         }
