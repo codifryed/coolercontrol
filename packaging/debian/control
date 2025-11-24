@@ -10,6 +10,7 @@ Build-Depends:
  nodejs,
  cargo,
  libdrm-dev,
+ protobuf-compiler,
 # coolercontrol:
  build-essential,
  cmake (>= 3.15),
