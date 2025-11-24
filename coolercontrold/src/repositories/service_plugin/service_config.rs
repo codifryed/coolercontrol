@@ -71,7 +71,8 @@ impl ServiceConfig {
             .collect();
         let address_opt = document
             .get("address")
-            .and_then(|item| item.as_str().map(str::trim))
+            .and_then(|item| item.as_str().map(str::trim).map(str::to_string))
+            .or_else(|| Some(format!("/run/coolercontrol-plugin-{id}.sock")))
             .filter(|_| service_type == ServiceType::Device);
         let address = match address_opt {
             None => ConnectionType::None,
@@ -81,11 +82,11 @@ impl ServiceConfig {
                         "/run/coolercontrol-plugin-{id}.sock"
                     )))
                 } else {
-                    let check_path = PathBuf::from(address);
+                    let check_path = PathBuf::from(&address);
                     if check_path.is_absolute() {
                         ConnectionType::Uds(check_path)
                     } else {
-                        ConnectionType::Tcp(address.to_string())
+                        ConnectionType::Tcp(address)
                     }
                 }
             }
