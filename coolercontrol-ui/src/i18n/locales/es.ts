@@ -1036,6 +1036,7 @@ export default {
             gpu: 'GPU',
             liquidctl: 'Liquidctl',
             hwmon: 'Hwmon',
+            servicePlugin: 'Complemento de Servicio',
         },
         driverType: {
             kernel: 'Kernel',
@@ -1043,6 +1044,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia CLI',
             coolercontrol: 'CoolerControl',
+            external: 'Externo',
         },
         lcdModeType: {
             none: 'Ninguno',

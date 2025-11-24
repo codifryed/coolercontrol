@@ -96,6 +96,7 @@ export enum DriverType {
     NVML = 'NVML',
     NVIDIA_CLI = 'NvidiaCLI',
     COOLERCONTROL = 'CoolerControl', // For things like CustomSensors
+    EXTERNAL = 'External', // For external device services
 }
 
 /**
@@ -116,6 +117,8 @@ export function getDriverTypeDisplayName(type: DriverType): string {
             return t('models.driverType.nvidiaCli')
         case DriverType.COOLERCONTROL:
             return t('models.driverType.coolercontrol')
+        case DriverType.EXTERNAL:
+            return t('models.driverType.external')
         default:
             return String(type)
     }

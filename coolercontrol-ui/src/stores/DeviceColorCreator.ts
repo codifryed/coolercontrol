@@ -105,6 +105,8 @@ function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
             return [0.5, 0.7]
         case d3chromatic.interpolateBuGn:
             return [0.7, 1.0]
+        case d3chromatic.interpolateWarm:
+            return [0.15, 0.45]
         default:
             return [0.4, 0.9]
     }
@@ -127,5 +129,11 @@ export default function setDefaultSensorAndChannelColors(
         deviceSettings,
         [DeviceType.CUSTOM_SENSORS],
         d3chromatic.interpolateBuGn,
+    )
+    setDeviceColors(
+        devices,
+        deviceSettings,
+        [DeviceType.SERVICE_PLUGIN],
+        d3chromatic.interpolateWarm,
     )
 }

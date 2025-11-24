@@ -1001,6 +1001,7 @@ export default {
             gpu: '顯卡',
             liquidctl: '水冷控制',
             hwmon: '硬件監控',
+            servicePlugin: '服務插件',
         },
         driverType: {
             kernel: '內核',
@@ -1008,6 +1009,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia命令行',
             coolercontrol: '冷卻控制',
+            external: '外部',
         },
         lcdModeType: {
             none: '無',

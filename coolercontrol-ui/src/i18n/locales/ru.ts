@@ -1029,6 +1029,7 @@ export default {
             gpu: 'ГП',
             liquidctl: 'Liquidctl',
             hwmon: 'Hwmon',
+            servicePlugin: 'Плагин сервиса',
         },
         driverType: {
             kernel: 'Ядро',
@@ -1036,6 +1037,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia CLI',
             coolercontrol: 'CoolerControl',
+            external: 'Внешний',
         },
         lcdModeType: {
             none: 'Нет',

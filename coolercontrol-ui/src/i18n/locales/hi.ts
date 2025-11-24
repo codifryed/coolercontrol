@@ -1030,6 +1030,7 @@ export default {
             gpu: 'GPU',
             liquidctl: 'Liquidctl',
             hwmon: 'Hwmon',
+            servicePlugin: 'सेवा प्लगइन',
         },
         driverType: {
             kernel: 'कर्नेल',
@@ -1037,6 +1038,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia CLI',
             coolercontrol: 'CoolerControl',
+            external: 'बाहरी',
         },
         lcdModeType: {
             none: 'कोई नहीं',

@@ -28,6 +28,7 @@ export enum DeviceType {
     GPU = 'GPU',
     LIQUIDCTL = 'Liquidctl',
     HWMON = 'Hwmon',
+    SERVICE_PLUGIN = 'ServicePlugin',
 }
 
 /**
@@ -48,6 +49,8 @@ export function getDeviceTypeDisplayName(type: DeviceType): string {
             return t('models.deviceType.liquidctl')
         case DeviceType.HWMON:
             return t('models.deviceType.hwmon')
+        case DeviceType.SERVICE_PLUGIN:
+            return t('models.deviceType.servicePlugin')
         default:
             return String(type)
     }
