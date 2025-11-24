@@ -49,10 +49,8 @@ pub async fn create_grpc_api_server(
     device_handle: DeviceHandle,
     status_handle: StatusHandle,
     cancel_token: CancellationToken,
-    ui_port: u16,
 ) -> Result<()> {
-    let ui_link = format!("http://{}:{}", addr.ip(), ui_port);
-    let service = CCDeviceService::new(device_handle, status_handle, ui_link);
+    let service = CCDeviceService::new(device_handle, status_handle);
     let limiter_layer = GRPCLimiterLayer {
         config: Arc::new(GRPCLimiterConfig::new(
             Duration::from_millis(1000 / API_RATE_REQ_PER_SEC),

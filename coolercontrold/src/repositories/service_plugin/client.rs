@@ -56,6 +56,8 @@ static DEVICE_SERVICE_WAIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Durati
 #[derive(Debug)]
 pub struct DeviceServiceClient {
     service_id: ServiceId,
+    client_address: String,
+    poll_rate: f64,
 
     /// Using a `tokio::Mutex` has the advantage of being able to hold a lock over an await point,
     /// and for the small amount of requests we make, performance is shown to be on par with std.
@@ -70,7 +72,7 @@ pub struct DeviceServiceClient {
 }
 
 impl DeviceServiceClient {
-    pub async fn connect(service_config: &ServiceConfig) -> Result<Self> {
+    pub async fn connect(service_config: &ServiceConfig, poll_rate: f64) -> Result<Self> {
         let address = match &service_config.address {
             ConnectionType::Uds(uds) => {
                 format!("unix://{}", uds.display())
@@ -80,17 +82,27 @@ impl DeviceServiceClient {
             }
             ConnectionType::None => return Err(anyhow!("Invalid Connection Type: NONE!")),
         };
-        let grpc_client = device_service_client::DeviceServiceClient::connect(address).await?;
-        Ok(Self::new(service_config.id.clone(), grpc_client))
+        let grpc_client =
+            device_service_client::DeviceServiceClient::connect(address.clone()).await?;
+        Ok(Self::new(
+            service_config.id.clone(),
+            address,
+            poll_rate,
+            grpc_client,
+        ))
     }
 
     fn new(
         service_id: ServiceId,
+        client_address: String,
+        poll_rate: f64,
         client: device_service_client::DeviceServiceClient<Channel>,
     ) -> Self {
         let service_client = Mutex::new(client);
         Self {
             service_id,
+            client_address,
+            poll_rate,
             service_client,
             device_clients: HashMap::new(),
             device_ids: HashMap::new(),
@@ -152,7 +164,7 @@ impl DeviceServiceClient {
         }
     }
 
-    pub async fn list_devices(&self, poll_rate: f64) -> Result<Vec<(ServiceDeviceID, Device)>> {
+    pub async fn list_devices(&self) -> Result<Vec<(ServiceDeviceID, Device)>> {
         tokio::select! {
             () = sleep(*DEVICE_SERVICE_WAIT_TIMEOUT) => Err(anyhow!(
                 "TIMEOUT Device Service Plugin {}; waiting to list devices. \
@@ -163,7 +175,7 @@ impl DeviceServiceClient {
                 let request = Request::new(ListDevicesRequest{});
                 let mut service_client = self.service_client.lock().await;
                 service_client.list_devices(request).await
-                .map(|r| Self::map_devices(r, poll_rate))
+                .map(|r| self.map_devices(r))
                 .map_err(|s| anyhow!("Failed to list devices: {s}"))
             }
         }
@@ -206,8 +218,8 @@ impl DeviceServiceClient {
     }
 
     fn map_devices(
+        &self,
         devices_response: tonic::Response<ListDevicesResponse>,
-        poll_rate: f64,
     ) -> Vec<(ServiceDeviceID, Device)> {
         let mut devices = vec![];
         for (index, device_res) in devices_response
@@ -237,7 +249,7 @@ impl DeviceServiceClient {
                             drv_type: DriverType::External,
                             name: d.name,
                             version: d.version,
-                            locations: d.locations,
+                            locations: self.add_address_to_locations(d.locations),
                         },
                     ),
                 });
@@ -251,7 +263,7 @@ impl DeviceServiceClient {
                     None,
                     device_info,
                     device_res.uid_info,
-                    poll_rate,
+                    self.poll_rate,
                 ),
             ));
         }
@@ -350,6 +362,11 @@ impl DeviceServiceClient {
                 )
             })
             .collect()
+    }
+
+    fn add_address_to_locations(&self, mut locations: Vec<String>) -> Vec<String> {
+        locations.push(self.client_address.clone());
+        locations
     }
 
     pub async fn status(

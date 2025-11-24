@@ -211,7 +211,6 @@ pub async fn start_server<'s>(
             grpc_device_handle.clone(),
             grpc_status_handle.clone(),
             cancel_token.clone(),
-            rest_port,
         ));
     }
     if let Ok(ipv6) = grpc_ipv6 {
@@ -220,7 +219,6 @@ pub async fn start_server<'s>(
             grpc_device_handle,
             grpc_status_handle,
             cancel_token,
-            rest_port,
         ));
     }
     Ok(())

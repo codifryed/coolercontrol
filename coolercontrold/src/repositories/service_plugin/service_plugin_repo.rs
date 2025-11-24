@@ -282,7 +282,7 @@ impl ServicePluginRepo {
                 return;
             }
         }
-        match DeviceServiceClient::connect(&service_config).await {
+        match DeviceServiceClient::connect(&service_config, poll_rate).await {
             Ok(mut client) => {
                 let mut version = String::new();
                 let mut retries = 0;
@@ -321,7 +321,7 @@ impl ServicePluginRepo {
                         }
                     }
                 }
-                let devices_response = match client.list_devices(poll_rate).await {
+                let devices_response = match client.list_devices().await {
                     Ok(devices_response) => devices_response,
                     Err(err) => {
                         error!("Error listing devices for {service_id}: {err}");

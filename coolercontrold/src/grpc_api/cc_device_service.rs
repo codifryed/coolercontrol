@@ -44,25 +44,24 @@ use tonic::{Request, Response, Status};
 pub struct CCDeviceService {
     service_id: String,
     version: String,
-    ui_link: String,
+    hostname: String,
     device_handle: DeviceHandle,
     status_handle: StatusHandle,
 }
 
 impl CCDeviceService {
-    pub fn new(device_handle: DeviceHandle, status_handle: StatusHandle, ui_link: String) -> Self {
-        let system_name = sysinfo::System::host_name().unwrap_or_default();
+    pub fn new(device_handle: DeviceHandle, status_handle: StatusHandle) -> Self {
+        let hostname = sysinfo::System::host_name().unwrap_or_default();
         Self {
-            service_id: format!("coolercontrold-{system_name}"),
+            service_id: format!("coolercontrold-{hostname}"),
             version: VERSION.to_string(),
-            ui_link,
+            hostname,
             device_handle,
             status_handle,
         }
     }
 
     fn map_device_model(&self, device_dto: DeviceDto) -> models::v1::Device {
-        let locations = vec![self.service_id.clone(), self.ui_link.clone()];
         let channels = device_dto
             .info
             .channels
@@ -78,7 +77,7 @@ impl CCDeviceService {
         let driver_info = models::v1::DriverInfo {
             name: device_dto.info.driver_info.name,
             version: device_dto.info.driver_info.version,
-            locations,
+            locations: vec![self.service_id.clone()],
         };
         let device_info = models::v1::DeviceInfo {
             channels,
