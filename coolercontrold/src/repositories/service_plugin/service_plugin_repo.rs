@@ -472,6 +472,18 @@ impl ServicePluginRepo {
             devices_to_remove.borrow_mut().push(device_uid.clone());
             return;
         };
+        if device.borrow().info.channels.is_empty()
+            && channel_statuses.is_empty()
+            && temp_statuses.is_empty()
+        {
+            // If no fan, temp, lighting, or lcd channels, then no need to bother connecting and polling
+            debug!(
+                "Device {device_uid} from Service {} has no channels or temps. Skipping.",
+                service.id
+            );
+            devices_to_remove.borrow_mut().push(device_uid.clone());
+            return;
+        }
         let disabled_channels =
             cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
         channel_statuses.retain(|s| disabled_channels.contains(&s.name).not());
