@@ -333,7 +333,7 @@ impl ServicePluginRepo {
                         (device.uid.clone(), service_device_id.clone())
                     })
                     .collect();
-                client.with_device_ids(device_ids);
+                client.with_device_ids(device_ids).await;
                 let device_service_conn = Rc::new(DeviceServiceConnection {
                     id: service_id.clone(),
                     version,

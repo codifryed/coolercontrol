@@ -99,13 +99,13 @@ impl DeviceServiceClient {
     }
 
     /// This allows us to make a few basic requests with our timeout logic before we have the device IDs.
-    pub fn with_device_ids(&mut self, device_ids: Vec<(DeviceUID, ServiceDeviceID)>) {
+    pub async fn with_device_ids(&mut self, device_ids: Vec<(DeviceUID, ServiceDeviceID)>) {
         let mut device_clients = HashMap::new();
         let mut device_id_map = HashMap::new();
         for (device_uid, service_device_id) in device_ids {
             device_clients.insert(
                 device_uid.clone(),
-                Mutex::new(self.service_client.blocking_lock().clone()),
+                Mutex::new(self.service_client.lock().await.clone()),
             );
             device_id_map.insert(device_uid, service_device_id);
         }
