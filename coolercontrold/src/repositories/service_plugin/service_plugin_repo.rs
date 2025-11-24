@@ -831,8 +831,8 @@ impl Repository for ServicePluginRepo {
                     }
                     if service_config.is_managed() {
                         let _ = self.service_manager.remove(service_id).await;
+                        info!("Plugin Service {service_id} stopped.");
                     }
-                    info!("Plugin Service {service_id} stopped.");
                 });
             }
         })
