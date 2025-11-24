@@ -488,11 +488,17 @@ impl ServicePluginRepo {
             cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
         channel_statuses.retain(|s| disabled_channels.contains(&s.name).not());
         temp_statuses.retain(|s| disabled_channels.contains(&s.name).not());
-        device
-            .borrow_mut()
-            .info
-            .channels
-            .retain(|name, _info| disabled_channels.contains(name).not());
+        {
+            let mut device_lock = device.borrow_mut();
+            device_lock
+                .info
+                .channels
+                .retain(|name, _info| disabled_channels.contains(name).not());
+            device_lock
+                .info
+                .temps
+                .retain(|name, _info| disabled_channels.contains(name).not());
+        }
 
         let (channel_failsafes, temp_failsafes) =
             Self::create_failsafe_data(&channel_statuses, &temp_statuses);
