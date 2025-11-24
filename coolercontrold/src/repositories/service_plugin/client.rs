@@ -76,7 +76,6 @@ impl DeviceServiceClient {
                 format!("unix://{}", uds.display())
             }
             ConnectionType::Tcp(tcp_addr) => {
-                // todo: probably want the user to be able to set s or not, (put in config file)
                 format!("http://{tcp_addr}")
             }
             ConnectionType::None => return Err(anyhow!("Invalid Connection Type: NONE!")),
