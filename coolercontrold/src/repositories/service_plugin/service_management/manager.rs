@@ -19,7 +19,11 @@
 use crate::repositories::service_plugin::service_management::openrc::OpenRcManager;
 use crate::repositories::service_plugin::service_management::systemd::SystemdManager;
 use crate::repositories::service_plugin::service_management::ServiceId;
+use crate::ENV_SERVICE_MANAGER;
 use anyhow::{anyhow, Result};
+use log::info;
+use std::env;
+use std::ops::Not;
 use std::path::PathBuf;
 
 pub trait ServiceManager {
@@ -38,6 +42,7 @@ pub trait ServiceManager {
 pub enum Manager {
     OpenRc(OpenRcManager),
     Systemd(SystemdManager),
+    Disabled,
 }
 
 impl ServiceManager for Manager {
@@ -45,6 +50,7 @@ impl ServiceManager for Manager {
         match self {
             Manager::Systemd(m) => m.add(service_definition).await,
             Manager::OpenRc(m) => m.add(service_definition).await,
+            Manager::Disabled => Ok(()),
         }
     }
 
@@ -52,6 +58,7 @@ impl ServiceManager for Manager {
         match self {
             Manager::Systemd(m) => m.remove(service_id).await,
             Manager::OpenRc(m) => m.remove(service_id).await,
+            Manager::Disabled => Ok(()),
         }
     }
 
@@ -59,6 +66,7 @@ impl ServiceManager for Manager {
         match self {
             Manager::Systemd(m) => m.start(service_id).await,
             Manager::OpenRc(m) => m.start(service_id).await,
+            Manager::Disabled => Ok(()),
         }
     }
 
@@ -66,6 +74,7 @@ impl ServiceManager for Manager {
         match self {
             Manager::Systemd(m) => m.stop(service_id).await,
             Manager::OpenRc(m) => m.stop(service_id).await,
+            Manager::Disabled => Ok(()),
         }
     }
 
@@ -73,18 +82,33 @@ impl ServiceManager for Manager {
         match self {
             Manager::Systemd(m) => m.status(service_id).await,
             Manager::OpenRc(m) => m.status(service_id).await,
+            Manager::Disabled => Ok(ServiceStatus::Running),
         }
     }
 }
 
 impl Manager {
     pub fn detect() -> Result<Self> {
-        if SystemdManager::detected() {
-            return Ok(Self::Systemd(SystemdManager::default()));
+        let manager_enabled = env::var(ENV_SERVICE_MANAGER)
+            .ok()
+            .and_then(|env_service_manager| {
+                env_service_manager
+                    .parse::<u8>()
+                    .ok()
+                    .map(|num| num != 0)
+                    .or_else(|| Some(env_service_manager.trim().to_lowercase() != "off"))
+            })
+            .unwrap_or(true);
+        if manager_enabled.not() {
+            info!("Plugin Service Manager disabled. All plugins will need to be started manually.");
+            Ok(Self::Disabled)
+        } else if SystemdManager::detected() {
+            Ok(Self::Systemd(SystemdManager::default()))
         } else if OpenRcManager::detected() {
-            return Ok(Self::OpenRc(OpenRcManager::default()));
+            Ok(Self::OpenRc(OpenRcManager::default()))
+        } else {
+            Err(anyhow!("Failed to detect System Service Manager. The daemon will not be able to manage the plugin processes."))
         }
-        Err(anyhow!("Failed to detect System Service Manager"))
     }
 
     // pub fn is_systemd(&self) -> bool {

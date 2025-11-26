@@ -54,6 +54,7 @@ ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
+ENV CC_SERVICE_MANAGER=OFF
 
 RUN apt update && apt install -y --no-install-recommends \
     libusb-1.0-0 && \

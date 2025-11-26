@@ -114,6 +114,15 @@ const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 /// ```
 const ENV_DBUS: &str = "CC_DBUS";
 
+/// Environment Variable: To disable service manager integration
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_SERVICE_MANAGER=ON coolercontrold
+/// ```
+const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
+
 /// Environment Variable: To disable NVML integration
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///
