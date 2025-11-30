@@ -609,6 +609,11 @@ class DeviceService:
                 speed_channels = fan_names
             if led_names := getattr(lc_device, "_led_names", []):
                 color_channels = led_names
+        elif isinstance(lc_device, CorsairHidPsu):
+            if hasattr(liquidctl.driver.corsair_hid_psu, "_MIN_FAN_DUTY"):
+                # set the minimum fan speed to 15%,
+                # tested working - lower produces a different response from the hardware with poor results.
+                liquidctl.driver.corsair_hid_psu._MIN_FAN_DUTY = 15
         elif isinstance(lc_device, HydroPlatinum):
             if fan_names := getattr(lc_device, "_fan_names", []):
                 speed_channels = fan_names

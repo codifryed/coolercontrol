@@ -44,7 +44,16 @@ impl DeviceSupport for CorsairHidPsuSupport {
             "fan".to_string(),
             ChannelInfo {
                 speed_options: Some(SpeedOptions {
-                    min_duty: 30, // PSU min
+                    // We override the driver's min duty of 30%.
+                    // 15% is half as fast rpm-wise, noticeably less noisy, and still offers
+                    // decent cooling in lower power draw situations.
+                    // Tested on real hardware and collaborates with other reports.
+                    // The hardware has a different response when attempting to apply <13% and is
+                    // pretty much limited to that as the slowest speed achievable for the fan
+                    // itself. Manually setting 0 rpm is not possible, except in auto/hardware mode,
+                    // and it takes a long time to kick down. Note that in auto mode 0 rpm can
+                    // happen a lot, so it's often best to just use auto mode.
+                    min_duty: 15,
                     max_duty: 100,
                     fixed_enabled: true,
                     extension: None,
