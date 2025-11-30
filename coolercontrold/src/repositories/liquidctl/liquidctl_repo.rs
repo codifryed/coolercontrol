@@ -162,15 +162,16 @@ impl LiquidctlRepo {
                 poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+            if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
                     device.name, device.uid
                 );
                 continue;
             }
-            let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
+            let disabled_channels = cc_device_setting
+                .as_ref()
+                .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             // remove disabled lighting and lcd channels:
             device
                 .info
