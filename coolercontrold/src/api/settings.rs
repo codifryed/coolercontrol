@@ -19,7 +19,9 @@
 use crate::api::devices::DevicePath;
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, UID};
-use crate::setting::{CCChannelSettings, CCDeviceSettings, CoolerControlSettings};
+use crate::setting::{
+    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, DeviceExtensions,
+};
 use axum::extract::{Path, State};
 use axum::Json;
 use schemars::JsonSchema;
@@ -202,6 +204,7 @@ pub struct CoolerControlDeviceSettingsDto {
     pub uid: UID,
     pub name: String,
     pub disable: bool,
+    pub extensions: DeviceExtensions,
     pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
 }
 

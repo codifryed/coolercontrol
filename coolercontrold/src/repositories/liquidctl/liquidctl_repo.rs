@@ -181,6 +181,15 @@ impl LiquidctlRepo {
                 .borrow_mut()
                 .insert(device.uid.clone(), disabled_channels);
             self.check_for_legacy_690(&mut device).await?;
+            if cc_device_setting.is_some_and(|s| s.extensions.direct_access) {
+                if let Err(err) = self
+                    .liqctld_client
+                    .put_direct_access(&device.type_index)
+                    .await
+                {
+                    error!("Error enabling direct access for: {} - {err}", device.name);
+                }
+            }
             self.devices
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }

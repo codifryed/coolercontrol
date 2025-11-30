@@ -43,6 +43,9 @@ export class CoolerControlDeviceSettingsDTO {
     name: string
     disable: boolean = false
 
+    // Specialized settings (extensions) that apply to a specific device.
+    extensions: DeviceExtensions = new DeviceExtensions()
+
     // We need a special transformer for this collection mapping to work
     @Transform(
         ({ value }) => {
@@ -74,6 +77,18 @@ export class CCChannelSettings {
 
     // Specialized settings (extensions) that apply to a specific device channel.
     extension?: ChannelExtensions
+}
+
+// since TS doesn't have the same kind of enum power as Rust, we include all options
+export class DeviceExtensions {
+    // Whether to enable Direct Access for the liquidctl driver,
+    // which will cause liquidctl to ignore the HWMon kernel driver
+    direct_access: boolean = false
+
+    // The delay in milliseconds to force between applying settings to this device.
+    // This is to help with communication issues with some devices that may not handle
+    // multiple settings applied in quick succession. (The driver does not always handle this)
+    delay_millis: number = 0
 }
 
 // since TS doesn't have the same kind of enum power as Rust, we include all options

@@ -176,6 +176,9 @@ pub struct CCDeviceSettings {
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
 
+    /// Specialized settings (extensions) that apply to a specific device.
+    pub extensions: DeviceExtensions,
+
     /// A list of channels specific settings, including disable and extension settings.
     pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
 }
@@ -200,6 +203,21 @@ impl CCDeviceSettings {
             .cloned()
             .collect()
     }
+}
+
+/// Device specific extension settings
+/// This is used to store specialized settings (extensions) that apply to a specific device.
+/// More than one of these settings can be applied at a time.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceExtensions {
+    /// Whether to enable Direct Access for the liquidctl driver,
+    /// which will cause liquidctl to ignore the HWMon kernel driver
+    pub direct_access: bool,
+
+    /// The delay in milliseconds to force between applying settings to this device.
+    /// This is to help with communication issues with some devices that may not handle
+    /// multiple settings applied in quick succession. (The driver does not always handle this)
+    pub delay_millis: u16,
 }
 
 /// Device Channel specific settings

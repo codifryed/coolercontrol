@@ -15,12 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::settings::{CoolerControlDeviceSettingsDto, CoolerControlSettingsDto};
 use crate::api::CCError;
 use crate::config::Config;
 use crate::device::{DeviceType, DeviceUID};
-use crate::setting::{CCDeviceSettings, CoolerControlSettings, Setting};
+use crate::setting::{CCDeviceSettings, CoolerControlSettings, DeviceExtensions, Setting};
 use crate::AllDevices;
 use anyhow::Result;
 use moro_local::Scope;
@@ -119,6 +120,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                                     uid: device_uid.clone(),
                                     name: settings.name, // keeps user-defined name from UI
                                     disable: settings.disable,
+                                    extensions: settings.extensions,
                                     channel_settings: settings.channel_settings,
                                 },
                             );
@@ -137,6 +139,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                                     uid: device_uid.clone(),
                                     name: device_name,
                                     disable: false,
+                                    extensions: DeviceExtensions::default(),
                                     channel_settings: HashMap::with_capacity(0),
                                 },
                             );
@@ -150,6 +153,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                                 uid: device_uid,
                                 name: settings.name,
                                 disable: settings.disable,
+                                extensions: settings.extensions,
                                 channel_settings: settings.channel_settings,
                             },
                         );
@@ -173,6 +177,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                             uid: device_uid,
                             name: settings.name, // keeps user-defined name from UI
                             disable: settings.disable,
+                            extensions: settings.extensions,
                             channel_settings: settings.channel_settings,
                         }
                     } else {
@@ -194,6 +199,7 @@ impl ApiActor<SettingMessage> for SettingActor {
                             uid: device_uid,
                             name: current_device_name,
                             disable: false,
+                            extensions: DeviceExtensions::default(),
                             channel_settings: HashMap::with_capacity(0),
                         }
                     };
