@@ -1167,7 +1167,7 @@ impl Config {
             Ok(Some(CCDeviceSettings {
                 name,
                 disable,
-                extensions: extensions,
+                extensions,
                 channel_settings,
             }))
         } else {
