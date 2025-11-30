@@ -36,10 +36,10 @@ use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
-    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
-    FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings, Offset, Profile,
-    ProfileMixFunctionType, ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID,
-    DEFAULT_PROFILE_UID,
+    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
+    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings,
+    Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
+    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -1056,6 +1056,25 @@ impl Config {
                 .as_str()
                 .with_context(|| "name should be a string")?
                 .to_string();
+            let mut extensions = DeviceExtensions::default();
+            if let Some(value) = device_settings_table.get("extensions") {
+                let device_ext_table = value
+                    .as_inline_table()
+                    .with_context(|| "CC Device Extensions should be an inline table")?
+                    .clone()
+                    .into_table();
+                if let Some(value) = device_ext_table.get("direct_access") {
+                    extensions.direct_access = value
+                        .as_bool()
+                        .with_context(|| "direct_access should be a boolean value")?;
+                }
+                if let Some(value) = device_ext_table.get("delay_millis") {
+                    extensions.delay_millis = value
+                        .as_integer()
+                        .with_context(|| "delay_millis should be an integer value")?
+                        as u16;
+                }
+            }
             // deprecated(3.0.0). We convert this to the new model for backwards compatibility:
             let disable_channels =
                 if let Some(value) = device_settings_table.get("disable_channels") {
@@ -1148,6 +1167,7 @@ impl Config {
             Ok(Some(CCDeviceSettings {
                 name,
                 disable,
+                extensions,
                 channel_settings,
             }))
         } else {
@@ -1169,6 +1189,28 @@ impl Config {
         )));
         device_settings_table["disable"] =
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
+        let mut has_device_extension_setting = false;
+        device_settings_table["extensions"]["direct_access"] =
+            if cc_device_settings.extensions.direct_access {
+                has_device_extension_setting = true;
+                Item::Value(Value::Boolean(Formatted::new(
+                    cc_device_settings.extensions.direct_access,
+                )))
+            } else {
+                Item::None
+            };
+        device_settings_table["extensions"]["delay_millis"] =
+            if cc_device_settings.extensions.delay_millis > 0 {
+                has_device_extension_setting = true;
+                Item::Value(Value::Integer(Formatted::new(
+                    cc_device_settings.extensions.delay_millis.into(),
+                )))
+            } else {
+                Item::None
+            };
+        if has_device_extension_setting.not() {
+            device_settings_table["extensions"] = Item::None;
+        }
         // deprecated (3.0.0). channel_settings is now used instead:
         device_settings_table["disable_channels"] = Item::None;
         let mut channel_settings_table = Item::Table(Table::new());

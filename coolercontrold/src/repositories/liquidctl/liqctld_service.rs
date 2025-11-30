@@ -189,8 +189,16 @@ async fn process_log_output(
         let log_line = if let Some(stripped) = line.strip_prefix("INFO") {
             lvl = log::Level::Info;
             stripped
-        } else if let Some(stripped) = line.strip_prefix("WARNING") {
+        } else if let Some(mut stripped) = line.strip_prefix("WARNING") {
             lvl = log::Level::Warn;
+            // Corsair PSU log handling
+            if stripped.starts_with("some attributes cannot be read") {
+                continue; // drop this repeating log
+            } else if stripped.starts_with("bound to corsair-psu kernel driver") {
+                stripped = "Corsair PSU kernel driver conflict detected. \
+                Solution: Use the HWMon kernel driver (no fan control) \
+                OR enable liquidctl 'Direct Access' in advanced device settings.";
+            }
             stripped
         } else if let Some(stripped) = line.strip_prefix("ERROR") {
             lvl = log::Level::Error;

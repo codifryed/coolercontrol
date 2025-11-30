@@ -162,15 +162,16 @@ impl LiquidctlRepo {
                 poll_rate,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid)?;
-            if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
+            if cc_device_setting.as_ref().is_some_and(|s| s.disable) {
                 info!(
                     "Skipping disabled device: {} with UID: {}",
                     device.name, device.uid
                 );
                 continue;
             }
-            let disabled_channels =
-                cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
+            let disabled_channels = cc_device_setting
+                .as_ref()
+                .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             // remove disabled lighting and lcd channels:
             device
                 .info
@@ -180,6 +181,15 @@ impl LiquidctlRepo {
                 .borrow_mut()
                 .insert(device.uid.clone(), disabled_channels);
             self.check_for_legacy_690(&mut device).await?;
+            if cc_device_setting.is_some_and(|s| s.extensions.direct_access) {
+                if let Err(err) = self
+                    .liqctld_client
+                    .put_direct_access(&device.type_index)
+                    .await
+                {
+                    error!("Error enabling direct access for: {} - {err}", device.name);
+                }
+            }
             self.devices
                 .insert(device.uid.clone(), Rc::new(RefCell::new(device)));
         }
@@ -881,8 +891,23 @@ impl Repository for LiquidctlRepo {
 
     /// On `LiquidCtl` devices, reset basically does nothing with the device itself.
     /// All internal `CoolerControl` processes for this device channel are reset though.
-    async fn apply_setting_reset(&self, _: &UID, _: &str) -> Result<()> {
-        Ok(())
+    async fn apply_setting_reset(&self, device_uid: &UID, _channel_name: &str) -> Result<()> {
+        let cached_device_data = self.cache_device_data(device_uid)?;
+        if cached_device_data.driver_type == BaseDriver::CorsairHidPsu {
+            // The only device so far that can be reset to hardware control
+            self.liqctld_client
+                .initialize_device(&cached_device_data.type_index, None)
+                .await
+                .map(|_| ())
+                .map_err(|err| {
+                    anyhow!(
+                        "Resetting to hardware control through initialization for LIQUIDCTL Device #{}: {device_uid} - {err}",
+                        cached_device_data.type_index
+                    )
+                })
+        } else {
+            Ok(())
+        }
     }
 
     /// liquidctl drivers handle this themselves, so we don't need to do anything.

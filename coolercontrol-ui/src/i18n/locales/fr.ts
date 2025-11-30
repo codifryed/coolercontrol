@@ -317,6 +317,7 @@ export default {
                 addCustomSensor: 'Ajouter un capteur personnalisé',
                 addFunction: 'Ajouter une fonction',
                 chooseColor: 'Choisir une couleur',
+                deviceSettings: 'Paramètres Avancés du Périphérique',
                 options: "Plus d'Options",
                 moveTop: 'Déplacer en Haut',
                 moveBottom: 'Déplacer en Bas',
@@ -919,6 +920,18 @@ export default {
             saveError: "Échec de l'enregistrement des paramètres de l'extension de canal",
             firmwareControlDisabled:
                 "Le contrôle par firmware n'est pas disponible avec la configuration actuelle.\nUtilisez un profil Graph pour cet appareil avec un capteur de température interne pris en charge.",
+        },
+        deviceExtensionSettings: {
+            title: 'Paramètres Avancés du Périphérique',
+            directAccess: 'Accès Direct',
+            directAccessDesc:
+                "Lorsqu'il est activé, le pilote liquidctl ignorera le pilote du noyau HWMon\net communiquera directement avec le périphérique.\nCela peut être utile pour les périphériques qui ont des conflits lors de l'utilisation des deux pilotes.",
+            useHwmon: 'Utiliser le pilote HWMon',
+            useHwmonDesc:
+                'Bascule le pilote de ce périphérique de liquidctl vers le pilote du noyau HWMon.\nCela peut améliorer les performances et la stabilité, mais peut réduire les fonctionnalités disponibles.',
+            disableDevice: 'Désactiver le périphérique liquidctl',
+            disableInfo:
+                'La désactivation du pilote liquidctl désactivera ce périphérique. Un nouveau périphérique basé sur HWMon apparaîtra en bas du menu des périphériques. Vous pouvez réactiver le périphérique liquidctl à tout moment depuis le menu des paramètres.',
         },
     },
     auth: {

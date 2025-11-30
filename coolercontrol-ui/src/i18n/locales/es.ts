@@ -310,6 +310,7 @@ export default {
                 addCustomSensor: 'Añadir sensor personalizado',
                 addFunction: 'Añadir función',
                 chooseColor: 'Elegir color',
+                deviceSettings: 'Configuración Avanzada del Dispositivo',
                 options: 'Más Opciones',
                 moveTop: 'Mover al Inicio',
                 moveBottom: 'Mover al Final',
@@ -904,6 +905,18 @@ export default {
             saveError: 'Error al guardar los ajustes de la extensión del canal',
             firmwareControlDisabled:
                 'El control por firmware no está disponible con la configuración actual.\nUse un Perfil de gráfico para este dispositivo con un sensor de temperatura interno compatible.',
+        },
+        deviceExtensionSettings: {
+            title: 'Configuración Avanzada del Dispositivo',
+            directAccess: 'Acceso Directo',
+            directAccessDesc:
+                'Cuando está habilitado, el controlador liquidctl ignorará el controlador del kernel HWMon\ny se comunicará directamente con el dispositivo.\nEsto puede ser útil para dispositivos que tienen conflictos al usar ambos controladores.',
+            useHwmon: 'Usar controlador HWMon',
+            useHwmonDesc:
+                'Cambia el controlador de este dispositivo de liquidctl al controlador del kernel HWMon.\nEsto puede mejorar el rendimiento y la estabilidad, pero puede reducir las funciones disponibles.',
+            disableDevice: 'Deshabilitar dispositivo liquidctl',
+            disableInfo:
+                'Deshabilitar el controlador liquidctl deshabilitará este dispositivo. Aparecerá un nuevo dispositivo basado en HWMon en la parte inferior del menú de dispositivos. Puede volver a habilitar el dispositivo liquidctl en cualquier momento desde el menú de configuración.',
         },
     },
     auth: {

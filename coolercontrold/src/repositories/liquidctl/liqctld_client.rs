@@ -50,6 +50,7 @@ pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
+const LIQCTLD_DIRECT_ACCESS: &str = "/devices/{}/direct-access";
 const LIQCTLD_INITIALIZE: &str = "/devices/{}/initialize";
 const LIQCTLD_STATUS: &str = "/devices/{}/status";
 const LIQCTLD_FIXED_SPEED: &str = "/devices/{}/speed/fixed";
@@ -377,6 +378,26 @@ impl LiqctldClient {
             .method("PUT")
             .body(String::new())?;
         self.make_request(&request).await
+    }
+
+    /// Forces direct access for a particular device.
+    /// This should be called before initializing the device.
+    ///
+    /// Arguments:
+    ///
+    /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer
+    ///   (`&u8`). It represents the index of a device.
+    ///
+    /// Returns:
+    ///
+    /// a Result object with a value of `DeviceResponse`.
+    pub async fn put_direct_access(&self, device_index: &u8) -> Result<()> {
+        let request = Self::request_builder()
+            .uri(LIQCTLD_DIRECT_ACCESS.replace("{}", &device_index.to_string()))
+            .method("PUT")
+            .body(String::new())?;
+        self.make_request::<IgnoredAny>(&request).await?;
+        Ok(())
     }
 
     /// Sets a particular device channel to a fixed speed.

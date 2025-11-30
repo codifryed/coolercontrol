@@ -311,6 +311,7 @@ export default {
                 addCustomSensor: 'Benutzerdefinierten Sensor hinzufügen',
                 addFunction: 'Funktion hinzufügen',
                 chooseColor: 'Farbe wählen',
+                deviceSettings: 'Erweiterte Geräteeinstellungen',
                 options: 'Weitere Optionen',
                 moveTop: 'An die Spitze verschieben',
                 moveBottom: 'An das Ende verschieben',
@@ -923,6 +924,18 @@ export default {
             saveError: 'Speichern der Einstellungen der Kanalerweiterung fehlgeschlagen',
             firmwareControlDisabled:
                 'Die Firmware-Steuerung ist mit den aktuellen Einstellungen nicht verfügbar.\nVerwenden Sie ein Graph-Profil für dieses Gerät mit einem unterstützten internen Temperatursensor.',
+        },
+        deviceExtensionSettings: {
+            title: 'Erweiterte Geräteeinstellungen',
+            directAccess: 'Direkter Zugriff',
+            directAccessDesc:
+                'Wenn aktiviert, ignoriert der liquidctl-Treiber den HWMon-Kernel-Treiber\nund kommuniziert direkt mit dem Gerät.\nDies kann bei Geräten hilfreich sein, die Konflikte bei der Verwendung beider Treiber haben.',
+            useHwmon: 'HWMon-Treiber verwenden',
+            useHwmonDesc:
+                'Wechselt den Treiber für dieses Gerät von liquidctl zum HWMon-Kernel-Treiber.\nDies kann die Leistung und Stabilität verbessern, aber möglicherweise verfügbare Funktionen reduzieren.',
+            disableDevice: 'liquidctl-Gerät deaktivieren',
+            disableInfo:
+                'Das Deaktivieren des liquidctl-Treibers deaktiviert dieses Gerät. Ein neues HWMon-basiertes Gerät wird unten im Gerätemenü angezeigt. Sie können das liquidctl-Gerät jederzeit über das Einstellungsmenü wieder aktivieren.',
         },
     },
     auth: {

@@ -322,6 +322,7 @@ export default {
                 addCustomSensor: 'カスタムセンサーを追加',
                 addFunction: '機能を追加',
                 chooseColor: '色を選択',
+                deviceSettings: '高度なデバイス設定',
                 options: 'その他のオプション',
                 moveTop: '上に移動',
                 moveBottom: '下に移動',
@@ -908,6 +909,18 @@ export default {
             saveError: 'チャンネル拡張設定の保存に失敗しました',
             firmwareControlDisabled:
                 '現在の設定ではファームウェア制御は利用できません。\nこのデバイス向けの、対応する内蔵温度センサーを使用するグラフプロファイルを使用してください。',
+        },
+        deviceExtensionSettings: {
+            title: '高度なデバイス設定',
+            directAccess: '直接アクセス',
+            directAccessDesc:
+                '有効にすると、liquidctlドライバーはHWMonカーネルドライバーを無視し、\nデバイスと直接通信します。\n両方のドライバーを使用する際に競合が発生するデバイスに役立ちます。',
+            useHwmon: 'HWMonドライバーを使用',
+            useHwmonDesc:
+                'このデバイスのドライバーをliquidctlからHWMonカーネルドライバーに切り替えます。\nパフォーマンスと安定性が向上する可能性がありますが、利用可能な機能が減少する場合があります。',
+            disableDevice: 'liquidctlデバイスを無効化',
+            disableInfo:
+                'liquidctlドライバーを無効にすると、このデバイスが無効になります。新しいHWMonベースのデバイスがデバイスメニューの下部に表示されます。設定メニューからいつでもliquidctlデバイスを再度有効にできます。',
         },
     },
     auth: {

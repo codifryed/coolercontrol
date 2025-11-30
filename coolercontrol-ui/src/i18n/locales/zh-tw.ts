@@ -298,6 +298,7 @@ export default {
                 addCustomSensor: '添加自定義傳感器',
                 addFunction: '添加功能',
                 chooseColor: '選擇顏色',
+                deviceSettings: '進階裝置設定',
                 options: '更多選項',
                 moveTop: '移至頂部',
                 moveBottom: '移至底部',
@@ -870,6 +871,18 @@ export default {
             saveError: '儲存通道擴充設定失敗',
             firmwareControlDisabled:
                 '目前設定無法使用韌體控制。\n請為此裝置使用含有受支援內建溫度感測器的圖表設定檔。',
+        },
+        deviceExtensionSettings: {
+            title: '進階裝置設定',
+            directAccess: '直接存取',
+            directAccessDesc:
+                '啟用後，liquidctl 驅動程式將忽略 HWMon 核心驅動程式\n並直接與裝置通訊。\n這對於同時使用兩個驅動程式時出現衝突的裝置很有幫助。',
+            useHwmon: '使用 HWMon 驅動程式',
+            useHwmonDesc:
+                '將此裝置的驅動程式從 liquidctl 切換到 HWMon 核心驅動程式。\n這可以提高效能和穩定性，但可能會減少可用功能。',
+            disableDevice: '停用 liquidctl 裝置',
+            disableInfo:
+                '停用 liquidctl 驅動程式將停用此裝置。一個新的基於 HWMon 的裝置將出現在裝置選單底部。您可以隨時從設定選單重新啟用 liquidctl 裝置。',
         },
     },
     auth: {

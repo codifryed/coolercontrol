@@ -105,6 +105,7 @@ import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
 import SubMenuDeviceColorPicker from '@/components/menu/SubMenuDeviceColorPicker.vue'
 import SubMenuEntityColorPicker from '@/components/menu/SubMenuEntityColorPicker.vue'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
+import SubMenuDeviceExtensionSettings from '@/components/menu/SubMenuDeviceExtensionSettings.vue'
 
 interface Tree {
     [key: string]: any
@@ -264,6 +265,7 @@ enum SubMenu {
     MOVE_TOP,
     PIN,
     COLOR,
+    DEVICE_EXTENSIONS,
     DISABLE,
     CUSTOM_SENSOR_DELETE,
     DASHBOARD_DUPLICATE,
@@ -594,6 +596,10 @@ const devicesTreeArray = (): any[] => {
             continue // has its own dedicated menu above
         }
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+        // is liquidctl device and also has hwmon driver
+        const hasApplicableDeviceExtensions =
+            device.type === DeviceType.LIQUIDCTL &&
+            device.info?.driver_info.locations.find((loc) => loc.includes('hwmon')) != null
         const deviceItem = {
             id: device.uid,
             label: deviceSettings.name,
@@ -603,6 +609,9 @@ const devicesTreeArray = (): any[] => {
             children: [],
             menus: [Menu.DEVICE_INFO, Menu.RENAME],
             subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
+        }
+        if (hasApplicableDeviceExtensions) {
+            deviceItem.subMenus.splice(2, 0, SubMenu.DEVICE_EXTENSIONS)
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -1699,6 +1708,15 @@ onUnmounted(() => {
                                                     "
                                                     :device-u-i-d="item.deviceUID"
                                                     :color="deviceColor(item.deviceUID).value"
+                                                    @open="setHoverMenuStatus"
+                                                    @close="item.subMenuRef.hide()"
+                                                />
+                                                <sub-menu-device-extension-settings
+                                                    v-else-if="
+                                                        subMenu === SubMenu.DEVICE_EXTENSIONS &&
+                                                        item.deviceUID != null
+                                                    "
+                                                    :device-u-i-d="item.deviceUID"
                                                     @open="setHoverMenuStatus"
                                                     @close="item.subMenuRef.hide()"
                                                 />

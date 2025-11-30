@@ -609,6 +609,11 @@ class DeviceService:
                 speed_channels = fan_names
             if led_names := getattr(lc_device, "_led_names", []):
                 color_channels = led_names
+        elif isinstance(lc_device, CorsairHidPsu):
+            if hasattr(liquidctl.driver.corsair_hid_psu, "_MIN_FAN_DUTY"):
+                # set the minimum fan speed to 15%, tested working -
+                # lower produces a different response from the hardware with poor results.
+                liquidctl.driver.corsair_hid_psu._MIN_FAN_DUTY = 15
         elif isinstance(lc_device, HydroPlatinum):
             if fan_names := getattr(lc_device, "_fan_names", []):
                 speed_channels = fan_names
@@ -768,6 +773,44 @@ class DeviceService:
             if statuses is not None
             else []
         )
+
+    def force_direct_access(self, device_id: int) -> None:
+        """
+        Force a liquidctl device to use direct access mode.
+        This should be called before initializing the device.
+
+        This method forces the specified device to switch to direct access mode,
+        bypassing any kernel drivers. This is useful when CoolerControl's regular communication
+        and kernel drivers interfere with liquidctl's ability to communicate with the device.
+
+        Args:
+            device_id: The unique identifier of the device to force into direct access mode.
+
+        Raises:
+            LiqctldException: If the device with the specified ID is not found.
+            LiquidctlException: If there is an unexpected error during device communication.
+        """
+        if self.devices.get(device_id) is None:
+            raise LiqctldException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(f"Forcing Liquidctl device #{device_id} to use direct access.")
+        try:
+            lc_device = self.devices[device_id]
+            # Removing the hwmon driver info object also removes the warning logs that liquidctl
+            # would then output with every status update when using `direct_access=True`. This is
+            # preferred for our use case and ensures that liquidctl has no chance of using the
+            # hwmon driver.
+            lc_device._hwmon = None
+        except BaseException as err:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error forcing direct access for device "
+                    f"#{device_id} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
 
     def get_status(self, device_id: int) -> Statuses:
         if self.devices.get(device_id) is None:
@@ -991,7 +1034,7 @@ class DeviceService:
         for device_id, lc_device in self.devices.items():
             if isinstance(
                 lc_device, CorsairHidPsu
-            ):  # attempt to reset fan control back to hardware
+            ):  # attempt to reset fan control back to hardware control
                 log.debug(
                     f"LC #{device_id} {lc_device.__class__.__name__}.initialize() "
                 )
@@ -1043,6 +1086,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def set_device_as_legacy690(self, device_id: int):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
         self._send(HTTPStatus.OK, json.dumps(device.to_dict()))
+
+    def force_direct_access(self, device_id: int):
+        self.device_service.force_direct_access(device_id)
+        self._send(HTTPStatus.OK, json.dumps({}))
 
     # post("/devices/{device_id}/initialize")
     def init_device(self, device_id: int, init_request: dict):
@@ -1115,10 +1162,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def _route_put_requests(self, path: List[str], request_body: dict):
         if not path:
             raise LiqctldException(HTTPStatus.BAD_REQUEST, "Invalid path")
-        elif len(path) == 3 and path[0] == "devices" and path[2] == "legacy690":
-            # put("/devices/{device_id}/legacy690")
-            device_id = self._try_cast_int(path[1])
-            self.set_device_as_legacy690(device_id)
         elif (
             len(path) == 4
             and path[0] == "devices"
@@ -1145,6 +1188,14 @@ class HTTPHandler(BaseHTTPRequestHandler):
             # put("/devices/{device_id}/screen")
             device_id = self._try_cast_int(path[1])
             self.set_screen(device_id, request_body)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "legacy690":
+            # put("/devices/{device_id}/legacy690")
+            device_id = self._try_cast_int(path[1])
+            self.set_device_as_legacy690(device_id)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "direct-access":
+            # put("/devices/{device_id}/direct-access")
+            device_id = self._try_cast_int(path[1])
+            self.force_direct_access(device_id)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 
