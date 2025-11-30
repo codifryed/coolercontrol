@@ -155,4 +155,26 @@ impl ThrottlingError {
             }
         }
     }
+
+    pub fn as_response_body(&mut self) -> Response<tonic::body::Body> {
+        match mem::replace(self, Self::Unknown) {
+            ThrottlingError::TooManyRequests { wait_time, headers } => {
+                let response = Response::new(format!(
+                    "Rate limit exceeded, please wait at least {wait_time}s"
+                ));
+                let (mut parts, body) = response.into_parts();
+                parts.status = StatusCode::TOO_MANY_REQUESTS;
+                if let Some(headers) = headers {
+                    parts.headers = headers;
+                }
+                Response::from_parts(parts, tonic::body::Body::new(body))
+            }
+            ThrottlingError::Unknown => {
+                let response = Response::new("Rate limit returned unknown error".to_string());
+                let (mut parts, body) = response.into_parts();
+                parts.status = StatusCode::INTERNAL_SERVER_ERROR;
+                Response::from_parts(parts, tonic::body::Body::new(body))
+            }
+        }
+    }
 }

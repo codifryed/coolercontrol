@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+// DriverInfo is used to describe the driver for a device.
+message DriverInfo {
+  /// If available the driver name or class.
+  optional string name = 1;
+
+  // If available the driver's version.
+  optional string version = 2;
+
+  // If available various paths used to access the device.
+  // This can include paths like the device path, hwmon path, HID path, or PCI Bus ID
+  repeated string locations = 3;
+}

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+// TempInfo is used to describe the temperature channels for a device.
+message TempInfo {
+  // The display name for this temperature channel (will use the Channel ID if not set).
+  string label = 1;
+
+  // The temperature channel's unique number (1, 2, etc)
+  uint32 number = 2;
+}

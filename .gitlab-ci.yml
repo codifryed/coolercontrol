@@ -104,7 +104,7 @@ gemnasium-python-dependency_scanning:
 test_all:
   stage: test
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-xlarge-amd64
   <<: [*cache_template, *main_image_template]
   rules:
     # This allows us to run a single job for MR branches that are pushed to, and allow these tests
@@ -187,7 +187,7 @@ build_appimages:
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-xlarge-amd64
   needs:
     - compile_artifacts
   rules:
@@ -249,7 +249,7 @@ build_deb_bookworm_amd64:
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-xlarge-amd64
   needs:
     - compile_artifacts
   rules:
@@ -354,7 +354,7 @@ build_ubuntu:
   <<: [*cache_template, *main_image_template]
   stage: build
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-xlarge-amd64
   needs:
     - compile_artifacts
   rules:
@@ -454,7 +454,7 @@ push_dh-debian_amd64:
   <<: [*main_image_template]
   stage: build
   tags:
-    - saas-linux-large-amd64
+    - saas-linux-xlarge-amd64
   services:
     - docker:dind
   variables:

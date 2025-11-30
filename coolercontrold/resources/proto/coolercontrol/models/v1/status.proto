@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+message Status {
+  // The Channel/Temp ID
+  string id = 1;
+
+  oneof metric {
+    // Temperature in C
+    double temp = 2;
+    FanSpeed speed = 3;
+    uint32 mhz = 4;
+    double watts = 5;
+  }
+
+  // one or both of these metrics are expected for fan speed
+  message FanSpeed {
+    optional double duty = 1;
+    optional uint32 rpm = 2;
+  }
+}

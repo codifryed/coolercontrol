@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -29,6 +30,7 @@ use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repositories};
+use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
 use log::{error, info, warn};
@@ -48,6 +50,7 @@ mod cc_fs;
 mod config;
 mod device;
 mod engine;
+mod grpc_api;
 mod logger;
 mod main_loop;
 mod modes;
@@ -110,6 +113,15 @@ const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 /// CC_DBUS=ON coolercontrold
 /// ```
 const ENV_DBUS: &str = "CC_DBUS";
+
+/// Environment Variable: To disable service manager integration
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_SERVICE_MANAGER=ON coolercontrold
+/// ```
+const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 
 /// Environment Variable: To disable NVML integration
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
@@ -174,25 +186,37 @@ fn main() -> Result<()> {
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
-        let engine = Rc::new(Engine::new(all_devices.clone(), &repos, config.clone()));
+        let engine = Rc::new(Engine::new(
+            Rc::clone(&all_devices),
+            &repos,
+            Rc::clone(&config),
+        ));
         let mode_controller = Rc::new(
-            ModeController::init(config.clone(), all_devices.clone(), engine.clone()).await?,
+            ModeController::init(
+                Rc::clone(&config),
+                Rc::clone(&all_devices),
+                Rc::clone(&engine),
+            )
+            .await?,
         );
 
         moro_local::async_scope!(|main_scope| -> Result<()> {
             mode_controller.handle_settings_at_boot().await;
-            let status_handle =
-                api::actor::StatusHandle::new(all_devices.clone(), run_token.clone(), main_scope);
-            let alert_controller = Rc::new(AlertController::init(all_devices.clone()).await?);
+            let status_handle = api::actor::StatusHandle::new(
+                Rc::clone(&all_devices),
+                run_token.clone(),
+                main_scope,
+            );
+            let alert_controller = Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
             AlertController::watch_for_shutdown(&alert_controller, run_token.clone(), main_scope);
             if let Err(err) = api::start_server(
-                all_devices,
+                Rc::clone(&all_devices),
                 Rc::clone(&repos),
-                engine.clone(),
-                config.clone(),
+                Rc::clone(&engine),
+                Rc::clone(&config),
                 custom_sensors_repo,
-                mode_controller.clone(),
-                alert_controller.clone(),
+                Rc::clone(&mode_controller),
+                Rc::clone(&alert_controller),
                 log_buf_handle,
                 status_handle.clone(),
                 run_token.clone(),
@@ -367,6 +391,12 @@ async fn initialize_device_repos(
                 Err(err) => error!("Error initializing HWMON Repo: {err}"),
             }
         });
+        init_scope.spawn(async {
+            match init_service_plugin_repo(config.clone()).await {
+                Ok(repo) => repos.external = Some(Rc::new(repo)),
+                Err(err) => error!("Error initializing Service Plugin Repo: {err}"),
+            }
+        });
     })
     .await;
     // should be last as it uses all other device temps
@@ -410,6 +440,12 @@ async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Resul
     let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
+}
+
+async fn init_service_plugin_repo(config: Rc<Config>) -> Result<ServicePluginRepo> {
+    let mut external_repo = ServicePluginRepo::new(config)?;
+    external_repo.initialize_devices().await?;
+    Ok(external_repo)
 }
 
 async fn init_custom_sensors_repo(

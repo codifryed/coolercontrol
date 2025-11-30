@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+import "coolercontrol/models/v1/status.proto";
+
+message StatusRequest {
+  string device_id = 1;
+}
+
+message StatusResponse {
+  repeated coolercontrol.models.v1.Status status = 1;
+}

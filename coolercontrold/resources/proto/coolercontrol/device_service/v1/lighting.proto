@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message LightingRequest {
+  string device_id = 1;
+  string channel_id = 2;
+  LightingSetting setting = 3;
+}
+
+message LightingSetting {
+  // The Lighting mode to apply
+  string mode = 1;
+  optional string speed = 2;
+  optional bool backward = 3;
+
+  // a list of RGB values, eg [(20,20,120), (0,0,255)]
+  repeated RGB colors = 4;
+}
+
+message RGB {
+  uint32 r = 1;
+  uint32 g = 2;
+  uint32 b = 3;
+}
+
+message LightingResponse {}

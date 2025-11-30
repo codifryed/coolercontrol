@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+import "coolercontrol/models/v1/lcd_info.proto";
+import "coolercontrol/models/v1/lighting_modes.proto";
+import "coolercontrol/models/v1/speed_options.proto";
+
+// ChannelInfo is used to describe the channel for a device.
+message ChannelInfo {
+  // The display label for this channel, i.e. "Fan 1", "Fan 2", etc.
+  // This is used for presentation (UI/logs) only.
+  optional string label = 1;
+
+  // The options available for this channel. This also indicated it's Channel Type.
+  oneof options {
+    SpeedOptions speed_options = 3;
+    LightingModes lighting_modes = 4;
+    LcdInfo lcd_info = 5;
+  }
+}

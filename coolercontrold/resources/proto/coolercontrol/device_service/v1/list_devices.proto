@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+import "coolercontrol/models/v1/device.proto";
+
+message ListDevicesRequest {}
+
+message ListDevicesResponse {
+  repeated coolercontrol.models.v1.Device devices = 1;
+}

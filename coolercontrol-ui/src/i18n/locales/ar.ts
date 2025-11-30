@@ -1018,6 +1018,7 @@ export default {
             gpu: 'وحدة معالجة الرسومات',
             liquidctl: 'Liquidctl',
             hwmon: 'Hwmon',
+            servicePlugin: 'مكون إضافي للخدمة',
         },
         driverType: {
             kernel: 'نواة',
@@ -1025,6 +1026,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia CLI',
             coolercontrol: 'CoolerControl',
+            external: 'خارجي',
         },
         lcdModeType: {
             none: 'لا شيء',

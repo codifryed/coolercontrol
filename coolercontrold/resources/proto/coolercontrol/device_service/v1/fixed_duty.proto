@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message FixedDutyRequest {
+  string device_id = 1;
+  string channel_id = 2;
+  int32 duty = 3;
+}
+
+message FixedDutyResponse {}

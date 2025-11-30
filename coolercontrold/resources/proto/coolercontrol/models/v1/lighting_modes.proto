@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+// LightingModes is used to describe the lighting modes for a device.
+message LightingModes {
+  repeated LightingMode lighting_mode = 1;
+
+  message LightingMode {
+    // The unique name for this lighting mode.
+    string name = 1;
+
+    // The display name for this lighting mode (will use name if not set).
+    optional string frontend_name = 2;
+
+    // The minimum number of colors that can be set for this mode.
+    uint32 min_colors = 3;
+
+    // The maximum number of colors that can be set for this mode.
+    uint32 max_colors = 4;
+
+    // Whether this mode has speed controls (fast/slow)
+    bool speed_enabled = 5;
+
+    // If this lighting mode and go backwards or not: (direction controls)
+    bool backward_enabled = 6;
+  }
+}

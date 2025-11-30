@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message LcdRequest {
+  string device_id = 1;
+  string channel_id = 2;
+  LcdSetting setting = 3;
+}
+
+message LcdSetting {
+  string mode = 1;
+
+  // The LCD brightness (0-100%)
+  optional uint32 brightness = 2;
+
+  // The LCD Image orientation (0,90,180,270)
+  optional uint32 orientation = 3;
+
+  // The LCD Image processed file path location, where the preprocessed image is located.
+  optional string image_path = 4;
+}
+
+message LcdResponse {}

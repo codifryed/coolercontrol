@@ -22,4 +22,5 @@ pub mod gpu;
 pub mod hwmon;
 pub mod liquidctl;
 pub mod repository;
+pub mod service_plugin;
 pub mod utils;

@@ -1270,9 +1270,13 @@ def setup_logging() -> None:
     log_level = logging.INFO
     liquidctl_level = logging.WARNING
     if env_log_level:
-        if env_log_level.lower() == "debug" or env_log_level.lower() == "trace":
+        if env_log_level.lower() == "trace":
             log_level = logging.DEBUG
             liquidctl_level = logging.DEBUG
+        elif env_log_level.lower() == "debug":
+            log_level = logging.DEBUG
+            # liquidctl outputs a lot of data on each poll, so we set it to one level higher:
+            liquidctl_level = logging.INFO
         elif env_log_level.lower() == "warn":
             log_level = logging.WARNING
             liquidctl_level = logging.WARNING

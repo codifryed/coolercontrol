@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+import "coolercontrol/models/v1/channel_info.proto";
+import "coolercontrol/models/v1/driver_info.proto";
+import "coolercontrol/models/v1/temp_info.proto";
+
+// DeviceInfo is needed to describe the available channel and device options.
+message DeviceInfo {
+  // Channels are generally controllable channels available on the device. i.e. Fans, Lighting, LCD,
+  // etc. This contains the Channel ID and ChannelInfo association. Note that Channel ID's should be
+  // unique per Device.
+  map<string, ChannelInfo> channels = 1;
+
+  // Temps are any temperature based channels. i.e. temp1, temp2, etc.
+  // This contains the Temperature ID and TempInfo association.
+  // Note that Temperature ID's should be unique per Device.
+  map<string, TempInfo> temps = 2;
+
+  // If the device supports lighting controls, this is a list of available speeds in order,
+  // from slow to fast.
+  repeated string lighting_speeds = 3;
+
+  // The absolute minimum temp in C to use for Profiles for this device
+  // Will be set to a default to 0C if not present.
+  optional double temp_min = 4;
+
+  // The absolute maximum temp in C to use for Profiles for this device.
+  // Will be set to a default to 100C if not present.
+  optional double temp_max = 5;
+
+  // Speed Profile data minimum point size for this device.
+  // A default of 2 will be used if not present.
+  optional uint32 profile_min_length = 6;
+
+  // Speed Profile data maximum point size for this device.
+  // A default of 17 will be used if not present.
+  optional uint32 profile_max_length = 7;
+
+  // Display model or label for this device. Used for presentation (UI/logs) and may differ
+  // from the Device.name field. Prefer the full marketing/model name
+  // when available (e.g. longer descriptive names).
+  optional string model = 8;
+
+  DriverInfo driver_info = 9;
+}

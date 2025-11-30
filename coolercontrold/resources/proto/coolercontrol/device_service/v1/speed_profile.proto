@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message SpeedProfilePoint {
+  double temp = 1;
+  uint32 duty = 2;
+}
+
+message SpeedProfileRequest {
+  string device_id = 1;
+  string channel_id = 2;
+
+  // Used if the device supports multiple temperature sources for internal profiles.
+  optional string temp_source_id = 3;
+  repeated SpeedProfilePoint speed_profile = 4;
+}
+
+message SpeedProfileResponse {}

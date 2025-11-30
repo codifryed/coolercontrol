@@ -107,6 +107,7 @@ pub struct Repositories {
     pub gpu: Option<Rc<dyn Repository>>,
     pub liquidctl: Option<Rc<dyn Repository>>,
     pub hwmon: Option<Rc<dyn Repository>>,
+    pub external: Option<Rc<dyn Repository>>,
     pub custom_sensors: Option<Rc<dyn Repository>>,
 }
 
@@ -119,6 +120,7 @@ impl Repositories {
             DeviceType::GPU => Self::clone_rc(self.gpu.as_ref()),
             DeviceType::Liquidctl => Self::clone_rc(self.liquidctl.as_ref()),
             DeviceType::Hwmon => Self::clone_rc(self.hwmon.as_ref()),
+            DeviceType::ServicePlugin => Self::clone_rc(self.external.as_ref()),
             DeviceType::CustomSensors => Self::clone_rc(self.custom_sensors.as_ref()),
         }
     }
@@ -136,6 +138,9 @@ impl Repositories {
             repos.push(repo);
         }
         if let Some(repo) = self.hwmon.as_ref() {
+            repos.push(repo);
+        }
+        if let Some(repo) = self.external.as_ref() {
             repos.push(repo);
         }
         // custom sensors should always be last

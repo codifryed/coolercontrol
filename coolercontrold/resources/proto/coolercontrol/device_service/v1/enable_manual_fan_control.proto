@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message EnableManualFanControlRequest {
+  string device_id = 1;
+  string channel_id = 2;
+}
+
+message EnableManualFanControlResponse {}

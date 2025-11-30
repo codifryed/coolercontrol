@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+message HealthRequest {}
+
+message HealthResponse {
+  string name = 1;
+  string version = 2;
+  Status status = 3;
+  uint64 uptime_seconds = 4;
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+    STATUS_WARNING = 2;
+    STATUS_ERROR = 3;
+    STATUS_OFFLINE = 4;
+  }
+}

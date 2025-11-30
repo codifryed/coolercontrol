@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package coolercontrol.models.v1;
+
+// LcdInfo is used to describe the LCD display for a device.
+message LcdInfo {
+  repeated LcdModes lcd_modes = 1;
+  uint32 screen_width = 2;
+  uint32 screen_height = 3;
+  uint32 max_image_size_bytes = 4;
+
+  message LcdModes {
+    // The unique name for this lcd mode.
+    string name = 1;
+
+    // The display name for this lcd mode (will use name if not set).
+    optional string frontend_name = 2;
+
+    // If this lcd mode supports brightness controls
+    bool brightness = 3;
+    // If this lcd mode supports orientation controls
+    bool orientation = 4;
+    // If this LCD mode supports applying a custom image
+    bool image = 5;
+  }
+}

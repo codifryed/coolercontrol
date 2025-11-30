@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package coolercontrol.device_service.v1;
+
+import "coolercontrol/device_service/v1/custom_function_one.proto";
+import "coolercontrol/device_service/v1/enable_manual_fan_control.proto";
+import "coolercontrol/device_service/v1/fixed_duty.proto";
+import "coolercontrol/device_service/v1/health.proto";
+import "coolercontrol/device_service/v1/initialize_device.proto";
+import "coolercontrol/device_service/v1/lcd.proto";
+import "coolercontrol/device_service/v1/lighting.proto";
+import "coolercontrol/device_service/v1/list_devices.proto";
+import "coolercontrol/device_service/v1/reset_channel.proto";
+import "coolercontrol/device_service/v1/shutdown.proto";
+import "coolercontrol/device_service/v1/speed_profile.proto";
+import "coolercontrol/device_service/v1/status.proto";
+
+service DeviceService {
+  // Used to confirm service connection and retrieve service health information.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // This is called to retrieve the list of devices and their capabilities detected by the device
+  // service. This is generally the first message sent to the device service after establishing a
+  // connection.
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+
+  // This is called and used by some devices to initialize hardware, before starting to send
+  // commands to it. It is also be called after resuming from sleep, as many firmwares are rest.
+  rpc InitializeDevice(InitializeDeviceRequest) returns (InitializeDeviceResponse);
+
+  // This is used to gracefully shutdown the device service.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+
+  // Request the current status of all device channels for all devices. (temps, fan speeds, etc)
+  rpc Status(StatusRequest) returns (StatusResponse);
+
+  // Reset the device channel to it's default state if applicable. (Auto)
+  rpc ResetChannel(ResetChannelRequest) returns (ResetChannelResponse);
+
+  // Enable manual fan control. This is often used before enabling a Profile, as following this will
+  // be regular fan speed changes.
+  rpc EnableManualFanControl(EnableManualFanControlRequest)
+      returns (EnableManualFanControlResponse);
+
+  // Apply a fixed fan speed to the device channel.
+  rpc FixedDuty(FixedDutyRequest) returns (FixedDutyResponse);
+
+  // Apply an internal speed profile to the device channel. (firmware-profile)
+  rpc SpeedProfile(SpeedProfileRequest) returns (SpeedProfileResponse);
+
+  // Apply a lighting mode to the device channel.
+  rpc Lighting(LightingRequest) returns (LightingResponse);
+
+  // Apply an LCD mode to the device channel.
+  rpc Lcd(LcdRequest) returns (LcdResponse);
+
+  // This is a placeholder for any custom functions that the device service might expose.
+  rpc CustomFunctionOne(CustomFunctionOneRequest) returns (CustomFunctionOneResponse);
+}

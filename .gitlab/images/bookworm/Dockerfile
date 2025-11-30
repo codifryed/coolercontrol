@@ -41,6 +41,7 @@ RUN apt update && apt install -y --no-install-recommends \
     # rustup:
     curl \
     ca-certificates \
+    protobuf-compiler \
     debhelper
 
 # rust toolchain

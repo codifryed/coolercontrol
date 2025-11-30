@@ -1032,6 +1032,7 @@ export default {
             gpu: 'GPU',
             liquidctl: 'Liquidctl',
             hwmon: 'Hwmon',
+            servicePlugin: 'サービスプラグイン',
         },
         driverType: {
             kernel: 'カーネル',
@@ -1039,6 +1040,7 @@ export default {
             nvml: 'NVML',
             nvidiaCli: 'Nvidia CLI',
             coolercontrol: 'CoolerControl',
+            external: '外部',
         },
         lcdModeType: {
             none: 'なし',
