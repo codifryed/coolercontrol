@@ -18,10 +18,12 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
-use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]
 pub struct CorsairHidPsuSupport;
@@ -61,10 +63,45 @@ impl DeviceSupport for CorsairHidPsuSupport {
                 ..Default::default()
             },
         );
+        channels.insert(
+            "total-power".to_string(),
+            ChannelInfo {
+                label: Some("Total Power".to_owned()),
+                ..Default::default()
+            },
+        );
+        channels.insert(
+            "estimated-input-power".to_string(),
+            ChannelInfo {
+                label: Some("Estimated Input Power".to_owned()),
+                ..Default::default()
+            },
+        );
+        channels.insert(
+            "12v-power".to_string(),
+            ChannelInfo {
+                label: Some("+12V Power".to_owned()),
+                ..Default::default()
+            },
+        );
+        channels.insert(
+            "5v-power".to_string(),
+            ChannelInfo {
+                label: Some("+5V Power".to_owned()),
+                ..Default::default()
+            },
+        );
+        channels.insert(
+            "3.3v-power".to_string(),
+            ChannelInfo {
+                label: Some("+3.3V Power".to_owned()),
+                ..Default::default()
+            },
+        );
         DeviceInfo {
             channels,
             lighting_speeds: Vec::new(),
-            temp_min: 20, // device has vrm and case temps
+            temp_min: 0, // device has vrm and case temps
             temp_max: 100,
             driver_info: DriverInfo {
                 drv_type: DriverType::Liquidctl,
@@ -78,5 +115,17 @@ impl DeviceSupport for CorsairHidPsuSupport {
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
         Vec::new()
+    }
+
+    fn get_channel_statuses(
+        &self,
+        status_map: &StatusMap,
+        _device_index: u8,
+    ) -> Vec<ChannelStatus> {
+        let mut channel_statuses = vec![];
+        self.add_single_fan_status(status_map, &mut channel_statuses);
+        self.add_psu_power_statuses(status_map, &mut channel_statuses);
+        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
+        channel_statuses
     }
 }

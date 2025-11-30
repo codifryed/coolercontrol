@@ -114,7 +114,7 @@ pub trait DeviceSupport: Debug {
         self.add_vrm_temp(status_map, &mut temps);
         self.add_case_temp(status_map, &mut temps);
         self.add_temp_sensors(status_map, &mut temps);
-        // todo: for a future feature (needs testing and is in dB)
+        // ...for a future feature (needs testing and is in dB)
         // self.add_noise_level(status_map, &mut temps, device_index);
         temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         temps
@@ -232,6 +232,8 @@ pub trait DeviceSupport: Debug {
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
         self.add_multiple_external_fans_status(status_map, &mut channel_statuses);
         self.add_single_water_block_status(status_map, &mut channel_statuses);
+        // only applicable for a single device so far:
+        // self.add_psu_power_statuses(status_map, &mut channel_statuses);
         channel_statuses.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         channel_statuses
     }
@@ -315,6 +317,51 @@ pub trait DeviceSupport: Debug {
                 name: "waterblock-fan".to_string(),
                 rpm: water_block_rpm,
                 duty: water_block_duty,
+                ..Default::default()
+            });
+        }
+    }
+
+    fn add_psu_power_statuses(
+        &self,
+        status_map: &StatusMap,
+        channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        if let Some(watts) = status_map.get("total power output").and_then(parse_float) {
+            channel_statuses.push(ChannelStatus {
+                name: "total-power".to_string(),
+                watts: Some(watts),
+                ..Default::default()
+            });
+        }
+        if let Some(watts) = status_map
+            .get("estimated input power")
+            .and_then(parse_float)
+        {
+            channel_statuses.push(ChannelStatus {
+                name: "estimated-input-power".to_string(),
+                watts: Some(watts),
+                ..Default::default()
+            });
+        }
+        if let Some(watts) = status_map.get("+12v output power").and_then(parse_float) {
+            channel_statuses.push(ChannelStatus {
+                name: "12v-power".to_string(),
+                watts: Some(watts),
+                ..Default::default()
+            });
+        }
+        if let Some(watts) = status_map.get("+5v output power").and_then(parse_float) {
+            channel_statuses.push(ChannelStatus {
+                name: "5v-power".to_string(),
+                watts: Some(watts),
+                ..Default::default()
+            });
+        }
+        if let Some(watts) = status_map.get("+3.3v output power").and_then(parse_float) {
+            channel_statuses.push(ChannelStatus {
+                name: "3.3v-power".to_string(),
+                watts: Some(watts),
                 ..Default::default()
             });
         }
