@@ -297,6 +297,7 @@ export default {
                 addCustomSensor: '添加自定义传感器',
                 addFunction: '添加功能',
                 chooseColor: '选择颜色',
+                deviceSettings: '高级设备设置',
                 options: '更多选项',
                 moveTop: '移至顶部',
                 moveBottom: '移至底部',
@@ -870,6 +871,18 @@ export default {
             saveError: '保存通道扩展设置失败',
             firmwareControlDisabled:
                 '当前设置无法使用固件控制。\n请为此设备使用带有受支持内置温度传感器的图表配置文件。',
+        },
+        deviceExtensionSettings: {
+            title: '高级设备设置',
+            directAccess: '直接访问',
+            directAccessDesc:
+                '启用后，liquidctl 驱动程序将忽略 HWMon 内核驱动程序\n并直接与设备通信。\n这对于同时使用两个驱动程序时出现冲突的设备很有帮助。',
+            useHwmon: '使用 HWMon 驱动程序',
+            useHwmonDesc:
+                '将此设备的驱动程序从 liquidctl 切换到 HWMon 内核驱动程序。\n这可以提高性能和稳定性，但可能会减少可用功能。',
+            disableDevice: '禁用 liquidctl 设备',
+            disableInfo:
+                '禁用 liquidctl 驱动程序将禁用此设备。一个新的基于 HWMon 的设备将出现在设备菜单底部。您可以随时从设置菜单重新启用 liquidctl 设备。',
         },
     },
     auth: {
