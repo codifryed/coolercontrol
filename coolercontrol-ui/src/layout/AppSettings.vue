@@ -75,6 +75,17 @@ const tabValue = ref(props.tabNumber != null && props.tabNumber ? props.tabNumbe
 
 const { t } = useI18n()
 
+const tabStyle = computed(() => {
+    let tabCount = 3
+    if (deviceStore.isQtApp()) {
+        tabCount += 1
+    }
+    if (deviceStore.isThinkPad) {
+        tabCount += 1
+    }
+    const width = 100 / tabCount
+    return `width: ${width}%`
+})
 const applyThinkPadFanControl = (value: boolean | string | number) => {
     settingsStore.applyThinkPadFanControl(Boolean(value))
 }
@@ -395,7 +406,12 @@ onUnmounted(() => {
         <ScrollAreaViewport class="pb-16 h-screen w-full">
             <Tabs v-model:value="tabValue">
                 <TabList>
-                    <Tab value="0" as="div" class="flex w-1/5 justify-center items-center gap-2">
+                    <Tab
+                        value="0"
+                        as="div"
+                        class="flex justify-center items-center gap-2"
+                        :style="tabStyle"
+                    >
                         <svg-icon
                             type="mdi"
                             :path="mdiViewQuiltOutline"
@@ -406,8 +422,8 @@ onUnmounted(() => {
                     <Tab
                         value="4"
                         as="div"
-                        class="flex w-1/5 justify-center items-center gap-2"
-                        :disabled="false"
+                        class="flex justify-center items-center gap-2"
+                        :style="tabStyle"
                     >
                         <svg-icon
                             type="mdi"
@@ -416,7 +432,12 @@ onUnmounted(() => {
                         />
                         {{ t('layout.settings.device') }}
                     </Tab>
-                    <Tab value="1" as="div" class="flex w-1/5 justify-center items-center gap-2">
+                    <Tab
+                        value="1"
+                        as="div"
+                        class="flex justify-center items-center gap-2"
+                        :style="tabStyle"
+                    >
                         <svg-icon
                             type="mdi"
                             :path="mdiDnsOutline"
@@ -425,9 +446,11 @@ onUnmounted(() => {
                         {{ t('views.daemon.title', 'Daemon') }}
                     </Tab>
                     <Tab
+                        v-if="deviceStore.isQtApp()"
                         value="2"
                         as="div"
-                        class="flex w-1/5 justify-center items-center gap-2"
+                        class="flex justify-center items-center gap-2"
+                        :style="tabStyle"
                         :disabled="!deviceStore.isQtApp()"
                     >
                         <svg-icon
@@ -438,9 +461,11 @@ onUnmounted(() => {
                         {{ t('layout.settings.desktop', 'Desktop') }}
                     </Tab>
                     <Tab
+                        v-if="deviceStore.isThinkPad"
                         value="3"
                         as="div"
-                        class="flex w-1/5 justify-center items-center gap-2"
+                        class="flex justify-center items-center gap-2"
+                        :style="tabStyle"
                         :disabled="!deviceStore.isThinkPad"
                     >
                         <svg-icon
