@@ -50,7 +50,8 @@ pub const DEFAULT_PLUGINS_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/plugins")
 const SERVICE_CONFIG_FILE_NAME: &str = "config.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
-const DELAY_SERVICE_START_SECONDS: usize = 4;
+const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
+const DELAY_INTEGRATION_SERVICE_START_SECONDS: usize = 4;
 const MISSING_STATUS_THRESHOLD: usize = 8;
 const MISSING_TEMP_FAILSAFE: Temp = 100.;
 const MISSING_DUTY_FAILSAFE: f64 = 0.;
@@ -282,92 +283,110 @@ impl ServicePluginRepo {
                 return;
             }
         }
-        match DeviceServiceClient::connect(&service_config, poll_rate).await {
-            Ok(mut client) => {
-                let mut version = String::new();
-                let mut retries = 0;
-                while retries < TIMEOUT_SERVICE_START_SECONDS {
-                    match client.health().await {
-                        Ok(response) => {
-                            match response.status() {
-                                health_response::Status::Ok => {
-                                    debug!("Service {} is healthy", response.name);
-                                }
-                                health_response::Status::Warning => {
-                                    warn!("Service {} has warnings", response.name);
-                                }
-                                health_response::Status::Error => {
-                                    error!("Service {} has errors", response.name);
-                                }
-                                _ => {
-                                    error!(
-                                        "Service {service_id} has unknown status. Shutting Service down."
-                                    );
-                                    if let Err(status) = client.shutdown().await {
-                                        error!(
-                                            "Error shutting down plugin service: {service_id} - {status}"
-                                        );
+        let mut connect_wait_secs = 0;
+        'connection: loop {
+            match DeviceServiceClient::connect(&service_config, poll_rate).await {
+                Ok(mut client) => {
+                    let mut version = String::new();
+                    let mut retries = 0;
+                    'health: while retries < TIMEOUT_SERVICE_START_SECONDS {
+                        match client.health().await {
+                            Ok(response) => {
+                                match response.status() {
+                                    health_response::Status::Ok => {
+                                        debug!("Service {} is healthy", response.name);
                                     }
-                                    let _ = service_manager.remove(&service_id).await;
-                                    return;
+                                    health_response::Status::Warning => {
+                                        warn!("Service {} has warnings", response.name);
+                                    }
+                                    health_response::Status::Error => {
+                                        error!("Service {} has errors", response.name);
+                                    }
+                                    _ => {
+                                        error!(
+                                            "Service {service_id} has unknown status. Shutting Service down."
+                                        );
+                                        if let Err(status) = client.shutdown().await {
+                                            error!(
+                                                "Error shutting down plugin service: {service_id} - {status}"
+                                            );
+                                        }
+                                        let _ = service_manager.remove(&service_id).await;
+                                        return;
+                                    }
                                 }
+                                version = response.version;
+                                break 'health;
                             }
-                            version = response.version;
-                            break;
-                        }
-                        Err(status) => {
-                            debug!("Health request returned status: {status}, retrying...");
-                            retries += 1;
+                            Err(status) => {
+                                debug!("Health request returned status: {status}, retrying...");
+                                retries += 1;
+                            }
                         }
                     }
-                }
-                let devices_response = match client.list_devices().await {
-                    Ok(devices_response) => devices_response,
-                    Err(err) => {
-                        error!("Error listing devices for {service_id}: {err}");
+                    if retries == TIMEOUT_SERVICE_START_SECONDS {
+                        error!("Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds");
+                        if service_config.is_managed() {
+                            let _ = service_manager.remove(&service_id).await;
+                        }
                         return;
                     }
-                };
-                let device_ids = devices_response
-                    .iter()
-                    .map(|(service_device_id, device)| {
-                        (device.uid.clone(), service_device_id.clone())
-                    })
-                    .collect();
-                client.with_device_ids(device_ids).await;
-                let device_service_conn = Rc::new(DeviceServiceConnection {
-                    id: service_id.clone(),
-                    version,
-                    client,
-                });
-                for (_, device) in devices_response {
-                    devices.borrow_mut().insert(
-                        device.uid.clone(),
-                        (
-                            Rc::new(RefCell::new(device)),
-                            Rc::clone(&device_service_conn),
-                        ),
+                    let devices_response = match client.list_devices().await {
+                        Ok(devices_response) => devices_response,
+                        Err(err) => {
+                            error!("Error listing devices for {service_id}: {err}");
+                            return;
+                        }
+                    };
+                    let device_ids = devices_response
+                        .iter()
+                        .map(|(service_device_id, device)| {
+                            (device.uid.clone(), service_device_id.clone())
+                        })
+                        .collect();
+                    client.with_device_ids(device_ids).await;
+                    let device_service_conn = Rc::new(DeviceServiceConnection {
+                        id: service_id.clone(),
+                        version,
+                        client,
+                    });
+                    for (_, device) in devices_response {
+                        devices.borrow_mut().insert(
+                            device.uid.clone(),
+                            (
+                                Rc::new(RefCell::new(device)),
+                                Rc::clone(&device_service_conn),
+                            ),
+                        );
+                    }
+                    info!(
+                        "Plugin Service {} v{} successfully started and connected.",
+                        service_id.to_service_name(),
+                        device_service_conn.version
                     );
+                    services
+                        .borrow_mut()
+                        .insert(service_id, (Some(device_service_conn), service_config));
+                    break 'connection;
                 }
-                info!(
-                    "Plugin Service {} v{} successfully started and connected.",
-                    service_id.to_service_name(),
-                    device_service_conn.version
-                );
-                services
-                    .borrow_mut()
-                    .insert(service_id, (Some(device_service_conn), service_config));
-            }
-            Err(err) => {
-                error!(
-                    "Could not establish a connection to the plugin service: {service_id} \
-                            Make sure it is running and the socket: {:?} is accessible - {err:?}",
-                    service_config.address
-                );
-                if service_config.is_managed() {
-                    let _ = service_manager.remove(&service_id).await;
+                Err(err) => {
+                    connect_wait_secs += 1;
+                    if connect_wait_secs < TIMEOUT_SERVICE_CONNECTION_SECONDS {
+                        info!("Could not establish a connection to the plugin service: {service_id}. Retrying...");
+                        sleep(Duration::from_secs(1)).await;
+                    } else {
+                        error!(
+                            "Could not establish a connection to the plugin service: {service_id} \
+                             Make sure it is running and the socket: {:?} is accessible - {err:?}",
+                            service_config.address
+                        );
+                        if service_config.is_managed() {
+                            let _ = service_manager.remove(&service_id).await;
+                        }
+                        info!("Plugin Service {} stopped.", service_id.to_service_name());
+                        break 'connection;
+                    }
                 }
-                info!("Plugin Service {} stopped.", service_id.to_service_name());
             }
         }
     }
@@ -378,7 +397,10 @@ impl ServicePluginRepo {
         let service_id = service_id.clone();
         let service_manager = service_manager.clone();
         tokio::task::spawn_local(async move {
-            sleep(Duration::from_secs(DELAY_SERVICE_START_SECONDS as u64)).await;
+            sleep(Duration::from_secs(
+                DELAY_INTEGRATION_SERVICE_START_SECONDS as u64,
+            ))
+            .await;
             if let Err(err) = service_manager.start(&service_id).await {
                 error!("Error starting plugin service: {err}");
                 return;
