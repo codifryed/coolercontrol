@@ -1062,7 +1062,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
     # get("/handshake")
     def handshake(self):
-        log.info("Exchanging handshake")
+        log.debug("Exchanging handshake")
         self._send(HTTPStatus.OK, Handshake(shake=True).to_json())
 
     # post("/quit")
