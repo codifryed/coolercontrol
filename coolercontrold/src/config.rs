@@ -1068,6 +1068,7 @@ impl Config {
                         .as_bool()
                         .with_context(|| "direct_access should be a boolean value")?;
                 }
+                #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
                 if let Some(value) = device_ext_table.get("delay_millis") {
                     extensions.delay_millis = value
                         .as_integer()

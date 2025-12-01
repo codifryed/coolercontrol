@@ -67,7 +67,7 @@ impl ServiceConfig {
             .trim();
         let args = args_str
             .split_whitespace()
-            .map(std::string::ToString::to_string)
+            .map(ToString::to_string)
             .collect();
         let address_opt = document
             .get("address")

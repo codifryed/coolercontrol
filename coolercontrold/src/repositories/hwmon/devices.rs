@@ -197,7 +197,7 @@ fn get_canonical_path_str(path: &Path) -> Option<String> {
     cc_fs::canonicalize(path)
         .inspect_err(|err| warn!("Error getting device path from {}, {err}", path.display()))
         .ok()
-        .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
+        .and_then(|path| path.to_str().map(ToOwned::to_owned))
 }
 
 /// Creates a unique identifier for a device.
@@ -306,28 +306,28 @@ pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
         .get("PCI_SLOT_NAME")
-        .map(std::borrow::ToOwned::to_owned)
+        .map(ToOwned::to_owned)
 }
 
 pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
         .get("DRIVER")
-        .map(std::borrow::ToOwned::to_owned)
+        .map(ToOwned::to_owned)
 }
 
 pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
         .get("MODALIAS")
-        .map(std::borrow::ToOwned::to_owned)
+        .map(ToOwned::to_owned)
 }
 
 pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .await
         .get("HID_PHYS")
-        .map(std::borrow::ToOwned::to_owned)
+        .map(ToOwned::to_owned)
 }
 
 #[cached(

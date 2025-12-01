@@ -170,9 +170,10 @@ impl LiquidctlRepo {
                 );
                 continue;
             }
-            let disabled_channels = cc_device_setting
-                .as_ref()
-                .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
+            let disabled_channels = cc_device_setting.as_ref().map_or_else(
+                Vec::new,
+                crate::setting::CCDeviceSettings::get_disabled_channels,
+            );
             // remove disabled lighting and lcd channels:
             device
                 .info

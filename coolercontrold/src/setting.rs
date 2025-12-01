@@ -211,7 +211,7 @@ impl CCDeviceSettings {
 #[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceExtensions {
     /// Whether to enable Direct Access for the liquidctl driver,
-    /// which will cause liquidctl to ignore the HWMon kernel driver
+    /// which will cause liquidctl to ignore the `HWMon` kernel driver
     pub direct_access: bool,
 
     /// The delay in milliseconds to force between applying settings to this device.
