@@ -43,6 +43,7 @@ use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use futures_util::future::join_all;
+use futures_util::TryFutureExt;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
@@ -312,18 +313,31 @@ impl LiquidctlRepo {
         status
     }
 
-    async fn call_initialize_concurrently(&self) {
+    async fn call_initialize_concurrently(&self) -> Vec<DeviceUID> {
+        let devices_to_remove = Rc::new(RefCell::new(vec![]));
         let mut futures = vec![];
         for device in self.devices.values() {
-            futures.push(self.call_initialize_per_device(device));
+            futures.push(self.call_initialize_per_device(device).map_err(|err| {
+                let devices_to_remove = Rc::clone(&devices_to_remove);
+                devices_to_remove
+                    .borrow_mut()
+                    .push(device.borrow().uid.clone());
+                anyhow!(
+                    "Failed to initialize device '{}'. If this occurs during system boot, \
+                    the device may require additional time to become ready. Consider increasing \
+                    the 'Device Delay at Startup' in the daemon settings - {}",
+                    device.borrow().name,
+                    err
+                )
+            }));
         }
         let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
-            match result {
-                Ok(()) => {}
-                Err(err) => error!("Error getting initializing device: {err}"),
+            if let Err(err) = result {
+                error!("{err}");
             }
         }
+        Rc::into_inner(devices_to_remove).unwrap().into_inner()
     }
 
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
@@ -774,7 +788,10 @@ impl Repository for LiquidctlRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        self.call_initialize_concurrently().await;
+        let failed_init_devices = self.call_initialize_concurrently().await;
+        for device_uid in failed_init_devices {
+            self.devices.remove(&device_uid);
+        }
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.borrow().clone());
