@@ -46,7 +46,7 @@ const LIQCTLD_EXPIRED_CONNECTION_RETRIES: usize = 7;
 const LIQCTLD_RESPONSE_TIMEOUT_SECONDS: u64 = 15;
 const LIQCTLD_SOCKET: &str = "/run/coolercontrold-liqctld.sock";
 const LIQCTLD_HOST: &str = "127.0.0.1";
-pub const LIQCTLD_CONNECTION_TRIES: usize = 3;
+pub const LIQCTLD_CONNECTION_TRIES: usize = 10;
 const LIQCTLD_HANDSHAKE: &str = "/handshake";
 const LIQCTLD_DEVICES: &str = "/devices";
 const LIQCTLD_LEGACY690: &str = "/devices/{}/legacy690";
@@ -59,7 +59,7 @@ const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
 const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
-const LIQCTLD_INIT_PAUSE_MS: u64 = 1000;
+const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
 
 /// A standard liquidctl status response (name, value, metric).
 pub type LCStatus = Vec<(String, String, String)>;
@@ -98,6 +98,9 @@ impl LiqctldClient {
     /// retries, an error is returned.
     async fn create_connection(connection_tries: usize) -> Result<SocketConnection> {
         let mut retry_count = 0;
+        // on startup liquidctl find_devices may take significant time which will keep the service
+        // from communicating until that's complete. We need to retry to handle that, and since
+        // the embedding of this service, it should be the only time we need to retry at startup.
         while retry_count < connection_tries {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
