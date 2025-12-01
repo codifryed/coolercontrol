@@ -832,6 +832,9 @@ class DeviceService:
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
+        if AuraLed is not None and isinstance(lc_device, AuraLed):
+            log.debug("Skipping AuraLed device status, not needed.")
+            return []
         log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
         status_job = self.device_executor.submit(device_id, lc_device.get_status)
         try:
