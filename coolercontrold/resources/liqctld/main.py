@@ -759,7 +759,14 @@ class DeviceService:
             return self._stringify_status(lc_init_status)
         except OSError as os_exc:
             # OSError, when a device was found and there's a permissions error
-            log.error(f"Device Initialization Error - {traceback.format_exc()}")
+            log.warning(f"Device Initialization Error - {traceback.format_exc()}")
+            try:
+                # try to reconnect the device on init failure, this can help startup issues.
+                lc_device = self.devices[device_id]
+                self._disconnect_device(device_id, lc_device)
+                self._connect_device(device_id, lc_device)
+            except BaseException:
+                log.warning("Failed to re-connect device after initialization error.")
             raise LiquidctlException(
                 f"Unexpected Device Communication Error - {os_exc}"
             ) from os_exc
