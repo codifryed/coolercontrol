@@ -739,7 +739,7 @@ class DeviceService:
         try:
             lc_device = self.devices[device_id]
             if AuraLed is not None and isinstance(lc_device, AuraLed):
-                log.info("Skipping AuraLed device initialization, not needed.")
+                log.debug("Skipping AuraLed device initialization, not needed.")
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug(
