@@ -757,8 +757,10 @@ class DeviceService:
                 f"RESPONSE: {lc_init_status}"
             )
             return self._stringify_status(lc_init_status)
-        except OSError as os_exc:
-            # OSError, when a device was found and there's a permissions error
+        except BaseException as os_exc:
+            # OSError can happen when a device was found and there's a permissions error
+            # OSError: read error sometimes happens when the OS/Device isn't ready.
+            # ValueError: not open, can happen when device is no longer _connected()
             log.warning(f"Device Initialization Error - {traceback.format_exc()}")
             raise LiquidctlException(
                 f"Unexpected Device Communication Error - {os_exc}"
