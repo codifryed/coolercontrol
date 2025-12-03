@@ -739,7 +739,7 @@ class DeviceService:
         try:
             lc_device = self.devices[device_id]
             if AuraLed is not None and isinstance(lc_device, AuraLed):
-                log.info("Skipping AuraLed device initialization, not needed.")
+                log.debug("Skipping AuraLed device initialization, not needed.")
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug(
@@ -757,11 +757,15 @@ class DeviceService:
                 f"RESPONSE: {lc_init_status}"
             )
             return self._stringify_status(lc_init_status)
-        except OSError as os_exc:
-            # OSError, when a device was found and there's a permissions error
-            log.error(f"Device Initialization Error - {traceback.format_exc()}")
+        except BaseException as os_exc:
+            # OSError can happen when a device was found and there's a permissions error
+            # OSError: read error sometimes happens when the OS/Device isn't ready.
+            # ValueError: not open, can happen when device is no longer _connected()
+            # To not output too many logs, and since CC auto-retries this:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(f"Device Initialization Error - {traceback.format_exc()}")
             raise LiquidctlException(
-                f"Unexpected Device Communication Error - {os_exc}"
+                f"Unexpected Device Communication Error - {traceback.format_exc()}"
             ) from os_exc
 
     @staticmethod
@@ -832,6 +836,9 @@ class DeviceService:
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
+        if AuraLed is not None and isinstance(lc_device, AuraLed):
+            log.debug("Skipping AuraLed device status, not needed.")
+            return []
         log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
         status_job = self.device_executor.submit(device_id, lc_device.get_status)
         try:
@@ -1059,7 +1066,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
     # get("/handshake")
     def handshake(self):
-        log.info("Exchanging handshake")
+        log.debug("Exchanging handshake")
         self._send(HTTPStatus.OK, Handshake(shake=True).to_json())
 
     # post("/quit")
