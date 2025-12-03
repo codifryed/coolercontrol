@@ -761,9 +761,11 @@ class DeviceService:
             # OSError can happen when a device was found and there's a permissions error
             # OSError: read error sometimes happens when the OS/Device isn't ready.
             # ValueError: not open, can happen when device is no longer _connected()
-            log.warning(f"Device Initialization Error - {traceback.format_exc()}")
+            # To not output too many logs, and since CC auto-retries this:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(f"Device Initialization Error - {traceback.format_exc()}")
             raise LiquidctlException(
-                f"Unexpected Device Communication Error - {os_exc}"
+                f"Unexpected Device Communication Error - {traceback.format_exc()}"
             ) from os_exc
 
     @staticmethod
