@@ -352,7 +352,7 @@ impl LiqctldClient {
         if response.is_err() {
             for _ in 1..LIQCTLD_MAX_INIT_RETRIES {
                 sleep(Duration::from_millis(LIQCTLD_INIT_PAUSE_MS)).await;
-                info!("Retrying liquidctl initialization request.");
+                info!("Retrying liquidctl device #{device_index} initialization request.");
                 response = self.make_request(&request).await;
                 if response.is_ok() {
                     return response;
