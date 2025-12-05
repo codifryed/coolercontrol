@@ -178,6 +178,7 @@ impl CpuRepo {
     /// This is sometimes needed when the active processor count changes.
     /// This function expects that `set_cpu_infos` has already been run at initialization.
     async fn update_processor_count(&self, cpuinfo_path: &Path) -> Result<()> {
+        let original_processor_counts = self.cpu_infos.clone();
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let mut physical_id: PhysicalID = 0;
         let mut processor_id: u16 = 0;
@@ -235,6 +236,12 @@ impl CpuRepo {
             }
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
+            if original_processor_counts != self.cpu_infos {
+                info!(
+                    "Processor counts have changed and been updated to: {:?}",
+                    self.cpu_infos
+                );
+            }
             debug!("Updated CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
