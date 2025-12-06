@@ -98,7 +98,6 @@ impl CpuRepo {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
-        let mut processor_id: u16 = 0;
         let mut processor_count: ProcessorCount = 0;
         let mut processor_present = false;
         let mut physical_id_present = false;
@@ -111,7 +110,7 @@ impl CpuRepo {
             };
 
             if key == "processor" {
-                processor_id = value.parse()?;
+                // processor_id = value.parse()?;
                 processor_present = true;
             }
             if key == "model name" {
@@ -124,15 +123,11 @@ impl CpuRepo {
             }
             if processor_present && physical_id_present && model_name_present {
                 // after each processor's entry
-                if processor_id > processor_count {
-                    // So far, processor_ids are congruous, and so we only need to store the count.
-                    processor_count = processor_id;
-                }
+                processor_count += 1;
                 self.cpu_infos
                     .entry(physical_id)
                     .or_default()
-                    // processor_id is a 0-based index
-                    .set(processor_count + 1);
+                    .set(processor_count);
                 self.cpu_model_names
                     .insert(physical_id, model_name.to_string());
                 processor_present = false;
@@ -150,19 +145,13 @@ impl CpuRepo {
                     _ => continue, // will skip empty lines and non-key-value lines
                 };
                 if key == "processor" {
-                    let processor_id = value.parse()?;
-                    if processor_id > processor_count {
-                        processor_count = processor_id;
-                    }
-                    self.cpu_infos
-                        .entry(0)
-                        .or_default()
-                        .set(processor_count + 1);
+                    processor_count += 1;
                 }
                 if key == "Model" {
                     self.cpu_model_names.insert(0, value.to_string());
                 }
             }
+            self.cpu_infos.entry(0).or_default().set(processor_count);
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
             trace!("CPUInfo: {:?}", self.cpu_infos);
@@ -181,7 +170,6 @@ impl CpuRepo {
         let original_processor_counts = self.cpu_infos.clone();
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let mut physical_id: PhysicalID = 0;
-        let mut processor_id: u16 = 0;
         let mut processor_count: ProcessorCount = 0;
         let mut processor_present = false;
         let mut physical_id_present = false;
@@ -192,7 +180,7 @@ impl CpuRepo {
                 _ => continue, // will skip empty lines and non-key-value lines
             };
             if key == "processor" {
-                processor_id = value.parse()?;
+                // processor_id = value.parse()?;
                 processor_present = true;
             }
             if key == "physical id" {
@@ -201,15 +189,13 @@ impl CpuRepo {
             }
             if processor_present && physical_id_present {
                 // after each processor's entry
-                if processor_id > processor_count {
-                    processor_count = processor_id;
-                }
+                processor_count += 1;
                 self.cpu_infos
                     .get(&physical_id)
                     .with_context(|| {
                         format!("physical id ({physical_id}) not found. This shouldn't happen.")
                     })?
-                    .set(processor_count + 1); // processor_id is a 0-based index
+                    .set(processor_count);
                 processor_present = false;
                 physical_id_present = false;
             }
@@ -219,21 +205,20 @@ impl CpuRepo {
             // they do have a model name though.
             for line in cpu_info_data.lines() {
                 let mut it = line.split(':');
-                let (key, value) = match (it.next(), it.next()) {
+                let (key, _value) = match (it.next(), it.next()) {
                     (Some(key), Some(value)) => (key.trim(), value.trim()),
                     _ => continue, // will skip empty lines and non-key-value lines
                 };
                 if key == "processor" {
-                    let processor_id = value.parse()?;
-                    if processor_id > processor_count {
-                        processor_count = processor_id;
-                    }
-                    self.cpu_infos
-                        .get(&0)
-                        .with_context(|| format!("Temp physical id ({physical_id}) not found. This shouldn't happen."))?
-                        .set(processor_count + 1);
+                    processor_count += 1;
                 }
             }
+            self.cpu_infos
+                .get(&0)
+                .with_context(|| {
+                    format!("Temp physical id ({physical_id}) not found. This shouldn't happen.")
+                })?
+                .set(processor_count);
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
             if original_processor_counts != self.cpu_infos {
