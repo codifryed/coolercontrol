@@ -32,8 +32,8 @@ use crate::grpc_api::models;
 use crate::grpc_api::models::v1::channel_info::Options;
 use crate::grpc_api::models::v1::status::Metric;
 use crate::grpc_api::models::v1::ChannelExtensionName;
-use crate::repositories::service_plugin::service_config::{ConnectionType, ServiceConfig};
 use crate::repositories::service_plugin::service_management::ServiceId;
+use crate::repositories::service_plugin::service_manifest::{ConnectionType, ServiceManifest};
 use crate::repositories::service_plugin::service_plugin_repo::ServiceDeviceID;
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Result};
@@ -72,8 +72,8 @@ pub struct DeviceServiceClient {
 }
 
 impl DeviceServiceClient {
-    pub async fn connect(service_config: &ServiceConfig, poll_rate: f64) -> Result<Self> {
-        let address = match &service_config.address {
+    pub async fn connect(service_manifest: &ServiceManifest, poll_rate: f64) -> Result<Self> {
+        let address = match &service_manifest.address {
             ConnectionType::Uds(uds) => {
                 format!("unix://{}", uds.display())
             }
@@ -85,7 +85,7 @@ impl DeviceServiceClient {
         let grpc_client =
             device_service_client::DeviceServiceClient::connect(address.clone()).await?;
         Ok(Self::new(
-            service_config.id.clone(),
+            service_manifest.id.clone(),
             address,
             poll_rate,
             grpc_client,
