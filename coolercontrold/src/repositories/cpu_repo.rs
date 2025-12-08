@@ -35,7 +35,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, log, trace};
+use log::{debug, error, info, log, trace, warn};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::time::Instant;
@@ -59,7 +59,7 @@ const CPUINFO_PATH: &str = "/proc/cpuinfo";
 
 // The ID of the actual physical CPU. On most systems, there is only one:
 type PhysicalID = u8;
-type ProcessorID = u16; // the logical processor ID
+type ProcessorCount = u16; // the logical processor count (aka how many cores per physical cpu)
 
 #[derive(Default, Debug, PartialEq)]
 struct CpuFreqs {
@@ -72,7 +72,7 @@ struct CpuFreqs {
 pub struct CpuRepo {
     config: Rc<Config>,
     devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
-    cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
+    cpu_infos: HashMap<PhysicalID, Cell<ProcessorCount>>,
     cpu_model_names: HashMap<PhysicalID, String>,
     cpu_percent_collector: RefCell<CpuPercentCollector>,
     preloaded_statuses: RefCell<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
@@ -98,7 +98,7 @@ impl CpuRepo {
         let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
-        let mut processor_id: ProcessorID = 0;
+        let mut processor_count: ProcessorCount = 0;
         let mut processor_present = false;
         let mut physical_id_present = false;
         let mut model_name_present = false;
@@ -110,7 +110,7 @@ impl CpuRepo {
             };
 
             if key == "processor" {
-                processor_id = value.parse()?;
+                // processor_id = value.parse()?;
                 processor_present = true;
             }
             if key == "model name" {
@@ -123,10 +123,11 @@ impl CpuRepo {
             }
             if processor_present && physical_id_present && model_name_present {
                 // after each processor's entry
+                processor_count += 1;
                 self.cpu_infos
                     .entry(physical_id)
                     .or_default()
-                    .push(processor_id);
+                    .set(processor_count);
                 self.cpu_model_names
                     .insert(physical_id, model_name.to_string());
                 processor_present = false;
@@ -144,15 +145,15 @@ impl CpuRepo {
                     _ => continue, // will skip empty lines and non-key-value lines
                 };
                 if key == "processor" {
-                    self.cpu_infos.entry(0).or_default().push(value.parse()?);
+                    processor_count += 1;
                 }
                 if key == "Model" {
                     self.cpu_model_names.insert(0, value.to_string());
                 }
             }
+            self.cpu_infos.entry(0).or_default().set(processor_count);
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
-            self.sort_processor_lists();
             trace!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
@@ -162,9 +163,76 @@ impl CpuRepo {
         }
     }
 
-    fn sort_processor_lists(&mut self) {
-        for processor_list in self.cpu_infos.values_mut() {
-            processor_list.sort_unstable();
+    /// Updates the processor count based on the cpuinfo file.
+    /// This is sometimes needed when the active processor count changes.
+    /// This function expects that `set_cpu_infos` has already been run at initialization.
+    async fn update_processor_count(&self, cpuinfo_path: &Path) -> Result<()> {
+        let original_processor_counts = self.cpu_infos.clone();
+        let cpu_info_data = cc_fs::read_txt(cpuinfo_path).await?;
+        let mut physical_id: PhysicalID = 0;
+        let mut processor_count: ProcessorCount = 0;
+        let mut processor_present = false;
+        let mut physical_id_present = false;
+        for line in cpu_info_data.lines() {
+            let mut it = line.split(':');
+            let (key, value) = match (it.next(), it.next()) {
+                (Some(key), Some(value)) => (key.trim(), value.trim()),
+                _ => continue, // will skip empty lines and non-key-value lines
+            };
+            if key == "processor" {
+                // processor_id = value.parse()?;
+                processor_present = true;
+            }
+            if key == "physical id" {
+                physical_id = value.parse()?;
+                physical_id_present = true;
+            }
+            if processor_present && physical_id_present {
+                // after each processor's entry
+                processor_count += 1;
+                self.cpu_infos
+                    .get(&physical_id)
+                    .with_context(|| {
+                        format!("physical id ({physical_id}) not found. This shouldn't happen.")
+                    })?
+                    .set(processor_count);
+                processor_present = false;
+                physical_id_present = false;
+            }
+        }
+        if self.cpu_infos.is_empty() && self.cpu_model_names.is_empty() {
+            // Some CPUs, like the Raspberry Pi, don't have a physical id, so we need to fake one,
+            // they do have a model name though.
+            for line in cpu_info_data.lines() {
+                let mut it = line.split(':');
+                let (key, _value) = match (it.next(), it.next()) {
+                    (Some(key), Some(value)) => (key.trim(), value.trim()),
+                    _ => continue, // will skip empty lines and non-key-value lines
+                };
+                if key == "processor" {
+                    processor_count += 1;
+                }
+            }
+            self.cpu_infos
+                .get(&0)
+                .with_context(|| {
+                    format!("Temp physical id ({physical_id}) not found. This shouldn't happen.")
+                })?
+                .set(processor_count);
+        }
+        if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
+            if original_processor_counts != self.cpu_infos {
+                info!(
+                    "Processor counts have changed and been updated to: {:?}",
+                    self.cpu_infos
+                );
+            }
+            debug!("Updated CPUInfo: {:?}", self.cpu_infos);
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "cpuinfo either not found or missing data on this system!"
+            ))
         }
     }
 
@@ -251,39 +319,38 @@ impl CpuRepo {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    fn collect_load(&self, physical_id: PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
-        // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
-        let percent_per_processor = self
+    /// We calculate total system load.
+    #[allow(clippy::cast_precision_loss)]
+    async fn collect_load(
+        &self,
+        physical_id: PhysicalID,
+        channel_name: &str,
+    ) -> Option<ChannelStatus> {
+        let percents = self
             .cpu_percent_collector
             .borrow_mut()
             .cpu_percent_percpu()
             .unwrap_or_default();
-        let mut percents = Vec::new();
-        for (processor_id, percent) in percent_per_processor.into_iter().enumerate() {
-            let processor_id = processor_id as ProcessorID;
-            if self
-                .cpu_infos
-                .get(&physical_id)
-                .expect("physical_id should be present in cpu_infos")
-                .contains(&processor_id)
-            {
-                percents.push(percent);
+        let num_percents = percents.len();
+        let num_processors = self.cpu_infos.get(&physical_id)?.get() as usize;
+        if num_percents != num_processors {
+            // IF this is true, either something unexpected has happened, or the number of processors
+            // has changed since we last collected data. (e.g. disabled at runtime)
+            if let Err(err) = self.update_processor_count(CPUINFO_PATH.as_ref()).await {
+                warn!("Failed to update processor count: {err}");
+            }
+            // recheck after updating
+            if num_percents != self.cpu_infos.get(&physical_id)?.get() as usize {
+                error!("Non-matching processors: {num_processors} and percents: {num_percents}");
+                return None;
             }
         }
-        let num_percents = percents.len();
-        let num_processors = self.cpu_infos.get(&physical_id)?.len();
-        if num_percents == num_processors {
-            let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
-            Some(ChannelStatus {
-                name: channel_name.to_string(),
-                duty: Some(load),
-                ..Default::default()
-            })
-        } else {
-            error!("Non-matching processors: {num_processors} and percents: {num_percents}");
-            None
-        }
+        let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
+        Some(ChannelStatus {
+            name: channel_name.to_string(),
+            duty: Some(load),
+            ..Default::default()
+        })
     }
 
     /// Collects the average frequency per Physical CPU.
@@ -384,9 +451,10 @@ impl CpuRepo {
         })
     }
 
-    fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
+    async fn init_cpu_load(&self, physical_id: PhysicalID) -> Result<HwmonChannelInfo> {
         if self
             .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
+            .await
             .is_none()
         {
             Err(anyhow!("Error: no load percent found!"))
@@ -447,7 +515,8 @@ impl CpuRepo {
         for channel in &driver.channels {
             match channel.hwmon_type {
                 HwmonChannelType::Load => {
-                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name) else {
+                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name).await
+                    else {
                         continue;
                     };
                     status_channels.push(load_status);
@@ -603,7 +672,7 @@ impl CpuRepo {
                 }
                 let disabled_channels = cc_device_setting
                     .map_or_else(Vec::new, |setting| setting.get_disabled_channels());
-                match self.init_cpu_load(physical_id) {
+                match self.init_cpu_load(physical_id).await {
                     Ok(load) => channels.push(load),
                     Err(err) => {
                         error!("Error matching cpu load percents to processors: {err}");
@@ -1281,6 +1350,190 @@ mod tests {
 
             // then:
             assert_eq!(result.len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_amd_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_ok(),
+                "update_processor_count should return Ok: {result:?}"
+            );
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&0).unwrap().get(),
+                initial_count,
+                "processor count should remain the same"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_amd_double_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_DOUBLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let initial_count_0 = cpu_repo.cpu_infos.get(&0).unwrap().get();
+            let initial_count_1 = cpu_repo.cpu_infos.get(&1).unwrap().get();
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_ok(),
+                "update_processor_count should return Ok: {result:?}"
+            );
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&0).unwrap().get(),
+                initial_count_0,
+                "processor count for physical id 0 should remain the same"
+            );
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&1).unwrap().get(),
+                initial_count_1,
+                "processor count for physical id 1 should remain the same"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_intel_single_cpu() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_INTEL_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_ok(),
+                "update_processor_count should return Ok: {result:?}"
+            );
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&0).unwrap().get(),
+                initial_count,
+                "processor count should remain the same"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_raspberry_pi_5() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_RASPBERRY_PI_5.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_ok(),
+                "update_processor_count should return Ok: {result:?}"
+            );
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&0).unwrap().get(),
+                initial_count,
+                "processor count should remain the same"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_fails_without_init() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let cpu_repo = CpuRepo::new(test_config).unwrap();
+            // Note: set_cpu_infos NOT called
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_err(),
+                "update_processor_count should return Err when cpu_infos is empty: {result:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_processor_count_empty_file() {
+        cc_fs::test_runtime(async {
+            // given:
+            let test_cpuinfo = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
+            cc_fs::write(&test_cpuinfo, CPUINFO_AMD_SINGLE_CPU.to_vec())
+                .await
+                .unwrap();
+            let test_config = Rc::new(Config::init_default_config().unwrap());
+            let mut cpu_repo = CpuRepo::new(test_config).unwrap();
+            cpu_repo.set_cpu_infos(&test_cpuinfo).await.unwrap();
+            let initial_count = cpu_repo.cpu_infos.get(&0).unwrap().get();
+
+            // Overwrite with empty file
+            cc_fs::write(&test_cpuinfo, vec![]).await.unwrap();
+
+            // when:
+            let result = cpu_repo.update_processor_count(&test_cpuinfo).await;
+
+            // then:
+            assert!(
+                result.is_ok(),
+                "update_processor_count should return Ok even with empty file: {result:?}"
+            );
+            // The processor count should remain unchanged
+            assert_eq!(
+                cpu_repo.cpu_infos.get(&0).unwrap().get(),
+                initial_count,
+                "processor count should remain unchanged when file is empty"
+            );
         });
     }
 }
