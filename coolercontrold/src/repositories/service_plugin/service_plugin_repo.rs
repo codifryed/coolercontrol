@@ -24,11 +24,11 @@ use crate::device::{
 use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
-use crate::repositories::service_plugin::service_config::{ServiceConfig, ServiceType};
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
 use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
+use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
@@ -47,7 +47,7 @@ use toml_edit::DocumentMut;
 pub type ServiceDeviceID = String;
 
 pub const DEFAULT_PLUGINS_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/plugins");
-const SERVICE_CONFIG_FILE_NAME: &str = "config.toml";
+const SERVICE_MANIFEST_FILE_NAME: &str = "manifest.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
@@ -69,7 +69,7 @@ struct DeviceServiceConnection {
 pub struct ServicePluginRepo {
     config: Rc<Config>,
     service_manager: Manager,
-    services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceConfig)>,
+    services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     preloaded_statuses: RefCell<HashMap<DeviceUID, PreloadData>>,
     failsafe_statuses: RefCell<HashMap<DeviceUID, FailsafeStatusData>>,
@@ -105,7 +105,7 @@ impl ServicePluginRepo {
         })
     }
 
-    async fn find_service_configs() -> HashMap<ServiceId, ServiceConfig> {
+    async fn find_service_manifests() -> HashMap<ServiceId, ServiceManifest> {
         let plugins_dir = Path::new(DEFAULT_PLUGINS_PATH);
         let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
@@ -115,7 +115,7 @@ impl ServicePluginRepo {
             }
             return services;
         };
-        // cycle through subdirectories looking for a config.toml file
+        // cycle through subdirectories looking for a manifest.toml file
         for entry in dir_entries {
             let Ok(dir_entry) = entry else {
                 continue;
@@ -124,38 +124,38 @@ impl ServicePluginRepo {
             if path.is_dir().not() {
                 continue;
             }
-            let service_config_file = path.join(SERVICE_CONFIG_FILE_NAME);
-            if service_config_file.exists() {
-                let Ok(config_content) = cc_fs::read_txt(&service_config_file).await else {
+            let service_manifest_file = path.join(SERVICE_MANIFEST_FILE_NAME);
+            if service_manifest_file.exists() {
+                let Ok(manifest_content) = cc_fs::read_txt(&service_manifest_file).await else {
                     error!(
-                        "Error reading plugin config file: {}",
-                        service_config_file.display()
+                        "Error reading plugin manifest: {}",
+                        service_manifest_file.display()
                     );
                     continue;
                 };
-                let Ok(document) = config_content.parse::<DocumentMut>() else {
+                let Ok(document) = manifest_content.parse::<DocumentMut>() else {
                     error!(
-                        "Error Parsing TOML configuration file, check the syntax: {}",
-                        service_config_file.display()
+                        "Error Parsing TOML manifest file, check the syntax: {}",
+                        service_manifest_file.display()
                     );
                     continue;
                 };
-                match ServiceConfig::from_document(&document) {
-                    Ok(config) => {
-                        if services.contains_key(&config.id) {
+                match ServiceManifest::from_document(&document) {
+                    Ok(manifest) => {
+                        if services.contains_key(&manifest.id) {
                             error!(
                                 "Service Name {} already registered. Skipping {}",
-                                config.id,
-                                service_config_file.display()
+                                manifest.id,
+                                service_manifest_file.display()
                             );
                             continue;
                         }
-                        services.insert(config.id.clone(), config);
+                        services.insert(manifest.id.clone(), manifest);
                     }
                     Err(err) => {
                         error!(
-                            "Error parsing service config file: {} Reason: {err}",
-                            service_config_file.display()
+                            "Error parsing service manifest file: {} Reason: {err}",
+                            service_manifest_file.display()
                         );
                     }
                 }
@@ -208,26 +208,26 @@ impl ServicePluginRepo {
     #[allow(clippy::too_many_lines)]
     async fn initialize_service(
         service_id: ServiceId,
-        service_config: ServiceConfig,
+        service_manifest: ServiceManifest,
         service_manager: Rc<Manager>,
         services: Rc<
-            RefCell<HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceConfig)>>,
+            RefCell<HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>>,
         >,
         devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
         poll_rate: f64,
     ) {
-        let username = service_config
+        let username = service_manifest
             .privileged
             .not()
             .then_some(CC_PLUGIN_USER.to_string());
         // This will also reload this daemon unit if already installed:
         let _ = service_manager.remove(&service_id).await;
-        if let Some(exe) = &service_config.executable {
+        if let Some(exe) = &service_manifest.executable {
             if let Err(e) = service_manager
                 .add(ServiceDefinition {
                     service_id: service_id.clone(),
                     executable: exe.clone(),
-                    args: service_config.args.clone(),
+                    args: service_manifest.args.clone(),
                     username,
                     wrk_dir: None,
                     envs: Some(Self::env_log_level()),
@@ -241,19 +241,19 @@ impl ServicePluginRepo {
                 return;
             }
         }
-        match service_config.service_type {
+        match service_manifest.service_type {
             ServiceType::Integration => {
-                if service_config.is_managed() {
+                if service_manifest.is_managed() {
                     Self::start_integration_service(&service_id, &service_manager);
                 }
                 // Integration services may not have client connection, but are possibly still managed
                 services
                     .borrow_mut()
-                    .insert(service_id, (None, service_config));
+                    .insert(service_id, (None, service_manifest));
                 return; // Integration service startup queued, no other action required
             }
             ServiceType::Device => {
-                if service_config.is_managed() {
+                if service_manifest.is_managed() {
                     if let Err(err) = service_manager.start(&service_id).await {
                         error!(
                             "Error starting plugin service. This service {service_id} will be skipped: {err}"
@@ -264,7 +264,7 @@ impl ServicePluginRepo {
                 }
             }
         }
-        if service_config.is_managed() {
+        if service_manifest.is_managed() {
             let mut wait_secs = 0;
             while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
                 // It takes a moment for the status to come up, also for service crashing.
@@ -285,7 +285,7 @@ impl ServicePluginRepo {
         }
         let mut connect_wait_secs = 0;
         'connection: loop {
-            match DeviceServiceClient::connect(&service_config, poll_rate).await {
+            match DeviceServiceClient::connect(&service_manifest, poll_rate).await {
                 Ok(mut client) => {
                     let mut version = String::new();
                     let mut retries = 0;
@@ -326,7 +326,7 @@ impl ServicePluginRepo {
                     }
                     if retries == TIMEOUT_SERVICE_START_SECONDS {
                         error!("Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds");
-                        if service_config.is_managed() {
+                        if service_manifest.is_managed() {
                             let _ = service_manager.remove(&service_id).await;
                         }
                         return;
@@ -366,7 +366,7 @@ impl ServicePluginRepo {
                     );
                     services
                         .borrow_mut()
-                        .insert(service_id, (Some(device_service_conn), service_config));
+                        .insert(service_id, (Some(device_service_conn), service_manifest));
                     break 'connection;
                 }
                 Err(err) => {
@@ -378,9 +378,9 @@ impl ServicePluginRepo {
                         error!(
                             "Could not establish a connection to the plugin service: {service_id} \
                              Make sure it is running and the socket: {:?} is accessible - {err:?}",
-                            service_config.address
+                            service_manifest.address
                         );
-                        if service_config.is_managed() {
+                        if service_manifest.is_managed() {
                             let _ = service_manager.remove(&service_id).await;
                         }
                         info!("Plugin Service {} stopped.", service_id.to_service_name());
@@ -717,14 +717,14 @@ impl Repository for ServicePluginRepo {
         let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
         let poll_rate = self.config.get_settings()?.poll_rate;
         moro_local::async_scope!(|service_init_scope| {
-            for (service_id, service_config) in Self::find_service_configs().await {
+            for (service_id, service_manifest) in Self::find_service_manifests().await {
                 let service_manager = Rc::clone(&service_manager);
                 let services = Rc::clone(&services);
                 let devices = Rc::clone(&devices);
                 service_init_scope.spawn(async move {
                     Self::initialize_service(
                         service_id,
-                        service_config,
+                        service_manifest,
                         service_manager,
                         services,
                         devices,
@@ -861,7 +861,7 @@ impl Repository for ServicePluginRepo {
 
     async fn shutdown(&self) -> Result<()> {
         moro_local::async_scope!(|scope| {
-            for (service_id, (optional_service_connection, service_config)) in &self.services {
+            for (service_id, (optional_service_connection, service_manifest)) in &self.services {
                 scope.spawn(async move {
                     if let Some(service) = optional_service_connection {
                         if let Err(status) = service.client.shutdown().await {
@@ -869,7 +869,7 @@ impl Repository for ServicePluginRepo {
                         }
                         debug!("Plugin Service {service_id} internal shutdown complete");
                     }
-                    if service_config.is_managed() {
+                    if service_manifest.is_managed() {
                         let _ = self.service_manager.remove(service_id).await;
                         info!("Plugin Service {service_id} stopped.");
                     }

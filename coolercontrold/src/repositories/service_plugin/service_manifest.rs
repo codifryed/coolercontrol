@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
 #[derive(Debug, Clone)]
-pub struct ServiceConfig {
+pub struct ServiceManifest {
     pub id: String,                  // required for all service plugins
     pub service_type: ServiceType,   // required for all service plugins
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
@@ -32,17 +32,17 @@ pub struct ServiceConfig {
     pub privileged: bool,            // for device service plugins (false by default)
 }
 
-impl ServiceConfig {
+impl ServiceManifest {
     pub fn from_document(document: &DocumentMut) -> Result<Self> {
         let id = document
             .get("id")
             .and_then(|item| item.as_str())
-            .with_context(|| "Service Config id should be present")?
+            .with_context(|| "Service manifest id should be present")?
             .to_string();
         let service_type_str = document
             .get("type")
             .and_then(|item| item.as_str())
-            .with_context(|| "Service Config service type should be present")?
+            .with_context(|| "Service manifest service type should be present")?
             .to_lowercase();
         let service_type = match service_type_str.as_str() {
             "device" => ServiceType::Device,
