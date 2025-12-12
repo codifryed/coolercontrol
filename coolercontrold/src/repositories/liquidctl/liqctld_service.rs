@@ -182,6 +182,7 @@ async fn process_log_output(
     >,
 ) {
     let mut lvl = log::Level::Info;
+    let mut kraken_bucket_error_logged = false;
     while let Some(unread_line) = merged_lines.next().await {
         let Ok(line) = unread_line else {
             continue;
@@ -200,8 +201,18 @@ async fn process_log_output(
                 OR enable liquidctl 'Direct Access' in advanced device settings.";
             }
             stripped
-        } else if let Some(stripped) = line.strip_prefix("ERROR") {
+        } else if let Some(mut stripped) = line.strip_prefix("ERROR") {
             lvl = log::Level::Error;
+            if stripped.starts_with("Failed to setup bucket")
+                || stripped.starts_with("Failed to switch active bucket")
+            {
+                if kraken_bucket_error_logged {
+                    continue;
+                }
+                lvl = log::Level::Warn;
+                stripped = "The liquidctl KrakenZ3 driver has reported an image bucket error. Warning: The LCD display may flicker or be unstable.";
+                kraken_bucket_error_logged = true;
+            }
             stripped
         } else if let Some(stripped) = line.strip_prefix("DEBUG") {
             lvl = log::Level::Debug;
