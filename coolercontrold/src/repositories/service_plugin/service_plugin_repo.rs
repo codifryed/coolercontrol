@@ -140,7 +140,7 @@ impl ServicePluginRepo {
                     );
                     continue;
                 };
-                match ServiceManifest::from_document(&document) {
+                match ServiceManifest::from_document(&document, path) {
                     Ok(manifest) => {
                         if services.contains_key(&manifest.id) {
                             error!(
@@ -696,6 +696,15 @@ impl ServicePluginRepo {
         disabled_channels_for_device.is_none()
             || disabled_channels_for_device
                 .is_some_and(|disabled_channels| disabled_channels.contains(channel_name).not())
+    }
+
+    /// Returns a copy of the plugins information, used by the plugin controller.
+    pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
+        let mut plugins = HashMap::new();
+        for (service_id, (_, service_manifest)) in &self.services {
+            plugins.insert(service_id.clone(), service_manifest.clone());
+        }
+        plugins
     }
 }
 

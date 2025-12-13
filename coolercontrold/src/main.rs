@@ -30,6 +30,7 @@ use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repositories};
+use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
@@ -182,7 +183,7 @@ fn main() -> Result<()> {
         admin::load_passwd().await?;
 
         pause_before_startup(&config).await?;
-        let (repos, custom_sensors_repo) =
+        let (repos, custom_sensors_repo, plugin_controller) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
@@ -217,6 +218,7 @@ fn main() -> Result<()> {
                 custom_sensors_repo,
                 Rc::clone(&mode_controller),
                 Rc::clone(&alert_controller),
+                plugin_controller,
                 log_buf_handle,
                 status_handle.clone(),
                 run_token.clone(),
@@ -355,7 +357,7 @@ async fn initialize_device_repos(
     config: &Rc<Config>,
     cmd_args: &Args,
     run_token: CancellationToken,
-) -> Result<(Repos, Rc<CustomSensorsRepo>)> {
+) -> Result<(Repos, Rc<CustomSensorsRepo>, Rc<PluginController>)> {
     info!("Initializing Devices...");
     let mut repos = Repositories::default();
     let mut lc_locations = Vec::new();
@@ -372,6 +374,7 @@ async fn initialize_device_repos(
         },
     }
     // init these concurrently:
+    let mut plugin_controller = PluginController::default();
     moro_local::async_scope!(|init_scope| {
         init_scope.spawn(async {
             match init_cpu_repo(config.clone()).await {
@@ -393,7 +396,10 @@ async fn initialize_device_repos(
         });
         init_scope.spawn(async {
             match init_service_plugin_repo(config.clone()).await {
-                Ok(repo) => repos.external = Some(Rc::new(repo)),
+                Ok(repo) => {
+                    plugin_controller = PluginController::new(&repo);
+                    repos.external = Some(Rc::new(repo))
+                }
                 Err(err) => error!("Error initializing Service Plugin Repo: {err}"),
             }
         });
@@ -404,7 +410,11 @@ async fn initialize_device_repos(
     let custom_sensors_repo =
         Rc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
     repos.custom_sensors = Some(custom_sensors_repo.clone());
-    Ok((Rc::new(repos), custom_sensors_repo))
+    Ok((
+        Rc::new(repos),
+        custom_sensors_repo,
+        Rc::new(plugin_controller),
+    ))
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
@@ -443,6 +453,7 @@ async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Resul
 }
 
 async fn init_service_plugin_repo(config: Rc<Config>) -> Result<ServicePluginRepo> {
+    // todo: need to create a plugin_controller for our API stuff.
     let mut external_repo = ServicePluginRepo::new(config)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)

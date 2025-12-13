@@ -17,7 +17,7 @@
  */
 
 use crate::api::{
-    alerts, auth, base, custom_sensors, functions, modes, profiles, settings, sse, status,
+    alerts, auth, base, custom_sensors, functions, modes, plugins, profiles, settings, sse, status,
 };
 use crate::api::{devices, AppState};
 use aide::axum::routing::{delete_with, get, get_with, patch_with, post_with, put_with};
@@ -35,6 +35,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(custom_sensor_routes())
         .merge(mode_routes())
         .merge(settings_routes())
+        .merge(plugins_routes())
         .merge(alert_routes())
         .merge(sse_routes())
         .route("/api.json", get(base::serve_api_doc))
@@ -634,6 +635,48 @@ fn settings_routes() -> ApiRouter<AppState> {
                 o.summary("Update CoolerControl UI Settings")
                     .description("Updates and persists the CoolerControl UI settings.")
                     .tag("setting")
+            }),
+        )
+}
+
+fn plugins_routes() -> ApiRouter<AppState> {
+    ApiRouter::new()
+        .api_route(
+            "/plugins",
+            get_with(plugins::get_plugins, |o| {
+                o.summary("CoolerControl Plugins")
+                    .description("Returns the current list of active CoolerControl plugins.")
+                    .tag("plugins")
+            }),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/config",
+            get_with(plugins::get_config, |o| {
+                o.summary("CoolerControl Plugin Config")
+                    .description(
+                        "Returns the current CoolerControl plugin config for the given plugin ID.",
+                    )
+                    .tag("plugins")
+            }),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/config",
+            put_with(plugins::update_config, |o| {
+                o.summary("Update CoolerControl Plugin Config")
+                    .description("Updates the CoolerControl plugin config for the given plugin ID.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/ui/{file_name}",
+            get_with(plugins::get_ui_files, |o| {
+                o.summary("CoolerControl Plugin UI")
+                    .description(
+                        "Returns the CoolerControl plugin UI file for the given plugin ID.",
+                    )
+                    .tag("plugins")
             }),
         )
 }
