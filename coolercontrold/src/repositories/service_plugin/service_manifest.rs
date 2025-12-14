@@ -30,6 +30,7 @@ pub struct ServiceManifest {
     pub description: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
     pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
+    pub envs: Vec<(String, String)>, // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
     pub privileged: bool,            // for device service plugins (false by default)
     pub path: PathBuf,               // This plugin's folder path
@@ -77,6 +78,19 @@ impl ServiceManifest {
             .split_whitespace()
             .map(ToString::to_string)
             .collect();
+        let envs_str = document
+            .get("envs")
+            .and_then(|item| item.as_str())
+            .unwrap_or_default()
+            .trim();
+        let envs = envs_str
+            .split_whitespace()
+            .filter_map(|env_str| {
+                env_str
+                    .split_once('=')
+                    .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
+            })
+            .collect();
         let address_opt = document
             .get("address")
             .and_then(|item| item.as_str().map(str::trim).map(str::to_string))
@@ -109,6 +123,7 @@ impl ServiceManifest {
             description,
             executable,
             args,
+            envs,
             address,
             privileged,
             path,

@@ -220,6 +220,8 @@ impl ServicePluginRepo {
             .privileged
             .not()
             .then_some(CC_PLUGIN_USER.to_string());
+        let mut envs = Self::env_log_level();
+        envs.append(&mut service_manifest.envs.clone());
         // This will also reload this daemon unit if already installed:
         let _ = service_manager.remove(&service_id).await;
         if let Some(exe) = &service_manifest.executable {
@@ -230,7 +232,7 @@ impl ServicePluginRepo {
                     args: service_manifest.args.clone(),
                     username,
                     wrk_dir: None,
-                    envs: Some(Self::env_log_level()),
+                    envs: Some(envs),
                     disable_restart_on_failure: false,
                 })
                 .await
