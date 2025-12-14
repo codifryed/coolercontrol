@@ -84,6 +84,7 @@ impl ApiActor<PluginMessage> for PluginActor {
                     plugins.push(PluginDto {
                         id: manifest.id.clone(),
                         service_type: manifest.service_type.to_string(),
+                        description: manifest.description.clone(),
                         address,
                         privileged: manifest.privileged,
                         path: manifest.path.display().to_string(),

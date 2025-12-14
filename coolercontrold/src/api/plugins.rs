@@ -111,6 +111,7 @@ pub struct PluginsDto {
 pub struct PluginDto {
     pub id: String,
     pub service_type: String,
+    pub description: Option<String>,
     pub address: String,
     pub privileged: bool,
     pub path: String,

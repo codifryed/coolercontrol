@@ -25,13 +25,14 @@ use toml_edit::DocumentMut;
 
 #[derive(Debug, Clone)]
 pub struct ServiceManifest {
-    pub id: String,                  // required for all service plugins
-    pub service_type: ServiceType,   // required for all service plugins
+    pub id: String,                // required for all service plugins
+    pub service_type: ServiceType, // required for all service plugins
+    pub description: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
-    pub args: Vec<String>,           // if needed (set log level, etc.)
-    pub address: ConnectionType, // required for all device service plugins
-    pub privileged: bool,        // for device service plugins (false by default)
-    pub path: PathBuf,           // This plugin's folder path
+    pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
+    pub address: ConnectionType,     // required for all device service plugins
+    pub privileged: bool,            // for device service plugins (false by default)
+    pub path: PathBuf,               // This plugin's folder path
 }
 
 impl ServiceManifest {
@@ -51,6 +52,11 @@ impl ServiceManifest {
             "integration" => ServiceType::Integration,
             _ => return Err(anyhow!("Invalid service type")),
         };
+        let description = document
+            .get("description")
+            .and_then(|item| item.as_str())
+            .filter(|d| d.is_empty().not())
+            .map(|d| d.trim().to_string());
         let executable = document
             .get("executable")
             .and_then(|item| item.as_str())
@@ -100,6 +106,7 @@ impl ServiceManifest {
         Ok(Self {
             id,
             service_type,
+            description,
             executable,
             args,
             address,
