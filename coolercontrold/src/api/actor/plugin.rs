@@ -19,6 +19,7 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::plugins::{PluginDto, PluginsDto};
 use crate::repositories::service_plugin::plugin_controller::PluginController;
+use crate::repositories::service_plugin::service_manifest::ConnectionType;
 use anyhow::Result;
 use moro_local::Scope;
 use std::path::PathBuf;
@@ -75,10 +76,15 @@ impl ApiActor<PluginMessage> for PluginActor {
             PluginMessage::GetAll { respond_to } => {
                 let mut plugins = Vec::new();
                 for manifest in self.plugin_controller.plugins.values() {
+                    let address = match &manifest.address {
+                        ConnectionType::None => String::new(),
+                        ConnectionType::Uds(uds_path) => uds_path.display().to_string(),
+                        ConnectionType::Tcp(addr) => addr.clone(),
+                    };
                     plugins.push(PluginDto {
                         id: manifest.id.clone(),
                         service_type: manifest.service_type.to_string(),
-                        address: manifest.address.to_string(),
+                        address,
                         privileged: manifest.privileged,
                         path: manifest.path.display().to_string(),
                     });
