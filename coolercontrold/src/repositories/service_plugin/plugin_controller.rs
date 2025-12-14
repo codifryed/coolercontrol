@@ -95,7 +95,7 @@ impl PluginController {
             })
     }
 
-    pub async fn get_plugin_ui_dir(&self, plugin_id: &str) -> Result<PathBuf> {
+    pub fn get_plugin_ui_dir(&self, plugin_id: &str) -> Result<PathBuf> {
         let dir = self
             .plugins
             .get(plugin_id)

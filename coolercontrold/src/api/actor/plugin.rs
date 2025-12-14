@@ -110,7 +110,7 @@ impl ApiActor<PluginMessage> for PluginActor {
                 plugin_id,
                 respond_to,
             } => {
-                let ui_dir = self.plugin_controller.get_plugin_ui_dir(&plugin_id).await;
+                let ui_dir = self.plugin_controller.get_plugin_ui_dir(&plugin_id);
                 let _ = respond_to.send(ui_dir);
             }
         }
