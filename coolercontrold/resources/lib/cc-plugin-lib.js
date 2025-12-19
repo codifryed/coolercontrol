@@ -35,22 +35,21 @@ let _status = new Map()
 
 const _increaseMessageCount = () => _messageCount++
 const _decreaseMessageCount = () => {
-    if (_messageCount <= 0) return
-    _messageCount--
+    if (_messageCount > 0) {
+        _messageCount--
+    }
+    // dispatch event asynchronously
+    setTimeout(() => window.dispatchEvent(new CustomEvent('decreasedMessageCount')), 0)
 }
 
 // Utility Functions
 /////////////////////////////////////////////////////////////
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const waitTillAllMessagesReceived = async () => {
-    let waitCount = 0
-    while (_messageCount !== 0 && waitCount < 100) {
-        await sleep(100)
-        waitCount++
-    }
-    if (waitCount >= 100) {
-        console.warn('waitTillAllMessagesReceived timeout')
-        _messageCount = 0
+    while (_messageCount !== 0) {
+        await new Promise((resolve) =>
+            window.addEventListener('decreasedMessageCount', resolve, { once: true }),
+        )
     }
 }
 
