@@ -12,6 +12,11 @@ build: dist
 dev:
 	@npm run dev
 
+dev-run:
+	@npm ci --prefer-offline
+	@npm exec vite build -- --outDir ../coolercontrold/resources/app --emptyOutDir
+	@git restore ../coolercontrold/resources/app/.gitignore
+
 offline:
 	@npm run build --offline
 
