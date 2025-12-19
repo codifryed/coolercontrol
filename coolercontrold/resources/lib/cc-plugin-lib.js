@@ -28,6 +28,10 @@ let _successfulConfigSaveCallback = () => {}
 let _pluginConfig = {}
 const _modes = []
 const _alerts = []
+const _profiles = []
+const _functions = []
+const _devices = []
+let _status = new Map()
 
 const _increaseMessageCount = () => _messageCount++
 const _decreaseMessageCount = () => {
@@ -91,8 +95,33 @@ const _processMessages = (messageEvent) => {
             _successfulConfigSaveCallback()
             break
         case 'modes':
+            if (messageEvent.data.body == null) break
             _modes.length = 0
             _modes.push(...messageEvent.data.body)
+            break
+        case 'alerts':
+            if (messageEvent.data.body == null) break
+            _alerts.length = 0
+            _alerts.push(...messageEvent.data.body)
+            break
+        case 'profiles':
+            if (messageEvent.data.body == null) break
+            _profiles.length = 0
+            _profiles.push(...messageEvent.data.body)
+            break
+        case 'functions':
+            if (messageEvent.data.body == null) break
+            _functions.length = 0
+            _functions.push(...messageEvent.data.body)
+            break
+        case 'devices':
+            if (messageEvent.data.body == null) break
+            _devices.length = 0
+            _devices.push(...messageEvent.data.body)
+            break
+        case 'status':
+            if (messageEvent.data.body == null) break
+            _status = messageEvent.data.body
             break
         default:
             console.log('Unknown message type', messageEvent)
@@ -105,15 +134,17 @@ const _processMessages = (messageEvent) => {
 
 /* Load CC parent Styles into the iframe asynchronously */
 const loadParentStyles = () => {
+    _increaseMessageCount()
     window.parent.postMessage({ type: 'style' }, document.location.origin)
     _increaseMessageCount()
+    window.parent.postMessage({ type: 'customStyle' }, document.location.origin)
 }
 
 /* A convenience function for simulating a cached synchronous Plugin Config request */
 const getPluginConfig = async (force = false) => {
     if (_pluginConfig.length > 0 && !force) return _pluginConfig
-    window.parent.postMessage({ type: 'loadConfig' }, document.location.origin)
     _increaseMessageCount()
+    window.parent.postMessage({ type: 'loadConfig' }, document.location.origin)
     await waitTillAllMessagesReceived()
     return _pluginConfig
 }
@@ -136,8 +167,8 @@ const convertFormToObject = (formData) => {
 
 /* A convenience function for saving the plugin config. Note: the pluginConfig must be a JSON Object */
 const savePluginConfig = async (pluginConfig) => {
-    window.parent.postMessage({ type: 'saveConfig', body: pluginConfig }, document.location.origin)
     _increaseMessageCount()
+    window.parent.postMessage({ type: 'saveConfig', body: pluginConfig }, document.location.origin)
     await waitTillAllMessagesReceived()
 }
 
@@ -156,10 +187,55 @@ const close = () => {
 /* A convenience function for simulating a cached synchronous Modes request */
 const getModes = async () => {
     if (_modes.length > 0) return _modes
-    window.parent.postMessage({ type: 'modes' }, document.location.origin)
     _increaseMessageCount()
+    window.parent.postMessage({ type: 'modes' }, document.location.origin)
     await waitTillAllMessagesReceived()
     return _modes
+}
+
+/* A convenience function for simulating a cached synchronous Alerts request */
+const getAlerts = async () => {
+    if (_alerts.length > 0) return _alerts
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'alerts' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _alerts
+}
+
+/* A convenience function for simulating a cached synchronous Profiles request */
+const getProfiles = async () => {
+    if (_profiles.length > 0) return _profiles
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'profiles' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _profiles
+}
+
+/* A convenience function for simulating a cached synchronous Functions request */
+const getFunctions = async () => {
+    if (_functions.length > 0) return _functions
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'functions' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _functions
+}
+
+/* A convenience function for simulating a cached synchronous Devices request */
+const getDevices = async () => {
+    if (_devices.length > 0) return _devices
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'devices' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _devices
+}
+
+/* A convenience function for simulating a cached synchronous Status request */
+const getStatus = async () => {
+    if (_status.length > 0) return _status
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'status' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _status
 }
 
 // Plugin Running Functions
@@ -168,7 +244,10 @@ const getModes = async () => {
 /* A convenience function for running the plugin's JavaScript in an async wrapper. */
 const runPluginScript = (mainPluginFunction, loadParentStyle = true) => {
     ;(async () => {
-        if (loadParentStyle) loadParentStyles()
+        if (loadParentStyle) {
+            loadParentStyles()
+            await waitTillAllMessagesReceived()
+        }
         await mainPluginFunction()
     })()
 }

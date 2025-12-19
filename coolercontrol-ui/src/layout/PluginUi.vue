@@ -83,6 +83,8 @@ const handleIframeMessage = async (event: MessageEvent): Promise<void> => {
                 },
                 nullOriginTarget,
             )
+            break
+        case 'customStyle':
             // We need to send the custom color scheme to the plugin (overrides)
             const customStyle =
                 settingsStore.themeMode === ThemeMode.CUSTOM
@@ -163,6 +165,76 @@ const handleIframeMessage = async (event: MessageEvent): Promise<void> => {
                 {
                     type: 'modes',
                     body: modes,
+                },
+                nullOriginTarget,
+            )
+            break
+        case 'alerts':
+            const alerts = settingsStore.alerts.map((alert) => {
+                return { name: alert.name, uid: alert.uid }
+            })
+            iframeRef.value?.contentWindow?.postMessage(
+                {
+                    type: 'alerts',
+                    body: alerts,
+                },
+                nullOriginTarget,
+            )
+            break
+        case 'profiles':
+            const profiles = settingsStore.profiles.map((profile) => {
+                return { name: profile.name, uid: profile.uid, p_type: profile.p_type }
+            })
+            iframeRef.value?.contentWindow?.postMessage(
+                {
+                    type: 'profiles',
+                    body: profiles,
+                },
+                nullOriginTarget,
+            )
+            break
+        case 'functions':
+            const functions = settingsStore.functions.map((fn) => {
+                return { name: fn.name, uid: fn.uid, p_type: fn.f_type }
+            })
+            iframeRef.value?.contentWindow?.postMessage(
+                {
+                    type: 'functions',
+                    body: functions,
+                },
+                nullOriginTarget,
+            )
+            break
+        case 'devices':
+            const devices = []
+            for (const device of deviceStore.allDevices()) {
+                devices.push({
+                    name: device.name,
+                    uid: device.uid,
+                    type: device.type,
+                    info: device.info,
+                })
+            }
+            iframeRef.value?.contentWindow?.postMessage(
+                {
+                    type: 'devices',
+                    body: devices,
+                },
+                nullOriginTarget,
+            )
+            break
+        case 'status':
+            const status = new Map()
+            for (const [
+                deviceUID,
+                deviceChannelStatus,
+            ] of deviceStore.currentDeviceStatus.entries()) {
+                status.set(deviceUID, deviceChannelStatus)
+            }
+            iframeRef.value?.contentWindow?.postMessage(
+                {
+                    type: 'status',
+                    body: status,
                 },
                 nullOriginTarget,
             )
