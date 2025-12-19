@@ -58,6 +58,20 @@ pub async fn update_config(
         .map_err(handle_error)
 }
 
+pub async fn has_ui(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Json<HasUiDto> {
+    plugin_handle.get_ui_dir(path.plugin_id).await.map_or_else(
+        |_| Json(HasUiDto::default()),
+        |plugin_ui_dir| {
+            Json(HasUiDto {
+                has_ui: plugin_ui_dir.join("index.html").exists(),
+            })
+        },
+    )
+}
+
 pub async fn get_ui_files(
     Path(path): Path<PluginUiPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -115,4 +129,9 @@ pub struct PluginDto {
     pub address: String,
     pub privileged: bool,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct HasUiDto {
+    pub has_ui: bool,
 }

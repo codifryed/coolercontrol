@@ -670,6 +670,14 @@ fn plugins_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
+            "/plugins/{plugin_id}/ui",
+            get_with(plugins::has_ui, |o| {
+                o.summary("CoolerControl Plugin UI Check")
+                    .description("Returns if the CoolerControl plugin has a UI or not.")
+                    .tag("plugins")
+            }),
+        )
+        .api_route(
             "/plugins/{plugin_id}/ui/{file_name}",
             get_with(plugins::get_ui_files, |o| {
                 o.summary("CoolerControl Plugin UI")
