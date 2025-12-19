@@ -50,6 +50,7 @@ import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
+import PluginsDto from '@/models/Plugins.ts'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -1238,6 +1239,64 @@ export default class DaemonClient {
             const response = await this.getClient().post('/shutdown', {})
             this.logDaemonResponse(response, 'Daemon Shutdown')
             return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    /* Plugins */
+
+    async loadPlugins(): Promise<PluginsDto> {
+        try {
+            const response = await this.getClient().get(`/plugins`)
+            this.logDaemonResponse(response, 'Load Plugins')
+            return plainToInstance(PluginsDto, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            return new PluginsDto()
+        }
+    }
+
+    async loadPluginConfig(pluginId: string): Promise<object | ErrorResponse> {
+        try {
+            const response = await this.getClient().get(`/plugins/${pluginId}/config`)
+            this.logDaemonResponse(response, 'Load Plugin Config')
+            if ((response.data as string).length == 0) {
+                // empty string response means no config file yet exists
+                return {}
+            }
+            return response.data
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async savePluginConfig(pluginId: string, config: object): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().put(`/plugins/${pluginId}/config`, config)
+            this.logDaemonResponse(response, 'Save Plugin Config')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async hasPluginUi(pluginId: string): Promise<boolean> {
+        try {
+            let response = await this.getClient().get(`/plugins/${pluginId}/ui`)
+            this.logDaemonResponse(response, 'Plugin Has UI')
+            return response.data.has_ui ?? false
         } catch (err: any) {
             this.logError(err)
             return false
