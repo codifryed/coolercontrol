@@ -650,6 +650,14 @@ fn plugins_routes() -> ApiRouter<AppState> {
             }),
         )
         .api_route(
+            "/plugins/lib/cc-plugin-lib.js",
+            get_with(plugins::get_cc_plugin_lib, |o| {
+                o.summary("CoolerControl Plugin UI Library")
+                    .description("Returns the CoolerControl plugin UI library for plugins to use in their UI code.")
+                    .tag("plugins")
+            }),
+        )
+        .api_route(
             "/plugins/{plugin_id}/config",
             get_with(plugins::get_config, |o| {
                 o.summary("CoolerControl Plugin Config")

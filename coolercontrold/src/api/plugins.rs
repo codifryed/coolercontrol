@@ -26,6 +26,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
+use tower_serve_static::include_file;
 
 pub async fn get_plugins(
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -35,6 +36,15 @@ pub async fn get_plugins(
         .await
         .map(Json)
         .map_err(handle_error)
+}
+
+pub async fn get_cc_plugin_lib(request: Request) -> Result<impl IntoApiResponse, CCError> {
+    tower_serve_static::ServeFile::new(include_file!("/resources/lib/cc-plugin-lib.js"))
+        .oneshot(request)
+        .await
+        .map_err(|_infallible| CCError::InternalError {
+            msg: "Failed to serve file".to_string(),
+        })
 }
 
 pub async fn get_config(
