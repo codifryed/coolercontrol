@@ -20,12 +20,12 @@ export default {
     root: {
         class: [
             //Shape
-            'rounded-md',
-            'shadow-md',
+            'rounded-lg',
+            'shadow-lg',
 
             //Color
-            'bg-surface-0 dark:bg-surface-900',
-            'text-surface-700 dark:text-surface-0',
+            'bg-bg-two',
+            'text-text-color',
         ],
     },
     body: {
@@ -43,7 +43,7 @@ export default {
             'mb-2',
 
             //Color
-            'text-surface-600 dark:text-surface-0/60',
+            'text-text-color-secondary',
         ],
     },
     content: {
