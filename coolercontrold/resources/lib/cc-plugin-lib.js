@@ -184,8 +184,8 @@ const close = () => {
 /////////////////////////////////////////////////////////////
 
 /* A convenience function for simulating a cached synchronous Modes request */
-const getModes = async () => {
-    if (_modes.length > 0) return _modes
+const getModes = async (force = false) => {
+    if (_modes.length > 0 && !force) return _modes
     _increaseMessageCount()
     window.parent.postMessage({ type: 'modes' }, document.location.origin)
     await waitTillAllMessagesReceived()
@@ -193,8 +193,8 @@ const getModes = async () => {
 }
 
 /* A convenience function for simulating a cached synchronous Alerts request */
-const getAlerts = async () => {
-    if (_alerts.length > 0) return _alerts
+const getAlerts = async (force = false) => {
+    if (_alerts.length > 0 && !force) return _alerts
     _increaseMessageCount()
     window.parent.postMessage({ type: 'alerts' }, document.location.origin)
     await waitTillAllMessagesReceived()
@@ -202,8 +202,8 @@ const getAlerts = async () => {
 }
 
 /* A convenience function for simulating a cached synchronous Profiles request */
-const getProfiles = async () => {
-    if (_profiles.length > 0) return _profiles
+const getProfiles = async (force = false) => {
+    if (_profiles.length > 0 && !force) return _profiles
     _increaseMessageCount()
     window.parent.postMessage({ type: 'profiles' }, document.location.origin)
     await waitTillAllMessagesReceived()
@@ -211,8 +211,8 @@ const getProfiles = async () => {
 }
 
 /* A convenience function for simulating a cached synchronous Functions request */
-const getFunctions = async () => {
-    if (_functions.length > 0) return _functions
+const getFunctions = async (force = false) => {
+    if (_functions.length > 0 && !force) return _functions
     _increaseMessageCount()
     window.parent.postMessage({ type: 'functions' }, document.location.origin)
     await waitTillAllMessagesReceived()
@@ -220,8 +220,8 @@ const getFunctions = async () => {
 }
 
 /* A convenience function for simulating a cached synchronous Devices request */
-const getDevices = async () => {
-    if (_devices.length > 0) return _devices
+const getDevices = async (force = false) => {
+    if (_devices.length > 0 && !force) return _devices
     _increaseMessageCount()
     window.parent.postMessage({ type: 'devices' }, document.location.origin)
     await waitTillAllMessagesReceived()
@@ -229,8 +229,8 @@ const getDevices = async () => {
 }
 
 /* A convenience function for simulating a cached synchronous Status request */
-const getStatus = async () => {
-    if (_status.length > 0) return _status
+const getStatus = async (force = false) => {
+    if (_status.length > 0 && !force) return _status
     _increaseMessageCount()
     window.parent.postMessage({ type: 'status' }, document.location.origin)
     await waitTillAllMessagesReceived()
