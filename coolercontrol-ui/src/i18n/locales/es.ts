@@ -139,6 +139,15 @@ export default {
                 unknownError:
                     'Error desconocido al intentar aplicar cambios a todos los dispositivos. Consulte los registros para más detalles.',
             },
+            plugin: 'Plugins (beta)',
+            plugins: {
+                device: 'Plugin de servicio de dispositivo',
+                integration: 'Plugin de integración',
+                privileged: 'Acceso privilegiado',
+                restricted: 'Acceso restringido',
+                settingsSaved: 'Configuración del plugin guardada correctamente',
+                settingsNotSaved: 'Error al guardar la configuración del plugin',
+            },
             profiles: 'Perfiles',
             alerts: 'Alertas',
             dashboards: 'Paneles',

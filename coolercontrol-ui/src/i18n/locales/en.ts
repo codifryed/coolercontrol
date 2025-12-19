@@ -136,6 +136,15 @@ export default {
                 unknownError:
                     'Unknown error trying to apply changes to all devices. See logs for details.',
             },
+            plugin: 'Plugins (beta)',
+            plugins: {
+                device: 'Device Service Plugin',
+                integration: 'Integration Plugin',
+                privileged: 'Privileged Access',
+                restricted: 'Restricted Access',
+                settingsSaved: 'Plugin settings successfully saved',
+                settingsNotSaved: 'Failed to save plugin settings',
+            },
             profiles: 'Profiles',
             alerts: 'Alerts',
             dashboards: 'Dashboards',

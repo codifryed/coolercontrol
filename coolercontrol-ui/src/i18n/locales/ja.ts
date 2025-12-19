@@ -136,6 +136,15 @@ export default {
                 unknownError:
                     'すべてのデバイスに変更を適用しようとした際に不明なエラーが発生しました。詳細はログを確認してください。',
             },
+            plugin: 'プラグイン（ベータ）',
+            plugins: {
+                device: 'デバイスサービスプラグイン',
+                integration: '統合プラグイン',
+                privileged: '特権アクセス',
+                restricted: '制限付きアクセス',
+                settingsSaved: 'プラグイン設定が正常に保存されました',
+                settingsNotSaved: 'プラグイン設定の保存に失敗しました',
+            },
             profiles: 'プロファイル',
             alerts: 'アラート',
             dashboards: 'ダッシュボード',
