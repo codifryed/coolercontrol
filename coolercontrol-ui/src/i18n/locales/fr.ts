@@ -139,6 +139,15 @@ export default {
                 unknownError:
                     "Erreur inconnue lors de la tentative d'application des modifications à tous les appareils. Consultez les journaux pour plus de détails.",
             },
+            plugin: 'Plugins (bêta)',
+            plugins: {
+                device: 'Plugin de service de périphérique',
+                integration: "Plugin d'intégration",
+                privileged: 'Accès privilégié',
+                restricted: 'Accès restreint',
+                settingsSaved: 'Paramètres du plugin enregistrés avec succès',
+                settingsNotSaved: "Échec de l'enregistrement des paramètres du plugin",
+            },
             profiles: 'Profils',
             alerts: 'Alertes',
             dashboards: 'Tableaux de bord',

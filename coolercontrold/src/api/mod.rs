@@ -25,6 +25,7 @@ pub mod devices;
 mod functions;
 pub mod limiter;
 pub mod modes;
+mod plugins;
 mod profiles;
 mod router;
 mod settings;
@@ -34,7 +35,7 @@ pub mod status;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
-    ModeHandle, ProfileHandle, SettingHandle, StatusHandle,
+    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
 use crate::api::limiter::throttler::LimiterConfig;
 use crate::config::Config;
@@ -43,6 +44,7 @@ use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
+use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
@@ -96,6 +98,7 @@ pub async fn start_server<'s>(
     custom_sensors_repo: Rc<CustomSensorsRepo>,
     modes_controller: Rc<ModeController>,
     alert_controller: Rc<AlertController>,
+    plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
     cancel_token: CancellationToken,
@@ -136,6 +139,7 @@ pub async fn start_server<'s>(
         &custom_sensors_repo,
         &modes_controller,
         &alert_controller,
+        plugin_controller,
         log_buf_handle,
         status_handle,
         &cancel_token,
@@ -364,6 +368,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             description: Some("Server Side Events".to_string()),
             ..Tag::default()
         })
+        .tag(Tag {
+            name: "plugins".to_string(),
+            description: Some("Plugins".to_string()),
+            ..Tag::default()
+        })
 }
 
 fn create_app_state<'s>(
@@ -374,6 +383,7 @@ fn create_app_state<'s>(
     custom_sensors_repo: &Rc<CustomSensorsRepo>,
     modes_controller: &Rc<ModeController>,
     alert_controller: &Rc<AlertController>,
+    plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
     cancel_token: &CancellationToken,
@@ -413,6 +423,7 @@ fn create_app_state<'s>(
     let mode_handle = ModeHandle::new(modes_controller.clone(), cancel_token.clone(), main_scope);
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
+    let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
     AppState {
         health,
         auth_handle,
@@ -424,6 +435,7 @@ fn create_app_state<'s>(
         mode_handle,
         setting_handle,
         alert_handle,
+        plugin_handle,
         log_buf_handle,
     }
 }
@@ -800,5 +812,6 @@ pub struct AppState {
     pub mode_handle: ModeHandle,
     pub setting_handle: SettingHandle,
     pub alert_handle: AlertHandle,
+    pub plugin_handle: PluginHandle,
     pub log_buf_handle: LogBufHandle,
 }

@@ -23,6 +23,10 @@ ci-test:
 	@#cargo audit
 	@#cargo audit --json | jq '.settings.target_arch = null | .settings.target_os = null' | gitlab-report -p audit > gl-sast-report.json
     
+dev-run:
+	@cargo build
+	@sudo ./target/debug/coolercontrold
+
 # requires minor dependency patch to pass rh checks
 # See: https://bugzilla.redhat.com/show_bug.cgi?id=1541318#c13
 vendor:

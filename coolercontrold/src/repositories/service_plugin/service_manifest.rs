@@ -20,20 +20,24 @@ use crate::repositories::service_plugin::service_plugin_repo::DEFAULT_PLUGINS_PA
 use anyhow::{anyhow, Context, Result};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use strum::{Display, EnumString};
 use toml_edit::DocumentMut;
 
 #[derive(Debug, Clone)]
 pub struct ServiceManifest {
-    pub id: String,                  // required for all service plugins
-    pub service_type: ServiceType,   // required for all service plugins
+    pub id: String,                // required for all service plugins
+    pub service_type: ServiceType, // required for all service plugins
+    pub description: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
-    pub args: Vec<String>,           // if needed (set log level, etc.)
+    pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
+    pub envs: Vec<(String, String)>, // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
     pub address: ConnectionType,     // required for all device service plugins
     pub privileged: bool,            // for device service plugins (false by default)
+    pub path: PathBuf,               // This plugin's folder path
 }
 
 impl ServiceManifest {
-    pub fn from_document(document: &DocumentMut) -> Result<Self> {
+    pub fn from_document(document: &DocumentMut, path: PathBuf) -> Result<Self> {
         let id = document
             .get("id")
             .and_then(|item| item.as_str())
@@ -49,6 +53,11 @@ impl ServiceManifest {
             "integration" => ServiceType::Integration,
             _ => return Err(anyhow!("Invalid service type")),
         };
+        let description = document
+            .get("description")
+            .and_then(|item| item.as_str())
+            .filter(|d| d.is_empty().not())
+            .map(|d| d.trim().to_string());
         let executable = document
             .get("executable")
             .and_then(|item| item.as_str())
@@ -68,6 +77,19 @@ impl ServiceManifest {
         let args = args_str
             .split_whitespace()
             .map(ToString::to_string)
+            .collect();
+        let envs_str = document
+            .get("envs")
+            .and_then(|item| item.as_str())
+            .unwrap_or_default()
+            .trim();
+        let envs = envs_str
+            .split_whitespace()
+            .filter_map(|env_str| {
+                env_str
+                    .split_once('=')
+                    .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
+            })
             .collect();
         let address_opt = document
             .get("address")
@@ -98,10 +120,13 @@ impl ServiceManifest {
         Ok(Self {
             id,
             service_type,
+            description,
             executable,
             args,
+            envs,
             address,
             privileged,
+            path,
         })
     }
 
@@ -110,13 +135,13 @@ impl ServiceManifest {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, EnumString, Display)]
 pub enum ServiceType {
     Device,
     Integration,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, EnumString, Display)]
 pub enum ConnectionType {
     None,
     Uds(PathBuf),

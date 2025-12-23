@@ -106,6 +106,10 @@ uninstall:
 
 # helpful std development & testing targets
 # For testing these make targets require that a system package is already installed
+dev-run: build-qt
+	@sudo echo "Running incremental build"
+	@$(MAKE) -C $(ui_dir) $@
+	@$(MAKE) -C $(daemon_dir) $@
 
 # full clean release build of daemon and UI binaries:
 dev-build: clean build

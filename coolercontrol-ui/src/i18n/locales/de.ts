@@ -140,6 +140,15 @@ export default {
                 unknownError:
                     'Unbekannter Fehler beim Versuch, Änderungen auf alle Geräte anzuwenden. Details finden Sie in den Logs.',
             },
+            plugin: 'Plugins (Beta)',
+            plugins: {
+                device: 'Geräte-Service-Plugin',
+                integration: 'Integrations-Plugin',
+                privileged: 'Privilegierter Zugriff',
+                restricted: 'Eingeschränkter Zugriff',
+                settingsSaved: 'Plugin-Einstellungen erfolgreich gespeichert',
+                settingsNotSaved: 'Plugin-Einstellungen konnten nicht gespeichert werden',
+            },
             profiles: 'Profile',
             alerts: 'Warnungen',
             dashboards: 'Dashboards',

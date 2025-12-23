@@ -136,6 +136,15 @@ export default {
                 unknownError:
                     'خطأ غير معروف عند محاولة تطبيق التغييرات على جميع الأجهزة. راجع السجلات للحصول على التفاصيل.',
             },
+            plugin: 'الإضافات (تجريبي)',
+            plugins: {
+                device: 'إضافة خدمة الجهاز',
+                integration: 'إضافة التكامل',
+                privileged: 'وصول مميز',
+                restricted: 'وصول مقيد',
+                settingsSaved: 'تم حفظ إعدادات الإضافة بنجاح',
+                settingsNotSaved: 'فشل في حفظ إعدادات الإضافة',
+            },
             profiles: 'الملفات الشخصية',
             alerts: 'التنبيهات',
             dashboards: 'لوحات المعلومات',

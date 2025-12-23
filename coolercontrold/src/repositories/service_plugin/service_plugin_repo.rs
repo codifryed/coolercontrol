@@ -42,6 +42,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
+use tokio_util::sync::CancellationToken;
 use toml_edit::DocumentMut;
 
 pub type ServiceDeviceID = String;
@@ -51,7 +52,7 @@ const SERVICE_MANIFEST_FILE_NAME: &str = "manifest.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
-const DELAY_INTEGRATION_SERVICE_START_SECONDS: usize = 4;
+const TIMEOUT_API_UP_SECONDS: u64 = 60; // We have a 30-second max startup delay
 const MISSING_STATUS_THRESHOLD: usize = 8;
 const MISSING_TEMP_FAILSAFE: Temp = 100.;
 const MISSING_DUTY_FAILSAFE: f64 = 0.;
@@ -69,6 +70,7 @@ struct DeviceServiceConnection {
 pub struct ServicePluginRepo {
     config: Rc<Config>,
     service_manager: Manager,
+    api_up_token: CancellationToken,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     preloaded_statuses: RefCell<HashMap<DeviceUID, PreloadData>>,
@@ -92,11 +94,12 @@ struct FailsafeStatusData {
 }
 
 impl ServicePluginRepo {
-    pub fn new(config: Rc<Config>) -> Result<Self> {
+    pub fn new(config: Rc<Config>, api_up_token: CancellationToken) -> Result<Self> {
         let service_manager = Manager::detect()?;
         Ok(Self {
             config,
             service_manager,
+            api_up_token,
             services: HashMap::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -140,7 +143,7 @@ impl ServicePluginRepo {
                     );
                     continue;
                 };
-                match ServiceManifest::from_document(&document) {
+                match ServiceManifest::from_document(&document, path) {
                     Ok(manifest) => {
                         if services.contains_key(&manifest.id) {
                             error!(
@@ -215,11 +218,14 @@ impl ServicePluginRepo {
         >,
         devices: Rc<RefCell<HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>>>,
         poll_rate: f64,
+        api_up_token: CancellationToken,
     ) {
         let username = service_manifest
             .privileged
             .not()
             .then_some(CC_PLUGIN_USER.to_string());
+        let mut envs = Self::env_log_level();
+        envs.append(&mut service_manifest.envs.clone());
         // This will also reload this daemon unit if already installed:
         let _ = service_manager.remove(&service_id).await;
         if let Some(exe) = &service_manifest.executable {
@@ -230,7 +236,7 @@ impl ServicePluginRepo {
                     args: service_manifest.args.clone(),
                     username,
                     wrk_dir: None,
-                    envs: Some(Self::env_log_level()),
+                    envs: Some(envs),
                     disable_restart_on_failure: false,
                 })
                 .await
@@ -244,7 +250,7 @@ impl ServicePluginRepo {
         match service_manifest.service_type {
             ServiceType::Integration => {
                 if service_manifest.is_managed() {
-                    Self::start_integration_service(&service_id, &service_manager);
+                    Self::start_integration_service(&service_id, &service_manager, api_up_token);
                 }
                 // Integration services may not have client connection, but are possibly still managed
                 services
@@ -393,14 +399,20 @@ impl ServicePluginRepo {
 
     /// Starts an integration service in a detached task.
     /// This is used to start integration services after the daemon's API is up.
-    fn start_integration_service(service_id: &ServiceId, service_manager: &Manager) {
+    fn start_integration_service(
+        service_id: &ServiceId,
+        service_manager: &Manager,
+        api_up_token: CancellationToken,
+    ) {
         let service_id = service_id.clone();
         let service_manager = service_manager.clone();
         tokio::task::spawn_local(async move {
-            sleep(Duration::from_secs(
-                DELAY_INTEGRATION_SERVICE_START_SECONDS as u64,
-            ))
-            .await;
+            tokio::select! {
+                // The api_up_token will be canceld once the daemon's API is up, making sure
+                // that integration services connect at the proper time.
+                () = sleep(Duration::from_secs(TIMEOUT_API_UP_SECONDS)) => warn!("Timeout waiting for the daemon's API to come up. Will start integration services anyway."),
+                () = api_up_token.cancelled() => debug!("API startup complete, starting integration service: {service_id}"),
+            }
             if let Err(err) = service_manager.start(&service_id).await {
                 error!("Error starting plugin service: {err}");
                 return;
@@ -697,6 +709,15 @@ impl ServicePluginRepo {
             || disabled_channels_for_device
                 .is_some_and(|disabled_channels| disabled_channels.contains(channel_name).not())
     }
+
+    /// Returns a copy of the plugins information, used by the plugin controller.
+    pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
+        let mut plugins = HashMap::new();
+        for (service_id, (_, service_manifest)) in &self.services {
+            plugins.insert(service_id.clone(), service_manifest.clone());
+        }
+        plugins
+    }
 }
 
 #[async_trait(?Send)]
@@ -721,6 +742,7 @@ impl Repository for ServicePluginRepo {
                 let service_manager = Rc::clone(&service_manager);
                 let services = Rc::clone(&services);
                 let devices = Rc::clone(&devices);
+                let api_up_token = self.api_up_token.clone();
                 service_init_scope.spawn(async move {
                     Self::initialize_service(
                         service_id,
@@ -729,6 +751,7 @@ impl Repository for ServicePluginRepo {
                         services,
                         devices,
                         poll_rate,
+                        api_up_token,
                     )
                     .await;
                 });

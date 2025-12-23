@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2021-2025  Guy Boldon, Eren Simsek and contributors
+ * Copyright (c) 2021-2025  Guy Boldon and contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,8 +16,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-mod client;
-pub mod plugin_controller;
-mod service_management;
-pub mod service_manifest;
-pub mod service_plugin_repo;
+export default class PluginsDto {
+    plugins: Array<PluginDto> = []
+}
+
+export class PluginDto {
+    id: string = ''
+    service_type: ServiceType = ServiceType.Integration
+    description?: string
+    address: String = ''
+    privileged: boolean = false
+    path: String = ''
+}
+
+export enum ServiceType {
+    Device = 'Device',
+    Integration = 'Integration',
+}
