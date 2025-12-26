@@ -206,52 +206,65 @@ fn main() -> Result<()> {
             .await?,
         );
 
-        moro_local::async_scope!(|main_scope| -> Result<()> {
-            mode_controller.handle_settings_at_boot().await;
-            let status_handle = api::actor::StatusHandle::new(
-                Rc::clone(&all_devices),
-                run_token.clone(),
-                main_scope,
-            );
-            let alert_controller = Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
-            AlertController::watch_for_shutdown(&alert_controller, run_token.clone(), main_scope);
-            match api::start_server(
-                Rc::clone(&all_devices),
-                Rc::clone(&repos),
-                Rc::clone(&engine),
-                Rc::clone(&config),
-                custom_sensors_repo,
-                Rc::clone(&mode_controller),
-                Rc::clone(&alert_controller),
-                plugin_controller,
-                log_buf_handle,
-                status_handle.clone(),
-                run_token.clone(),
-                main_scope,
-            )
-            .await
-            {
-                Ok(()) => api_up_token.cancel(),
-                Err(err) => error!("Error initializing API Server: {err}"),
-            }
+        let _ = moro_local::async_scope!(|main_scope| -> Result<()> {
+            async {
+                mode_controller.handle_settings_at_boot().await;
+                let status_handle = api::actor::StatusHandle::new(
+                    Rc::clone(&all_devices),
+                    run_token.clone(),
+                    main_scope,
+                );
+                let alert_controller =
+                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                AlertController::watch_for_shutdown(
+                    &alert_controller,
+                    run_token.clone(),
+                    main_scope,
+                );
+                match api::start_server(
+                    Rc::clone(&all_devices),
+                    Rc::clone(&repos),
+                    Rc::clone(&engine),
+                    Rc::clone(&config),
+                    custom_sensors_repo,
+                    Rc::clone(&mode_controller),
+                    Rc::clone(&alert_controller),
+                    plugin_controller,
+                    log_buf_handle,
+                    status_handle.clone(),
+                    run_token.clone(),
+                    main_scope,
+                )
+                .await
+                {
+                    Ok(()) => api_up_token.cancel(),
+                    Err(err) => error!("Error initializing API Server: {err}"),
+                }
 
-            // give concurrent services a moment to finish initializing:
-            sleep(Duration::from_millis(10)).await;
-            set_cpu_affinity()?;
-            info!("Initialization Complete");
-            main_loop::run(
-                Rc::clone(&config),
-                Rc::clone(&repos),
-                engine,
-                mode_controller,
-                alert_controller,
-                status_handle,
-                run_token,
-            )
-            .await?;
-            Ok(())
+                // give concurrent services a moment to finish initializing:
+                sleep(Duration::from_millis(10)).await;
+                set_cpu_affinity()?;
+                info!("Initialization Complete");
+                main_loop::run(
+                    Rc::clone(&config),
+                    Rc::clone(&repos),
+                    engine,
+                    mode_controller,
+                    alert_controller,
+                    status_handle,
+                    run_token.clone(),
+                )
+                .await?;
+                Ok(())
+            }
+            .await
+            // If an error is returned inside the scope, we need to initiate a shutdown of all running tasks:
+            .inspect_err(|_| run_token.cancel())
         })
-        .await?;
+        .await
+        .inspect_err(|err| {
+            error!("Main scope failed to start: {err}");
+        });
         // all tasks from the main scope must have completed by this point.
         shutdown(repos, config).await
     })

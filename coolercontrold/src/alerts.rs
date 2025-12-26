@@ -22,7 +22,7 @@ use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::UID;
 use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use const_format::concatcp;
 use hashlink::LinkedHashMap;
@@ -228,14 +228,21 @@ impl AlertController {
             })?;
             cc_fs::write_string(&path, default_alert_config)
                 .await
-                .with_context(|| format!("Writing new configuration file: {}", path.display()))?;
+                .map_err(|err| {
+                    anyhow!("Writing new configuration file: {} - {err}", path.display())
+                })?;
             // make sure the file is readable:
             cc_fs::read_txt(&path)
                 .await
-                .with_context(|| format!("Reading configuration file {}", path.display()))?
+                .map_err(|err| anyhow!("Reading configuration file {} - {err}", path.display()))?
         };
-        let alert_config: AlertConfigFile = serde_json::from_str(&config_contents)
-            .with_context(|| format!("Parsing Alert configuration file {}", path.display()))?;
+        let alert_config: AlertConfigFile =
+            serde_json::from_str(&config_contents).map_err(|err| {
+                anyhow!(
+                    "Parsing Alert configuration file {} - {err}",
+                    path.display()
+                )
+            })?;
         {
             let mut alerts_lock = self.alerts.borrow_mut();
             alerts_lock.clear();
@@ -260,8 +267,7 @@ impl AlertController {
         let alert_config_json = serde_json::to_string(&alert_config)?;
         cc_fs::write_string(DEFAULT_ALERT_CONFIG_FILE_PATH, alert_config_json)
             .await
-            .with_context(|| "Writing Alert Configuration File")?;
-        Ok(())
+            .map_err(|err| anyhow!("Writing Alert Configuration File - {err}"))
     }
 
     /// Returns a tuple of all available Alerts and logs: (alerts, logs)
@@ -413,7 +419,9 @@ impl AlertController {
                         f64::from(freq)
                     }
                     ChannelMetric::Temp => {
-                        error!("This should not happen, ChannelMetric::TEMP should already be handled.");
+                        error!(
+                            "This should not happen, ChannelMetric::TEMP should already be handled."
+                        );
                         continue;
                     }
                 }
@@ -442,8 +450,8 @@ impl AlertController {
                 // round up to clearly display greater than.
                 let channel_value_rounded = (channel_value * 10.).ceil() / 10.;
                 format!(
-                        "{channel_name}: {channel_value_rounded} is greater than allowed maximum: {max}"
-                    )
+                    "{channel_name}: {channel_value_rounded} is greater than allowed maximum: {max}"
+                )
             } else if channel_value < alert.min {
                 // round down to clearly display less than.
                 let channel_value_rounded = (channel_value * 10.).floor() / 10.;
