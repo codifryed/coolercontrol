@@ -407,6 +407,34 @@ void MainWindow::notifyDaemonConnectionRestored() const {
                              QIcon::fromTheme("emblem-default", QIcon()));
 }
 
+QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon) {
+  constexpr int iconSize = 64;
+  QPixmap pixmap = baseIcon.pixmap(iconSize, iconSize);
+  QPainter painter(&pixmap);
+  painter.setRenderHint(QPainter::Antialiasing);
+
+  constexpr int dotSize = 20;
+  constexpr int x = (iconSize / 2) - (dotSize / 2);
+  constexpr int y = iconSize - (dotSize + 6);
+
+  painter.setBrush(QColor(220, 53, 69));  // Bootstrap danger red
+  painter.setPen(QPen(QColor(180, 40, 50), 2));
+  painter.drawEllipse(x, y, dotSize, dotSize);
+
+  return (pixmap);
+}
+
+void MainWindow::setTrayIconNotificationBadge(const bool show) const {
+  if (show) {
+    const QIcon baseIcon = QIcon::fromTheme(
+        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
+    m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon));
+  } else {
+    m_sysTrayIcon->setIcon(QIcon::fromTheme(
+        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
+  }
+}
+
 void MainWindow::requestDaemonErrors() const {
   QNetworkRequest healthRequest;
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
@@ -424,6 +452,7 @@ void MainWindow::requestDaemonErrors() const {
     if (const auto errors = rootObj.value("details").toObject().value("errors").toInt();
         errors > 0) {
       m_daemonHasErrors = true;
+      setTrayIconNotificationBadge(true);
       notifyDaemonErrors();
     }
     healthReply->deleteLater();
@@ -438,7 +467,40 @@ void MainWindow::requestDaemonErrors() const {
           });
 }
 
-void MainWindow::acknowledgeDaemonErrors() const { m_daemonHasErrors = false; }
+void MainWindow::acknowledgeDaemonErrors() const {
+  m_daemonHasErrors = false;
+  setTrayIconNotificationBadge(false);
+}
+
+// requestAllAlerts - and set the tray icon notification badge if any are active
+void MainWindow::requestAllAlerts() const {
+  QNetworkRequest alertsRequest;
+  alertsRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
+  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_ALERTS.data()));
+  const auto alertsReply = m_manager->get(alertsRequest);
+  connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
+    const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString replyText = alertsReply->readAll();
+    qDebug() << "Alerts Endpoint Response Status: " << status << "; Body: " << replyText;
+    const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
+    const auto alerts = rootObj.value("alerts").toArray();
+    foreach (const auto alert, alerts) {
+      if (alert.toObject().value("state") == "Active") {
+        m_alertCount++;
+        setTrayIconNotificationBadge(true);
+      }
+    }
+    alertsReply->deleteLater();
+  });
+  connect(alertsReply, &QNetworkReply::errorOccurred,
+          [alertsReply](const QNetworkReply::NetworkError code) {
+            const auto status =
+                alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            qWarning() << "Error occurred connecting to Daemon Alerts endpoint. Status: " << status
+                       << " QtErrorCode: " << code;
+            alertsReply->deleteLater();
+          });
+}
 
 void MainWindow::requestAllModes() const {
   QNetworkRequest modesRequest;
@@ -580,6 +642,7 @@ void MainWindow::tryDaemonConnection() const {
     m_retryTimer->stop();
     if (m_startup) {
       requestDaemonErrors();
+      requestAllAlerts();
       requestAllModes();
       requestActiveMode();
       emit watchForSSE();
@@ -658,9 +721,16 @@ void MainWindow::watchAlerts() const {
     const auto alertState = rootObj.value("state").toString();
     const auto alertName = rootObj.value("name").toString();
     const auto alertMessage = rootObj.value("message").toString();
-    const auto msgTitle = alertState == tr("Active") ? QString("Alert: %1 Triggered").arg(alertName)
-                                                     : QString("Alert: %1 Resolved").arg(alertName);
-    const auto msgIcon = alertState == tr("Active") ? tr("dialog-warning") : tr("emblem-default");
+    const auto isActive = alertState == tr("Active");
+    const auto msgTitle = isActive ? QString("Alert: %1 Triggered").arg(alertName)
+                                   : QString("Alert: %1 Resolved").arg(alertName);
+    const auto msgIcon = isActive ? tr("dialog-warning") : tr("emblem-default");
+    if (!isActive && m_alertCount > 0) {
+      m_alertCount--;
+    } else if (isActive) {
+      m_alertCount++;
+    }
+    setTrayIconNotificationBadge(m_alertCount > 0 || m_daemonHasErrors);
     m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [alertsReply]() {
