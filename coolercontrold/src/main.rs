@@ -55,6 +55,7 @@ mod grpc_api;
 mod logger;
 mod main_loop;
 mod modes;
+mod notifier;
 mod repositories;
 mod setting;
 mod sleep_listener;
@@ -164,6 +165,9 @@ struct Args {
     /// Force use of CLI tools instead of NVML for Nvidia GPU monitoring and control
     #[arg(long)]
     nvidia_cli: bool,
+
+    #[command(subcommand)]
+    command: Option<SubCommands>,
 }
 
 /// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
@@ -173,6 +177,7 @@ fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     cc_fs::runtime(async {
         let run_token = setup_termination_signals();
+        handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         #[cfg(feature = "io_uring")]
@@ -305,6 +310,51 @@ fn setup_termination_signals() -> CancellationToken {
         sig_run_token.cancel();
     });
     run_token
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum SubCommands {
+    #[command(hide = true)]
+    Notify {
+        #[arg(required = true)]
+        title: String,
+
+        #[arg(required = true)]
+        message: String,
+
+        #[arg()]
+        icon: Option<u8>,
+
+        #[arg()]
+        audio: Option<bool>,
+
+        #[arg()]
+        urgency: Option<String>,
+    },
+}
+
+async fn handle_non_root_commands(args: &Args) -> Result<()> {
+    match &args.command {
+        Some(SubCommands::Notify {
+            title,
+            message,
+            icon,
+            audio,
+            urgency,
+        }) => {
+            notifier::notify(
+                title,
+                message,
+                icon.unwrap_or(0),
+                audio.is_some_and(|a| a),
+                urgency.as_ref().map_or("1", |u| u.as_str()),
+            )
+            .await?;
+            exit_successfully();
+        }
+        None => {}
+    }
+    Ok(())
 }
 
 async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
