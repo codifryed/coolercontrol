@@ -130,9 +130,10 @@ impl Alert {
 pub enum AlertState {
     Active,
 
-    /// Alert condition was satisfied at the stored time but the duration threshold has not been
-    /// reached
+    /// Alert condition was satisfied at the stored time
+    /// but the duration threshold has not been reached.
     WarmUp(DateTime<Local>),
+
     Inactive,
 
     /// Represents an error state. e.g. when one of the components in the alert isn't found.
@@ -172,7 +173,8 @@ impl<'de> Deserialize<'de> for AlertState {
             {
                 match value {
                     "Active" => Ok(AlertState::Active),
-                    "WarmUp" | "Error" | "Inactive" => Ok(AlertState::Inactive),
+                    "Error" => Ok(AlertState::Error),
+                    "WarmUp" | "Inactive" => Ok(AlertState::Inactive),
                     _ => Err(E::custom(format!("unknown variant: {value}"))),
                 }
             }
