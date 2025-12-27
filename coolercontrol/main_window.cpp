@@ -420,7 +420,7 @@ QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const b
 
   // Bootstrap danger red or warning yellow
   painter.setBrush(redColor ? QColor(220, 53, 69) : QColor(255, 193, 7));
-  painter.setPen(QPen(redColor ? QColor(180, 40, 50): QColor(215, 165, 0), 2));
+  painter.setPen(QPen(redColor ? QColor(180, 40, 50) : QColor(215, 165, 0), 2));
   painter.drawEllipse(x, y, dotSize, dotSize);
 
   return (pixmap);
