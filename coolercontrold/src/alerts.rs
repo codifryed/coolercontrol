@@ -294,7 +294,8 @@ impl AlertController {
         {
             let mut alerts_lock = self.alerts.borrow_mut();
             alerts_lock.clear();
-            for alert in alert_config.alerts {
+            for mut alert in alert_config.alerts {
+                Self::reset_saved_alert_state(&mut alert);
                 alerts_lock.insert(alert.uid.clone(), alert);
             }
         }
@@ -304,6 +305,13 @@ impl AlertController {
             logs_lock.extend(alert_config.logs);
         }
         Ok(())
+    }
+
+    /// Resets the saved state of an alert to Inactive.
+    /// We want to re-evaluate the state of all Alerts on startup, so we reset the saved state to Inactive.
+    /// Note that we are still serializing the states properly for the Alert Logs.
+    fn reset_saved_alert_state(alert: &mut Alert) {
+        alert.state = AlertState::Inactive;
     }
 
     /// Saves the current Alert data to the Alert configuration file.
