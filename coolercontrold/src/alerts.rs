@@ -586,7 +586,7 @@ impl AlertController {
                         alert.name
                     );
                 }
-                if alert.desktop_notify_recovery {
+                if alert.desktop_notify && alert.desktop_notify_recovery {
                     for uid in &user_ids {
                         Self::fire_command(&format!(
                             "sudo -u \\#{} {} notify \"Alert Resolved: {}\" \"{}\" 2 {}",
