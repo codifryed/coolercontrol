@@ -29,7 +29,7 @@ import {
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import { $enum } from 'ts-enum-util'
@@ -76,6 +76,36 @@ const getDaemonStatusTranslationKey = (daemonStatus: DaemonStatus) =>
     })
 
 const expandLogs = ref(false)
+const onExpandClick = async () => {
+    expandLogs.value = !expandLogs.value
+    await nextTick()
+    scrollToBottom()
+}
+const logContainer = ref<HTMLElement | null>(null)
+const isUserScrolledUp = ref(false)
+
+const checkIfScrolledToBottom = () => {
+    if (!logContainer.value) return
+    const { scrollTop, scrollHeight, clientHeight } = logContainer.value
+    // Consider "at bottom" if within 5px of the bottom
+    isUserScrolledUp.value = scrollHeight - scrollTop - clientHeight > 5
+}
+
+const scrollToBottom = () => {
+    if (logContainer.value) {
+        logContainer.value.scrollTop = logContainer.value.scrollHeight
+    }
+}
+
+watch(
+    () => deviceStore.logs,
+    async () => {
+        if (!isUserScrolledUp.value) {
+            await nextTick()
+            scrollToBottom()
+        }
+    },
+)
 const downloadLogFileName = 'coolercontrold-current.log'
 const downloadLogHref = computed((): string => {
     const blob = new Blob([deviceStore.logs], { type: 'text/plain' })
@@ -87,9 +117,7 @@ const downloadLogDatasetURL = computed((): string => {
 })
 
 onMounted(() => {
-    const logOutput = document.getElementById('log-output')!
-    // scroll to bottom:
-    logOutput.scrollTop = logOutput.scrollHeight
+    scrollToBottom()
 })
 </script>
 
@@ -282,7 +310,7 @@ onMounted(() => {
                             }}</span>
                             <Button
                                 class="ml-4 !rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-                                @click="expandLogs = !expandLogs"
+                                @click="onExpandClick"
                             >
                                 <svg-icon
                                     type="mdi"
@@ -305,8 +333,10 @@ onMounted(() => {
                         </a>
                     </div>
                     <div
+                        ref="logContainer"
                         class="relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
                         :class="expandLogs ? 'min-h-[32rem]' : 'h-[32rem]'"
+                        @scroll="checkIfScrolledToBottom"
                     >
                         <pre
                             id="log-output"
