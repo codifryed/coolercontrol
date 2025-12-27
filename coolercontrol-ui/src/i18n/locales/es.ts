@@ -498,6 +498,18 @@ export default {
             unsavedChanges: 'Hay cambios no guardados realizados en esta Alerta.',
             unsavedChangesHeader: 'Cambios no guardados',
             createFailAlert: 'Alerta de fallo',
+            desktopNotify: 'notificación de escritorio',
+            desktopNotifyTooltip:
+                'Habilitar notificaciones de escritorio cuando se active la alerta.\n(Si es compatible)',
+            desktopNotifyRecovery: 'notificación de escritorio en recuperación',
+            desktopNotifyRecoveryTooltip:
+                'Habilitar notificaciones de escritorio cuando la alerta se recupere.\n(Si es compatible)',
+            desktopNotifyAudio: 'audio de notificación de escritorio',
+            desktopNotifyAudioTooltip:
+                'Habilitar audio de notificación de escritorio cuando se active la alerta.\n(Si es compatible)',
+            shutdownOnActivation: 'apagar en activación',
+            shutdownOnActivationTooltip:
+                'Habilitar el apagado del sistema cuando se active la alerta.\nEl apagado del sistema comenzará un minuto después de que se active la alerta y se cancelará si la alerta se recupera.',
         },
         profiles: {
             createProfile: 'Crear Perfil',

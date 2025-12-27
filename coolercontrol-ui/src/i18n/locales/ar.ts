@@ -489,6 +489,17 @@ export default {
             unsavedChanges: 'هناك تغييرات غير محفوظة تم إجراؤها على هذا التنبيه.',
             unsavedChangesHeader: 'تغييرات غير محفوظة',
             createFailAlert: 'تنبيه عطل',
+            desktopNotify: 'إشعار سطح المكتب',
+            desktopNotifyTooltip: 'تمكين إشعارات سطح المكتب عند تنشيط التنبيه.\n(إذا كان مدعومًا)',
+            desktopNotifyRecovery: 'إشعار سطح المكتب عند الاستعادة',
+            desktopNotifyRecoveryTooltip:
+                'تمكين إشعارات سطح المكتب عند استعادة التنبيه.\n(إذا كان مدعومًا)',
+            desktopNotifyAudio: 'صوت إشعار سطح المكتب',
+            desktopNotifyAudioTooltip:
+                'تمكين صوت إشعار سطح المكتب عند تنشيط التنبيه.\n(إذا كان مدعومًا)',
+            shutdownOnActivation: 'إيقاف التشغيل عند التنشيط',
+            shutdownOnActivationTooltip:
+                'تمكين إيقاف تشغيل النظام عند تنشيط التنبيه.\nسيبدأ إيقاف تشغيل النظام بعد دقيقة واحدة من تنشيط التنبيه وسيتم إلغاؤه إذا تم استعادة التنبيه.',
         },
         profiles: {
             createProfile: 'إنشاء ملف تعريف',

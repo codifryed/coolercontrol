@@ -21,6 +21,7 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QNetworkAccessManager>
+#include <QPainter>
 #include <QSystemTrayIcon>
 #include <QWebChannel>
 #include <QWebEngineProfile>
@@ -60,6 +61,8 @@ class MainWindow final : public QMainWindow {
   void setTrayMenuModes(const QString& modesJson) const;
 
   void acknowledgeDaemonErrors() const;
+
+  void requestAllAlerts() const;
 
  signals:
   void forceQuitSignal();
@@ -105,6 +108,8 @@ class MainWindow final : public QMainWindow {
   mutable bool m_uiLoadingStopped{false};
   mutable bool m_changeAddress{false};
   mutable bool m_daemonHasErrors{false};
+  mutable bool m_daemonHasWarnings{false};
+  mutable int m_alertCount{0};
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};
@@ -147,5 +152,9 @@ class MainWindow final : public QMainWindow {
   void notifyDaemonDisconnected() const;
 
   void notifyDaemonConnectionRestored() const;
+
+  static QIcon createIconWithNotificationBadge(const QIcon& baseIcon, bool redColor);
+
+  void applyTrayIconNotificationBadge(bool forceRedBadge = false) const;
 };
 #endif  // MAINWINDOW_H

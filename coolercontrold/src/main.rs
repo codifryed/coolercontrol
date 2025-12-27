@@ -55,6 +55,7 @@ mod grpc_api;
 mod logger;
 mod main_loop;
 mod modes;
+mod notifier;
 mod repositories;
 mod setting;
 mod sleep_listener;
@@ -139,31 +140,34 @@ type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 /// A program to control your cooling devices
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Parser, Debug)]
-#[clap(author, about, version, long_about = None)]
+#[command(author, about, version, long_about = None)]
 struct Args {
     /// Enable debug output
-    #[clap(long)]
+    #[arg(long)]
     debug: bool,
 
     /// Print detected system information
-    #[clap(long, short)]
+    #[arg(long, short)]
     system_info: bool,
 
     /// Check config file validity
-    #[clap(long)]
+    #[arg(long)]
     config: bool,
 
     /// Makes a backup of your current daemon and UI settings
-    #[clap(long, short)]
+    #[arg(long, short)]
     backup: bool,
 
     /// Reset the UI password to the default
-    #[clap(long)]
+    #[arg(long)]
     reset_password: bool,
 
     /// Force use of CLI tools instead of NVML for Nvidia GPU monitoring and control
-    #[clap(long)]
+    #[arg(long)]
     nvidia_cli: bool,
+
+    #[command(subcommand)]
+    command: Option<SubCommands>,
 }
 
 /// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
@@ -173,6 +177,7 @@ fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     cc_fs::runtime(async {
         let run_token = setup_termination_signals();
+        handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
         #[cfg(feature = "io_uring")]
@@ -201,52 +206,65 @@ fn main() -> Result<()> {
             .await?,
         );
 
-        moro_local::async_scope!(|main_scope| -> Result<()> {
-            mode_controller.handle_settings_at_boot().await;
-            let status_handle = api::actor::StatusHandle::new(
-                Rc::clone(&all_devices),
-                run_token.clone(),
-                main_scope,
-            );
-            let alert_controller = Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
-            AlertController::watch_for_shutdown(&alert_controller, run_token.clone(), main_scope);
-            match api::start_server(
-                Rc::clone(&all_devices),
-                Rc::clone(&repos),
-                Rc::clone(&engine),
-                Rc::clone(&config),
-                custom_sensors_repo,
-                Rc::clone(&mode_controller),
-                Rc::clone(&alert_controller),
-                plugin_controller,
-                log_buf_handle,
-                status_handle.clone(),
-                run_token.clone(),
-                main_scope,
-            )
-            .await
-            {
-                Ok(()) => api_up_token.cancel(),
-                Err(err) => error!("Error initializing API Server: {err}"),
-            }
+        let _ = moro_local::async_scope!(|main_scope| -> Result<()> {
+            async {
+                mode_controller.handle_settings_at_boot().await;
+                let status_handle = api::actor::StatusHandle::new(
+                    Rc::clone(&all_devices),
+                    run_token.clone(),
+                    main_scope,
+                );
+                let alert_controller =
+                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                AlertController::watch_for_shutdown(
+                    &alert_controller,
+                    run_token.clone(),
+                    main_scope,
+                );
+                match api::start_server(
+                    Rc::clone(&all_devices),
+                    Rc::clone(&repos),
+                    Rc::clone(&engine),
+                    Rc::clone(&config),
+                    custom_sensors_repo,
+                    Rc::clone(&mode_controller),
+                    Rc::clone(&alert_controller),
+                    plugin_controller,
+                    log_buf_handle,
+                    status_handle.clone(),
+                    run_token.clone(),
+                    main_scope,
+                )
+                .await
+                {
+                    Ok(()) => api_up_token.cancel(),
+                    Err(err) => error!("Error initializing API Server: {err}"),
+                }
 
-            // give concurrent services a moment to finish initializing:
-            sleep(Duration::from_millis(10)).await;
-            set_cpu_affinity()?;
-            info!("Initialization Complete");
-            main_loop::run(
-                Rc::clone(&config),
-                Rc::clone(&repos),
-                engine,
-                mode_controller,
-                alert_controller,
-                status_handle,
-                run_token,
-            )
-            .await?;
-            Ok(())
+                // give concurrent services a moment to finish initializing:
+                sleep(Duration::from_millis(10)).await;
+                set_cpu_affinity()?;
+                info!("Initialization Complete");
+                main_loop::run(
+                    Rc::clone(&config),
+                    Rc::clone(&repos),
+                    engine,
+                    mode_controller,
+                    alert_controller,
+                    status_handle,
+                    run_token.clone(),
+                )
+                .await?;
+                Ok(())
+            }
+            .await
+            // If an error is returned inside the scope, we need to initiate a shutdown of all running tasks:
+            .inspect_err(|_| run_token.cancel())
         })
-        .await?;
+        .await
+        .inspect_err(|err| {
+            error!("Main scope failed to start: {err}");
+        });
         // all tasks from the main scope must have completed by this point.
         shutdown(repos, config).await
     })
@@ -305,6 +323,51 @@ fn setup_termination_signals() -> CancellationToken {
         sig_run_token.cancel();
     });
     run_token
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum SubCommands {
+    #[command(hide = true)]
+    Notify {
+        #[arg(required = true)]
+        title: String,
+
+        #[arg(required = true)]
+        message: String,
+
+        #[arg()]
+        icon: Option<u8>,
+
+        #[arg()]
+        audio: Option<bool>,
+
+        #[arg()]
+        urgency: Option<String>,
+    },
+}
+
+async fn handle_non_root_commands(args: &Args) -> Result<()> {
+    match &args.command {
+        Some(SubCommands::Notify {
+            title,
+            message,
+            icon,
+            audio,
+            urgency,
+        }) => {
+            notifier::notify(
+                title,
+                message,
+                icon.unwrap_or(0),
+                audio.is_some_and(|a| a),
+                urgency.as_ref().map_or("1", |u| u.as_str()),
+            )
+            .await?;
+            exit_successfully();
+        }
+        None => {}
+    }
+    Ok(())
 }
 
 async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {

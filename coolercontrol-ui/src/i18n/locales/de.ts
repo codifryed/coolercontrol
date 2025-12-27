@@ -501,6 +501,18 @@ export default {
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Warnung.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
             createFailAlert: 'Ausfallwarnung',
+            desktopNotify: 'Desktop-Benachrichtigung',
+            desktopNotifyTooltip:
+                'Desktop-Benachrichtigungen aktivieren, wenn die Warnung ausgelöst wird.\n(Falls unterstützt)',
+            desktopNotifyRecovery: 'Desktop-Benachrichtigung bei Wiederherstellung',
+            desktopNotifyRecoveryTooltip:
+                'Desktop-Benachrichtigungen aktivieren, wenn die Warnung wiederhergestellt wird.\n(Falls unterstützt)',
+            desktopNotifyAudio: 'Desktop-Benachrichtigungston',
+            desktopNotifyAudioTooltip:
+                'Desktop-Benachrichtigungston aktivieren, wenn die Warnung ausgelöst wird.\n(Falls unterstützt)',
+            shutdownOnActivation: 'Herunterfahren bei Aktivierung',
+            shutdownOnActivationTooltip:
+                'System-Herunterfahren aktivieren, wenn die Warnung ausgelöst wird.\nDas System wird eine Minute nach Auslösung der Warnung heruntergefahren und abgebrochen, wenn die Warnung wiederhergestellt wird.',
         },
         profiles: {
             createProfile: 'Profil erstellen',

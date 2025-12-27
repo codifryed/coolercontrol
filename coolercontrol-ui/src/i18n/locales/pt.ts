@@ -431,6 +431,18 @@ export default {
             unsavedChanges: 'Há alterações não salvas feitas neste Alerta.',
             unsavedChangesHeader: 'Alterações Não Salvas',
             createFailAlert: 'Alerta de Falha',
+            desktopNotify: 'notificação de área de trabalho',
+            desktopNotifyTooltip:
+                'Ativar notificações de área de trabalho quando o alerta for acionado.\n(Se suportado)',
+            desktopNotifyRecovery: 'notificação de área de trabalho na recuperação',
+            desktopNotifyRecoveryTooltip:
+                'Ativar notificações de área de trabalho quando o alerta for recuperado.\n(Se suportado)',
+            desktopNotifyAudio: 'áudio de notificação de área de trabalho',
+            desktopNotifyAudioTooltip:
+                'Ativar áudio de notificação de área de trabalho quando o alerta for acionado.\n(Se suportado)',
+            shutdownOnActivation: 'desligar na ativação',
+            shutdownOnActivationTooltip:
+                'Ativar o desligamento do sistema quando o alerta for acionado.\nO desligamento do sistema começará um minuto após o alerta ser acionado e será cancelado se o alerta for recuperado.',
         },
         profiles: {
             createProfile: 'Criar Perfil',

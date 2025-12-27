@@ -42,6 +42,7 @@ const std::string USER_ID = "CCAdmin";
 const std::string ENDPOINT_HEALTH = "/health";
 const std::string ENDPOINT_MODES = "/modes";
 const std::string ENDPOINT_MODES_ACTIVE = "/modes-active";
+const std::string ENDPOINT_ALERTS = "/alerts";
 const std::string ENDPOINT_SSE_LOGS = "/sse/logs";
 const std::string ENDPOINT_SSE_MODES = "/sse/modes";
 const std::string ENDPOINT_SSE_ALERTS = "/sse/alerts";

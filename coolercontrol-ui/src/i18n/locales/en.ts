@@ -493,6 +493,18 @@ export default {
             unsavedChanges: 'There are unsaved changes made to this Alert.',
             unsavedChangesHeader: 'Unsaved Changes',
             createFailAlert: 'Fail Alert',
+            desktopNotify: 'desktop notification',
+            desktopNotifyTooltip:
+                'Enable desktop notifications when the alert is triggered.\n(If supported)',
+            desktopNotifyRecovery: 'desktop notification on recovery',
+            desktopNotifyRecoveryTooltip:
+                'Enable desktop notifications when the alert recovers.\n(If supported)',
+            desktopNotifyAudio: 'desktop notification audio',
+            desktopNotifyAudioTooltip:
+                'Enable desktop notification audio when the alert is triggered.\n(If supported)',
+            shutdownOnActivation: 'shutdown on activation',
+            shutdownOnActivationTooltip:
+                'Enable system shutdown when the alert is triggered.\nSystem shutdown will commence one minute after the alert is triggered and will be cancelled if the alert recovers.',
         },
         profiles: {
             createProfile: 'Create Profile',

@@ -28,6 +28,11 @@ use tokio_util::sync::CancellationToken;
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
 
+const SLEEP_DEFAULT_BUS_NAME: &str = "org.freedesktop.login1";
+const SLEEP_OBJECTPATH: &str = "/org/freedesktop/login1";
+const SLEEP_INTERFACE: &str = "org.freedesktop.login1.Manager";
+const SIGNAL_PREPARE_FOR_SLEEP: &str = "PrepareForSleep";
+
 pub struct SleepListener {
     preparing_to_sleep: Rc<Cell<bool>>,
     resuming: Rc<Cell<bool>>,
@@ -62,13 +67,13 @@ impl<'s> SleepListener {
         let conn = conn_result?;
         let proxy = Proxy::new(
             &conn,
-            "org.freedesktop.login1",
-            "/org/freedesktop/login1",
-            "org.freedesktop.login1.Manager",
+            SLEEP_DEFAULT_BUS_NAME,
+            SLEEP_OBJECTPATH,
+            SLEEP_INTERFACE,
         )
         .await?;
 
-        let mut sleep_signal = proxy.receive_signal("PrepareForSleep").await?;
+        let mut sleep_signal = proxy.receive_signal(SIGNAL_PREPARE_FOR_SLEEP).await?;
         let listener = Self {
             preparing_to_sleep: Rc::new(Cell::new(false)),
             resuming: Rc::new(Cell::new(false)),
