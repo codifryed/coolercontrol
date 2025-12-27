@@ -651,6 +651,7 @@ void MainWindow::tryDaemonConnection() const {
     } else {
       qInfo() << "Connection to the Daemon Reestablished";
       notifyDaemonConnectionRestored();
+      requestDaemonErrors();
       emit watchForSSE();
     }
     healthReply->deleteLater();
