@@ -116,7 +116,7 @@ MainWindow::MainWindow(QWidget* parent)
   initSystemTray();
   initWebUI();
 
-  QShortcut* fullscreenKeyToggle = new QShortcut(this);
+  const auto fullscreenKeyToggle = new QShortcut(this);
   fullscreenKeyToggle->setKey(Qt::Key_F11);
   connect(fullscreenKeyToggle, &QShortcut::activated, [this]() {
     qDebug() << "FullScreen Key Triggered";
@@ -375,7 +375,7 @@ void MainWindow::setZoomFactor(const double zoomFactor) const { m_view->setZoomF
 void MainWindow::delay(const int millisecondsWait) {
   QEventLoop loop;
   QTimer t;
-  t.connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
+  connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
   t.start(millisecondsWait);
   loop.exec();
 }
