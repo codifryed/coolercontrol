@@ -404,6 +404,18 @@ export default {
             unsavedChanges: '此警报有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
             createFailAlert: '故障警报',
+            desktopNotify: '桌面通知',
+            desktopNotifyTooltip:
+                '当警报触发时启用桌面通知。\n（如果支持）',
+            desktopNotifyRecovery: '恢复时桌面通知',
+            desktopNotifyRecoveryTooltip:
+                '当警报恢复时启用桌面通知。\n（如果支持）',
+            desktopNotifyAudio: '桌面通知音频',
+            desktopNotifyAudioTooltip:
+                '当警报触发时启用桌面通知音频。\n（如果支持）',
+            shutdownOnActivation: '激活时关机',
+            shutdownOnActivationTooltip:
+                '当警报触发时启用系统关机。\n系统将在警报触发一分钟后开始关机，如果警报恢复则取消关机。',
         },
         profiles: {
             createProfile: '创建配置文件',

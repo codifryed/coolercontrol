@@ -535,6 +535,18 @@ export default {
             unsavedChanges: 'このアラートに未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
             createFailAlert: '故障アラート',
+            desktopNotify: 'デスクトップ通知',
+            desktopNotifyTooltip:
+                'アラートがトリガーされたときにデスクトップ通知を有効にします。\n（サポートされている場合）',
+            desktopNotifyRecovery: '回復時のデスクトップ通知',
+            desktopNotifyRecoveryTooltip:
+                'アラートが回復したときにデスクトップ通知を有効にします。\n（サポートされている場合）',
+            desktopNotifyAudio: 'デスクトップ通知音',
+            desktopNotifyAudioTooltip:
+                'アラートがトリガーされたときにデスクトップ通知音を有効にします。\n（サポートされている場合）',
+            shutdownOnActivation: 'アクティベーション時にシャットダウン',
+            shutdownOnActivationTooltip:
+                'アラートがトリガーされたときにシステムシャットダウンを有効にします。\nシステムシャットダウンはアラートがトリガーされてから1分後に開始され、アラートが回復した場合はキャンセルされます。',
         },
         profiles: {
             createProfile: 'プロファイルを作成',

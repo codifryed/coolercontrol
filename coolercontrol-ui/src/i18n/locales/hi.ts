@@ -437,6 +437,18 @@ export default {
             unsavedChanges: 'इस अलर्ट में असहेजे परिवर्तन हैं।',
             unsavedChangesHeader: 'असहेजे परिवर्तन',
             createFailAlert: 'खराबी अलर्ट',
+            desktopNotify: 'डेस्कटॉप सूचना',
+            desktopNotifyTooltip:
+                'अलर्ट ट्रिगर होने पर डेस्कटॉप सूचनाएं सक्षम करें।\n(यदि समर्थित हो)',
+            desktopNotifyRecovery: 'रिकवरी पर डेस्कटॉप सूचना',
+            desktopNotifyRecoveryTooltip:
+                'अलर्ट रिकवर होने पर डेस्कटॉप सूचनाएं सक्षम करें।\n(यदि समर्थित हो)',
+            desktopNotifyAudio: 'डेस्कटॉप सूचना ऑडियो',
+            desktopNotifyAudioTooltip:
+                'अलर्ट ट्रिगर होने पर डेस्कटॉप सूचना ऑडियो सक्षम करें।\n(यदि समर्थित हो)',
+            shutdownOnActivation: 'सक्रियण पर शटडाउन',
+            shutdownOnActivationTooltip:
+                'अलर्ट ट्रिगर होने पर सिस्टम शटडाउन सक्षम करें।\nसिस्टम शटडाउन अलर्ट ट्रिगर होने के एक मिनट बाद शुरू होगा और अलर्ट रिकवर होने पर रद्द हो जाएगा।',
         },
         profiles: {
             createProfile: 'प्रोफ़ाइल बनाएँ',

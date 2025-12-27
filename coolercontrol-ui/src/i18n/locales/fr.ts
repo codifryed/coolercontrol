@@ -508,6 +508,18 @@ export default {
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Alerte.',
             unsavedChangesHeader: 'Changements non enregistrés',
             createFailAlert: 'Alerte de panne',
+            desktopNotify: 'notification de bureau',
+            desktopNotifyTooltip:
+                "Activer les notifications de bureau lorsque l'alerte est déclenchée.\n(Si pris en charge)",
+            desktopNotifyRecovery: 'notification de bureau lors de la récupération',
+            desktopNotifyRecoveryTooltip:
+                "Activer les notifications de bureau lorsque l'alerte récupère.\n(Si pris en charge)",
+            desktopNotifyAudio: 'audio de notification de bureau',
+            desktopNotifyAudioTooltip:
+                "Activer l'audio de notification de bureau lorsque l'alerte est déclenchée.\n(Si pris en charge)",
+            shutdownOnActivation: "arrêt lors de l'activation",
+            shutdownOnActivationTooltip:
+                "Activer l'arrêt du système lorsque l'alerte est déclenchée.\nL'arrêt du système commencera une minute après le déclenchement de l'alerte et sera annulé si l'alerte récupère.",
         },
         profiles: {
             createProfile: 'Créer un profil',
