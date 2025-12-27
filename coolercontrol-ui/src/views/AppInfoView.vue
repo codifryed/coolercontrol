@@ -299,7 +299,7 @@ onMounted(() => {
                             :href="downloadLogHref"
                             :download="downloadLogFileName"
                             :data-downloadurl="downloadLogDatasetURL"
-                            class="text-accent outline-0 mb-2 text-sm"
+                            class="text-accent outline-0 mb-2"
                         >
                             {{ t('views.appInfo.downloadCurrentLog') }}
                         </a>
