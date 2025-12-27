@@ -30,6 +30,10 @@ export class Alert {
     min: number
     max: number
     warmup_duration: number
+    desktop_notify: boolean = true
+    desktop_notify_recovery: boolean = true
+    desktop_notify_audio: boolean = false
+    shutdown_on_activation: boolean = false
     state?: AlertState
 
     constructor(

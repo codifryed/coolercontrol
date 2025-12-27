@@ -35,6 +35,8 @@ import { ChannelMetric, ChannelSource } from '@/models/ChannelSource.ts'
 import Slider from 'primevue/slider'
 import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
+import { ElSwitch } from 'element-plus'
+import 'element-plus/es/components/switch/style/css'
 
 interface Props {
     alertUID?: string
@@ -89,6 +91,10 @@ const chosenMin: Ref<number> = ref(alert.min)
 const chosenMax: Ref<number> = ref(alert.max)
 const chosenName: Ref<string> = ref(alert.name)
 const chosenWarmupDuration: Ref<number> = ref(alert.warmup_duration)
+const chosenDesktopNotification: Ref<boolean> = ref(alert.desktop_notify)
+const chosenDesktopNotificationRecovery: Ref<boolean> = ref(alert.desktop_notify_recovery)
+const chosenDesktopNotificationAudio: Ref<boolean> = ref(alert.desktop_notify_audio)
+const chosenShutdownOnActivation: Ref<boolean> = ref(alert.shutdown_on_activation)
 
 const channelSources: Ref<Array<AvailableChannelSources>> = ref([])
 const fillChannelSources = async (): Promise<void> => {
@@ -173,6 +179,10 @@ const saveAlert = async (): Promise<void> => {
     alert.min = chosenMin.value
     alert.name = chosenName.value
     alert.warmup_duration = chosenWarmupDuration.value
+    alert.desktop_notify = chosenDesktopNotification.value
+    alert.desktop_notify_recovery = chosenDesktopNotificationRecovery.value
+    alert.desktop_notify_audio = chosenDesktopNotificationAudio.value
+    alert.shutdown_on_activation = chosenShutdownOnActivation.value
     alert.channel_source.device_uid = chosenChannelSource.value?.deviceUID!
     alert.channel_source.channel_name = chosenChannelSource.value?.channelName!
     alert.channel_source.channel_metric = chosenChannelSource.value?.metric!
@@ -329,9 +339,22 @@ onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, async () => {
         await fillChannelSources()
     })
-    watch([chosenChannelSource, chosenMax, chosenMin, chosenName], () => {
-        contextIsDirty.value = true
-    })
+    watch(
+        [
+            chosenChannelSource,
+            chosenMax,
+            chosenMin,
+            chosenName,
+            chosenWarmupDuration,
+            chosenDesktopNotification,
+            chosenDesktopNotificationRecovery,
+            chosenDesktopNotificationAudio,
+            chosenShutdownOnActivation,
+        ],
+        () => {
+            contextIsDirty.value = true
+        },
+    )
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
     addScrollEventListeners()
@@ -584,6 +607,70 @@ onMounted(async () => {
                                     />
                                 </td>
                             </tr>
+                            <tr v-tooltip.right="t('views.alerts.desktopNotifyTooltip')">
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                >
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.desktopNotify') }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
+                                >
+                                    <el-switch v-model="chosenDesktopNotification" size="large" />
+                                </td>
+                            </tr>
+                            <tr v-tooltip.right="t('views.alerts.desktopNotifyRecoveryTooltip')">
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                >
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.desktopNotifyRecovery') }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
+                                >
+                                    <el-switch
+                                        v-model="chosenDesktopNotificationRecovery"
+                                        :disabled="!chosenDesktopNotification"
+                                        size="large"
+                                    />
+                                </td>
+                            </tr>
+                            <tr v-tooltip.right="t('views.alerts.desktopNotifyAudioTooltip')">
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                >
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.desktopNotifyAudio') }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
+                                >
+                                    <el-switch
+                                        v-model="chosenDesktopNotificationAudio"
+                                        :disabled="!chosenDesktopNotification"
+                                        size="large"
+                                    />
+                                </td>
+                            </tr>
+                            <tr v-tooltip.right="t('views.alerts.shutdownOnActivationTooltip')">
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                >
+                                    <div class="text-right float-right">
+                                        {{ t('views.alerts.shutdownOnActivation') }}
+                                    </div>
+                                </td>
+                                <td
+                                    class="py-4 px-4 w-60 leading-none items-center text-center border-border-one border-t-2"
+                                >
+                                    <el-switch v-model="chosenShutdownOnActivation" size="large" />
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -600,4 +687,14 @@ onMounted(async () => {
     </ScrollAreaRoot>
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.el-switch {
+    --el-switch-on-color: rgb(var(--colors-accent));
+    --el-switch-off-color: rgb(var(--colors-bg-one));
+    --el-color-white: rgb(var(--colors-bg-two));
+    // switch active text color:
+    --el-color-primary: rgb(var(--colors-text-color));
+    // switch inactive text color:
+    --el-text-color-primary: rgb(var(--colors-text-color));
+}
+</style>
