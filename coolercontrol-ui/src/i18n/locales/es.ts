@@ -385,6 +385,8 @@ export default {
                 'El controlador actualmente instalado no soporta el control de este canal.',
             controlOrView: 'Controlar o Ver',
             applySetting: 'Aplicar Configuración',
+            defaultProfileInfo:
+                'El Perfil Predeterminado restaura el dispositivo a su configuración original del controlador.<br/>Algunos controladores incluyen un modo de control automático de ventilador integrado, pero <i>muchos</i> no lo tienen.<br/>Para dispositivos sin control automático, aplicar el Perfil Predeterminado dejará<br/>el ventilador a su última velocidad configurada y CoolerControl cederá el control.',
         },
         customSensors: {
             newSensor: 'Nuevo Sensor',

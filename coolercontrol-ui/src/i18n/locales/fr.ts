@@ -393,6 +393,8 @@ export default {
                 'Le pilote actuellement installé ne prend pas en charge le contrôle de ce canal.',
             controlOrView: 'Contrôler ou Afficher',
             applySetting: 'Appliquer le Paramètre',
+            defaultProfileInfo:
+                "Le profil par défaut restaure l'appareil à ses paramètres de pilote d'origine.<br/>Certains pilotes incluent un mode de contrôle automatique du ventilateur intégré, mais <i>beaucoup</i> ne le font pas.<br/>Pour les appareils sans contrôle automatique, l'application du profil par défaut laissera<br/>le ventilateur à sa dernière vitesse configurée et CoolerControl abandonnera le contrôle.",
         },
         customSensors: {
             newSensor: 'Nouveau Capteur',

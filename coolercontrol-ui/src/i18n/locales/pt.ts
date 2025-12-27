@@ -406,6 +406,19 @@ export default {
             logsAndDiagnostics: 'Logs e Diagnósticos',
             downloadCurrentLog: 'Baixar Log Atual',
         },
+        devices: {
+            detectionIssues: 'Problemas de Detecção? Veja a',
+            hardwareSupportDocs: 'Documentação de Suporte de Hardware',
+            selectDevices:
+                'Selecione dispositivos e sensores para desativar ou ativar.\nDesativar dispositivos e sensores não utilizados é altamente\nrecomendado.',
+            devicesAndSensors: 'Dispositivos e Sensores',
+            apply: 'Aplicar',
+            applySettingsAndReload: 'Aplicar configurações e recarregar',
+            triggersAutoRestart: 'Aciona reinício automático do daemon',
+            restartPrompt:
+                'Alternar dispositivos ou sensores requer reinício do daemon e da interface. Tem certeza que deseja fazer isso agora?',
+            enableDevices: 'Ativar Dispositivos',
+        },
         alerts: {
             createAlert: 'Criar Alerta',
             editAlert: 'Editar Alerta',
@@ -575,6 +588,21 @@ export default {
             sslTooltip: 'Conectar ao daemon usando SSL/TLS.',
             saveTooltip: 'Salvar configurações e recarregar a interface do usuário',
             resetTooltip: 'Redefinir para as configurações padrão',
+        },
+        speed: {
+            automatic: 'Automático',
+            manual: 'Manual',
+            unsavedChanges: 'Alterações Não Salvas',
+            unsavedChangesMessage: 'Há alterações não salvas feitas neste canal de controle.',
+            manualDuty: 'Duty Manual',
+            profileToApply: 'Perfil a aplicar',
+            automaticOrManual: 'Automático ou Manual',
+            driverNoSupportControl:
+                'O driver atualmente instalado não suporta o controle deste canal.',
+            controlOrView: 'Controlar ou Visualizar',
+            applySetting: 'Aplicar Configuração',
+            defaultProfileInfo:
+                'O Perfil Padrão restaura o dispositivo para suas configurações originais do driver.<br/>Alguns drivers incluem um modo de controle automático de ventilador integrado, mas <i>muitos</i> não incluem.<br/>Para dispositivos sem controle automático, aplicar o Perfil Padrão deixará<br/>o ventilador em sua última velocidade configurada e o CoolerControl abandonará o controle.',
         },
         customSensors: {
             newSensor: 'Novo Sensor',

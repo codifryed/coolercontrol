@@ -380,6 +380,8 @@ export default {
                 'The currently installed driver does not support control of this channel.',
             controlOrView: 'Control or View',
             applySetting: 'Apply Setting',
+            defaultProfileInfo:
+                'The Default Profile restores the device to its original driver settings.<br/>Some drivers include a built-in automatic fan control mode, but <i>many</i> do not.<br/>For devices without automatic control, applying the Default Profile will leave<br/>the fan at its last configured speed and CoolerControl will relinquish control.',
         },
         customSensors: {
             newSensor: 'New Sensor',
