@@ -22,8 +22,8 @@ use crate::device::{
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
     TypeIndex, UID,
 };
-use crate::repositories::hwmon::apple_smc::AppleSMC;
-use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -148,7 +148,7 @@ pub struct HwmonDriverInfo {
     /// this is used specifically for the `drivetemp` module,
     /// which has an associated block device path if found.
     pub block_dev_path: Option<PathBuf>,
-    pub apple_smc: AppleSMC,
+    pub apple_smc: AppleMacSMC,
 }
 
 /// A Repository for `HWMon` Devices
@@ -467,8 +467,8 @@ impl Repository for HwmonRepo {
             let disabled_channels =
                 cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
-            if device_name == DEVICE_NAME_APPLE_SMC {
-                AppleSMC::init_fans(&path, &mut channels, &disabled_channels).await;
+            if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
+                AppleMacSMC::init_fans(&path, &mut channels, &disabled_channels).await;
             } else {
                 match fans::init_fans(&path, &device_name).await {
                     Ok(fans) => channels.extend(
@@ -511,10 +511,10 @@ impl Repository for HwmonRepo {
             } else {
                 None
             };
-            let apple_smc = if device_name == DEVICE_NAME_APPLE_SMC {
-                AppleSMC::new(&path, &channels).await
+            let apple_smc = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
+                AppleMacSMC::new(&path, &channels, &device_name).await
             } else {
-                AppleSMC::not_applicable()
+                AppleMacSMC::not_applicable()
             };
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path).await.or_else(|| {
