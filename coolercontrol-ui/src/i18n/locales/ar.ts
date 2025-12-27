@@ -490,8 +490,7 @@ export default {
             unsavedChangesHeader: 'تغييرات غير محفوظة',
             createFailAlert: 'تنبيه عطل',
             desktopNotify: 'إشعار سطح المكتب',
-            desktopNotifyTooltip:
-                'تمكين إشعارات سطح المكتب عند تنشيط التنبيه.\n(إذا كان مدعومًا)',
+            desktopNotifyTooltip: 'تمكين إشعارات سطح المكتب عند تنشيط التنبيه.\n(إذا كان مدعومًا)',
             desktopNotifyRecovery: 'إشعار سطح المكتب عند الاستعادة',
             desktopNotifyRecoveryTooltip:
                 'تمكين إشعارات سطح المكتب عند استعادة التنبيه.\n(إذا كان مدعومًا)',
