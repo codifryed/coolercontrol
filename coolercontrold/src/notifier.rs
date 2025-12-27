@@ -40,6 +40,8 @@ const IMAGE_PNG_SHUTDOWN: &[u8] = include_bytes!("../resources/shutdown.png");
 /// Sends a desktop notification to the current user's dbus session.
 /// This is used by the daemon itself to be able to send notifications to user sessions.
 /// e.g. when an alert fires.
+///
+/// Based on the Freedesktop spec: <https://specifications.freedesktop.org/notification/latest-single>
 pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &str) -> Result<()> {
     let replace_id: u32 = 0; // 0 = new notification
     let actions: Vec<String> = vec![];
