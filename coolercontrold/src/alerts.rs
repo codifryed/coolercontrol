@@ -604,6 +604,9 @@ impl AlertController {
                         ));
                     }
                 }
+                if alert.desktop_notify || alert.shutdown_on_activation {
+                    warn!("Alert in Error State: {} = {}", alert.name, message);
+                }
             }
             AlertState::WarmUp(_) => {} // Warmup state is never fired.
         }
