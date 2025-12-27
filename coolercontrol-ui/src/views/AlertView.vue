@@ -559,7 +559,7 @@ onMounted(async () => {
                                         v-model="chosenWarmupDuration"
                                         show-buttons
                                         :min="0"
-                                        :max="10"
+                                        :max="60"
                                         :step="0.5"
                                         :min-fraction-digits="1"
                                         :suffix="' s'"
@@ -579,7 +579,7 @@ onMounted(async () => {
                                         class="!w-48 ml-1"
                                         :step="0.5"
                                         :min="0"
-                                        :max="10"
+                                        :max="60"
                                         :disabled="chosenChannelSource == null"
                                     />
                                 </td>
