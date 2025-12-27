@@ -15,8 +15,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::cc_fs;
 use crate::device::{ChannelName, ChannelStatus, Duty, RPM};
+use crate::repositories::hwmon::devices::DEVICE_NAME_MAC_SMC;
 use crate::repositories::hwmon::fans;
 use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
@@ -35,32 +37,33 @@ const DEFAULT_MAX_FAN_SPEED: RPM = 6_500;
 const FAN_AUTO_CONTROL: u8 = 0;
 const FAN_MANUAL_CONTROL: u8 = 1;
 const PATTERN_FAN_OUTPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_output$";
+const PATTERN_FAN_TARGET_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_target$";
 macro_rules! format_fan_manual { ($($arg:tt)*) => {{ format!("fan{}_manual", $($arg)*) }}; }
 macro_rules! format_fan_min { ($($arg:tt)*) => {{ format!("fan{}_min", $($arg)*) }}; }
 macro_rules! format_fan_max { ($($arg:tt)*) => {{ format!("fan{}_max", $($arg)*) }}; }
 macro_rules! format_fan_output { ($($arg:tt)*) => {{ format!("fan{}_output", $($arg)*) }}; }
+/// `macsmc-hwmon` uses a more appropriate `fanN_target` instead of `fanN_output`
+macro_rules! format_fan_target { ($($arg:tt)*) => {{ format!("fan{}_target", $($arg)*) }}; }
 
 /// This is a `HWMon` repository extension for Apple hardware supported by the Linux Kernel.
 ///
 /// In particular the `applesmc` driver, which used in Intel-based Apple computers.
 /// See: `https://github.com/torvalds/linux/blob/master/drivers/hwmon/applesmc.c`
 ///
-/// Apple Silicon support (M1+) is only supported on Linux with the `Asahi Linux` project,
-/// and there doesn't appear to be any `HWMon` driver, nor fan control support.
-/// (Fan speed read looks possible, but is very low-level)
-/// `https://asahilinux.org/docs/hw/soc/smc/`
-/// `https://github.com/corellium/linux-m1/blob/master/drivers/hwmon/apple-m1-smc.c`
+/// Apple Silicon support (M1+) will is supported in the 6.19 kernel.
+/// See `https://github.com/torvalds/linux/blob/master/drivers/hwmon/macsmc-hwmon.c`
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AppleMacSMC {
     pub detected: bool,
     path: PathBuf,
+    is_mac_smc: bool,
     fans: HashMap<u8, AppleFanInfo>,
 }
 
 impl AppleMacSMC {}
 
 impl AppleMacSMC {
-    pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>) -> Self {
+    pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>, device_name: &str) -> Self {
         let mut fans = HashMap::new();
         for channel in channels {
             if channel.hwmon_type != HwmonChannelType::Fan || channel.caps.is_apple_smc().not() {
@@ -83,6 +86,7 @@ impl AppleMacSMC {
         Self {
             detected: true,
             path: path.to_path_buf(),
+            is_mac_smc: device_name == DEVICE_NAME_MAC_SMC,
             fans,
         }
     }
@@ -102,7 +106,7 @@ impl AppleMacSMC {
                     .filter(|fan| disabled_channels.contains(&fan.name).not())
                     .collect::<Vec<HwmonChannelInfo>>(),
             ),
-            Err(err) => error!("Error initializing Apple SMC Fans: {err}"),
+            Err(err) => error!("Error initializing Apple Mac SMC Fans: {err}"),
         }
     }
 
@@ -124,25 +128,44 @@ impl AppleMacSMC {
         Ok(fans)
     }
 
-    /// Detects which fans of this `applesmc` device are controllable
+    /// Detects which fans of this `applesmc` or `macsmc-hwmon` device are controllable
     async fn detect_apple_smc_fans(
         base_path: &Path,
         file_name: &str,
         fan_caps: &mut HashMap<u8, HwmonChannelCapabilities>,
     ) -> Result<()> {
         let regex_output_file = Regex::new(PATTERN_FAN_OUTPUT_FILE_NUMBER)?;
-        if regex_output_file.is_match(file_name).not() {
-            return Ok(()); // skip if not a fan_output file
-        }
-        let channel_number: u8 = regex_output_file
-            .captures(file_name)
-            .context("Fan Number should exist")?
-            .name("number")
-            .context("Number Group should exist")?
-            .as_str()
-            .parse()?;
-        if Self::fan_output_is_writable(base_path, channel_number).not() {
-            return Ok(()); // skip if fan_output file isn't writable
+        let regex_target_file = Regex::new(PATTERN_FAN_TARGET_FILE_NUMBER)?;
+        let mut is_output_file = false;
+        let channel_number: u8 = {
+            if regex_output_file.is_match(file_name) {
+                is_output_file = true;
+                regex_output_file
+                    .captures(file_name)
+                    .context("Fan Number should exist")?
+                    .name("number")
+                    .context("Number Group should exist")?
+                    .as_str()
+                    .parse()?
+            } else {
+                if regex_target_file.is_match(file_name).not() {
+                    return Ok(()); // skip if not an applicable fan file
+                }
+                regex_target_file
+                    .captures(file_name)
+                    .context("Fan Number should exist")?
+                    .name("number")
+                    .context("Number Group should exist")?
+                    .as_str()
+                    .parse()?
+            }
+        };
+        if is_output_file {
+            if Self::fan_output_is_writable(base_path, channel_number).not() {
+                return Ok(()); // skip if fan_output file isn't writable
+            }
+        } else if Self::fan_target_is_writable(base_path, channel_number).not() {
+            return Ok(()); // skip if fan_target file isn't writable
         }
         if fans::get_fan_rpm(base_path, &channel_number, true)
             .await
@@ -197,6 +220,27 @@ impl AppleMacSMC {
             );
         }
         output_writable
+    }
+
+    fn fan_target_is_writable(base_path: &Path, channel_number: u8) -> bool {
+        let target_path = base_path.join(format_fan_target!(channel_number));
+        let target_writable = cc_fs::metadata(&target_path)
+            .inspect_err(|_| {
+                error!(
+                    "Fan_target file metadata is not readable: {}",
+                    target_path.display()
+                );
+            })
+            // This check should be sufficient, as we're running as root:
+            .is_ok_and(|att| att.permissions().readonly().not());
+        if target_writable.not() {
+            warn!(
+                "Mac SMC fan at {} is NOT writable - \
+            Fan control is not currently supported by the installed driver.",
+                target_path.display()
+            );
+        }
+        target_writable
     }
 
     fn fan_manual_is_writable(base_path: &Path, channel_number: u8) -> bool {
@@ -380,7 +424,11 @@ impl AppleMacSMC {
 
     pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty) -> Result<()> {
         let rpm = self.interpolate_rpm_from_duty(channel_number, speed);
-        Self::set_fan_output(&self.path, channel_number, rpm).await
+        if self.is_mac_smc {
+            Self::set_fan_target(&self.path, channel_number, rpm).await
+        } else {
+            Self::set_fan_output(&self.path, channel_number, rpm).await
+        }
     }
 
     async fn set_fan_output(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
@@ -391,6 +439,18 @@ impl AppleMacSMC {
                 anyhow!(
                     "Unable to set Fan Output value {rpm} for {} Reason: {err}",
                     fan_output_path.display()
+                )
+            })
+    }
+
+    async fn set_fan_target(path: &Path, channel_number: u8, rpm: RPM) -> Result<()> {
+        let fan_target_path = path.join(format_fan_target!(channel_number));
+        cc_fs::write_string(&fan_target_path, rpm.to_string())
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Unable to set Fan Target value {rpm} for {} Reason: {err}",
+                    fan_target_path.display()
                 )
             })
     }
@@ -476,6 +536,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -501,6 +562,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -526,6 +588,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -551,6 +614,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -568,6 +632,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans: HashMap::new(),
         };
 
@@ -593,6 +658,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -618,6 +684,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -643,6 +710,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans,
         };
 
@@ -660,6 +728,7 @@ mod tests {
         let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
+            is_mac_smc: false,
             fans: HashMap::new(),
         };
 
@@ -681,7 +750,8 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps)
+                    .await;
 
             // then:
             teardown(&ctx);
@@ -716,7 +786,8 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
+                    .await;
 
             // then:
             teardown(&ctx);
@@ -752,7 +823,8 @@ mod tests {
 
             // when:
             let result =
-                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps)
+                    .await;
 
             // then:
             teardown(&ctx);
@@ -958,6 +1030,7 @@ mod tests {
             let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
+                is_mac_smc: false,
                 fans,
             };
 
@@ -1002,6 +1075,7 @@ mod tests {
             let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
+                is_mac_smc: false,
                 fans,
             };
 
@@ -1043,6 +1117,7 @@ mod tests {
             let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
+                is_mac_smc: false,
                 fans,
             };
 
@@ -1080,6 +1155,7 @@ mod tests {
             let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
+                is_mac_smc: false,
                 fans,
             };
 
@@ -1123,6 +1199,7 @@ mod tests {
             let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
+                is_mac_smc: false,
                 fans,
             };
             let channels = vec![
@@ -1200,7 +1277,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
 
             // then:
             teardown(&ctx);
@@ -1232,7 +1309,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
 
             // then:
             teardown(&ctx);
@@ -1253,5 +1330,523 @@ mod tests {
         // then:
         assert!(!apple_smc.detected);
         assert!(apple_smc.fans.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_output_is_writable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_output_is_writable_not_exists() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+
+            // when:
+            let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(!result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_target_is_writable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_target"), b"2500".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::fan_target_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_target_is_writable_not_exists() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+
+            // when:
+            let result = AppleMacSMC::fan_target_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(!result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_manual_is_writable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_manual"), b"0".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_manual_is_writable_not_exists() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+
+            // when:
+            let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(!result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_min_is_writable() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_fan_min_is_writable_not_exists() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+
+            // when:
+            let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
+
+            // then:
+            teardown(&ctx);
+            assert!(!result);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_fan_output() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_output"), b"0".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::set_fan_output(test_base_path, 1, 3000).await;
+
+            // then:
+            let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(fan_output.trim(), "3000");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_fan_target() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_target"), b"0".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = AppleMacSMC::set_fan_target(test_base_path, 1, 3500).await;
+
+            // then:
+            let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(fan_target.trim(), "3500");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_fan_duty_mac_smc() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_target"), b"0".to_vec())
+                .await
+                .unwrap();
+            let mut fans = HashMap::new();
+            fans.insert(
+                1,
+                AppleFanInfo {
+                    max_rpm: 5000,
+                    default_min_rpm: 600,
+                },
+            );
+            let apple_smc = AppleMacSMC {
+                detected: true,
+                path: test_base_path.clone(),
+                is_mac_smc: true,
+                fans,
+            };
+
+            // when:
+            let result = apple_smc.set_fan_duty(1, 50).await;
+
+            // then:
+            let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
+                .await
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(fan_target.trim(), "2500");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_detect_apple_smc_fans_with_target_file() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_target"), b"2500".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("fan1_manual"), b"0".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("fan1_max"), b"6500".to_vec())
+                .await
+                .unwrap();
+            let mut fan_caps = HashMap::new();
+
+            // when:
+            let result =
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_target", &mut fan_caps)
+                    .await;
+
+            // then:
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(fan_caps.len(), 1);
+            let caps = fan_caps.get(&1).unwrap();
+            assert!(caps.is_apple_smc());
+            assert!(caps.is_fan_controllable());
+            assert!(caps.has_rpm());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_caps_to_hwmon_fans() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let mut fan_caps = HashMap::new();
+            fan_caps.insert(
+                1,
+                HwmonChannelCapabilities::APPLE_SMC
+                    | HwmonChannelCapabilities::FAN_WRITABLE
+                    | HwmonChannelCapabilities::RPM,
+            );
+            fan_caps.insert(2, HwmonChannelCapabilities::RPM);
+
+            // when:
+            let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(result.is_ok());
+            let fans = result.unwrap();
+            assert_eq!(fans.len(), 2);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_caps_to_hwmon_fans_with_label() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_label"), b"Left Fan".to_vec())
+                .await
+                .unwrap();
+            let mut fan_caps = HashMap::new();
+            fan_caps.insert(
+                1,
+                HwmonChannelCapabilities::APPLE_SMC
+                    | HwmonChannelCapabilities::FAN_WRITABLE
+                    | HwmonChannelCapabilities::RPM,
+            );
+
+            // when:
+            let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(result.is_ok());
+            let fans = result.unwrap();
+            assert_eq!(fans.len(), 1);
+            assert_eq!(fans[0].label, Some("Left Fan".to_string()));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_new_mac_smc_device() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("fan1_max"), b"6500".to_vec())
+                .await
+                .unwrap();
+            let channels = vec![HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: "fan1".to_string(),
+                label: None,
+                caps: HwmonChannelCapabilities::APPLE_SMC
+                    | HwmonChannelCapabilities::FAN_WRITABLE
+                    | HwmonChannelCapabilities::RPM,
+                auto_curve: AutoCurveInfo::None,
+            }];
+
+            // when:
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels, DEVICE_NAME_MAC_SMC).await;
+
+            // then:
+            teardown(&ctx);
+            assert!(apple_smc.detected);
+            assert!(apple_smc.is_mac_smc);
+            assert_eq!(apple_smc.fans.len(), 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_new_skips_non_apple_smc_channels() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            let channels = vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    pwm_enable_default: None,
+                    name: "fan1".to_string(),
+                    label: None,
+                    caps: HwmonChannelCapabilities::RPM, // Not APPLE_SMC
+                    auto_curve: AutoCurveInfo::None,
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    pwm_enable_default: None,
+                    name: "temp1".to_string(),
+                    label: None,
+                    caps: HwmonChannelCapabilities::APPLE_SMC,
+                    auto_curve: AutoCurveInfo::None,
+                },
+            ];
+
+            // when:
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
+
+            // then:
+            teardown(&ctx);
+            assert!(apple_smc.detected);
+            assert!(apple_smc.fans.is_empty());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_extract_fan_statuses_skips_non_fan_channels() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
+                .await
+                .unwrap();
+            let mut fans = HashMap::new();
+            fans.insert(
+                1,
+                AppleFanInfo {
+                    max_rpm: 5000,
+                    default_min_rpm: 600,
+                },
+            );
+            let apple_smc = AppleMacSMC {
+                detected: true,
+                path: test_base_path.clone(),
+                is_mac_smc: false,
+                fans,
+            };
+            let channels = vec![
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Fan,
+                    number: 1,
+                    pwm_enable_default: None,
+                    name: "fan1".to_string(),
+                    label: None,
+                    caps: HwmonChannelCapabilities::APPLE_SMC
+                        | HwmonChannelCapabilities::FAN_WRITABLE
+                        | HwmonChannelCapabilities::RPM,
+                    auto_curve: AutoCurveInfo::None,
+                },
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    pwm_enable_default: None,
+                    name: "temp1".to_string(),
+                    label: None,
+                    caps: HwmonChannelCapabilities::empty(),
+                    auto_curve: AutoCurveInfo::None,
+                },
+            ];
+            let driver = Rc::new(HwmonDriverInfo {
+                name: "applesmc".to_string(),
+                path: test_base_path.clone(),
+                model: None,
+                u_id: "test_uid".to_string(),
+                channels: channels.clone(),
+                block_dev_path: None,
+                apple_smc: AppleMacSMC::not_applicable(),
+            });
+
+            // when:
+            let statuses = apple_smc.extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].name, "fan1");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_extract_fan_statuses_rpm_only_fan() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
+                .await
+                .unwrap();
+            let apple_smc = AppleMacSMC {
+                detected: true,
+                path: test_base_path.clone(),
+                is_mac_smc: false,
+                fans: HashMap::new(),
+            };
+            let channels = vec![HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: None,
+                name: "fan1".to_string(),
+                label: None,
+                caps: HwmonChannelCapabilities::RPM, // RPM only, not APPLE_SMC
+                auto_curve: AutoCurveInfo::None,
+            }];
+            let driver = Rc::new(HwmonDriverInfo {
+                name: "applesmc".to_string(),
+                path: test_base_path.clone(),
+                model: None,
+                u_id: "test_uid".to_string(),
+                channels: channels.clone(),
+                block_dev_path: None,
+                apple_smc: AppleMacSMC::not_applicable(),
+            });
+
+            // when:
+            let statuses = apple_smc.extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx);
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].name, "fan1");
+            assert_eq!(statuses[0].rpm, Some(2500));
+            assert_eq!(statuses[0].duty, None); // No duty for RPM-only fan
+        });
     }
 }

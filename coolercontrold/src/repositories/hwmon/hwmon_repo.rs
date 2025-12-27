@@ -23,7 +23,7 @@ use crate::device::{
     TypeIndex, UID,
 };
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
-use crate::repositories::hwmon::devices::{DEVICE_NAME_APPLE_SMC, HWMON_DEVICE_NAME_BLACKLIST};
+use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -467,8 +467,7 @@ impl Repository for HwmonRepo {
             let disabled_channels =
                 cc_device_setting.map_or_else(Vec::new, |setting| setting.get_disabled_channels());
             let mut channels = vec![];
-            if device_name == DEVICE_NAME_APPLE_SMC {
-
+            if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
                 AppleMacSMC::init_fans(&path, &mut channels, &disabled_channels).await;
             } else {
                 match fans::init_fans(&path, &device_name).await {
@@ -512,8 +511,8 @@ impl Repository for HwmonRepo {
             } else {
                 None
             };
-            let apple_smc = if device_name == DEVICE_NAME_APPLE_SMC {
-                AppleMacSMC::new(&path, &channels).await
+            let apple_smc = if DEVICE_NAMES_APPLE.contains(&device_name.as_str()) {
+                AppleMacSMC::new(&path, &channels, &device_name).await
             } else {
                 AppleMacSMC::not_applicable()
             };
