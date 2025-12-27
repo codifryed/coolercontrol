@@ -20,33 +20,40 @@ use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::UID;
+use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
 use const_format::concatcp;
 use hashlink::LinkedHashMap;
-use log::{error, info, trace};
+use log::{error, info, trace, warn};
 use moro_local::Scope;
+use nix::unistd::Pid;
 use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Display};
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio_util::sync::CancellationToken;
 
 const DEFAULT_ALERT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/alerts.json");
 const LOG_BUFFER_SIZE: usize = 20;
+const COMMAND_SHUTDOWN: &str =
+    "shutdown +1 \"Critical CoolerControl Alert! System will shutdown in 1 minute.\"";
+const COMMAND_SHUTDOWN_CANCEL: &str = "shutdown -c";
 
 pub type AlertName = String;
 pub type AlertLogMessage = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Alert {
     pub uid: UID,
     pub name: AlertName,
@@ -54,13 +61,38 @@ pub struct Alert {
     pub min: f64,
     pub max: f64,
     pub state: AlertState,
-    /// Time in seconds throughout which the alert conditidon must hold before the alert is
+
+    /// Time in seconds throughout which the alert condition must hold before the alert is
     /// activated.
-    //
-    // For backwards compatibility, default to 0 to a) tolerate missing fields and b) preserve the
-    // previous behavior. New instances will default to 1 second.
+    ///
+    /// For backwards compatibility, default to 0 to
+    ///  a) tolerate missing fields and
+    ///  b) preserve the previous behavior.
+    /// New instances will default to 1 second.
     #[serde(default)]
     pub warmup_duration: f64,
+
+    /// Toggle a desktop notification when this alert enters an `Active` state. (enabled by default)
+    #[serde(default = "default_desktop_notify")]
+    pub desktop_notify: bool,
+
+    /// Toggle a desktop notification when this alert enters an `Inactive` state. (enabled by default)
+    #[serde(default = "default_desktop_notify")]
+    pub desktop_notify_recovery: bool,
+
+    /// Toggle whether the desktop notification attempts to play an audio sound
+    /// when this alert enters an `Active` state.
+    /// Note: only applies when `desktop_notify` is enabled.
+    #[serde(default)]
+    pub desktop_ui_audio: bool,
+
+    /// Toggle whether to issue a system shutdown when this Alert enters an `Active` state.
+    #[serde(default)]
+    pub shutdown_on_activation: bool,
+}
+
+fn default_desktop_notify() -> bool {
+    true
 }
 
 impl Alert {
@@ -97,10 +129,12 @@ impl Alert {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Display, EnumString, JsonSchema)]
 pub enum AlertState {
     Active,
+
     /// Alert condition was satisfied at the stored time but the duration threshold has not been
     /// reached
     WarmUp(DateTime<Local>),
     Inactive,
+
     /// Represents an error state. e.g. when one of the components in the alert isn't found.
     Error,
 }
@@ -174,16 +208,28 @@ pub struct AlertController {
     alerts: RefCell<LinkedHashMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
     logs: RefCell<VecDeque<AlertLog>>,
+    bin_path: String,
 }
 
 impl AlertController {
     /// A controller for managing and handling Alerts.
     pub async fn init(all_devices: AllDevices) -> Result<Self> {
+        let sys_info =
+            sysinfo::System::new_with_specifics(sysinfo::RefreshKind::nothing().with_processes(
+                sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
+            ));
+        #[allow(clippy::cast_sign_loss)]
+        let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
+        let daemon_process = sys_info.process(pid);
+        let bin_path = daemon_process
+            .and_then(|p| p.exe())
+            .map_or_else(|| "coolercontrold".to_string(), |p| p.display().to_string());
         let alert_controller = Self {
             all_devices,
             alerts: RefCell::new(LinkedHashMap::new()),
             alert_handle: RefCell::new(None),
             logs: RefCell::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),
+            bin_path,
         };
         alert_controller.load_data_from_alert_config_file().await?;
         Ok(alert_controller)
@@ -323,13 +369,9 @@ impl AlertController {
     /// This function should be called in the main loop
     pub fn process_alerts(&self) {
         let alerts_to_fire = self.process_and_collect_alerts_to_fire();
-        for alert_data in alerts_to_fire {
-            let log = self.log_alert_state_change(
-                alert_data.0.uid,
-                alert_data.0.name,
-                alert_data.0.state,
-                alert_data.1,
-            );
+        for (alert, message) in alerts_to_fire {
+            self.send_notifications(&alert, &message);
+            let log = self.log_alert_state_change(alert.uid, alert.name, alert.state, message);
             if let Some(handle) = self.alert_handle.borrow().as_ref() {
                 handle.broadcast_alert_state_change(log);
             }
@@ -506,6 +548,104 @@ impl AlertController {
         }
         logs_lock.push_back(log.clone());
         log
+    }
+
+    /// Handle all notifications and system shutdowns for an alert.
+    fn send_notifications(&self, alert: &Alert, message: &str) {
+        let user_ids = Self::available_session_user_ids();
+        match alert.state {
+            AlertState::Active => {
+                if alert.desktop_notify {
+                    for uid in &user_ids {
+                        if alert.shutdown_on_activation {
+                            Self::fire_command(&format!(
+                                "sudo -u \\#{} {} notify \"Shutdown Alert Triggered: {}!\" \"Shutdown will commence in 1 Minute.\n{}\" 5 {} 2",
+                                uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                            ));
+                        } else {
+                            Self::fire_command(&format!(
+                                "sudo -u \\#{} {} notify \"Alert Triggered: {}!\" \"{}\" 1 {}",
+                                uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                            ));
+                        }
+                    }
+                }
+                if alert.shutdown_on_activation {
+                    Self::fire_command(COMMAND_SHUTDOWN);
+                    info!(
+                        "Shutdown Alert Triggered: {} - Shutdown will commence in 1 Minute",
+                        alert.name
+                    );
+                }
+            }
+            AlertState::Inactive => {
+                if alert.shutdown_on_activation {
+                    Self::fire_command(COMMAND_SHUTDOWN_CANCEL);
+                    info!(
+                        "Shutdown Alert Resolved: {} - Shutdown cancelled",
+                        alert.name
+                    );
+                }
+                if alert.desktop_notify_recovery {
+                    for uid in &user_ids {
+                        Self::fire_command(&format!(
+                            "sudo -u \\#{} {} notify \"Alert Resolved: {}\" \"{}\" 2 {}",
+                            uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                        ));
+                    }
+                }
+            }
+            AlertState::Error => {
+                if alert.desktop_notify {
+                    for uid in &user_ids {
+                        Self::fire_command(&format!(
+                            "sudo -u \\#{} {} notify \"Alert Error: {}\" \"{}\" 3 {}",
+                            uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                        ));
+                    }
+                }
+            }
+            AlertState::WarmUp(_) => {} // Warmup state is never fired.
+        }
+    }
+
+    fn fire_command(cmd: &str) {
+        let cmd = cmd.to_string();
+        tokio::task::spawn_local(async move {
+            if let ShellCommandResult::Error(err) =
+                ShellCommand::new(&cmd, Duration::from_secs(5)).run().await
+            {
+                warn!("Failed to execute notification command: '{cmd}' - {err}");
+            }
+        });
+    }
+
+    fn available_session_user_ids() -> HashSet<u32> {
+        let mut user_ids = HashSet::new();
+        // Search for /run/user/*/bus for user IDs with open dbus sessions.
+        let mut path = PathBuf::from("/run/user");
+        if path.exists().not() {
+            path = PathBuf::from("/var/run/user");
+        }
+        let Ok(entries) = cc_fs::read_dir(path) else {
+            return user_ids;
+        };
+        for entry in entries.flatten() {
+            let user_dir = entry.path();
+            if user_dir.join("bus").exists() {
+                if let Some(uid) = user_dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|id| id.parse::<u32>().ok())
+                {
+                    if uid > 0 {
+                        // skip root
+                        user_ids.insert(uid);
+                    }
+                }
+            }
+        }
+        user_ids
     }
 }
 

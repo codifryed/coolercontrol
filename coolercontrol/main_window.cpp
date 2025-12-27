@@ -721,19 +721,20 @@ void MainWindow::watchAlerts() const {
       return;
     }
     const auto alertState = rootObj.value("state").toString();
-    const auto alertName = rootObj.value("name").toString();
-    const auto alertMessage = rootObj.value("message").toString();
     const auto isActive = alertState == tr("Active");
-    const auto msgTitle = isActive ? QString("Alert: %1 Triggered").arg(alertName)
-                                   : QString("Alert: %1 Resolved").arg(alertName);
-    const auto msgIcon = isActive ? tr("dialog-warning") : tr("emblem-default");
+    // const auto alertName = rootObj.value("name").toString();
+    // const auto alertMessage = rootObj.value("message").toString();
+    // const auto msgTitle = isActive ? QString("Alert: %1 Triggered").arg(alertName)
+    //                                : QString("Alert: %1 Resolved").arg(alertName);
+    // const auto msgIcon = isActive ? tr("dialog-warning") : tr("emblem-default");
     if (!isActive && m_alertCount > 0) {
       m_alertCount--;
     } else if (isActive) {
       m_alertCount++;
     }
     setTrayIconNotificationBadge(m_alertCount > 0 || m_daemonHasErrors);
-    m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
+    // The daemon now handles alert notifications
+    // m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [alertsReply]() {
     const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();

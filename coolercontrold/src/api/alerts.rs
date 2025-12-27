@@ -131,17 +131,38 @@ pub struct AlertsDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct AlertDto {
     pub uid: UID,
     pub name: AlertName,
     pub channel_source: ChannelSource,
     pub min: f64,
     pub max: f64,
+
     // We send the current state, but we don't receive it when creating or updating:
     pub state: Option<AlertState>,
-    /// Time in seconds throughout which the alert conditidon must hold before the alert is
-    /// activated
+
+    /// Time in seconds throughout which the alert condition must hold before the alert is activated
     pub warmup_duration: f64,
+
+    /// Toggle a desktop notification when this alert enters an `Active` state. (true by default)
+    #[serde(default = "default_desktop_notify")]
+    pub desktop_notify: bool,
+
+    /// Toggle a desktop notification when this alert enters an `Inactive` state.
+    #[serde(default = "default_desktop_notify")]
+    pub desktop_notify_recovery: bool,
+
+    /// Toggle whether the desktop notification attempts to play an audio sound
+    /// when this alert enters an `Active` state.
+    /// Note: only applies when `desktop_notify` is enabled.
+    #[serde(default)]
+    pub desktop_ui_audio: bool,
+
+    /// Toggle whether to issue a system shutdown when this Alert enters an `Active` state.
+    /// Duration of the alert before shutdown is determined by `shutdown_active_duration`.
+    #[serde(default)]
+    pub shutdown_on_activation: bool,
 }
 
 impl From<Alert> for AlertDto {
@@ -154,6 +175,10 @@ impl From<Alert> for AlertDto {
             max: alert.max,
             state: Some(alert.state),
             warmup_duration: alert.warmup_duration,
+            desktop_notify: alert.desktop_notify,
+            desktop_notify_recovery: alert.desktop_notify_recovery,
+            desktop_ui_audio: alert.desktop_ui_audio,
+            shutdown_on_activation: alert.shutdown_on_activation,
         }
     }
 }
@@ -168,6 +193,14 @@ impl From<AlertDto> for Alert {
             max: alert_dto.max,
             state: AlertState::Inactive,
             warmup_duration: alert_dto.warmup_duration,
+            desktop_notify: alert_dto.desktop_notify,
+            desktop_notify_recovery: alert_dto.desktop_notify_recovery,
+            desktop_ui_audio: alert_dto.desktop_ui_audio,
+            shutdown_on_activation: alert_dto.shutdown_on_activation,
         }
     }
+}
+
+fn default_desktop_notify() -> bool {
+    true
 }
