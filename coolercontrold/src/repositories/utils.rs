@@ -24,8 +24,7 @@ use std::time::{Duration, Instant};
 
 use crate::cc_fs;
 use anyhow::{anyhow, Result};
-use log::debug;
-use log::error;
+use log::{debug, error, warn};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::sleep;
@@ -90,7 +89,7 @@ impl ShellCommand {
                 }
                 successful = match child.try_wait().unwrap() {
                     None => {
-                        error!(
+                        warn!(
                             "Shell command did not complete within the specified timeout: {:?} \
                                 Killing process for: {}",
                             self.timeout, self.command

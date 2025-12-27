@@ -616,9 +616,11 @@ impl AlertController {
         let cmd = cmd.to_string();
         tokio::task::spawn_local(async move {
             if let ShellCommandResult::Error(err) =
-                ShellCommand::new(&cmd, Duration::from_secs(5)).run().await
+                ShellCommand::new(&cmd, Duration::from_secs(20)).run().await
             {
-                warn!("Failed to execute notification command: '{cmd}' - {err}");
+                if log::log_enabled!(log::Level::Debug) {
+                    warn!("Failed to execute notification command: '{cmd}' - {err}");
+                }
             }
         });
     }
