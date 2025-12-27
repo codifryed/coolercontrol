@@ -386,6 +386,8 @@ export default {
                 'Der aktuell installierte Treiber unterstützt nicht die Steuerung dieses Kanals.',
             controlOrView: 'Steuern oder Anzeigen',
             applySetting: 'Einstellung anwenden',
+            defaultProfileInfo:
+                'Das Standardprofil stellt das Gerät auf seine ursprünglichen Treibereinstellungen zurück.<br/>Einige Treiber enthalten einen integrierten automatischen Lüftersteuerungsmodus, aber <i>viele</i> nicht.<br/>Bei Geräten ohne automatische Steuerung bleibt der Lüfter bei Anwendung des Standardprofils<br/>auf seiner zuletzt konfigurierten Geschwindigkeit und CoolerControl gibt die Steuerung ab.',
         },
         customSensors: {
             newSensor: 'Neuer Sensor',

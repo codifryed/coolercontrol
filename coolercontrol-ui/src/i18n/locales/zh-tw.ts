@@ -509,6 +509,8 @@ export default {
             driverNoSupportControl: '當前安裝的驅動程序不支持此通道的控制。',
             controlOrView: '控制或查看',
             applySetting: '應用設置',
+            defaultProfileInfo:
+                '預設設定檔將裝置恢復到其原始驅動程式設定。<br/>某些驅動程式包含內建的自動風扇控制模式，但<i>許多</i>驅動程式沒有。<br/>對於沒有自動控制的裝置，套用預設設定檔將使<br/>風扇保持在其最後配置的速度，CoolerControl將放棄控制。',
         },
         modes: {
             createMode: '創建模式',

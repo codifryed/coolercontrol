@@ -508,6 +508,8 @@ export default {
             driverNoSupportControl: '当前安装的驱动程序不支持此通道的控制。',
             controlOrView: '控制或查看',
             applySetting: '应用设置',
+            defaultProfileInfo:
+                '默认配置文件将设备恢复到其原始驱动程序设置。<br/>某些驱动程序包含内置的自动风扇控制模式，但<i>许多</i>驱动程序没有。<br/>对于没有自动控制的设备，应用默认配置文件将使<br/>风扇保持在其最后配置的速度，CoolerControl将放弃控制。',
         },
         modes: {
             createMode: '创建模式',

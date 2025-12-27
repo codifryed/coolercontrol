@@ -19,7 +19,12 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiAlertOutline, mdiContentSaveOutline, mdiTuneVerticalVariant } from '@mdi/js'
+import {
+    mdiAlertOutline,
+    mdiContentSaveOutline,
+    mdiInformationSlabCircleOutline,
+    mdiTuneVerticalVariant,
+} from '@mdi/js'
 import Select from 'primevue/select'
 import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
@@ -434,6 +439,21 @@ onUnmounted(() => {
                 v-else-if="chosenViewType === ChannelViewType.Control && !manualControlEnabled"
                 class="flex flex-row"
             >
+                <div
+                    v-if="channelIsControllable() && selectedProfile.uid === '0'"
+                    class="ml-2 mr-0 pr-0 flex flex-row leading-none items-center"
+                    v-tooltip.bottom="{
+                        value: t('views.speed.defaultProfileInfo'),
+                        escape: false,
+                    }"
+                >
+                    <svg-icon
+                        type="mdi"
+                        class="text-warning"
+                        :path="mdiInformationSlabCircleOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </div>
                 <div class="p-2 pr-0">
                     <Select
                         v-model="selectedProfile"
