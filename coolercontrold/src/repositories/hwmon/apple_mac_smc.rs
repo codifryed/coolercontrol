@@ -51,15 +51,15 @@ macro_rules! format_fan_output { ($($arg:tt)*) => {{ format!("fan{}_output", $($
 /// `https://asahilinux.org/docs/hw/soc/smc/`
 /// `https://github.com/corellium/linux-m1/blob/master/drivers/hwmon/apple-m1-smc.c`
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct AppleSMC {
+pub struct AppleMacSMC {
     pub detected: bool,
     path: PathBuf,
     fans: HashMap<u8, AppleFanInfo>,
 }
 
-impl AppleSMC {}
+impl AppleMacSMC {}
 
-impl AppleSMC {
+impl AppleMacSMC {
     pub async fn new(path: &Path, channels: &Vec<HwmonChannelInfo>) -> Self {
         let mut fans = HashMap::new();
         for channel in channels {
@@ -473,7 +473,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -498,7 +498,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -523,7 +523,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -548,7 +548,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -565,7 +565,7 @@ mod tests {
     #[serial]
     fn test_interpolate_duty_from_rpm_not_found() {
         // given:
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans: HashMap::new(),
@@ -590,7 +590,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -615,7 +615,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -640,7 +640,7 @@ mod tests {
                 default_min_rpm: 600,
             },
         );
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans,
@@ -657,7 +657,7 @@ mod tests {
     #[serial]
     fn test_interpolate_rpm_from_duty_not_found() {
         // given:
-        let apple_smc = AppleSMC {
+        let apple_smc = AppleMacSMC {
             detected: true,
             path: PathBuf::new(),
             fans: HashMap::new(),
@@ -681,7 +681,7 @@ mod tests {
 
             // when:
             let result =
-                AppleSMC::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_input", &mut fan_caps).await;
 
             // then:
             teardown(&ctx);
@@ -716,7 +716,7 @@ mod tests {
 
             // when:
             let result =
-                AppleSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
 
             // then:
             teardown(&ctx);
@@ -752,7 +752,7 @@ mod tests {
 
             // when:
             let result =
-                AppleSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
+                AppleMacSMC::detect_apple_smc_fans(test_base_path, "fan1_output", &mut fan_caps).await;
 
             // then:
             teardown(&ctx);
@@ -800,7 +800,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleSMC::init_apple_fans(test_base_path).await;
+            let result = AppleMacSMC::init_apple_fans(test_base_path).await;
 
             // then:
             teardown(&ctx);
@@ -840,7 +840,7 @@ mod tests {
             let disabled_channels = vec!["fan1".to_string()];
 
             // when:
-            AppleSMC::init_fans(test_base_path, &mut channels, &disabled_channels).await;
+            AppleMacSMC::init_fans(test_base_path, &mut channels, &disabled_channels).await;
 
             // then:
             teardown(&ctx);
@@ -860,7 +860,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleSMC::get_fan_min(test_base_path, 1, false).await;
+            let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx);
@@ -883,7 +883,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleSMC::get_fan_min(test_base_path, 1, false).await;
+            let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx);
@@ -903,7 +903,7 @@ mod tests {
                 .unwrap();
 
             // when:
-            let result = AppleSMC::get_fan_max(test_base_path, 1, false).await;
+            let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx);
@@ -926,7 +926,7 @@ mod tests {
             .unwrap();
 
             // when:
-            let result = AppleSMC::get_fan_max(test_base_path, 1, false).await;
+            let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
 
             // then:
             teardown(&ctx);
@@ -955,7 +955,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleSMC {
+            let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
                 fans,
@@ -999,7 +999,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleSMC {
+            let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
                 fans,
@@ -1040,7 +1040,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleSMC {
+            let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
                 fans,
@@ -1077,7 +1077,7 @@ mod tests {
                     default_min_rpm: 600,
                 },
             );
-            let apple_smc = AppleSMC {
+            let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
                 fans,
@@ -1120,7 +1120,7 @@ mod tests {
                     default_min_rpm: 700,
                 },
             );
-            let apple_smc = AppleSMC {
+            let apple_smc = AppleMacSMC {
                 detected: true,
                 path: test_base_path.clone(),
                 fans,
@@ -1156,7 +1156,7 @@ mod tests {
                 u_id: "test_uid".to_string(),
                 channels: channels.clone(),
                 block_dev_path: None,
-                apple_smc: AppleSMC::not_applicable(),
+                apple_smc: AppleMacSMC::not_applicable(),
             });
 
             // when:
@@ -1200,7 +1200,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
 
             // then:
             teardown(&ctx);
@@ -1232,7 +1232,7 @@ mod tests {
             }];
 
             // when:
-            let apple_smc = AppleSMC::new(test_base_path, &channels).await;
+            let apple_smc = AppleMacSMC::new(test_base_path, &channels).await;
 
             // then:
             teardown(&ctx);
@@ -1248,7 +1248,7 @@ mod tests {
     #[serial]
     fn test_not_applicable() {
         // when:
-        let apple_smc = AppleSMC::not_applicable();
+        let apple_smc = AppleMacSMC::not_applicable();
 
         // then:
         assert!(!apple_smc.detected);
