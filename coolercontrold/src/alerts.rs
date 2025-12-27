@@ -84,7 +84,7 @@ pub struct Alert {
     /// when this alert enters an `Active` state.
     /// Note: only applies when `desktop_notify` is enabled.
     #[serde(default)]
-    pub desktop_ui_audio: bool,
+    pub desktop_notify_audio: bool,
 
     /// Toggle whether to issue a system shutdown when this Alert enters an `Active` state.
     #[serde(default)]
@@ -560,12 +560,12 @@ impl AlertController {
                         if alert.shutdown_on_activation {
                             Self::fire_command(&format!(
                                 "sudo -u \\#{} {} notify \"Shutdown Alert Triggered: {}!\" \"Shutdown will commence in 1 Minute.\n{}\" 5 {} 2",
-                                uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                                uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
                             ));
                         } else {
                             Self::fire_command(&format!(
                                 "sudo -u \\#{} {} notify \"Alert Triggered: {}!\" \"{}\" 1 {}",
-                                uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                                uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
                             ));
                         }
                     }
@@ -590,7 +590,7 @@ impl AlertController {
                     for uid in &user_ids {
                         Self::fire_command(&format!(
                             "sudo -u \\#{} {} notify \"Alert Resolved: {}\" \"{}\" 2 {}",
-                            uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                            uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
                         ));
                     }
                 }
@@ -600,7 +600,7 @@ impl AlertController {
                     for uid in &user_ids {
                         Self::fire_command(&format!(
                             "sudo -u \\#{} {} notify \"Alert Error: {}\" \"{}\" 3 {}",
-                            uid, self.bin_path, alert.name, message, alert.desktop_ui_audio
+                            uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
                         ));
                     }
                 }

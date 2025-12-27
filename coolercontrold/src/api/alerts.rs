@@ -157,7 +157,7 @@ pub struct AlertDto {
     /// when this alert enters an `Active` state.
     /// Note: only applies when `desktop_notify` is enabled.
     #[serde(default)]
-    pub desktop_ui_audio: bool,
+    pub desktop_notify_audio: bool,
 
     /// Toggle whether to issue a system shutdown when this Alert enters an `Active` state.
     /// Duration of the alert before shutdown is determined by `shutdown_active_duration`.
@@ -177,7 +177,7 @@ impl From<Alert> for AlertDto {
             warmup_duration: alert.warmup_duration,
             desktop_notify: alert.desktop_notify,
             desktop_notify_recovery: alert.desktop_notify_recovery,
-            desktop_ui_audio: alert.desktop_ui_audio,
+            desktop_notify_audio: alert.desktop_notify_audio,
             shutdown_on_activation: alert.shutdown_on_activation,
         }
     }
@@ -195,7 +195,7 @@ impl From<AlertDto> for Alert {
             warmup_duration: alert_dto.warmup_duration,
             desktop_notify: alert_dto.desktop_notify,
             desktop_notify_recovery: alert_dto.desktop_notify_recovery,
-            desktop_ui_audio: alert_dto.desktop_ui_audio,
+            desktop_notify_audio: alert_dto.desktop_notify_audio,
             shutdown_on_activation: alert_dto.shutdown_on_activation,
         }
     }
