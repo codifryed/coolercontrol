@@ -643,8 +643,8 @@ impl AlertController {
                     .and_then(|n| n.to_str())
                     .and_then(|id| id.parse::<u32>().ok())
                 {
-                    if uid > 0 {
-                        // skip root
+                    // do not notify root or system users
+                    if uid >= 1000 {
                         user_ids.insert(uid);
                     }
                 }
