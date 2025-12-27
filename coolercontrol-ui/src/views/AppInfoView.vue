@@ -19,11 +19,18 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
+import {
+    mdiArrowCollapseVertical,
+    mdiArrowExpandVertical,
+    mdiCircle,
+    mdiGit,
+    mdiHelpCircleOutline,
+    mdiToolboxOutline,
+} from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
-import { mdiCircle, mdiGit, mdiHelpCircleOutline, mdiToolboxOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
@@ -68,6 +75,7 @@ const getDaemonStatusTranslationKey = (daemonStatus: DaemonStatus) =>
         },
     })
 
+const expandLogs = ref(false)
 const downloadLogFileName = 'coolercontrold-current.log'
 const downloadLogHref = computed((): string => {
     const blob = new Blob([deviceStore.logs], { type: 'text/plain' })
@@ -268,9 +276,25 @@ onMounted(() => {
                     class="flex flex-col bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] 2xl:w-[70vw]"
                 >
                     <div class="flex flex-row justify-between items-baseline">
-                        <span class="mb-4 font-semibold text-xl text-text-color">{{
-                            t('views.appInfo.logsAndDiagnostics')
-                        }}</span>
+                        <div class="flex flex-row">
+                            <span class="mb-4 font-semibold text-xl text-text-color">{{
+                                t('views.appInfo.logsAndDiagnostics')
+                            }}</span>
+                            <Button
+                                class="ml-4 !rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                                @click="expandLogs = !expandLogs"
+                            >
+                                <svg-icon
+                                    type="mdi"
+                                    :path="
+                                        expandLogs
+                                            ? mdiArrowCollapseVertical
+                                            : mdiArrowExpandVertical
+                                    "
+                                    :size="deviceStore.getREMSize(1.5)"
+                                />
+                            </Button>
+                        </div>
                         <a
                             :href="downloadLogHref"
                             :download="downloadLogFileName"
@@ -281,7 +305,8 @@ onMounted(() => {
                         </a>
                     </div>
                     <div
-                        class="h-[32rem] relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
+                        class="relative text-text-color-secondary bg-black/5 border border-border-one rounded-sm p-2 overflow-auto"
+                        :class="expandLogs ? 'min-h-[32rem]' : 'h-[32rem]'"
                     >
                         <pre
                             id="log-output"
