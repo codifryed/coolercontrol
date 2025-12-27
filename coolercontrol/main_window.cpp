@@ -408,7 +408,7 @@ void MainWindow::notifyDaemonConnectionRestored() const {
                              QSystemTrayIcon::Information);
 }
 
-QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon) {
+QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
   constexpr int iconSize = 64;
   QPixmap pixmap = baseIcon.pixmap(iconSize, iconSize);
   QPainter painter(&pixmap);
@@ -418,18 +418,37 @@ QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon) {
   constexpr int x = (iconSize / 2) - (dotSize / 2);
   constexpr int y = iconSize - (dotSize + 6);
 
-  painter.setBrush(QColor(220, 53, 69));  // Bootstrap danger red
-  painter.setPen(QPen(QColor(180, 40, 50), 2));
+  // Bootstrap danger red or warning yellow
+  painter.setBrush(redColor ? QColor(220, 53, 69) : QColor(255, 193, 7));
+  painter.setPen(QPen(redColor ? QColor(180, 40, 50): QColor(215, 165, 0), 2));
   painter.drawEllipse(x, y, dotSize, dotSize);
 
   return (pixmap);
 }
 
-void MainWindow::setTrayIconNotificationBadge(const bool show) const {
-  if (show) {
+void MainWindow::applyTrayIconNotificationBadge(const bool forceRedBadge) const {
+  auto addBadge = false;
+  auto redColor = true;
+  if (forceRedBadge) {
+    addBadge = true;
+  } else {
+    if (m_daemonHasWarnings) {
+      addBadge = true;
+      redColor = false;
+    }
+    if (m_daemonHasErrors) {
+      addBadge = true;
+      redColor = true;
+    }
+    if (m_alertCount > 0) {
+      addBadge = true;
+      redColor = true;
+    }
+  }
+  if (addBadge) {
     const QIcon baseIcon = QIcon::fromTheme(
         APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
-    m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon));
+    m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon, redColor));
   } else {
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
         APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
@@ -453,9 +472,13 @@ void MainWindow::requestDaemonErrors() const {
     if (const auto errors = rootObj.value("details").toObject().value("errors").toInt();
         errors > 0) {
       m_daemonHasErrors = true;
-      setTrayIconNotificationBadge(true);
       notifyDaemonErrors();
     }
+    if (const auto warnings = rootObj.value("details").toObject().value("warnings").toInt();
+        warnings > 0) {
+      m_daemonHasWarnings = true;
+    }
+    applyTrayIconNotificationBadge();
     healthReply->deleteLater();
   });
   connect(healthReply, &QNetworkReply::errorOccurred,
@@ -470,7 +493,8 @@ void MainWindow::requestDaemonErrors() const {
 
 void MainWindow::acknowledgeDaemonErrors() const {
   m_daemonHasErrors = false;
-  setTrayIconNotificationBadge(false);
+  m_daemonHasWarnings = false;
+  applyTrayIconNotificationBadge();
 }
 
 // requestAllAlerts - and set the tray icon notification badge if any are active
@@ -488,9 +512,9 @@ void MainWindow::requestAllAlerts() const {
     foreach (const auto alert, alerts) {
       if (alert.toObject().value("state") == "Active") {
         m_alertCount++;
-        setTrayIconNotificationBadge(true);
       }
     }
+    applyTrayIconNotificationBadge();
     alertsReply->deleteLater();
   });
   connect(alertsReply, &QNetworkReply::errorOccurred,
@@ -611,6 +635,10 @@ void MainWindow::watchConnectionAndLogs() const {
       m_daemonHasErrors = true;
       notifyDaemonErrors();
     }
+    if (const auto logContainsWarnings = log.contains("WARN");
+        logContainsWarnings && !m_daemonHasWarnings) {
+      m_daemonHasWarnings = true;
+    }
   });
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
     const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -618,6 +646,7 @@ void MainWindow::watchConnectionAndLogs() const {
     // on error or dropped connection will be re-connected once connection is re-established.
     if (!m_forceQuit && !m_changeAddress) {
       notifyDaemonDisconnected();
+      applyTrayIconNotificationBadge(true);
       emit daemonConnectionLost();
       qInfo() << "Connection to the Daemon Lost";
     }
@@ -652,6 +681,9 @@ void MainWindow::tryDaemonConnection() const {
     } else {
       qInfo() << "Connection to the Daemon Reestablished";
       notifyDaemonConnectionRestored();
+      m_alertCount = 0;  // reset alert count on reconnection
+      // systray badge update will be handled by re-checking for Alerts and Errors:
+      requestAllAlerts();
       requestDaemonErrors();
       emit watchForSSE();
     }
@@ -732,7 +764,7 @@ void MainWindow::watchAlerts() const {
     } else if (isActive) {
       m_alertCount++;
     }
-    setTrayIconNotificationBadge(m_alertCount > 0 || m_daemonHasErrors);
+    applyTrayIconNotificationBadge();
     // The daemon now handles alert notifications
     // m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });

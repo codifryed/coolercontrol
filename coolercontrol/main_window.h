@@ -108,6 +108,7 @@ class MainWindow final : public QMainWindow {
   mutable bool m_uiLoadingStopped{false};
   mutable bool m_changeAddress{false};
   mutable bool m_daemonHasErrors{false};
+  mutable bool m_daemonHasWarnings{false};
   mutable int m_alertCount{0};
 
   // This is empty when there is currently no active mode:
@@ -152,8 +153,8 @@ class MainWindow final : public QMainWindow {
 
   void notifyDaemonConnectionRestored() const;
 
-  static QIcon createIconWithNotificationBadge(const QIcon& baseIcon);
+  static QIcon createIconWithNotificationBadge(const QIcon& baseIcon, bool redColor);
 
-  void setTrayIconNotificationBadge(bool show) const;
+  void applyTrayIconNotificationBadge(bool forceRedBadge = false) const;
 };
 #endif  // MAINWINDOW_H
