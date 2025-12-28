@@ -966,11 +966,11 @@ impl Config {
             } else {
                 None
             };
-            let compress = settings
-                .get("compress")
-                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+            let compress_payload = settings
+                .get("compress_payload")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
-                .with_context(|| "compress should be a boolean value")?;
+                .with_context(|| "compress_payload should be a boolean value")?;
             let poll_rate = (settings
                 .get("poll_rate")
                 .unwrap_or(&Item::Value(Value::Float(Formatted::new(1.0))))
@@ -996,7 +996,7 @@ impl Config {
                 port,
                 ipv4_address,
                 ipv6_address,
-                compress,
+                compress: compress_payload,
                 poll_rate,
                 drivetemp_suspend,
             })
@@ -1025,7 +1025,7 @@ impl Config {
         base_settings["liquidctl_integration"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.liquidctl_integration,
         )));
-        base_settings["compress"] =
+        base_settings["compress_payload"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));
         base_settings["poll_rate"] =
             Item::Value(Value::Float(Formatted::new(cc_settings.poll_rate)));

@@ -134,8 +134,8 @@ onMounted(() => {
                 </a>
             </h3>
             <p class="text-sm italic">{{ t('views.appInfo.noWarranty') }}</p>
-            <div class="mt-8">
-                <div class="flex flex-row">
+            <div class="flex flex-col xl:flex-row">
+                <div class="mt-8 flex flex-row">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                         <table class="w-[26rem]">
                             <tbody>
@@ -168,9 +168,11 @@ onMounted(() => {
                                                 :size="deviceStore.getREMSize(1.25)"
                                             />
                                             {{
-                                                t(
-                                                    `daemon.status.${getDaemonStatusTranslationKey(daemonState.status)}`,
-                                                )
+                                                daemonState.connected
+                                                    ? t(
+                                                          `daemon.status.${getDaemonStatusTranslationKey(daemonState.status)}`,
+                                                      )
+                                                    : t('views.appInfo.disconnected')
                                             }}
                                         </div>
                                     </td>
@@ -179,7 +181,9 @@ onMounted(() => {
                                     <td class="table-data font-bold text-lg text-end">
                                         {{ t('views.appInfo.processStatus') }}
                                     </td>
-                                    <td class="table-data">{{ healthCheck.status }}</td>
+                                    <td class="table-data">
+                                        {{ daemonState.connected ? healthCheck.status : '-' }}
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td class="table-data font-bold text-lg text-end">
@@ -194,7 +198,9 @@ onMounted(() => {
                                         {{ t('views.appInfo.uptime') }}
                                     </td>
                                     <td class="table-data w-44">
-                                        {{ healthCheck.details.uptime }}
+                                        {{
+                                            daemonState.connected ? healthCheck.details.uptime : '-'
+                                        }}
                                     </td>
                                 </tr>
                                 <tr>
@@ -223,9 +229,11 @@ onMounted(() => {
                                     </td>
                                     <td class="table-data">
                                         {{
-                                            healthCheck.details.liquidctl_connected
-                                                ? t('views.appInfo.connected')
-                                                : t('views.appInfo.disconnected')
+                                            daemonState.connected
+                                                ? healthCheck.details.liquidctl_connected
+                                                    ? t('views.appInfo.connected')
+                                                    : t('views.appInfo.disconnected')
+                                                : '-'
                                         }}
                                     </td>
                                 </tr>
@@ -234,10 +242,8 @@ onMounted(() => {
                     </div>
                     <div class="w-full" />
                 </div>
-            </div>
-            <div class="mt-8">
                 <div
-                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] w-max"
+                    class="xl:ml-8 mt-8 bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] w-max"
                 >
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')

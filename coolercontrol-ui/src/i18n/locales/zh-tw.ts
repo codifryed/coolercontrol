@@ -240,8 +240,7 @@ export default {
                     '在開始裝置通信之前的延遲（以秒為單位）。\n有助於需要時間初始化或間歇性檢測到的裝置',
                 pollingRate:
                     '感測器數據的輪詢速率（以秒為單位）。\n較高的輪詢速率將減少資源使用，較低的將提高響應能力。\n小於1.0的速率應謹慎使用。',
-                compressApiPayload:
-                    '啟用響應壓縮以減少API有效負載大小，\n但請注意，這將增加CPU使用率。',
+                compressApiPayload: '啟用API負載壓縮',
                 liquidctlIntegration:
                     '禁用此功能將完全停用Liquidctl集成，\n無論coolercontrol-liqctld套件的安裝狀態如何。如果可用，將改用HWMon驅動程式。',
                 liquidctlDeviceInit:

@@ -249,8 +249,7 @@ export default {
                     'Retraso antes de comenzar la comunicación del dispositivo (en segundos).\nAyuda con dispositivos que tardan en inicializarse o se detectan de manera intermitente',
                 pollingRate:
                     'La tasa a la que se sondean los datos del sensor (en segundos).\nUna tasa de sondeo más alta reducirá el uso de recursos, y una más baja aumentará la capacidad de respuesta.\nSe debe usar con precaución una tasa inferior a 1.0.',
-                compressApiPayload:
-                    'Habilitar la compresión de la respuesta para reducir el tamaño de la carga útil de la API,\npero tenga en cuenta que esto aumentará el uso de la CPU.',
+                compressApiPayload: 'Habilitar la compresión de la carga útil de la API',
                 liquidctlIntegration:
                     'Deshabilitar esto desactivará completamente la integración de Liquidctl,\nindependientemente del estado de instalación del paquete coolercontrol-liqctld. Si está disponible, se utilizarán controladores HWMon en su lugar.',
                 liquidctlDeviceInit:

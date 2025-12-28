@@ -116,9 +116,10 @@ thinkpad_full_speed = false
 # ipv4_address = "127.0.0.1"
 # ipv6_address = "::1"
 
-# Whether to compress the response data from the API. This can reduce the size of the response
-# but will increase CPU usage. This is useful if you are running the API over a network.
-compress = false
+# Whether to compress the response payload from the API. This will reduce the size of the response
+# but will increase CPU usage a tiny bit. This is useful if you are running the API over a network.
+# 'compress' is deprecated, use compress_payload instead.
+compress_payload = true
 
 # The polling rate for sensor data collection. The default is 1.0 second. Limited to values
 # between 0.5 and 5.0 seconds in half-second increments.

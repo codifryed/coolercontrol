@@ -72,6 +72,7 @@ use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors;
+use tower_http::decompression::DecompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -126,8 +127,8 @@ pub async fn start_server<'s>(
         ));
     }
 
-    let compression_layer = if config.get_settings()?.compress {
-        Some(CompressionLayer::new())
+    let compression_layers = if config.get_settings()?.compress {
+        Some((CompressionLayer::new(), DecompressionLayer::new()))
     } else {
         None
     };
@@ -170,7 +171,7 @@ pub async fn start_server<'s>(
             SocketAddr::from(ipv4),
             app_state.clone(),
             session_layer.clone(),
-            compression_layer.clone(),
+            compression_layers.clone(),
             limiter_layer.clone(),
             cancel_token.clone(),
         ));
@@ -180,7 +181,7 @@ pub async fn start_server<'s>(
             SocketAddr::from(ipv6),
             app_state,
             session_layer,
-            compression_layer,
+            compression_layers,
             limiter_layer,
             cancel_token.clone(),
         ));
@@ -232,7 +233,7 @@ async fn create_api_server(
     addr: SocketAddr,
     app_state: AppState,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
-    compression_layer: Option<CompressionLayer>,
+    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     limiter_layer: LimiterLayer,
     cancel_token: CancellationToken,
 ) -> Result<()> {
@@ -252,7 +253,7 @@ async fn create_api_server(
         // layers to work together properly.
         // Layers are processed bottom to top: (last is first in the chain)
         // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
-        optional_layers(compression_layer, router)
+        optional_layers(compression_layers, router)
             // Limits the size of the payload in bytes: (Max 50MB for image files)
             .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
             // 2MB is the default payload limit:
@@ -440,9 +441,12 @@ fn create_app_state<'s>(
     }
 }
 
-fn optional_layers(compression_layer: Option<CompressionLayer>, router: Router) -> Router {
+fn optional_layers(
+    compression_layer: Option<(CompressionLayer, DecompressionLayer)>,
+    router: Router,
+) -> Router {
     if let Some(layer) = compression_layer {
-        router.layer(layer)
+        router.layer(layer.0).layer(layer.1)
     } else {
         router
     }

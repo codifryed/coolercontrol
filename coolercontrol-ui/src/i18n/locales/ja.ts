@@ -258,8 +258,7 @@ export default {
                     'デバイス通信を開始する前の遅延（秒単位）。\n初期化に時間がかかるデバイスや断続的に検出されるデバイスに役立ちます',
                 pollingRate:
                     'センサーデータがポーリングされるレート（秒単位）。\nより高いポーリングレートはリソース使用量を減らし、より低いレートは応答性を高めます。\n1.0未満のレートは注意して使用してください。',
-                compressApiPayload:
-                    'APIペイロードサイズを減らすために応答圧縮を有効にしますが、\nCPU使用率が増加することに注意してください。',
+                compressApiPayload: 'APIペイロード圧縮を有効にする',
                 liquidctlIntegration:
                     'これを無効にすると、coolercontrol-liqctldパッケージの\nインストール状態に関係なく、Liquidctl統合が完全に非アクティブになります。\n利用可能な場合は、代わりにHWMonドライバーが使用されます。',
                 liquidctlDeviceInit:

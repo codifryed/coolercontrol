@@ -19,7 +19,9 @@ use crate::api::{handle_error, AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::openapi::OpenApi;
 use anyhow::Result;
+use axum::extract::Request;
 use axum::extract::State;
+use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use chrono::{DateTime, Local};
@@ -40,8 +42,25 @@ pub async fn handshake() -> impl IntoApiResponse {
     Json(json!({"shake": true})).into_response()
 }
 
-pub fn web_app_service() -> ServeDir {
-    ServeDir::new(&ASSETS_DIR)
+pub fn web_app_service() -> axum::routing::MethodRouter {
+    axum::routing::get_service(ServeDir::new(&ASSETS_DIR))
+        .layer(middleware::from_fn(cache_control_middleware))
+}
+
+async fn cache_control_middleware(request: Request, next: Next) -> axum::response::Response {
+    let path = request.uri().path();
+    // index.html should not be cached, all other assets have hashes and can be heavily cached.
+    let is_index = path == "/" || path == "/index.html";
+    let mut response = next.run(request).await;
+    let cache_value = if is_index {
+        axum::http::HeaderValue::from_static("no-cache")
+    } else {
+        axum::http::HeaderValue::from_static("public, max-age=31536000, immutable")
+    };
+    response
+        .headers_mut()
+        .insert(axum::http::header::CACHE_CONTROL, cache_value);
+    response
 }
 
 pub async fn serve_api_doc(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
