@@ -251,8 +251,7 @@ export default {
                     'Verzögerung vor dem Start der Gerätekommunikation (in Sekunden).\nHilft bei Geräten, die Zeit zur Initialisierung benötigen oder nicht durchgängig erkannt werden',
                 pollingRate:
                     'Die Rate, mit der Sensordaten abgefragt werden (in Sekunden).\nEine höhere Abfragerate reduziert die Ressourcennutzung, und eine niedrigere erhöht die Reaktionsfähigkeit.\nEine Rate von weniger als 1,0 sollte mit Vorsicht verwendet werden.',
-                compressApiPayload:
-                    'Aktivieren Sie die Antwortkomprimierung, um die API-Payload-Größe zu reduzieren,\nbeachten Sie jedoch, dass dies die CPU-Auslastung erhöht.',
+                compressApiPayload: 'API-Payload-Komprimierung aktivieren',
                 liquidctlIntegration:
                     'Durch Deaktivieren wird die Liquidctl-Integration vollständig deaktiviert, \nunabhängig vom Installationsstatus des coolercontrol-liqctld \nPakets. Falls verfügbar, werden stattdessen HWMon-Treiber verwendet.',
                 liquidctlDeviceInit:

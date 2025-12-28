@@ -246,8 +246,7 @@ export default {
                     'Delay before starting device communication (in seconds).\nHelps with devices that take time to initialize or are intermittently detected',
                 pollingRate:
                     'The rate at which sensor data is polled (in seconds).\nA higher poll rate will reduce resource usage, and a lower will increase responsiveness.\nA rate of less than 1.0 should be used with caution.',
-                compressApiPayload:
-                    'Enable response compression to reduce API payload size,\nbut note that this will increase CPU usage.',
+                compressApiPayload: 'Enable API payload compression',
                 liquidctlIntegration:
                     'Disabling this will fully deactivate Liquidctl integration, \nregardless of the installation status of the coolercontrol-liqctld \npackage. If available, HWMon drivers will be utilized instead.',
                 liquidctlDeviceInit:
