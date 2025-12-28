@@ -73,7 +73,7 @@ export const useDeviceStore = defineStore('device', () => {
     // When this threshold is exceeded, a full UI refresh is made
     const reloadAllStatusesThreshold: number = 7_000
     const appStartTime = Date.now()
-    const showLoginMessageThreshold: number = 2_000
+    const showLoginMessageThreshold: number = 3_000
     const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
