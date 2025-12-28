@@ -1173,6 +1173,8 @@ onUnmounted(() => {
                 <div v-for="childItem in pinnedItems" :key="childItem.id">
                     <!--Pinned Elements Start-->
                     <!--This is a complete copy from the childItems standard menu below-->
+                    <!--With the exception that Pinned Items shoudl not have a Move to Top/Bottom button-->
+                    <!-- AND that the subMenuRef needs to be named different for pinned item submenus-->
                     <router-link
                         class="flex h-10 group items-center justify-between outline-none rounded-lg"
                         :class="{
@@ -1374,7 +1376,7 @@ onUnmounted(() => {
                                 <div
                                     class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
                                     @click.stop.prevent="
-                                        (event) => childItem.subMenuRef.toggle(event)
+                                        (event) => childItem.subMenuRefPin.toggle(event)
                                     "
                                 >
                                     <svg-icon
@@ -1385,7 +1387,7 @@ onUnmounted(() => {
                                     />
                                 </div>
                                 <Popover
-                                    :ref="(el) => (childItem.subMenuRef = el)"
+                                    :ref="(el) => (childItem.subMenuRefPin = el)"
                                     @show="() => setHoverMenuStatus(true)"
                                     @hide="() => setHoverMenuStatus(false)"
                                 >
@@ -1394,14 +1396,15 @@ onUnmounted(() => {
                                     >
                                         <ul>
                                             <li v-for="subMenu in childItem.subMenus">
-                                                <sub-menu-move-top
+                                                <!--NOT for pinned Items-->
+                                                <!--<sub-menu-move-top
                                                     v-if="subMenu === SubMenu.MOVE_TOP"
                                                     @moveTop="moveToTop(childItem, pinnedItems)"
-                                                />
+                                                /> -->
                                                 <sub-menu-pin
-                                                    v-else-if="subMenu === SubMenu.PIN"
+                                                    v-if="subMenu === SubMenu.PIN"
                                                     :is-pinned="isPinned(childItem)"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                     @pin="pinItem(childItem)"
                                                     @unpin="
                                                         () => {
@@ -1419,7 +1422,7 @@ onUnmounted(() => {
                                                 />
                                                 <sub-menu-disable
                                                     v-else-if="subMenu === SubMenu.DISABLE"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-dashboard-duplicate
                                                     v-else-if="
@@ -1427,7 +1430,7 @@ onUnmounted(() => {
                                                     "
                                                     :dashboard-u-i-d="childItem.dashboardUID"
                                                     @added="addDashbaord"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-dashboard-delete
                                                     v-else-if="subMenu === SubMenu.DASHBOARD_DELETE"
@@ -1443,13 +1446,13 @@ onUnmounted(() => {
                                                     v-else-if="subMenu === SubMenu.MODE_UPDATE"
                                                     :mode-u-i-d="childItem.uid"
                                                     @updated="activeModesChange"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-mode-duplicate
                                                     v-else-if="subMenu === SubMenu.MODE_DUPLICATE"
                                                     :mode-u-i-d="childItem.uid"
                                                     @added="addMode"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-mode-delete
                                                     v-else-if="subMenu === SubMenu.MODE_DELETE"
@@ -1458,7 +1461,7 @@ onUnmounted(() => {
                                                     @close="
                                                         () => {
                                                             setHoverMenuStatus(false)
-                                                            childItem.subMenuRef.hide()
+                                                            childItem.subMenuRefPin.hide()
                                                         }
                                                     "
                                                 />
@@ -1468,7 +1471,7 @@ onUnmounted(() => {
                                                     "
                                                     :profile-u-i-d="childItem.uid"
                                                     @added="addProfile"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-profile-delete
                                                     v-else-if="subMenu === SubMenu.PROFILE_DELETE"
@@ -1477,7 +1480,7 @@ onUnmounted(() => {
                                                     @close="
                                                         () => {
                                                             setHoverMenuStatus(false)
-                                                            childItem.subMenuRef.hide()
+                                                            childItem.subMenuRefPin.hide()
                                                         }
                                                     "
                                                 />
@@ -1487,7 +1490,7 @@ onUnmounted(() => {
                                                     "
                                                     :function-u-i-d="childItem.uid"
                                                     @added="addFunction"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-function-delete
                                                     v-else-if="subMenu === SubMenu.FUNCTION_DELETE"
@@ -1496,7 +1499,7 @@ onUnmounted(() => {
                                                     @close="
                                                         () => {
                                                             setHoverMenuStatus(false)
-                                                            childItem.subMenuRef.hide()
+                                                            childItem.subMenuRefPin.hide()
                                                         }
                                                     "
                                                 />
@@ -1504,7 +1507,7 @@ onUnmounted(() => {
                                                     v-else-if="subMenu === SubMenu.ALERT_DUPLICATE"
                                                     :alert-u-i-d="childItem.uid"
                                                     @added="addAlert"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-alert-delete
                                                     v-else-if="subMenu === SubMenu.ALERT_DELETE"
@@ -1513,27 +1516,28 @@ onUnmounted(() => {
                                                     @close="
                                                         () => {
                                                             setHoverMenuStatus(false)
-                                                            childItem.subMenuRef.hide()
+                                                            childItem.subMenuRefPin.hide()
                                                         }
                                                     "
                                                 />
-                                                <sub-menu-move-bottom
+                                                <!--NOT for pinned Items-->
+                                                <!--<sub-menu-move-bottom
                                                     v-else-if="subMenu === SubMenu.MOVE_BOTTOM"
                                                     @moveBottom="
                                                         moveToBottom(childItem, pinnedItems)
                                                     "
-                                                />
+                                                />-->
                                                 <sub-menu-alert-add-fail
                                                     v-else-if="subMenu === SubMenu.ALERT_ADD_FAIL"
                                                     :device-u-i-d="childItem.deviceUID"
                                                     :channel-name="childItem.name"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                                 <sub-menu-alert-add-temp
                                                     v-else-if="subMenu === SubMenu.ALERT_ADD_TEMP"
                                                     :device-u-i-d="childItem.deviceUID"
                                                     :channel-name="childItem.name"
-                                                    @close="childItem.subMenuRef.hide()"
+                                                    @close="childItem.subMenuRefPin.hide()"
                                                 />
                                             </li>
                                         </ul>
