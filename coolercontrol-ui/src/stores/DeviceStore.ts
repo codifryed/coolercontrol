@@ -70,8 +70,9 @@ export const useDeviceStore = defineStore('device', () => {
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
     // This threshold helps deal with closing to tray, network latency, and max polling rate
-    // When this threshold is exceeded, a full UI refresh is made
+    // When this threshold is exceeded, and the app has been suspended recently, a full UI refresh is made
     const reloadAllStatusesThreshold: number = 7_000
+    let lastHiddenTime: number = 0 // start of the epoch
     const appStartTime = Date.now()
     const showLoginMessageThreshold: number = 3_000
     const { t } = useI18n()
@@ -447,6 +448,10 @@ export const useDeviceStore = defineStore('device', () => {
         return Date.now() - appStartTime
     }
 
+    function appRecentlyHidden(): boolean {
+        return Date.now() - lastHiddenTime < reloadAllStatusesThreshold
+    }
+
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
         const sessionIsValid = await daemonClient.sessionIsValid()
@@ -652,7 +657,11 @@ export const useDeviceStore = defineStore('device', () => {
                 new Date(device.status.timestamp).getTime() -
                     new Date(dto.devices[0].status_history[0].timestamp).getTime(),
             )
-            if (timeDiffMillis > reloadAllStatusesThreshold) {
+            // We only do a full reload:
+            //  - if the daemon has disconnected
+            //  - if the app recently woke from a 'hidden' / sleep status (SSE's are suspended in this state)
+            //  - otherwise, we allow very slow connections to not trigger a full reload (when connected, and not recently asleep)
+            if (timeDiffMillis > reloadAllStatusesThreshold && appRecentlyHidden()) {
                 onlyLatestStatus = false
             }
         }
@@ -677,6 +686,7 @@ export const useDeviceStore = defineStore('device', () => {
                         timeDiffMillis,
                     )}ms. Daemon was disconnected, full UI reload incoming.`,
                 )
+                // returning true will prevent a full data request, since the UI will reload anyway:
                 return true
             }
             console.info(
@@ -906,6 +916,12 @@ export const useDeviceStore = defineStore('device', () => {
         }
         triggerRef(currentDeviceStatus)
     }
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            lastHiddenTime = Date.now()
+        }
+    })
 
     console.debug(`Device Store created`)
     return {
