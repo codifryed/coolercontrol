@@ -134,8 +134,8 @@ onMounted(() => {
                 </a>
             </h3>
             <p class="text-sm italic">{{ t('views.appInfo.noWarranty') }}</p>
-            <div class="mt-8">
-                <div class="flex flex-row">
+            <div class="flex flex-col xl:flex-row">
+                <div class="mt-8 flex flex-row">
                     <div class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color">
                         <table class="w-[26rem]">
                             <tbody>
@@ -234,10 +234,8 @@ onMounted(() => {
                     </div>
                     <div class="w-full" />
                 </div>
-            </div>
-            <div class="mt-8">
                 <div
-                    class="bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] w-max"
+                    class="xl:ml-8 mt-8 bg-bg-two border border-border-one p-4 rounded-lg text-text-color min-w-[28rem] w-max"
                 >
                     <span class="mb-4 font-semibold text-xl text-text-color">{{
                         t('views.appInfo.helpfulLinks')
