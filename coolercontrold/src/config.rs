@@ -1586,7 +1586,7 @@ impl Config {
                     .with_context(|| "Function type should be a string")?;
                 let f_type = FunctionType::from_str(f_type_str)
                     .with_context(|| "Function type should be a valid member")?;
-                let mut duty_minimum: u8 = if let Some(duty_minimum_value) =
+                let duty_minimum: u8 = if let Some(duty_minimum_value) =
                     function_table.get("duty_minimum")
                 {
                     let duty_minimum_raw: u8 = duty_minimum_value
@@ -1594,12 +1594,12 @@ impl Config {
                         .with_context(|| "duty_minimum should be an integer")?
                         .try_into()
                         .ok()
-                        .with_context(|| "duty_minimum should be an integer between 1 and 99")?;
-                    duty_minimum_raw.clamp(1, 99)
+                        .with_context(|| "duty_minimum should be an integer between 1 and 100")?;
+                    duty_minimum_raw.clamp(1, 100)
                 } else {
                     1
                 };
-                let duty_maximum: u8 = if let Some(duty_maximum_value) =
+                let mut duty_maximum: u8 = if let Some(duty_maximum_value) =
                     function_table.get("duty_maximum")
                 {
                     let duty_maximum_raw: u8 = duty_maximum_value
@@ -1607,14 +1607,51 @@ impl Config {
                         .with_context(|| "duty_maximum should be an integer")?
                         .try_into()
                         .ok()
-                        .with_context(|| "duty_maximum should be an integer between 2 and 100")?;
-                    duty_maximum_raw.clamp(2, 100)
+                        .with_context(|| "duty_maximum should be an integer between 0 and 100")?;
+                    duty_maximum_raw.clamp(0, 100)
                 } else {
                     100
                 };
+                let step_size_min_decreasing: u8 = if let Some(step_size_min_decreasing_value) =
+                    function_table.get("step_size_min_decreasing")
+                {
+                    let step_size_min_decreasing_raw: u8 = step_size_min_decreasing_value
+                        .as_integer()
+                        .with_context(|| "step_size_min_decreasing should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| {
+                            "step_size_min_decreasing should be an integer between 0 and 100"
+                        })?;
+                    step_size_min_decreasing_raw.clamp(0, 100)
+                } else {
+                    0
+                };
+                let mut step_size_max_decreasing: u8 = if let Some(step_size_max_decreasing_value) =
+                    function_table.get("step_size_max_decreasing")
+                {
+                    let step_size_max_decreasing_raw: u8 = step_size_max_decreasing_value
+                        .as_integer()
+                        .with_context(|| "step_size_max_decreasing should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| {
+                            "step_size_max_decreasing should be an integer between 0 and 100"
+                        })?;
+                    step_size_max_decreasing_raw.clamp(0, 100)
+                } else {
+                    0
+                };
                 // sanity checks for user input values:
-                if duty_minimum >= duty_maximum {
-                    duty_minimum = duty_maximum - 1;
+                if duty_minimum >= duty_maximum && duty_maximum != 0 {
+                    // if not fixed step size, set reasonable default
+                    duty_maximum = duty_minimum;
+                }
+                if step_size_min_decreasing >= step_size_max_decreasing
+                    && step_size_max_decreasing != 0
+                {
+                    // if not fixed step size, set reasonable default
+                    step_size_max_decreasing = step_size_min_decreasing;
                 }
                 let response_delay = if let Some(delay_value) = function_table.get("response_delay")
                 {
@@ -1662,16 +1699,29 @@ impl Config {
                     } else {
                         None
                     };
+                let threshold_hopping = if let Some(threshold_hopping_value) =
+                    function_table.get("threshold_hopping")
+                {
+                    let hop: bool = threshold_hopping_value
+                        .as_bool()
+                        .with_context(|| "threshold_hopping should be a boolean value")?;
+                    hop
+                } else {
+                    true
+                };
                 let function = Function {
                     uid,
                     name,
                     f_type,
-                    duty_minimum,
-                    duty_maximum,
+                    step_size_min: duty_minimum,
+                    step_size_max: duty_maximum,
+                    step_size_min_decreasing,
+                    step_size_max_decreasing,
                     response_delay,
                     deviance,
                     only_downward,
                     sample_window,
+                    threshold_hopping,
                 };
                 functions.push(function);
             }
@@ -1797,11 +1847,17 @@ impl Config {
         function_table["f_type"] =
             Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
         function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
-            function.duty_minimum,
+            function.step_size_min,
         ))));
         function_table["duty_maximum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
-            function.duty_maximum,
+            function.step_size_max,
         ))));
+        function_table["step_size_min_decreasing"] = Item::Value(Value::Integer(Formatted::new(
+            i64::from(function.step_size_min_decreasing),
+        )));
+        function_table["step_size_max_decreasing"] = Item::Value(Value::Integer(Formatted::new(
+            i64::from(function.step_size_max_decreasing),
+        )));
         if let Some(response_delay) = function.response_delay {
             function_table["response_delay"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(response_delay))));
@@ -1830,6 +1886,8 @@ impl Config {
         } else {
             function_table["sample_window"] = Item::None;
         }
+        function_table["threshold_hopping"] =
+            Item::Value(Value::Boolean(Formatted::new(function.threshold_hopping)));
     }
 
     /*
