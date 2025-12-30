@@ -1083,12 +1083,14 @@ const moveToTop = (item: any, data: any): void => {
     item.subMenuRef.hide()
     data.splice(data.indexOf(item), 1)
     data.unshift(item)
+    saveMenuOrderChanges()
 }
 
 const moveToBottom = (item: any, data: any): void => {
     item.subMenuRef.hide()
     data.splice(data.indexOf(item), 1)
     data.push(item)
+    saveMenuOrderChanges()
 }
 
 onMounted(async () => {
