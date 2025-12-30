@@ -41,7 +41,14 @@ const IMAGE_PNG_SHUTDOWN: &[u8] = include_bytes!("../resources/shutdown.png");
 /// e.g. when an alert fires.
 ///
 /// Based on the Freedesktop spec: <https://specifications.freedesktop.org/notification/latest-single>
-pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &str) -> Result<()> {
+pub async fn notify(
+    summary: &str,
+    body: &str,
+    icon: u8,
+    audio: bool,
+    urgency: &str,
+    debug: bool,
+) -> Result<()> {
     let replace_id: u32 = 0; // 0 = new notification
     let actions: Vec<String> = vec![];
     let mut hints: HashMap<&str, zvariant::Value<'_>> = HashMap::new();
@@ -69,7 +76,7 @@ pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &
             &(
                 APP_NAME,
                 replace_id,
-                // Gnone uses this for the app icon, instead of desktop-entry help.
+                // Gnome uses this for the app icon, instead of desktop-entry help.
                 APP_ID, // initial message icon.
                 summary,
                 body,
@@ -79,7 +86,9 @@ pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &
             ),
         )
         .await?;
-    println!("DBus notification response: {response:?}");
+    if debug {
+        println!("DBus notification response: {response:?}");
+    }
     Ok(())
 }
 
