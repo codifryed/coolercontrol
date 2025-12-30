@@ -450,11 +450,14 @@ void MainWindow::applyTrayIconNotificationBadge(const bool forceRedBadge) const 
         APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
     m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon, redColor));
   } else {
-    // this is needed to "refresh" Gnome's system tray icon, as resitual color stays
-    m_sysTrayIcon->hide();
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
         APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
-    m_sysTrayIcon->show();
+    // hide/show is needed to "refresh" Gnome's system tray icon, as residual color stays
+    if (const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
+        desktop.contains("gnome")) {
+      m_sysTrayIcon->hide();
+      m_sysTrayIcon->show();
+    }
   }
 }
 
