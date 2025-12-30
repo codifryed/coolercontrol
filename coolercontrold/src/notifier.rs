@@ -18,7 +18,6 @@
 
 use anyhow::Result;
 use image::ImageReader;
-use log::debug;
 use std::collections::HashMap;
 use std::io::Cursor;
 use zbus::names::WellKnownName;
@@ -42,11 +41,19 @@ const IMAGE_PNG_SHUTDOWN: &[u8] = include_bytes!("../resources/shutdown.png");
 /// e.g. when an alert fires.
 ///
 /// Based on the Freedesktop spec: <https://specifications.freedesktop.org/notification/latest-single>
-pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &str) -> Result<()> {
+pub async fn notify(
+    summary: &str,
+    body: &str,
+    icon: u8,
+    audio: bool,
+    urgency: &str,
+    debug: bool,
+) -> Result<()> {
     let replace_id: u32 = 0; // 0 = new notification
     let actions: Vec<String> = vec![];
     let mut hints: HashMap<&str, zvariant::Value<'_>> = HashMap::new();
-    hints.insert("desktop-entry", APP_ID.into());
+    // This seems to break Gnome DBus Notifications (Notifications won't show or close quickly)
+    //hints.insert("desktop-entry", APP_ID.into());
     hints.insert("resident", true.into());
     if icon == 0 || icon > 5 {
         hints.insert("image-path", APP_ID.into());
@@ -69,7 +76,8 @@ pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &
             &(
                 APP_NAME,
                 replace_id,
-                "", // initial message icon. We use image-path and image-data instead.
+                // Gnome uses this for the app icon, instead of desktop-entry help.
+                APP_ID, // initial message icon.
                 summary,
                 body,
                 &actions,
@@ -78,7 +86,9 @@ pub async fn notify(summary: &str, body: &str, icon: u8, audio: bool, urgency: &
             ),
         )
         .await?;
-    debug!("DBus notification response: {response:?}");
+    if debug {
+        println!("DBus notification response: {response:?}");
+    }
     Ok(())
 }
 

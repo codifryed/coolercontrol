@@ -361,6 +361,7 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
                 icon.unwrap_or(0),
                 audio.is_some_and(|a| a),
                 urgency.as_ref().map_or("1", |u| u.as_str()),
+                args.debug,
             )
             .await?;
             exit_successfully();
