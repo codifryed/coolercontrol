@@ -590,23 +590,56 @@ export default {
             functionType: 'Funktionstyp',
             functionTypeTooltip:
                 'Funktionstypen:<br/>- Identität: Verändert den berechneten Profilwert nicht.<br/>- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.<br/>- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
-            minimumAdjustment: 'Minimale Anpassung',
-            minimumAdjustmentTooltip:
-                'Minimale Lüftergeschwindigkeitsanpassung: Berechnete Änderungen unter diesem Wert werden ignoriert.',
-            maximumAdjustment: 'Maximale Anpassung',
-            maximumAdjustmentTooltip:
-                'Maximale Lüftergeschwindigkeitsanpassung: Berechnete Änderungen über diesem Schwellenwert werden begrenzt.',
+            stepSizeTitle: 'Schrittgröße',
+            fixedStepSize: 'Fest',
+            fixedStepSizeTooltip:
+                'Aktiviert verwendet eine feste Schrittgröße für alle Änderungen.\nDeaktiviert ermöglicht die Einstellung eines Mindest- und Höchstbereichs für die Schrittgröße.',
+            asymmetric: 'Asymmetrisch',
+            asymmetricTooltip:
+                'Wenn aktiviert, können separate Schrittgrößenlimits für Geschwindigkeitserhöhungen und -verringerungen konfiguriert werden.\nNützlich, wenn Lüfter schnell hochfahren, aber langsam herunterfahren sollen, oder umgekehrt.',
+            stepSizeMin: 'Minimum',
+            stepSizeMinTooltip:
+                'Die kleinste Lüftergeschwindigkeitsänderung, die angewendet wird.\nKleinere Änderungen werden ignoriert, um unnötige Anpassungen zu reduzieren.',
+            stepSizeMax: 'Maximum',
+            stepSizeMaxTooltip:
+                'Die größte erlaubte Lüftergeschwindigkeitsänderung pro Aktualisierung.\nGrößere Änderungen werden auf diesen Wert begrenzt für sanftere Übergänge.',
+            stepSizeFixed: 'Größe',
+            stepSizeFixedTooltip:
+                'Eine einzelne Schrittgröße für alle Lüftergeschwindigkeitsänderungen.\nAlle Anpassungen werden auf genau diesen Wert begrenzt.',
+            stepSizeFixedIncreasing: 'Steigend',
+            stepSizeFixedIncreasingTooltip:
+                'Feste Schrittgröße bei steigender Lüftergeschwindigkeit.\nAlle Aufwärtsanpassungen werden auf genau diesen Wert begrenzt.',
+            stepSizeFixedDecreasing: 'Fallend',
+            stepSizeFixedDecreasingTooltip:
+                'Feste Schrittgröße bei fallender Lüftergeschwindigkeit.\nAlle Abwärtsanpassungen werden auf genau diesen Wert begrenzt.',
+            stepSizeMinIncreasing: 'Minimum Steigend',
+            stepSizeMinIncreasingTooltip:
+                'Minimale Schrittgröße bei steigender Lüftergeschwindigkeit.\nKleinere berechnete Änderungen werden ignoriert, um unnötige Anpassungen zu reduzieren.',
+            stepSizeMaxIncreasing: 'Maximum Steigend',
+            stepSizeMaxIncreasingTooltip:
+                'Maximale Schrittgröße bei steigender Lüftergeschwindigkeit.\nBegrenzt, wie schnell Lüfter pro Aktualisierung hochfahren können.',
+            stepSizeMinDecreasing: 'Minimum Fallend',
+            stepSizeMinDecreasingTooltip:
+                'Minimale Schrittgröße bei fallender Lüftergeschwindigkeit.\nKleinere berechnete Änderungen werden ignoriert, um unnötige Anpassungen zu reduzieren.',
+            stepSizeMaxDecreasing: 'Maximum Fallend',
+            stepSizeMaxDecreasingTooltip:
+                'Maximale Schrittgröße bei fallender Lüftergeschwindigkeit.\nBegrenzt, wie schnell Lüfter pro Aktualisierung herunterfahren können.',
             windowSize: 'Fenstergröße',
             windowSizeTooltip:
-                'Passen Sie die Empfindlichkeit gegenüber Temperaturänderungen an, indem Sie die Fenstergröße einstellen.\nKleinere Fenstergrößen reagieren schnell auf Änderungen,\nwährend größere Fenstergrößen gleichmäßigere Durchschnitte liefern.',
-            hysteresisThreshold: 'Hysterese-Schwellenwert',
+                'Fenstergröße für Temperaturproben in der Berechnung des exponentiellen gleitenden Durchschnitts.\nKleinere Werte = schnellere Reaktion, reaktiver auf Temperaturspitzen.\nGrößere Werte = langsamere Reaktion, sanftere Lüftergeschwindigkeitsübergänge.\nTipp: Verwenden Sie eine Standardfunktion für präzise Kontrolle über das Reaktionstiming.',
+            hysteresis: 'Erweiterte Hysterese',
+            hysteresisThreshold: 'Schwellenwert',
             hysteresisThresholdTooltip:
-                'Temperaturänderungsschwellenwert (°C): Passen Sie die Lüftergeschwindigkeit an, wenn sich die Temperatur um diesen Betrag ändert.',
-            hysteresisDelay: 'Hysterese-Verzögerung',
+                'Minimale Temperaturänderung (°C), die erforderlich ist, bevor die Lüftergeschwindigkeit angepasst wird.\nHilft, schnelle Lüftergeschwindigkeitsschwankungen durch kleine Temperaturvariationen zu verhindern.',
+            hysteresisDelay: 'Verzögerung',
             hysteresisDelayTooltip:
-                'Zeit (Sekunden), die benötigt wird, um auf Temperaturänderungen zu reagieren.',
-            onlyDownward: 'Nur abwärts',
-            onlyDownwardTooltip: 'Einstellungen nur anwenden, wenn die Temperatur sinkt.',
+                'Reaktionsverzögerung (Sekunden) vor der Anwendung von Lüftergeschwindigkeitsänderungen.\nTemporäre Temperaturspitzen innerhalb dieser Verzögerung werden ignoriert, um Schwankungen zu glätten.',
+            onlyDownward: 'Nur Abwärts',
+            onlyDownwardTooltip: 'Hysterese-Einstellungen nur anwenden, wenn die Temperatur sinkt.',
+            general: 'Allgemein',
+            thresholdHopping: 'Schwellenwert-Überspringen',
+            thresholdHoppingTooltip:
+                'Wenn die Lüftergeschwindigkeit 30+ Sekunden unverändert bleibt, werden Schrittgröße und Hysterese-Limits vorübergehend umgangen.\nDies stellt sicher, dass Lüfter schließlich ihre Zielgeschwindigkeit erreichen, auch bei konservativen Schwellenwerteinstellungen.',
             unsavedChanges: 'Es gibt ungespeicherte Änderungen an dieser Funktion.',
             unsavedChangesHeader: 'Ungespeicherte Änderungen',
             functionError: 'Fehler beim Versuch, diese Funktion zu aktualisieren',

@@ -23,7 +23,7 @@ import { FunctionType, getFunctionTypeDisplayName } from '@/models/Profile'
 import Button from 'primevue/button'
 import { type UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useToast } from 'primevue/usetoast'
 import InputNumber from 'primevue/inputnumber'
@@ -74,12 +74,17 @@ let startingDeviance = currentFunction.value.deviance ?? 2
 let startingOnlyDownward = currentFunction.value.only_downward ?? false
 
 const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
-const chosenDutyMinimum: Ref<number> = ref(currentFunction.value.duty_minimum)
-const chosenDutyMaximum: Ref<number> = ref(currentFunction.value.duty_maximum)
+const chosenFixedStepSize: Ref<boolean> = ref(currentFunction.value.duty_maximum === 0)
+const chosenAsymmetric: Ref<boolean> = ref(currentFunction.value.step_size_min_decreasing > 0)
+const chosenStepDutyMinimum: Ref<number> = ref(currentFunction.value.duty_minimum)
+const chosenStepDutyMaximum: Ref<number> = ref(currentFunction.value.duty_maximum)
+const chosenStepSizeMinDecreasing: Ref<number> = ref(currentFunction.value.step_size_min_decreasing)
+const chosenStepSizeMaxDecreasing: Ref<number> = ref(currentFunction.value.step_size_max_decreasing)
 const chosenWindowSize: Ref<number> = ref(startingWindowSize)
 const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
 const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
+const chosenThresholdHopping: Ref<boolean> = ref(currentFunction.value.threshold_hopping)
 const functionTypeOptions = computed(() => {
     return [...$enum(FunctionType).values()].map((type) => ({
         value: type,
@@ -93,8 +98,20 @@ const saveFunctionState = async () => {
         return
     }
     currentFunction.value.f_type = selectedType.value
-    currentFunction.value.duty_minimum = chosenDutyMinimum.value
-    currentFunction.value.duty_maximum = chosenDutyMaximum.value
+    currentFunction.value.duty_minimum = chosenStepDutyMinimum.value
+    currentFunction.value.duty_maximum = chosenStepDutyMaximum.value
+    currentFunction.value.step_size_min_decreasing = chosenStepSizeMinDecreasing.value
+    currentFunction.value.step_size_max_decreasing = chosenStepSizeMaxDecreasing.value
+    if (!chosenAsymmetric.value) {
+        // 0 = is symmetric and decreasing values don't apply
+        currentFunction.value.step_size_min_decreasing = 0
+        currentFunction.value.step_size_max_decreasing = 0
+    }
+    if (chosenFixedStepSize.value) {
+        // 0 = is fixed and max values don't apply (only min is used)
+        currentFunction.value.duty_maximum = 0
+        currentFunction.value.step_size_max_decreasing = 0
+    }
     currentFunction.value.sample_window =
         selectedType.value === FunctionType.ExponentialMovingAvg
             ? chosenWindowSize.value
@@ -126,16 +143,35 @@ const saveFunctionState = async () => {
 
 const minDutyScrolled = (event: WheelEvent) => {
     if (event.deltaY < 0) {
-        if (chosenDutyMinimum.value < chosenDutyMaximum.value - 1) chosenDutyMinimum.value += 1
+        if (chosenStepDutyMinimum.value < chosenStepDutyMaximum.value)
+            chosenStepDutyMinimum.value += 1
     } else {
-        if (chosenDutyMinimum.value > dutyMin) chosenDutyMinimum.value -= 1
+        if (chosenStepDutyMinimum.value > dutyMin) chosenStepDutyMinimum.value -= 1
     }
 }
 const maxDutyScrolled = (event: WheelEvent) => {
     if (event.deltaY < 0) {
-        if (chosenDutyMaximum.value < dutyMax) chosenDutyMaximum.value += 1
+        if (chosenStepDutyMaximum.value < dutyMax) chosenStepDutyMaximum.value += 1
     } else {
-        if (chosenDutyMaximum.value > chosenDutyMinimum.value + 1) chosenDutyMaximum.value -= 1
+        if (chosenStepDutyMaximum.value > chosenStepDutyMinimum.value)
+            chosenStepDutyMaximum.value -= 1
+    }
+}
+const stepMinDecreaseScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenStepSizeMinDecreasing.value < chosenStepSizeMaxDecreasing.value)
+            chosenStepSizeMinDecreasing.value += 1
+    } else {
+        if (chosenStepSizeMinDecreasing.value > dutyMin) chosenStepSizeMinDecreasing.value -= 1
+    }
+}
+
+const stepMaxDecreaseScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenStepSizeMaxDecreasing.value < dutyMax) chosenStepSizeMaxDecreasing.value += 1
+    } else {
+        if (chosenStepSizeMaxDecreasing.value > chosenStepSizeMinDecreasing.value)
+            chosenStepSizeMaxDecreasing.value -= 1
     }
 }
 const windowSizeScrolled = (event: WheelEvent) => {
@@ -174,17 +210,71 @@ const changeFunctionType = (event: ListboxChangeEvent): void => {
 //     inputArea.value.$el.focus()
 // })
 
+const updateFixedStepSize = () => {
+    if (!chosenFixedStepSize.value) {
+        if (chosenStepDutyMaximum.value < chosenStepDutyMinimum.value) {
+            chosenStepDutyMaximum.value = chosenStepDutyMinimum.value
+        }
+        nextTick(() => {
+            removeScrollEventListeners()
+            addScrollEventListeners()
+        })
+    }
+}
+const updateSymmetricStepSize = () => {
+    if (chosenAsymmetric.value) {
+        if (chosenStepDutyMaximum.value < chosenStepDutyMinimum.value) {
+            chosenStepDutyMaximum.value = chosenStepDutyMinimum.value
+        }
+        if (chosenStepSizeMinDecreasing.value === 0) chosenStepSizeMinDecreasing.value = 1
+        if (chosenStepSizeMaxDecreasing.value === 0) chosenStepSizeMaxDecreasing.value = dutyMax
+        nextTick(() => {
+            removeScrollEventListeners()
+            addScrollEventListeners()
+        })
+    }
+}
+
 const addScrollEventListeners = (): void => {
     // @ts-ignore
     document?.querySelector('.min-duty-input')?.addEventListener('wheel', minDutyScrolled)
     // @ts-ignore
     document?.querySelector('.max-duty-input')?.addEventListener('wheel', maxDutyScrolled)
+    document
+        ?.querySelector('.step-min-decrease-input')
+        // @ts-ignore
+        ?.addEventListener('wheel', stepMinDecreaseScrolled)
+    document
+        ?.querySelector('.step-max-decrease-input')
+        // @ts-ignore
+        ?.addEventListener('wheel', stepMaxDecreaseScrolled)
     // @ts-ignore
     document?.querySelector('.window-size-input')?.addEventListener('wheel', windowSizeScrolled)
     // @ts-ignore
     document?.querySelector('.deviance-input')?.addEventListener('wheel', devianceScrolled)
     // @ts-ignore
     document?.querySelector('.delay-input')?.addEventListener('wheel', delayScrolled)
+}
+
+const removeScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.min-duty-input')?.removeEventListener('wheel', minDutyScrolled)
+    // @ts-ignore
+    document?.querySelector('.max-duty-input')?.removeEventListener('wheel', maxDutyScrolled)
+    document
+        ?.querySelector('.step-min-decrease-input')
+        // @ts-ignore
+        ?.removeEventListener('wheel', stepMinDecreaseScrolled)
+    document
+        ?.querySelector('.step-max-decrease-input')
+        // @ts-ignore
+        ?.removeEventListener('wheel', stepMaxDecreaseScrolled)
+    // @ts-ignore
+    document?.querySelector('.window-size-input')?.removeEventListener('wheel', windowSizeScrolled)
+    // @ts-ignore
+    document?.querySelector('.deviance-input')?.removeEventListener('wheel', devianceScrolled)
+    // @ts-ignore
+    document?.querySelector('.delay-input')?.removeEventListener('wheel', delayScrolled)
 }
 
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
@@ -216,12 +306,17 @@ onMounted(async () => {
     watch(
         [
             selectedType,
-            chosenDutyMinimum,
-            chosenDutyMaximum,
+            chosenFixedStepSize,
+            chosenAsymmetric,
+            chosenStepDutyMinimum,
+            chosenStepDutyMaximum,
+            chosenStepSizeMinDecreasing,
+            chosenStepSizeMaxDecreasing,
             chosenWindowSize,
             chosenDeviance,
             chosenDelay,
             chosenOnlyDownward,
+            chosenThresholdHopping,
         ],
         () => {
             contextIsDirty.value = true
@@ -229,6 +324,9 @@ onMounted(async () => {
     )
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
+})
+onUnmounted(() => {
+    removeScrollEventListeners()
 })
 </script>
 
@@ -260,20 +358,6 @@ onMounted(async () => {
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
-            <!--            <small class="mt-8 mb-4 ml-3 font-light text-sm text-text-color-secondary">-->
-            <!--                Function Name-->
-            <!--            </small>-->
-            <!--            <div class="mt-1">-->
-            <!--                <InputText-->
-            <!--                    ref="inputArea"-->
-            <!--                    id="name"-->
-            <!--                    v-model="givenName"-->
-            <!--                    class="w-96"-->
-            <!--                    placeholder="Name"-->
-            <!--                    @keydown.enter="saveFunctionState"-->
-            <!--                    v-tooltip.right="'Function Name'"-->
-            <!--                />-->
-            <!--            </div>-->
             <div class="mt-0 mr-4 w-96">
                 <small class="ml-3 font-light text-sm text-text-color-secondary">
                     {{ t('views.functions.functionType') }}
@@ -296,21 +380,79 @@ onMounted(async () => {
             </div>
             <table class="mt-4 bg-bg-two rounded-lg">
                 <tbody>
-                    <tr v-tooltip.right="t('views.functions.minimumAdjustmentTooltip')">
-                        <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-2"
+                    <tr>
+                        <th
+                            colspan="2"
+                            class="py-4 px-4 w-48 text-center items-center border-border-one border-b-2"
                         >
-                            {{ t('views.functions.minimumAdjustment') }}
+                            {{ t('views.functions.stepSizeTitle') }}
+                        </th>
+                    </tr>
+                    <tr v-tooltip.right="t('views.functions.fixedStepSizeTooltip')">
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                        >
+                            {{ t('views.functions.fixedStepSize') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                        >
+                            <el-switch
+                                v-model="chosenFixedStepSize"
+                                size="large"
+                                @change="updateFixedStepSize"
+                            />
+                        </td>
+                    </tr>
+                    <tr v-tooltip.right="t('views.functions.asymmetricTooltip')">
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                        >
+                            {{ t('views.functions.asymmetric') }}
+                        </td>
+                        <td
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                        >
+                            <el-switch
+                                v-model="chosenAsymmetric"
+                                size="large"
+                                @change="updateSymmetricStepSize"
+                            />
+                        </td>
+                    </tr>
+                    <tr
+                        v-tooltip.right="
+                            chosenFixedStepSize
+                                ? chosenAsymmetric
+                                    ? t('views.functions.stepSizeFixedIncreasingTooltip')
+                                    : t('views.functions.stepSizeFixedTooltip')
+                                : chosenAsymmetric
+                                  ? t('views.functions.stepSizeMinIncreasingTooltip')
+                                  : t('views.functions.stepSizeMinTooltip')
+                        "
+                    >
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
+                        >
+                            {{
+                                chosenFixedStepSize
+                                    ? chosenAsymmetric
+                                        ? t('views.functions.stepSizeFixedIncreasing')
+                                        : t('views.functions.stepSizeFixed')
+                                    : chosenAsymmetric
+                                      ? t('views.functions.stepSizeMinIncreasing')
+                                      : t('views.functions.stepSizeMin')
+                            }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
                         >
                             <InputNumber
-                                v-model="chosenDutyMinimum"
+                                v-model="chosenStepDutyMinimum"
                                 class="min-duty-input"
                                 show-buttons
                                 :min="dutyMin"
-                                :max="chosenDutyMaximum - 1"
+                                :max="chosenStepDutyMaximum"
                                 :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
@@ -324,20 +466,31 @@ onMounted(async () => {
                             </InputNumber>
                         </td>
                     </tr>
-                    <tr v-tooltip.right="t('views.functions.maximumAdjustmentTooltip')">
+                    <tr
+                        v-if="!chosenFixedStepSize"
+                        v-tooltip.right="
+                            chosenAsymmetric
+                                ? t('views.functions.stepSizeMaxIncreasingTooltip')
+                                : t('views.functions.stepSizeMaxTooltip')
+                        "
+                    >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
                         >
-                            {{ t('views.functions.maximumAdjustment') }}
+                            {{
+                                chosenAsymmetric
+                                    ? t('views.functions.stepSizeMaxIncreasing')
+                                    : t('views.functions.stepSizeMax')
+                            }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
                         >
                             <InputNumber
-                                v-model="chosenDutyMaximum"
+                                v-model="chosenStepDutyMaximum"
                                 class="max-duty-input"
                                 show-buttons
-                                :min="chosenDutyMinimum + 1"
+                                :min="chosenStepDutyMinimum"
                                 :max="dutyMax"
                                 :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
@@ -353,23 +506,32 @@ onMounted(async () => {
                         </td>
                     </tr>
                     <tr
-                        v-if="selectedType === FunctionType.ExponentialMovingAvg"
-                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
+                        v-if="chosenAsymmetric"
+                        v-tooltip.right="
+                            chosenFixedStepSize
+                                ? t('views.functions.stepSizeFixedDecreasingTooltip')
+                                : t('views.functions.stepSizeMinDecreasingTooltip')
+                        "
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-b-0"
                         >
-                            {{ t('views.functions.windowSize') }}
+                            {{
+                                chosenFixedStepSize
+                                    ? t('views.functions.stepSizeFixedDecreasing')
+                                    : t('views.functions.stepSizeMinDecreasing')
+                            }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-b-0"
                         >
                             <InputNumber
-                                v-model="chosenWindowSize"
-                                class="window-size-input"
+                                v-model="chosenStepSizeMinDecreasing"
+                                class="step-min-decrease-input"
                                 show-buttons
-                                :min="windowSizeMin"
-                                :max="windowSizeMax"
+                                :min="dutyMin"
+                                :max="chosenStepSizeMaxDecreasing"
+                                :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
                             >
@@ -381,6 +543,45 @@ onMounted(async () => {
                                 </template>
                             </InputNumber>
                         </td>
+                    </tr>
+                    <tr
+                        v-if="chosenAsymmetric && !chosenFixedStepSize"
+                        v-tooltip.right="t('views.functions.stepSizeMaxDecreasingTooltip')"
+                    >
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
+                        >
+                            {{ t('views.functions.stepSizeMaxDecreasing') }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
+                        >
+                            <InputNumber
+                                v-model="chosenStepSizeMaxDecreasing"
+                                class="step-max-decrease-input"
+                                show-buttons
+                                :min="Math.max(dutyMin, chosenStepDutyMinimum)"
+                                :max="dutyMax"
+                                :suffix="` ${t('common.percentUnit')}`"
+                                button-layout="horizontal"
+                                :input-style="{ width: '5rem' }"
+                            >
+                                <template #incrementicon>
+                                    <span class="pi pi-plus" />
+                                </template>
+                                <template #decrementicon>
+                                    <span class="pi pi-minus" />
+                                </template>
+                            </InputNumber>
+                        </td>
+                    </tr>
+                    <tr v-if="selectedType === FunctionType.Standard">
+                        <th
+                            colspan="2"
+                            class="py-4 px-4 w-48 text-center items-center border-border-one border-t-2"
+                        >
+                            {{ t('views.functions.hysteresis') }}
+                        </th>
                     </tr>
                     <tr
                         v-if="selectedType === FunctionType.Standard"
@@ -421,12 +622,12 @@ onMounted(async () => {
                         v-tooltip.right="t('views.functions.hysteresisDelayTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
                         >
                             {{ t('views.functions.hysteresisDelay') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
                         >
                             <InputNumber
                                 v-model="chosenDelay"
@@ -452,14 +653,64 @@ onMounted(async () => {
                         v-tooltip.right="t('views.functions.onlyDownwardTooltip')"
                     >
                         <td
-                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-0"
                         >
                             {{ t('views.functions.onlyDownward') }}
                         </td>
                         <td
-                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                            class="py-2 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-0"
                         >
                             <el-switch v-model="chosenOnlyDownward" size="large" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <th
+                            colspan="2"
+                            class="py-4 px-4 w-48 text-center items-center border-border-one border-t-2"
+                        >
+                            {{ t('views.functions.general') }}
+                        </th>
+                    </tr>
+                    <tr
+                        v-if="selectedType === FunctionType.ExponentialMovingAvg"
+                        v-tooltip.right="t('views.functions.windowSizeTooltip')"
+                    >
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                        >
+                            {{ t('views.functions.windowSize') }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                        >
+                            <InputNumber
+                                v-model="chosenWindowSize"
+                                class="window-size-input"
+                                show-buttons
+                                :min="windowSizeMin"
+                                :max="windowSizeMax"
+                                button-layout="horizontal"
+                                :input-style="{ width: '5rem' }"
+                            >
+                                <template #incrementicon>
+                                    <span class="pi pi-plus" />
+                                </template>
+                                <template #decrementicon>
+                                    <span class="pi pi-minus" />
+                                </template>
+                            </InputNumber>
+                        </td>
+                    </tr>
+                    <tr v-tooltip.right="t('views.functions.thresholdHoppingTooltip')">
+                        <td
+                            class="py-4 px-4 w-48 text-right items-center border-border-one border-r-2 border-t-2"
+                        >
+                            {{ t('views.functions.thresholdHopping') }}
+                        </td>
+                        <td
+                            class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                        >
+                            <el-switch v-model="chosenThresholdHopping" size="large" />
                         </td>
                     </tr>
                 </tbody>

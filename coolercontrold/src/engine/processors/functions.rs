@@ -773,8 +773,14 @@ mod tests {
 
         assert_eq!(inc_min, 2, "increase min should be step_size_min");
         assert_eq!(inc_max, 100, "increase max should be step_size_max");
-        assert_eq!(dec_min, 2, "decrease min should mirror increase min (symmetric)");
-        assert_eq!(dec_max, 100, "decrease max should mirror increase max (symmetric)");
+        assert_eq!(
+            dec_min, 2,
+            "decrease min should mirror increase min (symmetric)"
+        );
+        assert_eq!(
+            dec_max, 100,
+            "decrease max should mirror increase max (symmetric)"
+        );
     }
 
     #[test]
@@ -787,7 +793,10 @@ mod tests {
         assert_eq!(inc_min, 5);
         assert_eq!(inc_max, 5, "fixed step: max should equal min");
         assert_eq!(dec_min, 5, "symmetric: decrease min mirrors increase");
-        assert_eq!(dec_max, 5, "symmetric + fixed: decrease max mirrors increase");
+        assert_eq!(
+            dec_max, 5,
+            "symmetric + fixed: decrease max mirrors increase"
+        );
     }
 
     #[test]
@@ -873,7 +882,11 @@ mod tests {
         let data = create_test_data(function, 50, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(50), "first application should return duty as-is");
+        assert_eq!(
+            result,
+            Some(50),
+            "first application should return duty as-is"
+        );
     }
 
     #[test]
@@ -884,7 +897,10 @@ mod tests {
         let data = create_test_data(function, 53, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, None, "increase below min threshold should return None");
+        assert_eq!(
+            result, None,
+            "increase below min threshold should return None"
+        );
     }
 
     #[test]
@@ -906,7 +922,11 @@ mod tests {
         let data = create_test_data(function, 80, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(50), "increase above max should be limited to last_duty + max");
+        assert_eq!(
+            result,
+            Some(50),
+            "increase above max should be limited to last_duty + max"
+        );
     }
 
     #[test]
@@ -917,7 +937,10 @@ mod tests {
         let data = create_test_data(function, 47, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, None, "decrease below min threshold should return None");
+        assert_eq!(
+            result, None,
+            "decrease below min threshold should return None"
+        );
     }
 
     #[test]
@@ -939,7 +962,11 @@ mod tests {
         let data = create_test_data(function, 20, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(50), "decrease above max should be limited to last_duty - max");
+        assert_eq!(
+            result,
+            Some(50),
+            "decrease above max should be limited to last_duty - max"
+        );
     }
 
     #[test]
@@ -951,7 +978,10 @@ mod tests {
         let data = create_test_data(function, 45, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, None, "asymmetric decrease below min should return None");
+        assert_eq!(
+            result, None,
+            "asymmetric decrease below min should return None"
+        );
     }
 
     #[test]
@@ -963,7 +993,11 @@ mod tests {
         let data = create_test_data(function, 35, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(35), "asymmetric decrease within range should return duty");
+        assert_eq!(
+            result,
+            Some(35),
+            "asymmetric decrease within range should return duty"
+        );
     }
 
     // ==================== Safety latch with threshold hopping tests ====================
@@ -972,58 +1006,78 @@ mod tests {
     fn apply_step_size_safety_latch_hopping_bypasses_min_increase() {
         let processor = setup_processor_with_last_duty(50);
         let function = create_test_function(10, 100, 0, 0, true); // hopping enabled
-        // Duty increase of 5 (50 -> 55), below min threshold of 10
-        // With safety latch + hopping, should bypass min and return duty
+                                                                  // Duty increase of 5 (50 -> 55), below min threshold of 10
+                                                                  // With safety latch + hopping, should bypass min and return duty
         let data = create_test_data(function, 55, true);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(55), "safety latch + hopping should bypass min threshold");
+        assert_eq!(
+            result,
+            Some(55),
+            "safety latch + hopping should bypass min threshold"
+        );
     }
 
     #[test]
     fn apply_step_size_safety_latch_hopping_bypasses_min_decrease() {
         let processor = setup_processor_with_last_duty(50);
         let function = create_test_function(10, 100, 0, 0, true); // hopping enabled
-        // Duty decrease of 5 (50 -> 45), below min threshold of 10
+                                                                  // Duty decrease of 5 (50 -> 45), below min threshold of 10
         let data = create_test_data(function, 45, true);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(45), "safety latch + hopping should bypass min threshold for decrease");
+        assert_eq!(
+            result,
+            Some(45),
+            "safety latch + hopping should bypass min threshold for decrease"
+        );
     }
 
     #[test]
     fn apply_step_size_safety_latch_hopping_respects_max() {
         let processor = setup_processor_with_last_duty(50);
         let function = create_test_function(2, 20, 0, 0, true); // hopping enabled
-        // Duty increase of 40 (50 -> 90), above max threshold of 20
-        // Even with safety latch, max should be respected
+                                                                // Duty increase of 40 (50 -> 90), above max threshold of 20
+                                                                // Even with safety latch, max should be respected
         let data = create_test_data(function, 90, true);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(70), "safety latch + hopping should still respect max threshold");
+        assert_eq!(
+            result,
+            Some(70),
+            "safety latch + hopping should still respect max threshold"
+        );
     }
 
     #[test]
     fn apply_step_size_safety_latch_no_hopping_returns_last_duty() {
         let processor = setup_processor_with_last_duty(50);
         let function = create_test_function(10, 100, 0, 0, false); // hopping disabled
-        // Duty increase of 5 (50 -> 55), below min threshold of 10
-        // With safety latch but NO hopping, should return last_duty
+                                                                   // Duty increase of 5 (50 -> 55), below min threshold of 10
+                                                                   // With safety latch but NO hopping, should return last_duty
         let data = create_test_data(function, 55, true);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(50), "safety latch without hopping should return last_duty");
+        assert_eq!(
+            result,
+            Some(50),
+            "safety latch without hopping should return last_duty"
+        );
     }
 
     #[test]
     fn apply_step_size_safety_latch_no_hopping_decrease_returns_last_duty() {
         let processor = setup_processor_with_last_duty(50);
         let function = create_test_function(10, 100, 0, 0, false); // hopping disabled
-        // Duty decrease of 5 (50 -> 45), below min threshold
+                                                                   // Duty decrease of 5 (50 -> 45), below min threshold
         let data = create_test_data(function, 45, true);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(50), "safety latch without hopping should return last_duty for decrease");
+        assert_eq!(
+            result,
+            Some(50),
+            "safety latch without hopping should return last_duty for decrease"
+        );
     }
 
     #[test]
@@ -1035,7 +1089,11 @@ mod tests {
         let data = create_test_data(function, 60, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(55), "fixed step size should limit to exactly step_size_min");
+        assert_eq!(
+            result,
+            Some(55),
+            "fixed step size should limit to exactly step_size_min"
+        );
     }
 
     #[test]
@@ -1046,6 +1104,10 @@ mod tests {
         let data = create_test_data(function, 55, false);
 
         let result = processor.apply_step_size_thresholds(&data);
-        assert_eq!(result, Some(55), "exact fixed step size match should return duty");
+        assert_eq!(
+            result,
+            Some(55),
+            "exact fixed step size match should return duty"
+        );
     }
 }

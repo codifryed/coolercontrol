@@ -622,22 +622,56 @@ export default {
             functionType: '機能タイプ',
             functionTypeTooltip:
                 '機能タイプ：<br/>- 恒等関数：計算されたプロファイル値を変更しません。<br/>- 標準：ヒステリシス設定を持つアルゴリズムでプロファイル値を変更します。<br/>- 指数移動平均：EMAアルゴリズムを使用してプロファイル値を変更します。',
-            minimumAdjustment: '最小調整',
-            minimumAdjustmentTooltip:
-                '最小ファン速度調整：この値未満の計算された変更は無視されます。',
-            maximumAdjustment: '最大調整',
-            maximumAdjustmentTooltip:
-                '最大ファン速度調整：このしきい値を超える計算された変更は制限されます。',
+            stepSizeTitle: 'ステップサイズ',
+            fixedStepSize: '固定',
+            fixedStepSizeTooltip:
+                '有効にすると、すべての変更に固定ステップサイズを使用します。\n無効にすると、最小および最大ステップサイズ範囲を設定できます。',
+            asymmetric: '非対称',
+            asymmetricTooltip:
+                '有効にすると、速度の増加と減少に対して別々のステップサイズ制限を設定できます。\nファンを素早く加速させ、徐々に減速させたい場合、またはその逆の場合に便利です。',
+            stepSizeMin: '最小',
+            stepSizeMinTooltip:
+                '適用される最小のファン速度変更。\nこれより小さい変更は不要な調整を減らすために無視されます。',
+            stepSizeMax: '最大',
+            stepSizeMaxTooltip:
+                '更新ごとに許可される最大のファン速度変更。\nより大きな変更は、より滑らかな遷移のためにこの値に制限されます。',
+            stepSizeFixed: 'サイズ',
+            stepSizeFixedTooltip:
+                'すべてのファン速度変更に適用される単一のステップサイズ。\nすべての調整は正確にこの値に制限されます。',
+            stepSizeFixedIncreasing: '増加',
+            stepSizeFixedIncreasingTooltip:
+                'ファン速度が増加しているときの固定ステップサイズ。\nすべての上昇調整は正確にこの値に制限されます。',
+            stepSizeFixedDecreasing: '減少',
+            stepSizeFixedDecreasingTooltip:
+                'ファン速度が減少しているときの固定ステップサイズ。\nすべての下降調整は正確にこの値に制限されます。',
+            stepSizeMinIncreasing: '最小増加',
+            stepSizeMinIncreasingTooltip:
+                'ファン速度が増加しているときの最小ステップサイズ。\nより小さな計算変更は不要な調整を減らすために無視されます。',
+            stepSizeMaxIncreasing: '最大増加',
+            stepSizeMaxIncreasingTooltip:
+                'ファン速度が増加しているときの最大ステップサイズ。\n更新ごとにファンがどれだけ速く加速できるかを制限します。',
+            stepSizeMinDecreasing: '最小減少',
+            stepSizeMinDecreasingTooltip:
+                'ファン速度が減少しているときの最小ステップサイズ。\nより小さな計算変更は不要な調整を減らすために無視されます。',
+            stepSizeMaxDecreasing: '最大減少',
+            stepSizeMaxDecreasingTooltip:
+                'ファン速度が減少しているときの最大ステップサイズ。\n更新ごとにファンがどれだけ速く減速できるかを制限します。',
             windowSize: 'ウィンドウサイズ',
             windowSizeTooltip:
-                'ウィンドウサイズを設定して温度変化への感度を調整します。\n小さいウィンドウサイズは変化に素早く反応し、\n大きいウィンドウサイズはより滑らかな平均値を提供します。',
-            hysteresisThreshold: 'ヒステリシスしきい値',
+                '指数移動平均計算で使用されるウィンドウ温度サンプルサイズ。\n小さい値 = より速い応答、温度スパイクにより反応的。\n大きい値 = より遅い応答、より滑らかなファン速度遷移。\nヒント：応答タイミングの精密な制御には標準機能を使用してください。',
+            hysteresis: '高度なヒステリシス',
+            hysteresisThreshold: 'しきい値',
             hysteresisThresholdTooltip:
-                '温度変化しきい値（°C）：温度がこの量変化した時にファン速度を調整します。',
-            hysteresisDelay: 'ヒステリシス遅延',
-            hysteresisDelayTooltip: '温度変化に反応するために必要な時間（秒）。',
+                'ファン速度を調整する前に必要な最小温度変化（°C）。\n小さな温度変動による急速なファン速度変動を防ぐのに役立ちます。',
+            hysteresisDelay: '遅延',
+            hysteresisDelayTooltip:
+                'ファン速度変更を適用する前の応答遅延（秒）。\nこの遅延内の一時的な温度スパイクは無視され、変動が平滑化されます。',
             onlyDownward: '下降時のみ',
-            onlyDownwardTooltip: '温度が下降している時のみ設定を適用します。',
+            onlyDownwardTooltip: '温度が下降しているときのみヒステリシス設定を適用します。',
+            general: '一般',
+            thresholdHopping: 'しきい値ホッピング',
+            thresholdHoppingTooltip:
+                'ファン速度が30秒以上変化しない場合、ステップサイズとヒステリシス制限が一時的にバイパスされます。\nこれにより、保守的なしきい値設定でもファンが最終的に目標速度に達することが保証されます。',
             unsavedChanges: 'この機能に未保存の変更があります。',
             unsavedChangesHeader: '未保存の変更',
             functionError: 'この機能を更新しようとしてエラーが発生しました',
