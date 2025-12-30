@@ -576,20 +576,60 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能類型',
             functionTypeTooltip:
-                '功能類型：<br/>- 恒等函數：不改變計算的設定檔值。<br/>- 標準：使用具有滯後設置的算法改變設定檔值。<br/>- 指數移動平均：使用指數移動平均算法改變設定檔值。',
-            minimumAdjustment: '最小調整',
-            minimumAdjustmentTooltip: '最小風扇速度調整：低於此值的計算變化將被忽略。',
-            maximumAdjustment: '最大調整',
-            maximumAdjustmentTooltip: '最大風扇速度調整：超過此閾值的計算變化將被限制。',
+                '功能類型：<br/>' +
+                '- <b>恆等函數</b>：應用步長限制，但其他方面保持設定檔值不變。<br/>' +
+                '- <b>標準</b>：應用步長限制和滯後設置，精確控制風扇響應時間和穩定性。<br/>' +
+                '- <b>指數移動平均</b>：使用加權平均平滑溫度波動。比標準更簡單但精度較低。',
+            stepSizeTitle: '步長',
+            fixedStepSize: '固定',
+            fixedStepSizeTooltip:
+                '啟用時使用固定步長進行所有更改。\n禁用時允許設定最小和最大步長範圍。',
+            asymmetric: '非對稱',
+            asymmetricTooltip:
+                '啟用時，可以為速度增加和減少配置單獨的步長限制。\n當您希望風扇快速加速但逐漸減速時很有用，或者相反。',
+            stepSizeMin: '最小',
+            stepSizeMinTooltip:
+                '將應用的最小風扇速度變化。\n較小的變化將被忽略以減少不必要的調整。',
+            stepSizeMax: '最大',
+            stepSizeMaxTooltip:
+                '每次更新允許的最大風扇速度變化。\n較大的變化將被限制為此值以實現更平滑的過渡。',
+            stepSizeFixed: '大小',
+            stepSizeFixedTooltip:
+                '應用於所有風扇速度變化的單一步長。\n所有調整將被精確限制為此值。',
+            stepSizeFixedIncreasing: '增加',
+            stepSizeFixedIncreasingTooltip:
+                '風扇速度增加時的固定步長。\n所有向上調整將被精確限制為此值。',
+            stepSizeFixedDecreasing: '減少',
+            stepSizeFixedDecreasingTooltip:
+                '風扇速度減少時的固定步長。\n所有向下調整將被精確限制為此值。',
+            stepSizeMinIncreasing: '最小增加',
+            stepSizeMinIncreasingTooltip:
+                '風扇速度增加時的最小步長。\n較小的計算變化將被忽略以減少不必要的調整。',
+            stepSizeMaxIncreasing: '最大增加',
+            stepSizeMaxIncreasingTooltip:
+                '風扇速度增加時的最大步長。\n限制風扇每次更新可以加速的速度。',
+            stepSizeMinDecreasing: '最小減少',
+            stepSizeMinDecreasingTooltip:
+                '風扇速度減少時的最小步長。\n較小的計算變化將被忽略以減少不必要的調整。',
+            stepSizeMaxDecreasing: '最大減少',
+            stepSizeMaxDecreasingTooltip:
+                '風扇速度減少時的最大步長。\n限制風扇每次更新可以減速的速度。',
             windowSize: '窗口大小',
             windowSizeTooltip:
-                '通過設置窗口大小來調整溫度變化的靈敏度。\n較小的窗口大小對變化響應迅速，\n而較大的窗口大小提供更平滑的平均值。',
-            hysteresisThreshold: '變化閾值',
-            hysteresisThresholdTooltip: '溫度變化閾值（°C）：當溫度變化此數值時調整風扇速度。',
-            hysteresisDelay: '變化延遲',
-            hysteresisDelayTooltip: '響應溫度變化所需的時間（秒）。',
+                '指數移動平均計算中使用的窗口溫度樣本大小。\n較小的值 = 更快的響應，對溫度峰值更敏感。\n較大的值 = 較慢的響應，更平滑的風扇速度過渡。\n提示：使用標準功能可以精確控制響應時間。',
+            hysteresis: '高級滯後',
+            hysteresisThreshold: '閾值',
+            hysteresisThresholdTooltip:
+                '調整風扇速度前所需的最小溫度變化（°C）。\n有助於防止小溫度變化引起的風扇速度快速波動。',
+            hysteresisDelay: '延遲',
+            hysteresisDelayTooltip:
+                '應用風扇速度變化前的響應延遲（秒）。\n此延遲內的臨時溫度峰值將被忽略，從而平滑波動。',
             onlyDownward: '僅下降時',
-            onlyDownwardTooltip: '僅在溫度下降時應用設置。',
+            onlyDownwardTooltip: '僅在溫度下降時應用滯後設置。',
+            general: '常規',
+            thresholdHopping: '閾值跳躍',
+            thresholdHoppingTooltip:
+                '當風扇速度保持30秒以上不變時，步長和滯後限制將被臨時繞過。\n這確保風扇最終達到目標速度，即使使用保守的閾值設置。',
             unsavedChanges: '此功能有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
             functionError: '嘗試更新此功能時出現錯誤',

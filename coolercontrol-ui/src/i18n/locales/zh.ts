@@ -576,20 +576,60 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能类型',
             functionTypeTooltip:
-                '功能类型：<br/>- 恒等函数：不改变计算的配置文件值。<br/>- 标准：使用具有滞后设置的算法改变配置文件值。<br/>- 指数移动平均：使用指数移动平均算法改变配置文件值。',
-            minimumAdjustment: '最小调整',
-            minimumAdjustmentTooltip: '最小风扇速度调整：低于此值的计算变化将被忽略。',
-            maximumAdjustment: '最大调整',
-            maximumAdjustmentTooltip: '最大风扇速度调整：超过此阈值的计算变化将被限制。',
+                '功能类型：<br/>' +
+                '- <b>恒等函数</b>：应用步长限制，但其他方面保持配置文件值不变。<br/>' +
+                '- <b>标准</b>：应用步长限制和滞后设置，精确控制风扇响应时间和稳定性。<br/>' +
+                '- <b>指数移动平均</b>：使用加权平均平滑温度波动。比标准更简单但精度较低。',
+            stepSizeTitle: '步长',
+            fixedStepSize: '固定',
+            fixedStepSizeTooltip:
+                '启用时使用固定步长进行所有更改。\n禁用时允许设置最小和最大步长范围。',
+            asymmetric: '非对称',
+            asymmetricTooltip:
+                '启用时，可以为速度增加和减少配置单独的步长限制。\n当您希望风扇快速加速但逐渐减速时很有用，或者相反。',
+            stepSizeMin: '最小',
+            stepSizeMinTooltip:
+                '将应用的最小风扇速度变化。\n较小的变化将被忽略以减少不必要的调整。',
+            stepSizeMax: '最大',
+            stepSizeMaxTooltip:
+                '每次更新允许的最大风扇速度变化。\n较大的变化将被限制为此值以实现更平滑的过渡。',
+            stepSizeFixed: '大小',
+            stepSizeFixedTooltip:
+                '应用于所有风扇速度变化的单一步长。\n所有调整将被精确限制为此值。',
+            stepSizeFixedIncreasing: '增加',
+            stepSizeFixedIncreasingTooltip:
+                '风扇速度增加时的固定步长。\n所有向上调整将被精确限制为此值。',
+            stepSizeFixedDecreasing: '减少',
+            stepSizeFixedDecreasingTooltip:
+                '风扇速度减少时的固定步长。\n所有向下调整将被精确限制为此值。',
+            stepSizeMinIncreasing: '最小增加',
+            stepSizeMinIncreasingTooltip:
+                '风扇速度增加时的最小步长。\n较小的计算变化将被忽略以减少不必要的调整。',
+            stepSizeMaxIncreasing: '最大增加',
+            stepSizeMaxIncreasingTooltip:
+                '风扇速度增加时的最大步长。\n限制风扇每次更新可以加速的速度。',
+            stepSizeMinDecreasing: '最小减少',
+            stepSizeMinDecreasingTooltip:
+                '风扇速度减少时的最小步长。\n较小的计算变化将被忽略以减少不必要的调整。',
+            stepSizeMaxDecreasing: '最大减少',
+            stepSizeMaxDecreasingTooltip:
+                '风扇速度减少时的最大步长。\n限制风扇每次更新可以减速的速度。',
             windowSize: '窗口大小',
             windowSizeTooltip:
-                '通过设置窗口大小来调整温度变化的灵敏度。\n较小的窗口大小对变化响应迅速，\n而较大的窗口大小提供更平滑的平均值。',
-            hysteresisThreshold: '变化阈值',
-            hysteresisThresholdTooltip: '温度变化阈值（°C）：当温度变化此数值时调整风扇速度。',
-            hysteresisDelay: '变化延迟',
-            hysteresisDelayTooltip: '响应温度变化所需的时间（秒）。',
+                '指数移动平均计算中使用的窗口温度样本大小。\n较小的值 = 更快的响应，对温度峰值更敏感。\n较大的值 = 较慢的响应，更平滑的风扇速度过渡。\n提示：使用标准功能可以精确控制响应时间。',
+            hysteresis: '高级滞后',
+            hysteresisThreshold: '阈值',
+            hysteresisThresholdTooltip:
+                '调整风扇速度前所需的最小温度变化（°C）。\n有助于防止小温度变化引起的风扇速度快速波动。',
+            hysteresisDelay: '延迟',
+            hysteresisDelayTooltip:
+                '应用风扇速度变化前的响应延迟（秒）。\n此延迟内的临时温度峰值将被忽略，从而平滑波动。',
             onlyDownward: '仅下降时',
-            onlyDownwardTooltip: '仅在温度下降时应用设置。',
+            onlyDownwardTooltip: '仅在温度下降时应用滞后设置。',
+            general: '常规',
+            thresholdHopping: '阈值跳跃',
+            thresholdHoppingTooltip:
+                '当风扇速度保持30秒以上不变时，步长和滞后限制将被临时绕过。\n这确保风扇最终达到目标速度，即使使用保守的阈值设置。',
             unsavedChanges: '此功能有未保存的更改。',
             unsavedChangesHeader: '未保存的更改',
             functionError: '尝试更新此功能时出现错误',

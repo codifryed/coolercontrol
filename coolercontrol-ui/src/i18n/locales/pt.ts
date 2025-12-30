@@ -529,25 +529,61 @@ export default {
             saveFunction: 'Salvar Função',
             functionType: 'Tipo de Função',
             functionTypeTooltip:
-                'Tipos de função:<br/>- Identidade: Não altera o valor calculado do perfil.<br/>- Padrão: Modifica o valor do perfil usando um algoritmo com parâmetros de histerese.<br/>- Média Móvel Exponencial: Modifica o valor do perfil usando um algoritmo EMA.',
-            minimumAdjustment: 'Ajuste Mínimo',
-            minimumAdjustmentTooltip:
-                'Ajuste mínimo da velocidade do ventilador: Alterações calculadas menores que isso serão ignoradas.',
-            maximumAdjustment: 'Ajuste Máximo',
-            maximumAdjustmentTooltip:
-                'Ajuste máximo da velocidade do ventilador: Alterações calculadas maiores que este limite serão limitadas.',
+                'Tipos de função:<br/>' +
+                '- <b>Identidade</b>: Aplica limites de tamanho de passo mas de resto passa o valor do perfil inalterado.<br/>' +
+                '- <b>Padrão</b>: Aplica limites de tamanho de passo e configurações de histerese para controle preciso do tempo de resposta e estabilidade do ventilador.<br/>' +
+                '- <b>Média Móvel Exponencial</b>: Suaviza flutuações de temperatura usando uma média ponderada. Mais simples mas menos preciso que Padrão.',
+            stepSizeTitle: 'Tamanho do Passo',
+            fixedStepSize: 'Fixo',
+            fixedStepSizeTooltip:
+                'Ativado usa um tamanho de passo fixo para todas as alterações.\nDesativado permite definir um intervalo mínimo e máximo de tamanho de passo.',
+            asymmetric: 'Assimétrico',
+            asymmetricTooltip:
+                'Quando ativado, limites de tamanho de passo separados podem ser configurados para aumentos e diminuições de velocidade.\nÚtil quando você deseja que os ventiladores acelerem rapidamente mas desacelerem gradualmente, ou vice-versa.',
+            stepSizeMin: 'Mínimo',
+            stepSizeMinTooltip:
+                'A menor alteração de velocidade do ventilador que será aplicada.\nAlterações menores são ignoradas para reduzir ajustes desnecessários.',
+            stepSizeMax: 'Máximo',
+            stepSizeMaxTooltip:
+                'A maior alteração de velocidade do ventilador permitida por atualização.\nAlterações maiores são limitadas a este valor para transições mais suaves.',
+            stepSizeFixed: 'Tamanho',
+            stepSizeFixedTooltip:
+                'Um único tamanho de passo aplicado a todas as alterações de velocidade do ventilador.\nTodos os ajustes serão limitados exatamente a este valor.',
+            stepSizeFixedIncreasing: 'Aumentando',
+            stepSizeFixedIncreasingTooltip:
+                'Tamanho de passo fixo quando a velocidade do ventilador está aumentando.\nTodos os ajustes ascendentes serão limitados exatamente a este valor.',
+            stepSizeFixedDecreasing: 'Diminuindo',
+            stepSizeFixedDecreasingTooltip:
+                'Tamanho de passo fixo quando a velocidade do ventilador está diminuindo.\nTodos os ajustes descendentes serão limitados exatamente a este valor.',
+            stepSizeMinIncreasing: 'Mínimo Aumentando',
+            stepSizeMinIncreasingTooltip:
+                'Tamanho de passo mínimo quando a velocidade do ventilador está aumentando.\nAlterações calculadas menores são ignoradas para reduzir ajustes desnecessários.',
+            stepSizeMaxIncreasing: 'Máximo Aumentando',
+            stepSizeMaxIncreasingTooltip:
+                'Tamanho de passo máximo quando a velocidade do ventilador está aumentando.\nLimita a rapidez com que os ventiladores podem acelerar por atualização.',
+            stepSizeMinDecreasing: 'Mínimo Diminuindo',
+            stepSizeMinDecreasingTooltip:
+                'Tamanho de passo mínimo quando a velocidade do ventilador está diminuindo.\nAlterações calculadas menores são ignoradas para reduzir ajustes desnecessários.',
+            stepSizeMaxDecreasing: 'Máximo Diminuindo',
+            stepSizeMaxDecreasingTooltip:
+                'Tamanho de passo máximo quando a velocidade do ventilador está diminuindo.\nLimita a rapidez com que os ventiladores podem desacelerar por atualização.',
             windowSize: 'Tamanho da Janela',
             windowSizeTooltip:
-                'Ajuste a sensibilidade a mudanças de temperatura definindo o tamanho da janela.\nTamanhos de janela menores respondem rapidamente às mudanças,\nenquanto tamanhos de janela maiores fornecem médias mais suavizadas.',
-            hysteresisThreshold: 'Limite de Histerese',
+                'Tamanho da amostra de temperatura da janela usado no cálculo da média móvel exponencial.\nValores menores = resposta mais rápida, mais reativo a picos de temperatura.\nValores maiores = resposta mais lenta, transições de velocidade do ventilador mais suaves.\nDica: Use uma Função Padrão para controle preciso sobre o tempo de resposta.',
+            hysteresis: 'Histerese Avançada',
+            hysteresisThreshold: 'Limite',
             hysteresisThresholdTooltip:
-                'Limite de mudança de temperatura (°C): Ajustar a velocidade do ventilador quando a temperatura mudar por esta quantidade.',
-            hysteresisDelay: 'Atraso de Histerese',
+                'Mudança mínima de temperatura (°C) necessária antes de ajustar a velocidade do ventilador.\nAjuda a prevenir flutuações rápidas de velocidade do ventilador devido a pequenas variações de temperatura.',
+            hysteresisDelay: 'Atraso',
             hysteresisDelayTooltip:
-                'Tempo (segundos) necessário para responder às mudanças de temperatura.',
+                'Atraso de resposta (segundos) antes de aplicar alterações de velocidade do ventilador.\nPicos de temperatura temporários dentro deste atraso são ignorados, suavizando as flutuações.',
             onlyDownward: 'Apenas Descendente',
             onlyDownwardTooltip:
-                'Aplicar configurações apenas quando a temperatura estiver diminuindo.',
+                'Aplicar configurações de histerese apenas quando a temperatura estiver diminuindo.',
+            general: 'Geral',
+            thresholdHopping: 'Salto de Limite',
+            thresholdHoppingTooltip:
+                'Quando a velocidade do ventilador permanece inalterada por 30+ segundos, os limites de tamanho de passo e histerese são temporariamente ignorados.\nIsso garante que os ventiladores eventualmente atinjam sua velocidade alvo, mesmo com configurações de limite conservadoras.',
             unsavedChanges: 'Há alterações não salvas feitas nesta Função.',
             unsavedChangesHeader: 'Alterações Não Salvas',
             functionError: 'Erro ao tentar atualizar esta função',

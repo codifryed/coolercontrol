@@ -25,10 +25,10 @@ use serde::{Deserialize, Serialize};
 use yata::methods::TMA;
 use yata::prelude::Method;
 
-use crate::device::Temp;
+use crate::device::{Duty, Temp};
 use crate::engine::{NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{FunctionType, ProfileUID};
+use crate::setting::{Function, FunctionType, ProfileUID};
 use crate::AllDevices;
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
@@ -273,15 +273,26 @@ impl Processor for FunctionStandardPreProcessor {
                     .for_each(|temp| *temp = oldest_temp);
             }
         }
-        if oldest_temp_within_tolerance && data.safety_latch_triggered.not() {
-            return data; // nothing to apply
+        if data.safety_latch_triggered {
+            if data.profile.function.threshold_hopping {
+                // bypass thresholds
+                data.temp = Some(oldest_temp);
+                metadata.last_applied_temp = oldest_temp;
+                data
+            } else {
+                // If hopping is disabled, we want to re-apply the last applied temp NOT the
+                // oldest temp, which would bypass the hysteresis thresholds.
+                data.temp = Some(metadata.last_applied_temp);
+                data
+            }
+        } else if oldest_temp_within_tolerance {
+            data // nothing to apply
+        } else {
+            // should use temp from hysteresis stack
+            data.temp = Some(oldest_temp);
+            metadata.last_applied_temp = oldest_temp;
+            data
         }
-        // todo: think about having the safety latch bypass the temp_deviance as well (force current)
-        //  - ok, so the delay is still in effect... but what about the deviance? - nope, should be forced.
-        //  - could it be I was noticing an effect of the delay (for many minutes???)
-        data.temp = Some(oldest_temp);
-        metadata.last_applied_temp = oldest_temp;
-        data
     }
 }
 
@@ -409,7 +420,8 @@ impl FunctionDutyThresholdPostProcessor {
         }
     }
 
-    fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
+    /// Returns the duty to apply based on step size thresholds and settings.
+    fn apply_step_size_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
         if self.scheduled_settings_metadata.borrow()[&data.profile.profile_uid]
             .last_manual_speeds_set
             .is_empty()
@@ -417,18 +429,59 @@ impl FunctionDutyThresholdPostProcessor {
             return data.duty; // first application (startup)
         }
         let last_duty = self.get_appropriate_last_duty(&data.profile.profile_uid);
-        let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
-        if diff_to_last_duty < data.profile.function.duty_minimum
-            && data.safety_latch_triggered.not()
-        {
-            None
-        } else if diff_to_last_duty > data.profile.function.duty_maximum {
-            Some(if data.duty.unwrap() < last_duty {
-                last_duty - data.profile.function.duty_maximum
+        let (step_increase_min, step_increase_max, step_decrease_min, step_decrease_max) =
+            Self::determine_step_sizes(&data.profile.function);
+
+        #[allow(clippy::cast_possible_wrap)]
+        let diff_to_last_duty: i8 = data.duty.unwrap() as i8 - last_duty as i8;
+        let duty_has_decreased = diff_to_last_duty < 0;
+        let abs_diff_to_last_duty = diff_to_last_duty.unsigned_abs();
+
+        if data.safety_latch_triggered {
+            // If the safety-latch is triggered, we want to bypass only the MIN step size thresholds
+            // as that is the only case where a duty is possibly not applied.
+            // MAX step size limits we will respect in all cases.
+            if data.profile.function.threshold_hopping {
+                // For threshold hopping, we only want to bypass the min thresholds, as
+                // that is the only case where duty is not applied.
+                // For duty increases or zero, we handling it like normal - always applying
+                if duty_has_decreased {
+                    if abs_diff_to_last_duty < step_decrease_min {
+                        return data.duty;
+                    }
+                } else if abs_diff_to_last_duty < step_increase_min {
+                    return data.duty;
+                }
             } else {
-                last_duty + data.profile.function.duty_maximum
-            })
+                // if hopping is disabled, we apply the last duty and NOT bypass the min step size thresholds.
+                // The last_duty is guaranteed to be within threshold limits and the purpose here to
+                // apply the last duty again to make sure the device is doing what it's supposed to.
+                if duty_has_decreased {
+                    if abs_diff_to_last_duty < step_decrease_min {
+                        return Some(last_duty);
+                    }
+                } else if abs_diff_to_last_duty < step_increase_min {
+                    return Some(last_duty);
+                }
+            }
+        }
+
+        // Normal flow
+        if duty_has_decreased {
+            if abs_diff_to_last_duty < step_decrease_min {
+                None
+            } else if abs_diff_to_last_duty > step_decrease_max {
+                Some(last_duty - step_decrease_max) // limit to max step size
+            } else {
+                // within range
+                data.duty
+            }
+        } else if abs_diff_to_last_duty < step_increase_min {
+            None
+        } else if abs_diff_to_last_duty > step_increase_max {
+            Some(last_duty + step_increase_max) // limit to max step size
         } else {
+            // within range
             data.duty
         }
     }
@@ -441,6 +494,36 @@ impl FunctionDutyThresholdPostProcessor {
             .last_manual_speeds_set
             .back()
             .unwrap() // already checked to exist
+    }
+
+    fn determine_step_sizes(data_function: &Function) -> (Duty, Duty, Duty, Duty) {
+        let step_is_symmetric = data_function.step_size_min_decreasing == 0;
+        let step_has_fixed_increase = data_function.step_size_max == 0;
+        let step_has_fixed_decrease = data_function.step_size_max_decreasing == 0;
+        let step_increase_min = data_function.step_size_min;
+        let step_increase_max = if step_has_fixed_increase {
+            step_increase_min
+        } else {
+            data_function.step_size_max
+        };
+        let step_decrease_min = if step_is_symmetric {
+            step_increase_min
+        } else {
+            data_function.step_size_min_decreasing
+        };
+        let step_decrease_max = if step_is_symmetric {
+            step_increase_max
+        } else if step_has_fixed_decrease {
+            step_decrease_min
+        } else {
+            data_function.step_size_max_decreasing
+        };
+        (
+            step_increase_min,
+            step_increase_max,
+            step_decrease_min,
+            step_decrease_max,
+        )
     }
 }
 
@@ -462,7 +545,7 @@ impl Processor for FunctionDutyThresholdPostProcessor {
     }
 
     fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        if let Some(duty_to_set) = self.duty_within_thresholds(data) {
+        if let Some(duty_to_set) = self.apply_step_size_thresholds(data) {
             {
                 let mut metadata_lock = self.scheduled_settings_metadata.borrow_mut();
                 let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
@@ -623,7 +706,11 @@ fn log_missing_temp_sensor(data: &SpeedProfileData) {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::processors::functions::FunctionEMAPreProcessor;
+    use crate::engine::processors::functions::{
+        FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor,
+    };
+    use crate::engine::{NormalizedGraphProfile, SpeedProfileData, TempSource};
+    use crate::setting::Function;
 
     #[test]
     #[allow(clippy::float_cmp)]
@@ -641,5 +728,386 @@ mod tests {
                 expected
             );
         }
+    }
+
+    // Helper to create a test function with specific step size settings
+    fn create_test_function(
+        step_size_min: u8,
+        step_size_max: u8,
+        step_size_min_decreasing: u8,
+        step_size_max_decreasing: u8,
+        threshold_hopping: bool,
+    ) -> Function {
+        Function {
+            step_size_min,
+            step_size_max,
+            step_size_min_decreasing,
+            step_size_max_decreasing,
+            threshold_hopping,
+            ..Default::default()
+        }
+    }
+
+    fn create_test_profile(function: Function) -> std::rc::Rc<NormalizedGraphProfile> {
+        std::rc::Rc::new(NormalizedGraphProfile {
+            profile_uid: "test-profile".to_string(),
+            profile_name: "Test Profile".to_string(),
+            speed_profile: vec![],
+            temp_source: TempSource {
+                device_uid: "test-device".to_string(),
+                temp_name: "test-temp".to_string(),
+            },
+            function,
+            poll_rate: 1.0,
+        })
+    }
+
+    // ==================== determine_step_sizes tests ====================
+
+    #[test]
+    fn determine_step_sizes_symmetric_variable() {
+        // Default case: symmetric step sizes (step_size_min_decreasing = 0)
+        let function = create_test_function(2, 100, 0, 0, true);
+        let (inc_min, inc_max, dec_min, dec_max) =
+            FunctionDutyThresholdPostProcessor::determine_step_sizes(&function);
+
+        assert_eq!(inc_min, 2, "increase min should be step_size_min");
+        assert_eq!(inc_max, 100, "increase max should be step_size_max");
+        assert_eq!(
+            dec_min, 2,
+            "decrease min should mirror increase min (symmetric)"
+        );
+        assert_eq!(
+            dec_max, 100,
+            "decrease max should mirror increase max (symmetric)"
+        );
+    }
+
+    #[test]
+    fn determine_step_sizes_symmetric_fixed() {
+        // Fixed step size: step_size_max = 0 means use step_size_min for both
+        let function = create_test_function(5, 0, 0, 0, true);
+        let (inc_min, inc_max, dec_min, dec_max) =
+            FunctionDutyThresholdPostProcessor::determine_step_sizes(&function);
+
+        assert_eq!(inc_min, 5);
+        assert_eq!(inc_max, 5, "fixed step: max should equal min");
+        assert_eq!(dec_min, 5, "symmetric: decrease min mirrors increase");
+        assert_eq!(
+            dec_max, 5,
+            "symmetric + fixed: decrease max mirrors increase"
+        );
+    }
+
+    #[test]
+    fn determine_step_sizes_asymmetric_variable() {
+        // Asymmetric: different step sizes for increase vs decrease
+        let function = create_test_function(2, 50, 5, 30, true);
+        let (inc_min, inc_max, dec_min, dec_max) =
+            FunctionDutyThresholdPostProcessor::determine_step_sizes(&function);
+
+        assert_eq!(inc_min, 2);
+        assert_eq!(inc_max, 50);
+        assert_eq!(dec_min, 5, "asymmetric: uses step_size_min_decreasing");
+        assert_eq!(dec_max, 30, "asymmetric: uses step_size_max_decreasing");
+    }
+
+    #[test]
+    fn determine_step_sizes_asymmetric_fixed_decrease() {
+        // Asymmetric with fixed decrease step (step_size_max_decreasing = 0)
+        let function = create_test_function(2, 50, 10, 0, true);
+        let (inc_min, inc_max, dec_min, dec_max) =
+            FunctionDutyThresholdPostProcessor::determine_step_sizes(&function);
+
+        assert_eq!(inc_min, 2);
+        assert_eq!(inc_max, 50);
+        assert_eq!(dec_min, 10);
+        assert_eq!(dec_max, 10, "fixed decrease: max equals min");
+    }
+
+    #[test]
+    fn determine_step_sizes_asymmetric_fixed_increase() {
+        // Asymmetric with fixed increase step (step_size_max = 0)
+        let function = create_test_function(3, 0, 5, 20, true);
+        let (inc_min, inc_max, dec_min, dec_max) =
+            FunctionDutyThresholdPostProcessor::determine_step_sizes(&function);
+
+        assert_eq!(inc_min, 3);
+        assert_eq!(inc_max, 3, "fixed increase: max equals min");
+        assert_eq!(dec_min, 5);
+        assert_eq!(dec_max, 20);
+    }
+
+    // ==================== apply_step_size_thresholds tests ====================
+
+    fn setup_processor_with_last_duty(last_duty: u8) -> FunctionDutyThresholdPostProcessor {
+        use crate::engine::Processor;
+        let processor = FunctionDutyThresholdPostProcessor::new();
+        let profile_uid = "test-profile".to_string();
+        processor.init_state(&profile_uid);
+        // Add a last duty to the metadata
+        processor
+            .scheduled_settings_metadata
+            .borrow_mut()
+            .get_mut(&profile_uid)
+            .unwrap()
+            .last_manual_speeds_set
+            .push_back(last_duty);
+        processor
+    }
+
+    fn create_test_data(
+        function: Function,
+        duty: u8,
+        safety_latch_triggered: bool,
+    ) -> SpeedProfileData {
+        SpeedProfileData {
+            profile: create_test_profile(function),
+            temp: None,
+            duty: Some(duty),
+            processing_started: true,
+            safety_latch_triggered,
+        }
+    }
+
+    #[test]
+    fn apply_step_size_first_application_returns_duty() {
+        use crate::engine::Processor;
+        let processor = FunctionDutyThresholdPostProcessor::new();
+        let profile_uid = "test-profile".to_string();
+        processor.init_state(&profile_uid);
+        // No last duty set - simulates first application
+
+        let function = create_test_function(2, 100, 0, 0, true);
+        let data = create_test_data(function, 50, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(50),
+            "first application should return duty as-is"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_increase_below_min_threshold() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(5, 100, 0, 0, true);
+        // Duty increase of 3 (50 -> 53), below min threshold of 5
+        let data = create_test_data(function, 53, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "increase below min threshold should return None"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_increase_within_range() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(5, 100, 0, 0, true);
+        // Duty increase of 10 (50 -> 60), within range [5, 100]
+        let data = create_test_data(function, 60, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(result, Some(60), "increase within range should return duty");
+    }
+
+    #[test]
+    fn apply_step_size_increase_above_max_threshold() {
+        let processor = setup_processor_with_last_duty(30);
+        let function = create_test_function(2, 20, 0, 0, true);
+        // Duty increase of 50 (30 -> 80), above max threshold of 20
+        let data = create_test_data(function, 80, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(50),
+            "increase above max should be limited to last_duty + max"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_decrease_below_min_threshold() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(5, 100, 0, 0, true);
+        // Duty decrease of 3 (50 -> 47), below min threshold of 5
+        let data = create_test_data(function, 47, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "decrease below min threshold should return None"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_decrease_within_range() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(5, 100, 0, 0, true);
+        // Duty decrease of 10 (50 -> 40), within range
+        let data = create_test_data(function, 40, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(result, Some(40), "decrease within range should return duty");
+    }
+
+    #[test]
+    fn apply_step_size_decrease_above_max_threshold() {
+        let processor = setup_processor_with_last_duty(70);
+        let function = create_test_function(2, 20, 0, 0, true);
+        // Duty decrease of 50 (70 -> 20), above max threshold of 20
+        let data = create_test_data(function, 20, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(50),
+            "decrease above max should be limited to last_duty - max"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_asymmetric_decrease() {
+        let processor = setup_processor_with_last_duty(50);
+        // Asymmetric: increase min=2, decrease min=10
+        let function = create_test_function(2, 100, 10, 100, true);
+        // Duty decrease of 5 (50 -> 45), below asymmetric decrease min of 10
+        let data = create_test_data(function, 45, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result, None,
+            "asymmetric decrease below min should return None"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_asymmetric_decrease_within_range() {
+        let processor = setup_processor_with_last_duty(50);
+        // Asymmetric: increase min=2, decrease min=10
+        let function = create_test_function(2, 100, 10, 100, true);
+        // Duty decrease of 15 (50 -> 35), within asymmetric range
+        let data = create_test_data(function, 35, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(35),
+            "asymmetric decrease within range should return duty"
+        );
+    }
+
+    // ==================== Safety latch with threshold hopping tests ====================
+
+    #[test]
+    fn apply_step_size_safety_latch_hopping_bypasses_min_increase() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(10, 100, 0, 0, true); // hopping enabled
+                                                                  // Duty increase of 5 (50 -> 55), below min threshold of 10
+                                                                  // With safety latch + hopping, should bypass min and return duty
+        let data = create_test_data(function, 55, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(55),
+            "safety latch + hopping should bypass min threshold"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_safety_latch_hopping_bypasses_min_decrease() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(10, 100, 0, 0, true); // hopping enabled
+                                                                  // Duty decrease of 5 (50 -> 45), below min threshold of 10
+        let data = create_test_data(function, 45, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(45),
+            "safety latch + hopping should bypass min threshold for decrease"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_safety_latch_hopping_respects_max() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(2, 20, 0, 0, true); // hopping enabled
+                                                                // Duty increase of 40 (50 -> 90), above max threshold of 20
+                                                                // Even with safety latch, max should be respected
+        let data = create_test_data(function, 90, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(70),
+            "safety latch + hopping should still respect max threshold"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_safety_latch_no_hopping_returns_last_duty() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(10, 100, 0, 0, false); // hopping disabled
+                                                                   // Duty increase of 5 (50 -> 55), below min threshold of 10
+                                                                   // With safety latch but NO hopping, should return last_duty
+        let data = create_test_data(function, 55, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(50),
+            "safety latch without hopping should return last_duty"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_safety_latch_no_hopping_decrease_returns_last_duty() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(10, 100, 0, 0, false); // hopping disabled
+                                                                   // Duty decrease of 5 (50 -> 45), below min threshold
+        let data = create_test_data(function, 45, true);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(50),
+            "safety latch without hopping should return last_duty for decrease"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_fixed_step_size() {
+        let processor = setup_processor_with_last_duty(50);
+        // Fixed step size: step_size_max = 0 means min == max
+        let function = create_test_function(5, 0, 0, 0, true);
+        // Duty increase of 10 (50 -> 60), above fixed step of 5
+        let data = create_test_data(function, 60, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(55),
+            "fixed step size should limit to exactly step_size_min"
+        );
+    }
+
+    #[test]
+    fn apply_step_size_fixed_step_size_exact_match() {
+        let processor = setup_processor_with_last_duty(50);
+        let function = create_test_function(5, 0, 0, 0, true);
+        // Duty increase of exactly 5 (50 -> 55), matches fixed step
+        let data = create_test_data(function, 55, false);
+
+        let result = processor.apply_step_size_thresholds(&data);
+        assert_eq!(
+            result,
+            Some(55),
+            "exact fixed step size match should return duty"
+        );
     }
 }

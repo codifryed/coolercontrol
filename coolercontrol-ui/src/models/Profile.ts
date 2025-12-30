@@ -227,14 +227,27 @@ export class Function {
     f_type: FunctionType = FunctionType.Identity
 
     /**
-     * The minimum duty change to apply
+     * The minimum duty change (step size) to apply
      */
     duty_minimum: number
 
     /**
-     * The maximum duty change to apply
+     * The maximum duty change (step size) to apply
+     * A duty maximum of `0` indicates a fixed step size. Use duty_minimum.
      */
     duty_maximum: number
+
+    /**
+     * The minimum duty change (step size) to apply when decreasing
+     * A value of 0 indicates that step size is symmetric and the same as duty_minimum.
+     */
+    step_size_min_decreasing: number = 0
+
+    /**
+     * The maximum duty change (step size) to apply when decreasing
+     * A value of 0 indicates a fixed step size. Use step_size_minimum_decreasing.
+     */
+    step_size_max_decreasing: number = 0
 
     /**
      * The response delay in seconds
@@ -252,9 +265,14 @@ export class Function {
     only_downward?: boolean
 
     /**
-     * The sample window this function should use, particularly applicable to moving averages
+     * The sample window size this function should use for EMA
      */
     sample_window?: number
+
+    /**
+     * Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.
+     */
+    threshold_hopping: boolean = true
 
     constructor(
         name: string,

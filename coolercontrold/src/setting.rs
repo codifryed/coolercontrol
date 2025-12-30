@@ -319,11 +319,24 @@ pub struct Function {
     /// The type of this function
     pub f_type: FunctionType,
 
-    /// The minimum duty change to apply
-    pub duty_minimum: Duty,
+    /// The minimum duty change (step size) to apply
+    /// Previously `duty_minimum`.
+    #[serde(rename = "duty_minimum")]
+    pub step_size_min: Duty,
 
-    /// The maximum duty change to apply
-    pub duty_maximum: Duty,
+    /// The maximum duty change (step size) to apply
+    /// A duty maximum of `0` indicates a fixed step size. Use duty_minimum to set the step size.
+    /// Previously `duty_maximum`.
+    #[serde(rename = "duty_maximum")]
+    pub step_size_max: Duty,
+
+    /// The minimum step size to apply when decreasing.
+    /// A value of `0` indicates a symmetric step size. Use `duty_minimum` to set the step size.
+    pub step_size_min_decreasing: Duty,
+
+    /// The maximum step size to apply when decreasing.
+    /// A value of `0` indicates a fixed step size. Use `step_size_minimum_decreasing` to set the step size.
+    pub step_size_max_decreasing: Duty,
 
     /// The response delay in seconds
     pub response_delay: Option<u8>,
@@ -336,6 +349,9 @@ pub struct Function {
 
     /// The sample window this function should use, particularly applicable to moving averages
     pub sample_window: Option<u8>,
+
+    /// Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.
+    pub threshold_hopping: bool,
 }
 
 impl Default for Function {
@@ -344,12 +360,15 @@ impl Default for Function {
             uid: DEFAULT_FUNCTION_UID.to_string(),
             name: "Default Function".to_string(),
             f_type: FunctionType::Identity,
-            duty_minimum: 2,
-            duty_maximum: 100,
+            step_size_min: 2,
+            step_size_max: 100,          // 0 = fixed step size
+            step_size_min_decreasing: 0, // 0 = disabled/symmetric step size
+            step_size_max_decreasing: 0, // 0 = fixed step size
             response_delay: None,
             deviance: None,
             only_downward: None,
             sample_window: None,
+            threshold_hopping: true,
         }
     }
 }

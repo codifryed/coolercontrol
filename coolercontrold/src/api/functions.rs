@@ -86,18 +86,25 @@ pub async fn delete(
 fn validate_function(function: &Function) -> Result<(), CCError> {
     validate_name_string(&function.name)?;
     let mut invalid_msg: Option<String> = None;
-    if function.duty_minimum < 1 {
+    if function.step_size_min < 1 {
         invalid_msg = Some("duty_minimum must be greater than 0".to_string());
-    } else if function.duty_minimum > 99 {
-        invalid_msg = Some("duty_minimum must be less than 100".to_string());
-    } else if function.duty_maximum < 2 {
-        invalid_msg = Some("duty_maximum must be greater than 1".to_string());
-    } else if function.duty_maximum > 100 {
+    } else if function.step_size_min > 100 {
+        invalid_msg = Some("duty_minimum must be less than 101".to_string());
+    } else if function.step_size_max > 100 {
         invalid_msg = Some("duty_maximum must be less than 101".to_string());
-    } else if function.duty_minimum >= function.duty_maximum {
-        invalid_msg = Some("duty_minimum must be less than duty_maximum".to_string());
-    } else if function.duty_maximum <= function.duty_minimum {
-        invalid_msg = Some("duty_maximum must be greater than duty_minimum".to_string());
+    } else if function.step_size_min > function.step_size_max && function.step_size_max != 0 {
+        invalid_msg = Some(
+            "duty_minimum must be less than duty_maximum when using a non-fixed step size"
+                .to_string(),
+        );
+    } else if function.step_size_min_decreasing > 100 {
+        invalid_msg = Some("step_size_min_decreasing must be less than 101".to_string());
+    } else if function.step_size_max_decreasing > 100 {
+        invalid_msg = Some("step_size_max_decreasing must be less than 101".to_string());
+    } else if function.step_size_min_decreasing > function.step_size_max_decreasing
+        && function.step_size_max_decreasing != 0
+    {
+        invalid_msg = Some("step_size_min_decreasing must be less than step_size_max_decreasing when using a non-fixed step size".to_string());
     }
     if let Some(msg) = invalid_msg {
         Err(CCError::UserError { msg })

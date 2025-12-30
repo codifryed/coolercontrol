@@ -67,6 +67,7 @@ const saveDashboard = async (): Promise<void> => {
                         class="w-full h-11"
                         :invalid="nameInvalid"
                         :input-style="{ background: 'rgb(var(--colors-bg-one))' }"
+                        autofocus
                     />
                 </div>
             </div>

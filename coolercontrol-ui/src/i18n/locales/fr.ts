@@ -595,25 +595,61 @@ export default {
             saveFunction: 'Enregistrer la Fonction',
             functionType: 'Type de Fonction',
             functionTypeTooltip:
-                "Types de fonction :<br/>- Identité : Ne modifie pas la valeur calculée du profil.<br/>- Standard : Modifie la valeur du profil en utilisant un algorithme avec des paramètres d'hystérésis.<br/>- Moyenne Mobile Exponentielle : Modifie la valeur du profil en utilisant un algorithme EMA.",
-            minimumAdjustment: 'Ajustement Minimum',
-            minimumAdjustmentTooltip:
-                'Ajustement minimal de la vitesse du ventilateur : Les changements calculés inférieurs à cette valeur seront ignorés.',
-            maximumAdjustment: 'Ajustement Maximum',
-            maximumAdjustmentTooltip:
-                'Ajustement maximal de la vitesse du ventilateur : Les changements calculés supérieurs à ce seuil seront plafonnés.',
+                'Types de fonction :<br/>' +
+                '- <b>Identité</b> : Applique les limites de taille de pas mais transmet sinon la valeur du profil inchangée.<br/>' +
+                "- <b>Standard</b> : Applique les limites de taille de pas et les paramètres d'hystérésis pour un contrôle précis du temps de réponse et de la stabilité du ventilateur.<br/>" +
+                '- <b>Moyenne Mobile Exponentielle</b> : Lisse les fluctuations de température en utilisant une moyenne pondérée. Plus simple mais moins précis que Standard.',
+            stepSizeTitle: 'Taille du Pas',
+            fixedStepSize: 'Fixe',
+            fixedStepSizeTooltip:
+                'Activé utilise une taille de pas fixe pour tous les changements.\nDésactivé permet de définir une plage de taille de pas minimale et maximale.',
+            asymmetric: 'Asymétrique',
+            asymmetricTooltip:
+                "Lorsqu'activé, des limites de taille de pas séparées peuvent être configurées pour les augmentations et diminutions de vitesse.\nUtile lorsque vous souhaitez que les ventilateurs accélèrent rapidement mais ralentissent progressivement, ou vice versa.",
+            stepSizeMin: 'Minimum',
+            stepSizeMinTooltip:
+                'Le plus petit changement de vitesse du ventilateur qui sera appliqué.\nLes changements plus petits sont ignorés pour réduire les ajustements inutiles.',
+            stepSizeMax: 'Maximum',
+            stepSizeMaxTooltip:
+                'Le plus grand changement de vitesse du ventilateur autorisé par mise à jour.\nLes changements plus importants sont limités à cette valeur pour des transitions plus douces.',
+            stepSizeFixed: 'Taille',
+            stepSizeFixedTooltip:
+                'Une taille de pas unique appliquée à tous les changements de vitesse du ventilateur.\nTous les ajustements seront limités exactement à cette valeur.',
+            stepSizeFixedIncreasing: 'Croissant',
+            stepSizeFixedIncreasingTooltip:
+                'Taille de pas fixe lorsque la vitesse du ventilateur augmente.\nTous les ajustements à la hausse seront limités exactement à cette valeur.',
+            stepSizeFixedDecreasing: 'Décroissant',
+            stepSizeFixedDecreasingTooltip:
+                'Taille de pas fixe lorsque la vitesse du ventilateur diminue.\nTous les ajustements à la baisse seront limités exactement à cette valeur.',
+            stepSizeMinIncreasing: 'Minimum Croissant',
+            stepSizeMinIncreasingTooltip:
+                'Taille de pas minimale lorsque la vitesse du ventilateur augmente.\nLes changements calculés plus petits sont ignorés pour réduire les ajustements inutiles.',
+            stepSizeMaxIncreasing: 'Maximum Croissant',
+            stepSizeMaxIncreasingTooltip:
+                'Taille de pas maximale lorsque la vitesse du ventilateur augmente.\nLimite la rapidité avec laquelle les ventilateurs peuvent accélérer par mise à jour.',
+            stepSizeMinDecreasing: 'Minimum Décroissant',
+            stepSizeMinDecreasingTooltip:
+                'Taille de pas minimale lorsque la vitesse du ventilateur diminue.\nLes changements calculés plus petits sont ignorés pour réduire les ajustements inutiles.',
+            stepSizeMaxDecreasing: 'Maximum Décroissant',
+            stepSizeMaxDecreasingTooltip:
+                'Taille de pas maximale lorsque la vitesse du ventilateur diminue.\nLimite la rapidité avec laquelle les ventilateurs peuvent ralentir par mise à jour.',
             windowSize: 'Taille de la Fenêtre',
             windowSizeTooltip:
-                'Ajustez la sensibilité aux changements de température en définissant la taille de la fenêtre.\nLes tailles de fenêtre plus petites répondent rapidement aux changements,\ntandis que les tailles de fenêtre plus grandes fournissent des moyennes plus lisses.',
-            hysteresisThreshold: "Seuil d'Hystérésis",
+                "Taille de l'échantillon de température de fenêtre utilisée dans le calcul de la moyenne mobile exponentielle.\nValeurs plus petites = réponse plus rapide, plus réactif aux pics de température.\nValeurs plus grandes = réponse plus lente, transitions de vitesse du ventilateur plus douces.\nConseil : Utilisez une Fonction Standard pour un contrôle précis du temps de réponse.",
+            hysteresis: 'Hystérésis Avancée',
+            hysteresisThreshold: 'Seuil',
             hysteresisThresholdTooltip:
-                'Seuil de changement de température (°C) : Ajuster la vitesse du ventilateur lorsque la température change de cette quantité.',
-            hysteresisDelay: "Délai d'Hystérésis",
+                "Changement de température minimum (°C) requis avant d'ajuster la vitesse du ventilateur.\nAide à prévenir les fluctuations rapides de vitesse du ventilateur dues aux petites variations de température.",
+            hysteresisDelay: 'Délai',
             hysteresisDelayTooltip:
-                'Temps (secondes) nécessaire pour répondre aux changements de température.',
+                "Délai de réponse (secondes) avant d'appliquer les changements de vitesse du ventilateur.\nLes pics de température temporaires dans ce délai sont ignorés, lissant les fluctuations.",
             onlyDownward: 'Seulement Descendant',
             onlyDownwardTooltip:
-                'Appliquer les paramètres uniquement lorsque la température diminue.',
+                "Appliquer les paramètres d'hystérésis uniquement lorsque la température diminue.",
+            general: 'Général',
+            thresholdHopping: 'Saut de Seuil',
+            thresholdHoppingTooltip:
+                "Lorsque la vitesse du ventilateur reste inchangée pendant 30+ secondes, les limites de taille de pas et d'hystérésis sont temporairement contournées.\nCela garantit que les ventilateurs atteignent finalement leur vitesse cible, même avec des paramètres de seuil conservateurs.",
             unsavedChanges: 'Il y a des changements non enregistrés apportés à cette Fonction.',
             unsavedChangesHeader: 'Changements non enregistrés',
             functionError: 'Erreur lors de la tentative de mise à jour de cette fonction',

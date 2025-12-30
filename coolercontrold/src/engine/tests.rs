@@ -278,8 +278,8 @@ mod engine_tests {
             uid: function_uid.clone(),
             name: "Function1".to_string(),
             f_type: FunctionType::Identity,
-            duty_minimum,
-            duty_maximum,
+            step_size_min: duty_minimum,
+            step_size_max: duty_maximum,
             ..Default::default()
         };
         config.set_function(function).unwrap();

@@ -579,23 +579,60 @@ export default {
             saveFunction: 'Save Function',
             functionType: 'Function Type',
             functionTypeTooltip:
-                'Function types:<br/>- Identity: Does not alter the computed profile value.<br/>- Standard: Alters profile value using an algorithm with hysteresis settings.<br/>- Exponential Moving Average: Alters profile value using an EMA algorithm.',
-            minimumAdjustment: 'Minimum Adjustment',
-            minimumAdjustmentTooltip:
-                'Minimum fan speed adjustment: Computed changes below this value will be ignored.',
-            maximumAdjustment: 'Maximum Adjustment',
-            maximumAdjustmentTooltip:
-                'Maximum fan speed adjustment: Computed changes above this threshold will be capped.',
+                'Function types:<br/>' +
+                '- <b>Identity</b>: Applies step size limits but otherwise passes the profile value unchanged.<br/>' +
+                '- <b>Standard</b>: Applies step size limits and hysteresis settings for precise control over fan response timing and stability.<br/>' +
+                '- <b>Exponential Moving Average</b>: Smooths temperature fluctuations using a weighted average. Simpler but less precise than Standard.',
+            stepSizeTitle: 'Step Size',
+            fixedStepSize: 'Fixed',
+            fixedStepSizeTooltip:
+                'Enabled uses a single fixed step size for all changes.\nDisabled allows setting a minimum and maximum step size range.',
+            asymmetric: 'Asymmetric',
+            asymmetricTooltip:
+                'When enabled, separate step size limits can be configured for speed increases and decreases.\nUseful when you want fans to ramp up quickly but slow down gradually, or vice versa.',
+            stepSizeMin: 'Minimum',
+            stepSizeMinTooltip:
+                'The smallest fan speed change that will be applied.\nChanges smaller than this are ignored to reduce unnecessary adjustments.',
+            stepSizeMax: 'Maximum',
+            stepSizeMaxTooltip:
+                'The largest fan speed change allowed per update.\nLarger changes are limited to this value for smoother transitions.',
+            stepSizeFixed: 'Size',
+            stepSizeFixedTooltip:
+                'A single step size applied to all fan speed changes.\nAll adjustments will be limited to exactly this value.',
+            stepSizeFixedIncreasing: 'Increasing',
+            stepSizeFixedIncreasingTooltip:
+                'Fixed step size when fan speed is increasing.\nAll upward adjustments will be limited to exactly this value.',
+            stepSizeFixedDecreasing: 'Decreasing',
+            stepSizeFixedDecreasingTooltip:
+                'Fixed step size when fan speed is decreasing.\nAll downward adjustments will be limited to exactly this value.',
+            stepSizeMinIncreasing: 'Minimum Increasing',
+            stepSizeMinIncreasingTooltip:
+                'Minimum step size when fan speed is increasing.\nSmaller computed changes are ignored to reduce unnecessary adjustments.',
+            stepSizeMaxIncreasing: 'Maximum Increasing',
+            stepSizeMaxIncreasingTooltip:
+                'Maximum step size when fan speed is increasing.\nLimits how quickly fans can ramp up per update.',
+            stepSizeMinDecreasing: 'Minimum Decreasing',
+            stepSizeMinDecreasingTooltip:
+                'Minimum step size when fan speed is decreasing.\nSmaller computed changes are ignored to reduce unnecessary adjustments.',
+            stepSizeMaxDecreasing: 'Maximum Decreasing',
+            stepSizeMaxDecreasingTooltip:
+                'Maximum step size when fan speed is decreasing.\nLimits how quickly fans can slow down per update.',
             windowSize: 'Window Size',
             windowSizeTooltip:
-                'Adjust sensitivity to temperature changes by setting the window size.\nSmaller window sizes respond quickly to changes,\nwhile larger window sizes provide smoother averages.',
-            hysteresisThreshold: 'Hysteresis Threshold',
+                'Window temperature sample size used in the exponential moving average calculation.\nSmaller values = faster response, more reactive to temperature spikes.\nLarger values = slower response, smoother fan speed transitions.\nTip: Use a Standard Function for precise control over response timing.',
+            hysteresis: 'Advanced Hysteresis',
+            hysteresisThreshold: 'Threshold',
             hysteresisThresholdTooltip:
-                'Temperature change threshold (°C): Adjust fan speed when temperature changes by this amount.',
-            hysteresisDelay: 'Hysteresis Delay',
-            hysteresisDelayTooltip: 'Time (seconds) required to respond to temperature changes.',
+                'Minimum temperature change (°C) required before adjusting fan speed.\nHelps prevent rapid fan speed fluctuations from small temperature variations.',
+            hysteresisDelay: 'Delay',
+            hysteresisDelayTooltip:
+                'Response delay (seconds) before applying fan speed changes.\nTemporary temperature spikes within this delay are ignored, smoothing out fluctuations.',
             onlyDownward: 'Only Downward',
-            onlyDownwardTooltip: 'Only apply settings when temperature is decreasing.',
+            onlyDownwardTooltip: 'Only apply hysteresis settings when temperature is decreasing.',
+            general: 'General',
+            thresholdHopping: 'Threshold Hopping',
+            thresholdHoppingTooltip:
+                'When fan speed remains unchanged for 30+ seconds, step size and hysteresis limits are temporarily bypassed.\nThis ensures that fans eventually reach their target speed, even with conservative threshold settings.',
             unsavedChanges: 'There are unsaved changes made to this Function.',
             unsavedChangesHeader: 'Unsaved Changes',
             functionError: 'Error trying to update this function',
