@@ -576,7 +576,10 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能類型',
             functionTypeTooltip:
-                '功能類型：<br/>- 恒等函數：不改變計算的設定檔值。<br/>- 標準：使用具有滯後設置的算法改變設定檔值。<br/>- 指數移動平均：使用指數移動平均算法改變設定檔值。',
+                '功能類型：<br/>' +
+                '- <b>恆等函數</b>：應用步長限制，但其他方面保持設定檔值不變。<br/>' +
+                '- <b>標準</b>：應用步長限制和滯後設置，精確控制風扇響應時間和穩定性。<br/>' +
+                '- <b>指數移動平均</b>：使用加權平均平滑溫度波動。比標準更簡單但精度較低。',
             stepSizeTitle: '步長',
             fixedStepSize: '固定',
             fixedStepSizeTooltip:

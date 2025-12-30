@@ -585,7 +585,10 @@ export default {
             saveFunction: 'Guardar Función',
             functionType: 'Tipo de Función',
             functionTypeTooltip:
-                'Tipos de función:<br/>- Identidad: No altera el valor calculado del perfil.<br/>- Estándar: Altera el valor del perfil usando un algoritmo con configuración de histéresis.<br/>- Promedio Móvil Exponencial: Altera el valor del perfil usando un algoritmo EMA.',
+                'Tipos de función:<br/>' +
+                '- <b>Identidad</b>: Aplica límites de tamaño de paso pero por lo demás pasa el valor del perfil sin cambios.<br/>' +
+                '- <b>Estándar</b>: Aplica límites de tamaño de paso y configuración de histéresis para un control preciso del tiempo de respuesta y estabilidad del ventilador.<br/>' +
+                '- <b>Promedio Móvil Exponencial</b>: Suaviza las fluctuaciones de temperatura usando un promedio ponderado. Más simple pero menos preciso que Estándar.',
             stepSizeTitle: 'Tamaño de Paso',
             fixedStepSize: 'Fijo',
             fixedStepSizeTooltip:

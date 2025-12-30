@@ -589,7 +589,10 @@ export default {
             saveFunction: 'Funktion speichern',
             functionType: 'Funktionstyp',
             functionTypeTooltip:
-                'Funktionstypen:<br/>- Identität: Verändert den berechneten Profilwert nicht.<br/>- Standard: Verändert den Profilwert mithilfe eines Algorithmus mit Hysterese-Einstellungen.<br/>- Exponentieller gleitender Durchschnitt: Verändert den Profilwert mithilfe eines EMA-Algorithmus.',
+                'Funktionstypen:<br/>' +
+                '- <b>Identität</b>: Wendet Schrittgrößenbegrenzungen an, gibt aber ansonsten den Profilwert unverändert weiter.<br/>' +
+                '- <b>Standard</b>: Wendet Schrittgrößenbegrenzungen und Hysterese-Einstellungen für präzise Kontrolle über Lüfterreaktionszeit und Stabilität an.<br/>' +
+                '- <b>Exponentieller gleitender Durchschnitt</b>: Glättet Temperaturschwankungen mit einem gewichteten Durchschnitt. Einfacher, aber weniger präzise als Standard.',
             stepSizeTitle: 'Schrittgröße',
             fixedStepSize: 'Fest',
             fixedStepSizeTooltip:

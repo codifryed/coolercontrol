@@ -595,7 +595,10 @@ export default {
             saveFunction: 'Enregistrer la Fonction',
             functionType: 'Type de Fonction',
             functionTypeTooltip:
-                "Types de fonction :<br/>- Identité : Ne modifie pas la valeur calculée du profil.<br/>- Standard : Modifie la valeur du profil en utilisant un algorithme avec des paramètres d'hystérésis.<br/>- Moyenne Mobile Exponentielle : Modifie la valeur du profil en utilisant un algorithme EMA.",
+                'Types de fonction :<br/>' +
+                '- <b>Identité</b> : Applique les limites de taille de pas mais transmet sinon la valeur du profil inchangée.<br/>' +
+                "- <b>Standard</b> : Applique les limites de taille de pas et les paramètres d'hystérésis pour un contrôle précis du temps de réponse et de la stabilité du ventilateur.<br/>" +
+                '- <b>Moyenne Mobile Exponentielle</b> : Lisse les fluctuations de température en utilisant une moyenne pondérée. Plus simple mais moins précis que Standard.',
             stepSizeTitle: 'Taille du Pas',
             fixedStepSize: 'Fixe',
             fixedStepSizeTooltip:

@@ -576,7 +576,10 @@ export default {
             saveFunction: '保存功能',
             functionType: '功能类型',
             functionTypeTooltip:
-                '功能类型：<br/>- 恒等函数：不改变计算的配置文件值。<br/>- 标准：使用具有滞后设置的算法改变配置文件值。<br/>- 指数移动平均：使用指数移动平均算法改变配置文件值。',
+                '功能类型：<br/>' +
+                '- <b>恒等函数</b>：应用步长限制，但其他方面保持配置文件值不变。<br/>' +
+                '- <b>标准</b>：应用步长限制和滞后设置，精确控制风扇响应时间和稳定性。<br/>' +
+                '- <b>指数移动平均</b>：使用加权平均平滑温度波动。比标准更简单但精度较低。',
             stepSizeTitle: '步长',
             fixedStepSize: '固定',
             fixedStepSizeTooltip:

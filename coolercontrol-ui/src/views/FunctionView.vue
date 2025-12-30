@@ -122,6 +122,7 @@ const saveFunctionState = async () => {
         selectedType.value === FunctionType.Standard ? chosenDeviance.value : undefined
     currentFunction.value.only_downward =
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
+    currentFunction.value.threshold_hopping = chosenThresholdHopping.value
     const successful = await settingsStore.updateFunction(currentFunction.value.uid)
     if (successful) {
         contextIsDirty.value = false
@@ -215,6 +216,9 @@ const updateFixedStepSize = () => {
         if (chosenStepDutyMaximum.value < chosenStepDutyMinimum.value) {
             chosenStepDutyMaximum.value = chosenStepDutyMinimum.value
         }
+        if (chosenStepSizeMaxDecreasing.value < chosenStepSizeMinDecreasing.value) {
+            chosenStepSizeMaxDecreasing.value = chosenStepSizeMinDecreasing.value
+        }
         nextTick(() => {
             removeScrollEventListeners()
             addScrollEventListeners()
@@ -226,7 +230,7 @@ const updateSymmetricStepSize = () => {
         if (chosenStepDutyMaximum.value < chosenStepDutyMinimum.value) {
             chosenStepDutyMaximum.value = chosenStepDutyMinimum.value
         }
-        if (chosenStepSizeMinDecreasing.value === 0) chosenStepSizeMinDecreasing.value = 1
+        if (chosenStepSizeMinDecreasing.value === 0) chosenStepSizeMinDecreasing.value = 2
         if (chosenStepSizeMaxDecreasing.value === 0) chosenStepSizeMaxDecreasing.value = dutyMax
         nextTick(() => {
             removeScrollEventListeners()
@@ -383,7 +387,7 @@ onUnmounted(() => {
                     <tr>
                         <th
                             colspan="2"
-                            class="py-4 px-4 w-48 text-center items-center border-border-one border-b-2"
+                            class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-b-2"
                         >
                             {{ t('views.functions.stepSizeTitle') }}
                         </th>
@@ -452,7 +456,7 @@ onUnmounted(() => {
                                 class="min-duty-input"
                                 show-buttons
                                 :min="dutyMin"
-                                :max="chosenStepDutyMaximum"
+                                :max="chosenFixedStepSize ? dutyMax : chosenStepDutyMaximum"
                                 :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
@@ -530,7 +534,7 @@ onUnmounted(() => {
                                 class="step-min-decrease-input"
                                 show-buttons
                                 :min="dutyMin"
-                                :max="chosenStepSizeMaxDecreasing"
+                                :max="chosenFixedStepSize ? dutyMax : chosenStepSizeMaxDecreasing"
                                 :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
                                 :input-style="{ width: '5rem' }"
@@ -560,7 +564,7 @@ onUnmounted(() => {
                                 v-model="chosenStepSizeMaxDecreasing"
                                 class="step-max-decrease-input"
                                 show-buttons
-                                :min="Math.max(dutyMin, chosenStepDutyMinimum)"
+                                :min="Math.max(dutyMin, chosenStepSizeMinDecreasing)"
                                 :max="dutyMax"
                                 :suffix="` ${t('common.percentUnit')}`"
                                 button-layout="horizontal"
@@ -578,7 +582,7 @@ onUnmounted(() => {
                     <tr v-if="selectedType === FunctionType.Standard">
                         <th
                             colspan="2"
-                            class="py-4 px-4 w-48 text-center items-center border-border-one border-t-2"
+                            class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
                         >
                             {{ t('views.functions.hysteresis') }}
                         </th>
@@ -666,7 +670,7 @@ onUnmounted(() => {
                     <tr>
                         <th
                             colspan="2"
-                            class="py-4 px-4 w-48 text-center items-center border-border-one border-t-2"
+                            class="pt-4 pb-2 px-4 w-48 text-center items-center border-border-one border-t-2"
                         >
                             {{ t('views.functions.general') }}
                         </th>

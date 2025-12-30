@@ -579,7 +579,10 @@ export default {
             saveFunction: 'Save Function',
             functionType: 'Function Type',
             functionTypeTooltip:
-                'Function types:<br/>- Identity: Does not alter the computed profile value.<br/>- Standard: Alters profile value using an algorithm with hysteresis settings.<br/>- Exponential Moving Average: Alters profile value using an EMA algorithm.',
+                'Function types:<br/>' +
+                '- <b>Identity</b>: Applies step size limits but otherwise passes the profile value unchanged.<br/>' +
+                '- <b>Standard</b>: Applies step size limits and hysteresis settings for precise control over fan response timing and stability.<br/>' +
+                '- <b>Exponential Moving Average</b>: Smooths temperature fluctuations using a weighted average. Simpler but less precise than Standard.',
             stepSizeTitle: 'Step Size',
             fixedStepSize: 'Fixed',
             fixedStepSizeTooltip:
