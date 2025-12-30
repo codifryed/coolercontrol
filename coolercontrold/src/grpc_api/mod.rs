@@ -57,8 +57,13 @@ pub async fn create_grpc_api_server(
             API_RATE_BURST,
         )),
     };
+    let (health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<DeviceServiceServer<CCDeviceService>>()
+        .await;
     Server::builder()
         .layer(limiter_layer)
+        .add_service(health_service)
         .add_service(DeviceServiceServer::new(service))
         .serve_with_shutdown(addr, cancel_token.cancelled())
         .await?;
