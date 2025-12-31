@@ -859,6 +859,18 @@ const homeDashboardSet = async (): Promise<void> => {
     })
     await router.push({ name: 'system-overview' })
 }
+const updateDashboardName = (dashboardUID: UID, name: string): void => {
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    const dashboardItem = dashboardParent!.children.find(
+        (item: any) => item.dashboardUID === dashboardUID,
+    )
+    if (dashboardItem) {
+        dashboardItem.label = name
+    }
+}
+emitter.on('dashboard-name-update', ({ dashboardUID, name }: { dashboardUID: UID; name: string }) =>
+    updateDashboardName(dashboardUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /**

@@ -18,8 +18,9 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import type { Color, UID } from '@/models/Device.ts'
@@ -46,6 +47,7 @@ import _ from 'lodash'
 import ControlsOverview from '@/components/ControlsOverview.vue'
 import { component as Fullscreen } from 'vue-fullscreen'
 import { useI18n } from 'vue-i18n'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     dashboardUID?: UID
@@ -53,9 +55,42 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+
+const isEditingName = ref(false)
+const nameInput: Ref<string> = ref('')
+const nameInputRef = ref()
+const isCancelling = ref(false)
+
+const startEditingName = (): void => {
+    nameInput.value = dashboard.name
+    isEditingName.value = true
+    setTimeout(() => nameInputRef.value?.$el?.focus())
+}
+const saveName = (): void => {
+    const sanitized = deviceStore.sanitizeString(nameInput.value)
+    if (sanitized.length > 0) {
+        dashboard.name = sanitized
+        emitter.emit('dashboard-name-update', { dashboardUID: dashboard.uid, name: sanitized })
+    }
+    isEditingName.value = false
+}
+const cancelEditName = (event: KeyboardEvent): void => {
+    event.preventDefault()
+    isCancelling.value = true
+    nameInputRef.value?.$el?.blur()
+    isEditingName.value = false
+}
+const handleBlur = (): void => {
+    if (isCancelling.value) {
+        isCancelling.value = false
+        return
+    }
+    saveName()
+}
 
 const homeDashboard: Dashboard =
     settingsStore.dashboards.find((dashboard) => dashboard.uid === settingsStore.homeDashboard) ??
@@ -266,8 +301,25 @@ onUnmounted(() => {
 
 <template>
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{ dashboard.name }}</span>
+        <div class="flex pl-4 py-2 text-2xl overflow-hidden items-center">
+            <InputText
+                v-if="isEditingName"
+                ref="nameInputRef"
+                id="dashboard-name-input"
+                v-model="nameInput"
+                class="font-bold w-64 mt-[1px] !border-none !p-0 text-text-color-secondary"
+                @keydown.enter="saveName"
+                @keydown.esc="cancelEditName"
+                @blur="handleBlur"
+            />
+            <span
+                v-else
+                class="font-bold overflow-hidden overflow-ellipsis cursor-pointer hover:text-text-color-secondary"
+                @click="startEditingName"
+                v-tooltip.bottom="t('layout.menu.tooltips.rename')"
+            >
+                {{ dashboard.name }}
+            </span>
         </div>
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
