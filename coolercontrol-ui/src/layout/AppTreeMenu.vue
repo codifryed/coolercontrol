@@ -994,6 +994,16 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
     unPinItem({ id: profileUID })
 }
+const updateProfileName = (profileUID: UID, name: string): void => {
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')
+    const profileItem = profilesParent!.children.find((item: any) => item.uid === profileUID)
+    if (profileItem) {
+        profileItem.label = name
+    }
+}
+emitter.on('profile-name-update', ({ profileUID, name }: { profileUID: UID; name: string }) =>
+    updateProfileName(profileUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addFunction = (functionUID: UID): void => {

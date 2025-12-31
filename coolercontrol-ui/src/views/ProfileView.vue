@@ -35,6 +35,7 @@ import Button from 'primevue/button'
 import MultiSelect from 'primevue/multiselect'
 import {
     computed,
+    inject,
     nextTick,
     onMounted,
     onUnmounted,
@@ -72,6 +73,8 @@ import { useConfirm } from 'primevue/useconfirm'
 import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
 import OverlayProfileEditorChart from '@/components/OverlayProfileEditorChart.vue'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 echarts.use([
     GridComponent,
@@ -91,6 +94,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
@@ -1365,6 +1369,24 @@ const saveProfileState = async () => {
         })
     }
 }
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    if (newName.length > 0) {
+        const oldName = currentProfile.value.name
+        currentProfile.value.name = newName
+        const successful = await settingsStore.updateProfile(currentProfile.value.uid)
+        if (successful) {
+            emitter.emit('profile-name-update', {
+                profileUID: currentProfile.value.uid,
+                name: newName,
+            })
+            return true
+        } else {
+            currentProfile.value.name = oldName
+            return false
+        }
+    }
+    return false
+}
 
 const tempScrolled = (event: WheelEvent): void => {
     if (selectedTemp.value == null) return
@@ -1584,11 +1606,10 @@ onUnmounted(() => {
 
 <template>
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{
-                currentProfile.name
-            }}</span>
-        </div>
+        <entity-title-rename
+            :current-name="currentProfile.name"
+            :save-name-function="saveNameFunction"
+        />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="selectedType === ProfileType.Mix" class="p-2 pr-0 flex flex-row">
                 <Select
