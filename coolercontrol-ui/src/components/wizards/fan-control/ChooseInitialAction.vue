@@ -28,11 +28,12 @@ import { useI18n } from 'vue-i18n'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
 import { v4 as uuidV4 } from 'uuid'
 import {
-    mdiChartBoxOutline,
-    mdiChartBoxPlusOutline,
-    mdiCogOutline,
-    mdiFan,
-    mdiPencilBoxOutline,
+    mdiButtonCursor,
+    mdiEyeArrowRightOutline,
+    mdiFlaskOutline,
+    mdiChartTimelineVariant,
+    mdiGauge,
+    mdiPlusBoxOutline,
     mdiRestore,
 } from '@mdi/js'
 
@@ -53,18 +54,20 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 
-const selectedProfileName: string =
-    settingsStore.profiles.find((profile) => profile.uid === props.selectedProfileUID)?.name ??
-    'Unknown'
-const currentProfileMessage: string = `${t('components.wizards.fanControl.editCurrentProfile')}: "${selectedProfileName}"`
+// const selectedProfileName: string =
+//     settingsStore.profiles.find((profile) => profile.uid === props.selectedProfileUID)?.name ??
+//     'Unknown'
+// const currentProfileMessage: string = `${t('components.wizards.fanControl.editCurrentProfile')}: "${selectedProfileName}"`
+const currentProfileMessage: string = t('components.wizards.fanControl.editCurrentProfile')
 const profilesLength: number = settingsStore.profiles.length
 
 const selectedFunctionUID: UID =
     settingsStore.profiles.find((profile) => profile.uid === props.selectedProfileUID)
         ?.function_uid ?? '0'
-const selectedFunctionName: string =
-    settingsStore.functions.find((fun) => fun.uid === selectedFunctionUID)?.name ?? 'Unknown'
-const currentFunctionMessage: string = `${t('components.wizards.fanControl.editCurrentFunction')}: "${selectedFunctionName}"`
+// const selectedFunctionName: string =
+//     settingsStore.functions.find((fun) => fun.uid === selectedFunctionUID)?.name ?? 'Unknown'
+// const currentFunctionMessage: string = `${t('components.wizards.fanControl.editCurrentFunction')}: "${selectedFunctionName}"`
+const currentFunctionMessage: string = t('components.wizards.fanControl.editCurrentFunction')
 
 const redirectProfileAndClose = () => {
     router.push({ name: 'profiles', params: { profileUID: props.selectedProfileUID } })
@@ -118,80 +121,93 @@ const channelLabel =
                         <svg-icon
                             class="outline-0 mr-2"
                             type="mdi"
-                            :path="mdiFan"
+                            :path="mdiEyeArrowRightOutline"
                             :size="deviceStore.getREMSize(1.5)"
                         />
                         {{ t('components.wizards.fanControl.currentSettings') }}
                     </div>
                 </Button>
+                <div
+                    v-if="
+                        props.selectedProfileUID !== undefined && props.selectedProfileUID !== '0'
+                    "
+                    class="flex flex-row w-full gap-x-3"
+                >
+                    <Button
+                        v-if="
+                            props.selectedProfileUID !== undefined &&
+                            props.selectedProfileUID !== '0'
+                        "
+                        class="!p-2 bg-bg-one w-full !justify-start"
+                        @click="redirectProfileAndClose"
+                    >
+                        <div class="flex flex-row font-semibold items-center">
+                            <svg-icon
+                                class="outline-0 mr-2"
+                                type="mdi"
+                                :path="mdiChartTimelineVariant"
+                                :size="deviceStore.getREMSize(1.5)"
+                            />
+                            {{ currentProfileMessage }}
+                        </div>
+                    </Button>
+                    <Button
+                        v-if="selectedFunctionUID !== '0'"
+                        class="!p-2 bg-bg-one w-full !justify-start"
+                        @click="redirectFunctionAndClose"
+                    >
+                        <div class="flex flex-row font-semibold items-center">
+                            <svg-icon
+                                class="outline-0 mr-2"
+                                type="mdi"
+                                :path="mdiFlaskOutline"
+                                :size="deviceStore.getREMSize(1.5)"
+                            />
+                            {{ currentFunctionMessage }}
+                        </div>
+                    </Button>
+                </div>
+                <div class="flex flex-row w-full gap-x-3">
+                    <Button
+                        v-if="profilesLength > 1"
+                        class="!p-2 bg-bg-one w-full !justify-start"
+                        :label="t('components.wizards.fanControl.existingProfile')"
+                        @click="emit('nextStep', 2)"
+                    >
+                        <div class="flex flex-row font-semibold items-center">
+                            <svg-icon
+                                class="outline-0 mr-2"
+                                type="mdi"
+                                :path="mdiButtonCursor"
+                                :size="deviceStore.getREMSize(1.5)"
+                            />
+                            {{ t('components.wizards.fanControl.existingProfile') }}
+                        </div>
+                    </Button>
+                    <Button
+                        class="!p-2 bg-bg-one w-full !justify-start"
+                        @click="emit('nextStep', 3)"
+                    >
+                        <div class="flex flex-row font-semibold items-center">
+                            <svg-icon
+                                class="outline-0 mr-2"
+                                type="mdi"
+                                :path="mdiPlusBoxOutline"
+                                :size="deviceStore.getREMSize(1.5)"
+                            />
+                            {{ t('components.wizards.fanControl.createNewProfile') }}
+                        </div>
+                    </Button>
+                </div>
                 <Button class="!p-2 bg-bg-one w-full !justify-start" @click="emit('nextStep', 4)">
                     <div class="flex flex-row font-semibold items-center">
                         <svg-icon
                             class="outline-0 mr-2"
                             type="mdi"
-                            :path="mdiCogOutline"
+                            :path="mdiGauge"
                             :size="deviceStore.getREMSize(1.5)"
                         />
                         {{ t('components.wizards.fanControl.manualSpeed') }}
-                    </div>
-                </Button>
-                <Button
-                    v-if="profilesLength > 1"
-                    class="!p-2 bg-bg-one w-full !justify-start"
-                    :label="t('components.wizards.fanControl.existingProfile')"
-                    @click="emit('nextStep', 2)"
-                >
-                    <div class="flex flex-row font-semibold items-center">
-                        <svg-icon
-                            class="outline-0 mr-2"
-                            type="mdi"
-                            :path="mdiChartBoxOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                        {{ t('components.wizards.fanControl.existingProfile') }}
-                    </div>
-                </Button>
-                <Button class="!p-2 bg-bg-one w-full !justify-start" @click="emit('nextStep', 3)">
-                    <div class="flex flex-row font-semibold items-center">
-                        <svg-icon
-                            class="outline-0 mr-2"
-                            type="mdi"
-                            :path="mdiChartBoxPlusOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                        {{ t('components.wizards.fanControl.createNewProfile') }}
-                    </div>
-                </Button>
-                <Button
-                    v-if="
-                        props.selectedProfileUID !== undefined && props.selectedProfileUID !== '0'
-                    "
-                    class="!p-2 bg-bg-one w-full !justify-start"
-                    @click="redirectProfileAndClose"
-                >
-                    <div class="flex flex-row font-semibold items-center">
-                        <svg-icon
-                            class="outline-0 mr-2"
-                            type="mdi"
-                            :path="mdiPencilBoxOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                        {{ currentProfileMessage }}
-                    </div>
-                </Button>
-                <Button
-                    v-if="selectedFunctionUID !== '0'"
-                    class="!p-2 bg-bg-one w-full !justify-start"
-                    @click="redirectFunctionAndClose"
-                >
-                    <div class="flex flex-row font-semibold items-center">
-                        <svg-icon
-                            class="outline-0 mr-2"
-                            type="mdi"
-                            :path="mdiPencilBoxOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                        {{ currentFunctionMessage }}
                     </div>
                 </Button>
                 <Button
