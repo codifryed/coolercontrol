@@ -34,7 +34,7 @@ import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import { onMounted, ref, type Ref, watch, computed } from 'vue'
+import { onMounted, ref, type Ref, watch, computed, inject } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
@@ -57,10 +57,13 @@ import AxisOptions from '@/components/AxisOptions.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     customSensorID?: string
 }
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 interface AvailableTemp {
     deviceUID: string // needed here as well for the dropdown selector
@@ -130,8 +133,9 @@ const customSensor: CustomSensor = await collectCustomSensor()
 
 // @ts-ignore
 const sensorID: Ref<string> = ref(customSensor.id)
-const currentName: string =
-    deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value
+const currentName: Ref<string> = ref(
+    deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value,
+)
 const isUserName: boolean =
     deviceSettings.sensorsAndChannels.get(customSensor.id)?.userName != undefined
 const sensorName: Ref<string> = ref(isUserName ? currentName : '')
@@ -321,7 +325,24 @@ const saveSensor = async (): Promise<void> => {
         }
     }
 }
-
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
+    if (newName.length > 0) {
+        deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = newName
+        sensorName.value = newName
+        currentName.value = newName
+    } else {
+        // reset name
+        deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = undefined
+    }
+    emitter.emit('device-sensor-name-update', {
+        deviceUID: customSensorsDeviceUID,
+        sensorId: customSensor.id,
+        name: newName,
+    })
+    return true
+}
 const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
@@ -460,13 +481,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{
-                shouldCreateSensor
-                    ? `${t('views.customSensors.newSensor')}: ${currentName}`
-                    : currentName
-            }}</span>
-        </div>
+        <entity-title-rename :current-name="currentName" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="

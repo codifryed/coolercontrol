@@ -1092,6 +1092,21 @@ watch(settingsStore.alertsActive, alertStateChange)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+const updateDeviceSensorName = (deviceUID: UID, sensorId: string, name: string): void => {
+    const deviceParent = data.value.find((item: any) => item.deviceUID === deviceUID)
+    const sensorItem = deviceParent!.children.find((item: any) => item.name === sensorId)
+    if (sensorItem) {
+        sensorItem.label = name
+    }
+}
+emitter.on(
+    'device-sensor-name-update',
+    ({ deviceUID, sensorId, name }: { deviceUID: UID; sensorId: string; name: string }) =>
+        updateDeviceSensorName(deviceUID, sensorId, name),
+)
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // add group class to all collapse header items (used to show options menus on hover)
 const addGroup = (): void => {
     setTimeout(() => {
