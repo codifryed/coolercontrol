@@ -26,7 +26,16 @@ import {
     mdiTuneVerticalVariant,
 } from '@mdi/js'
 import Select from 'primevue/select'
-import { defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
+import {
+    defineAsyncComponent,
+    inject,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    ref,
+    type Ref,
+    watch,
+} from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -57,6 +66,8 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     deviceUID: UID
@@ -66,6 +77,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
@@ -78,7 +90,6 @@ const fanControlWizard = defineAsyncComponent(
 
 const contextIsDirty: Ref<boolean> = ref(false)
 
-const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
@@ -132,10 +143,11 @@ const viewTypeOptions = channelIsControllable()
           },
       ]
 
-const channelLabel =
+const channelLabel = ref(
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
-        ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName,
+)
 
 const hasChannelExtensionSettings = (): boolean => {
     for (const device of deviceStore.allDevices()) {
@@ -151,7 +163,7 @@ const hasChannelExtensionSettings = (): boolean => {
 const channelExtensionSettingsRef = ref()
 
 const createNewDashboard = (): Dashboard => {
-    const dash = new Dashboard(channelLabel)
+    const dash = new Dashboard(channelLabel.value)
     dash.timeRangeSeconds = 300
     // needed due to reduced default data type range:
     dash.dataTypes = []
@@ -257,6 +269,35 @@ const saveSetting = async () => {
         )
         contextIsDirty.value = false
     }
+}
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    if (newName.length > 0) {
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceUID)!
+            .sensorsAndChannels.get(props.channelName)!.userName = newName
+        channelLabel.value = newName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceUID,
+            sensorId: props.channelName,
+            name: newName,
+        })
+    } else {
+        // reset name
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceUID)!
+            .sensorsAndChannels.get(props.channelName)!.userName = undefined
+        channelLabel.value =
+            settingsStore.allUIDeviceSettings
+                .get(props.deviceUID)
+                ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceUID,
+            sensorId: props.channelName,
+            name: channelLabel.value,
+        })
+    }
+    return true
 }
 
 const manualScrolled = (event: WheelEvent): void => {
@@ -364,10 +405,7 @@ onUnmounted(() => {
 
 <template>
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
-            <span class="font-bold">{{ channelLabel }}</span>
-        </div>
+        <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0">
                 <Button
