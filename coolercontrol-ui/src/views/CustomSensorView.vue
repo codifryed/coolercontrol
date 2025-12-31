@@ -331,15 +331,23 @@ const saveNameFunction = async (newName: string): Promise<boolean> => {
         deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = newName
         sensorName.value = newName
         currentName.value = newName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: customSensorsDeviceUID,
+            sensorId: customSensor.id,
+            name: newName,
+        })
     } else {
         // reset name
         deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = undefined
+        currentName.value =
+            deviceSettings.sensorsAndChannels.get(customSensor.id)?.name ?? sensorID.value
+        sensorName.value = ''
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: customSensorsDeviceUID,
+            sensorId: customSensor.id,
+            name: currentName.value,
+        })
     }
-    emitter.emit('device-sensor-name-update', {
-        deviceUID: customSensorsDeviceUID,
-        sensorId: customSensor.id,
-        name: newName,
-    })
     return true
 }
 const updateTemps = () => {
