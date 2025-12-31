@@ -21,7 +21,7 @@
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import type { UID } from '@/models/Device.ts'
@@ -39,6 +39,8 @@ import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     deviceUID: UID
@@ -47,17 +49,18 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
-const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceUID)!.name
-const channelLabel =
+const channelLabel = ref(
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
-        ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName,
+)
 const createNewDashboard = (): Dashboard => {
-    const dash = new Dashboard(channelLabel)
+    const dash = new Dashboard(channelLabel.value)
     dash.timeRangeSeconds = 300
     // needed due to reduced default data type range:
     dash.dataTypes = []
@@ -114,6 +117,35 @@ const updateResponsiveGraphHeight = (): void => {
     }
 }
 const chartKey: Ref<string> = ref(uuidV4())
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    if (newName.length > 0) {
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceUID)!
+            .sensorsAndChannels.get(props.channelName)!.userName = newName
+        channelLabel.value = newName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceUID,
+            sensorId: props.channelName,
+            name: newName,
+        })
+    } else {
+        // reset name
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceUID)!
+            .sensorsAndChannels.get(props.channelName)!.userName = undefined
+        channelLabel.value =
+            settingsStore.allUIDeviceSettings
+                .get(props.deviceUID)
+                ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceUID,
+            sensorId: props.channelName,
+            name: channelLabel.value,
+        })
+    }
+    return true
+}
 onMounted(async () => {
     window.addEventListener('resize', updateResponsiveGraphHeight)
     setTimeout(updateResponsiveGraphHeight)
@@ -134,10 +166,7 @@ onUnmounted(() => {
 
 <template>
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-2xl overflow-hidden flex">
-            <span class="overflow-ellipsis overflow-hidden">{{ deviceLabel }}:&nbsp;</span>
-            <span class="font-bold">{{ channelLabel }}</span>
-        </div>
+        <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"
