@@ -20,7 +20,6 @@
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
-import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import type { Color, UID } from '@/models/Device.ts'
