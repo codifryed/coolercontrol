@@ -1045,6 +1045,16 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     )
     unPinItem({ id: functionUID })
 }
+const updateFunctionName = (functionUID: UID, name: string): void => {
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')
+    const functionItem = functionsParent!.children.find((item: any) => item.uid === functionUID)
+    if (functionItem) {
+        functionItem.label = name
+    }
+}
+emitter.on('function-name-update', ({ functionUID, name }: { functionUID: UID; name: string }) =>
+    updateFunctionName(functionUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addAlert = (alertUID: UID): void => {
