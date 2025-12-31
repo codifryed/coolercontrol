@@ -22,7 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { mdiArrowLeft, mdiFlaskEmptyOutline, mdiFlaskOutline, mdiFlaskPlusOutline } from '@mdi/js'
+import { mdiArrowLeft, mdiButtonCursor, mdiFlaskEmptyOutline, mdiPlusBoxOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { UID } from '@/models/Device.ts'
 
@@ -82,7 +82,7 @@ const defaultFunctionAction = () => {
                     <svg-icon
                         class="outline-0 mr-2"
                         type="mdi"
-                        :path="mdiFlaskOutline"
+                        :path="mdiButtonCursor"
                         :size="deviceStore.getREMSize(1.5)"
                     />
                     {{ t('components.wizards.fanControl.existingFunction') }}
@@ -97,7 +97,7 @@ const defaultFunctionAction = () => {
                     <svg-icon
                         class="outline-0 mr-2"
                         type="mdi"
-                        :path="mdiFlaskPlusOutline"
+                        :path="mdiPlusBoxOutline"
                         :size="deviceStore.getREMSize(1.5)"
                     />
                     {{ t('components.wizards.fanControl.createNewFunction') }}

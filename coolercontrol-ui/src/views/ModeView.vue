@@ -21,7 +21,7 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiBookmarkCheckOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, onMounted, type Ref, ref, watch } from 'vue'
+import { computed, inject, onMounted, type Ref, ref, watch } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -30,6 +30,8 @@ import { UID } from '@/models/Device.ts'
 import { DeviceSettingReadDTO } from '@/models/DaemonSettings.ts'
 import Button from 'primevue/button'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     modeUID: UID
@@ -37,6 +39,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -145,6 +148,20 @@ const activateMode = async (): Promise<void> => {
     await settingsStore.activateMode(props.modeUID)
 }
 
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    if (newName.length > 0) {
+        const successful = await settingsStore.updateModeName(currentMode.value.uid, newName)
+        if (successful) {
+            currentMode.value.name = newName
+            emitter.emit('mode-name-update', { modeUID: currentMode.value.uid, name: newName })
+            return true
+        } else {
+            return false
+        }
+    }
+    return false
+}
+
 onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, () => {
         initTableData()
@@ -155,11 +172,10 @@ onMounted(async () => {
 <template>
     <div class="flex h-[3.6rem] border-b-4 border-border-one items-center justify-between">
         <div class="flex flex-row overflow-hidden">
-            <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-                <span class="font-bold overflow-hidden overflow-ellipsis">{{
-                    currentMode.name
-                }}</span>
-            </div>
+            <entity-title-rename
+                :current-name="currentMode.name"
+                :save-name-function="saveNameFunction"
+            />
             <div
                 class="px-4 py-2 flex flex-row leading-none items-center"
                 v-tooltip.top="t('views.mode.modeHint')"

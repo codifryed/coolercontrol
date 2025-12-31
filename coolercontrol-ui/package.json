@@ -57,6 +57,7 @@
         "@vue/tsconfig": "^0.8.1",
         "abortcontroller-polyfill": "^1.7.8",
         "autoprefixer": "^10.4.21",
+        "baseline-browser-mapping": "^2.9.11",
         "jsdom": "^27.0.1",
         "npm-run-all": "^4.1.5",
         "postcss": "^8.5.6",

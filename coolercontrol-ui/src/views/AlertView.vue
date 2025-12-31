@@ -37,6 +37,7 @@ import { Emitter, EventType } from 'mitt'
 import { useI18n } from 'vue-i18n'
 import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
 
 interface Props {
     alertUID?: string
@@ -198,6 +199,26 @@ const saveAlert = async (): Promise<void> => {
         const successful = await settingsStore.updateAlert(alert.uid)
         if (successful) contextIsDirty.value = false
     }
+}
+
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    if (newName.length > 0) {
+        alert.name = newName
+        const successful = await settingsStore.updateAlert(alert.uid)
+        if (successful) {
+            const isAlreadyDirty = contextIsDirty.value
+            chosenName.value = newName
+            emitter.emit('alert-name-update', { alertUID: alert.uid, name: newName })
+            if (!isAlreadyDirty) {
+                setTimeout(() => (contextIsDirty.value = false))
+            }
+            return true
+        } else {
+            alert.name = chosenName.value
+            return false
+        }
+    }
+    return false
 }
 
 const updateValues = (): void => {
@@ -363,9 +384,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{ alert.name }}</span>
-        </div>
+        <entity-title-rename :current-name="chosenName" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2">
                 <Button
@@ -438,21 +457,6 @@ onMounted(async () => {
                     </Listbox>
                 </div>
                 <div class="mt-1 w-96">
-                    <!--                    <small class="ml-3 font-light text-sm text-text-color-secondary">-->
-                    <!--                        Name-->
-                    <!--                    </small>-->
-                    <!--                    <div class="mt-1 mb-3">-->
-                    <!--                        <InputText-->
-                    <!--                            ref="inputArea"-->
-                    <!--                            id="name"-->
-                    <!--                            v-model="chosenName"-->
-                    <!--                            class="w-96"-->
-                    <!--                            @keydown.enter="saveAlert"-->
-                    <!--                            :placeholder="chosenName"-->
-                    <!--                            v-tooltip.right="'Alert Name'"-->
-                    <!--                            :invalid="chosenName.length === 0"-->
-                    <!--                        />-->
-                    <!--                    </div>-->
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
                         {{ t('views.alerts.triggerConditions') }}
                     </small>

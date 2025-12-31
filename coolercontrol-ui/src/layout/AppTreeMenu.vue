@@ -195,6 +195,22 @@ const getLabelColor = (item: any): Color => {
     return ''
 }
 
+const getSideBorderColor = (item: any): Color => {
+    if (item.name == null && item.deviceUID != null) {
+        // Device
+        const color = ref('')
+        if (settingsStore.allUIDeviceSettings.get(item.deviceUID) == null) {
+            return color.value
+        }
+        // default device color should be the default css:
+        const deviceColor = settingsStore.allUIDeviceSettings.get(item.deviceUID)?.userColor
+        color.value = deviceColor != null ? deviceColor + '8C' : ''
+        return color.value
+    }
+    // Entity colors
+    return entityColor(item.id).value + '8C'
+}
+
 const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefined): number => {
     if (deviceUID == null) {
         // Group root like Dashboards, Modes, etc
@@ -859,6 +875,18 @@ const homeDashboardSet = async (): Promise<void> => {
     })
     await router.push({ name: 'system-overview' })
 }
+const updateDashboardName = (dashboardUID: UID, name: string): void => {
+    const dashboardParent = data.value.find((item: any) => item.id === 'dashboards')
+    const dashboardItem = dashboardParent!.children.find(
+        (item: any) => item.dashboardUID === dashboardUID,
+    )
+    if (dashboardItem) {
+        dashboardItem.label = name
+    }
+}
+emitter.on('dashboard-name-update', ({ dashboardUID, name }: { dashboardUID: UID; name: string }) =>
+    updateDashboardName(dashboardUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
@@ -934,6 +962,16 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
     unPinItem({ id: modeUID })
 }
+const updateModeName = (modeUID: UID, name: string): void => {
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    const modeItem = modesParent!.children.find((item: any) => item.uid === modeUID)
+    if (modeItem) {
+        modeItem.label = name
+    }
+}
+emitter.on('mode-name-update', ({ modeUID, name }: { modeUID: UID; name: string }) =>
+    updateModeName(modeUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addProfile = (profileUID: UID): void => {
@@ -972,6 +1010,16 @@ const deleteProfile = async (profileUID: UID): Promise<void> => {
     profilesParent.children = profilesParent.children.filter((item: any) => item.id !== profileUID)
     unPinItem({ id: profileUID })
 }
+const updateProfileName = (profileUID: UID, name: string): void => {
+    const profilesParent = data.value.find((item: any) => item.id === 'profiles')
+    const profileItem = profilesParent!.children.find((item: any) => item.uid === profileUID)
+    if (profileItem) {
+        profileItem.label = name
+    }
+}
+emitter.on('profile-name-update', ({ profileUID, name }: { profileUID: UID; name: string }) =>
+    updateProfileName(profileUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addFunction = (functionUID: UID): void => {
@@ -1013,6 +1061,16 @@ const deleteFunction = async (functionUID: UID): Promise<void> => {
     )
     unPinItem({ id: functionUID })
 }
+const updateFunctionName = (functionUID: UID, name: string): void => {
+    const functionsParent = data.value.find((item: any) => item.id === 'functions')
+    const functionItem = functionsParent!.children.find((item: any) => item.uid === functionUID)
+    if (functionItem) {
+        functionItem.label = name
+    }
+}
+emitter.on('function-name-update', ({ functionUID, name }: { functionUID: UID; name: string }) =>
+    updateFunctionName(functionUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addAlert = (alertUID: UID): void => {
@@ -1065,8 +1123,33 @@ const alertStateChange = (): void => {
     })
 }
 emitter.on('alert-state-change', alertStateChange)
+const updateAlertName = (alertUID: UID, name: string): void => {
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')
+    const alertItem = alertsParent!.children.find((item: any) => item.uid === alertUID)
+    if (alertItem) {
+        alertItem.label = name
+    }
+}
+emitter.on('alert-name-update', ({ alertUID, name }: { alertUID: UID; name: string }) =>
+    updateAlertName(alertUID, name),
+)
 
 watch(settingsStore.alertsActive, alertStateChange)
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const updateDeviceSensorName = (deviceUID: UID, sensorId: string, name: string): void => {
+    const deviceParent = data.value.find((item: any) => item.deviceUID === deviceUID)
+    const sensorItem = deviceParent!.children.find((item: any) => item.name === sensorId)
+    if (sensorItem) {
+        sensorItem.label = name
+    }
+}
+emitter.on(
+    'device-sensor-name-update',
+    ({ deviceUID, sensorId, name }: { deviceUID: UID; sensorId: string; name: string }) =>
+        updateDeviceSensorName(deviceUID, sensorId, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1804,6 +1887,7 @@ onUnmounted(() => {
                                 <div
                                     class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
                                     :class="{ 'h-12': childItem.isControllable }"
+                                    :style="{ 'border-color': getSideBorderColor(item) }"
                                 />
                                 <svg-icon
                                     v-if="childItem.icon"

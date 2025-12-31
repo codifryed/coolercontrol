@@ -72,7 +72,7 @@ const nextStep = () => {
                     placeholder="Function"
                     class="w-full mr-4 h-11 bg-bg-one !justify-end"
                     checkmark
-                    dropdown-icon="pi pi-chart-line"
+                    dropdown-icon="pi pi-directions"
                     scroll-height="40rem"
                 />
             </div>

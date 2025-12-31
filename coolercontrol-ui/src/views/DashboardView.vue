@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -46,6 +46,8 @@ import _ from 'lodash'
 import ControlsOverview from '@/components/ControlsOverview.vue'
 import { component as Fullscreen } from 'vue-fullscreen'
 import { useI18n } from 'vue-i18n'
+import { Emitter, EventType } from 'mitt'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
 
 interface Props {
     dashboardUID?: UID
@@ -53,9 +55,18 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    if (newName.length > 0) {
+        dashboard.name = newName
+        emitter.emit('dashboard-name-update', { dashboardUID: dashboard.uid, name: newName })
+    }
+    return false
+}
 
 const homeDashboard: Dashboard =
     settingsStore.dashboards.find((dashboard) => dashboard.uid === settingsStore.homeDashboard) ??
@@ -266,9 +277,10 @@ onUnmounted(() => {
 
 <template>
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{ dashboard.name }}</span>
-        </div>
+        <entity-title-rename
+            :current-name="dashboard.name"
+            :save-name-function="saveNameFunction"
+        />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div
                 v-if="dashboard.chartType == ChartType.TIME_CHART"

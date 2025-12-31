@@ -94,6 +94,7 @@ const nextStep = () => {
                     class="w-full h-11"
                     :invalid="nameInvalid"
                     :input-style="{ background: 'rgb(var(--color-bg-one))' }"
+                    autofocus
                 />
             </div>
             <div class="mt-0 flex flex-col">

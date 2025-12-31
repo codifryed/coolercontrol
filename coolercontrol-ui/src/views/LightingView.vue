@@ -24,7 +24,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/DaemonSettings'
 import { LightingMode, LightingModeType } from '@/models/LightingMode'
-import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import { ElColorPicker, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/color-picker/style/css'
@@ -37,6 +37,8 @@ import Slider from 'primevue/slider'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     deviceId: UID
@@ -45,16 +47,17 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const absoluteMaxColors = 48 // Current device max is 40
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 
-const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
-const channelLabel =
+const channelLabel = ref(
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
-        ?.name ?? props.channelName
+        ?.name ?? props.channelName,
+)
 const contextIsDirty: Ref<boolean> = ref(false)
 const lightingModes: Array<LightingMode> = []
 const noneLightingMode = new LightingMode('none', 'None', 0, 0, false, false, LightingModeType.NONE)
@@ -172,6 +175,35 @@ const saveLighting = async (): Promise<void> => {
     await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.channelName, setting)
     contextIsDirty.value = false
 }
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    if (newName.length > 0) {
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceId)!
+            .sensorsAndChannels.get(props.channelName)!.userName = newName
+        channelLabel.value = newName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceId,
+            sensorId: props.channelName,
+            name: newName,
+        })
+    } else {
+        // reset name
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceId)!
+            .sensorsAndChannels.get(props.channelName)!.userName = undefined
+        channelLabel.value =
+            settingsStore.allUIDeviceSettings
+                .get(props.deviceId)
+                ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceId,
+            sensorId: props.channelName,
+            name: channelLabel.value,
+        })
+    }
+    return true
+}
 
 const changeLightingSpeed = (event: ListboxChangeEvent): void => {
     if (event.value === null) {
@@ -244,10 +276,7 @@ onMounted(() => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
-            <span class="font-bold">{{ channelLabel }}</span>
-        </div>
+        <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2 flex flex-row">
                 <Button

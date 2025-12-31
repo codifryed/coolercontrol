@@ -23,7 +23,7 @@ import { FunctionType, getFunctionTypeDisplayName } from '@/models/Profile'
 import Button from 'primevue/button'
 import { type UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useToast } from 'primevue/usetoast'
 import InputNumber from 'primevue/inputnumber'
@@ -36,12 +36,15 @@ import 'element-plus/es/components/switch/style/css'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     functionUID: UID
 }
 
 const props = defineProps<Props>()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const toast = useToast()
@@ -140,6 +143,24 @@ const saveFunctionState = async () => {
             life: 3000,
         })
     }
+}
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    if (newName.length > 0) {
+        const oldName = currentFunction.value.name
+        currentFunction.value.name = newName
+        const successful = await settingsStore.updateFunction(currentFunction.value.uid)
+        if (successful) {
+            emitter.emit('function-name-update', {
+                functionUID: currentFunction.value.uid,
+                name: newName,
+            })
+            return true
+        } else {
+            currentFunction.value.name = oldName
+            return false
+        }
+    }
+    return false
 }
 
 const minDutyScrolled = (event: WheelEvent) => {
@@ -336,11 +357,10 @@ onUnmounted(() => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl overflow-hidden">
-            <span class="font-bold overflow-hidden overflow-ellipsis">{{
-                currentFunction.name
-            }}</span>
-        </div>
+        <entity-title-rename
+            :current-name="currentFunction.name"
+            :save-name-function="saveNameFunction"
+        />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2">
                 <Button
