@@ -32,7 +32,17 @@ import FileUpload, { type FileUploadUploaderEvent } from 'primevue/fileupload'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import type { UID } from '@/models/Device'
-import { computed, ComputedRef, nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import {
+    computed,
+    ComputedRef,
+    inject,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    type Ref,
+    ref,
+    watch,
+} from 'vue'
 import { LcdMode, LcdModeType } from '@/models/LcdMode'
 import {
     DeviceSettingReadDTO,
@@ -51,6 +61,8 @@ import InputText from 'primevue/inputtext'
 import { ElLoading } from 'element-plus'
 import { svgLoader, svgLoaderViewBox } from '@/models/Loader.ts'
 import { useI18n } from 'vue-i18n'
+import EntityTitleRename from '@/components/EntityTitleRename.vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {
     deviceId: UID
@@ -59,6 +71,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 interface AvailableTemp {
     deviceUID: string // needed here as well for the dropdown selector
@@ -80,10 +93,10 @@ const toast = useToast()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
-const deviceLabel = settingsStore.allUIDeviceSettings.get(props.deviceId)!.name
-const channelLabel =
+const channelLabel = ref(
     settingsStore.allUIDeviceSettings.get(props.deviceId)?.sensorsAndChannels.get(props.channelName)
-        ?.name ?? props.channelName
+        ?.name ?? props.channelName,
+)
 const contextIsDirty: Ref<boolean> = ref(false)
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
@@ -292,6 +305,35 @@ const saveLCDSetting = async () => {
     uploading.close()
     contextIsDirty.value = false
 }
+const saveNameFunction = async (newName: string): Promise<boolean> => {
+    // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
+    if (newName.length > 0) {
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceId)!
+            .sensorsAndChannels.get(props.channelName)!.userName = newName
+        channelLabel.value = newName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceId,
+            sensorId: props.channelName,
+            name: newName,
+        })
+    } else {
+        // reset name
+        settingsStore.allUIDeviceSettings
+            .get(props.deviceId)!
+            .sensorsAndChannels.get(props.channelName)!.userName = undefined
+        channelLabel.value =
+            settingsStore.allUIDeviceSettings
+                .get(props.deviceId)
+                ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
+        emitter.emit('device-sensor-name-update', {
+            deviceUID: props.deviceId,
+            sensorId: props.channelName,
+            name: channelLabel.value,
+        })
+    }
+    return true
+}
 
 const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
@@ -436,10 +478,7 @@ onUnmounted(() => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="flex pl-4 py-2 text-2xl">
-            <span class="overflow-hidden overflow-ellipsis">{{ deviceLabel }}:&nbsp;</span>
-            <span class="font-bold">{{ channelLabel }}</span>
-        </div>
+        <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div class="p-2 flex flex-row">
                 <Button
