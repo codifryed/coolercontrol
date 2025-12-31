@@ -946,6 +946,16 @@ const deleteMode = async (modeUID: UID): Promise<void> => {
     modesParent.children = modesParent.children.filter((item: any) => item.id !== modeUID)
     unPinItem({ id: modeUID })
 }
+const updateModeName = (modeUID: UID, name: string): void => {
+    const modesParent = data.value.find((item: any) => item.id === 'modes')
+    const modeItem = modesParent!.children.find((item: any) => item.uid === modeUID)
+    if (modeItem) {
+        modeItem.label = name
+    }
+}
+emitter.on('mode-name-update', ({ modeUID, name }: { modeUID: UID; name: string }) =>
+    updateModeName(modeUID, name),
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 const addProfile = (profileUID: UID): void => {
