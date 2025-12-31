@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { type Ref, ref } from 'vue'
+import { type Ref, ref, computed } from 'vue'
 import InputText from 'primevue/inputtext'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
@@ -34,6 +34,11 @@ const isEditingName = ref(false)
 const nameInput: Ref<string> = ref('')
 const nameInputRef = ref()
 const isCancelling = ref(false)
+
+const inputWidth = computed(() => {
+    const length = nameInput.value.length || 1
+    return `${length + 1}ch`
+})
 
 const startEditingName = (): void => {
     nameInput.value = props.currentName
@@ -73,7 +78,8 @@ const handleBlur = (): void => {
             ref="nameInputRef"
             id="alert-name-input"
             v-model="nameInput"
-            class="font-bold w-64 mt-[1px] !border-none !p-0 text-text-color-secondary"
+            class="font-bold mt-[1px] !border-none !p-0 text-text-color-secondary"
+            :style="{ width: inputWidth }"
             @keydown.enter="saveNameInline"
             @keydown.esc="cancelEditName"
             @blur="handleBlur"
