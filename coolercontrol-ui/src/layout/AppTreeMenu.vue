@@ -1077,6 +1077,16 @@ const alertStateChange = (): void => {
     })
 }
 emitter.on('alert-state-change', alertStateChange)
+const updateAlertName = (alertUID: UID, name: string): void => {
+    const alertsParent = data.value.find((item: any) => item.id === 'alerts')
+    const alertItem = alertsParent!.children.find((item: any) => item.uid === alertUID)
+    if (alertItem) {
+        alertItem.label = name
+    }
+}
+emitter.on('alert-name-update', ({ alertUID, name }: { alertUID: UID; name: string }) =>
+    updateAlertName(alertUID, name),
+)
 
 watch(settingsStore.alertsActive, alertStateChange)
 
