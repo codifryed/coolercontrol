@@ -327,7 +327,6 @@ const saveSensor = async (): Promise<void> => {
 }
 const saveNameFunction = async (newName: string): Promise<boolean> => {
     // Device Changes/Sensors and Custom Sensors save their name in the UI settings only.
-    deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = sensorName.value
     if (newName.length > 0) {
         deviceSettings.sensorsAndChannels.get(customSensor.id)!.userName = newName
         sensorName.value = newName
