@@ -195,6 +195,22 @@ const getLabelColor = (item: any): Color => {
     return ''
 }
 
+const getSideBorderColor = (item: any): Color => {
+    if (item.name == null && item.deviceUID != null) {
+        // Device
+        const color = ref('')
+        if (settingsStore.allUIDeviceSettings.get(item.deviceUID) == null) {
+            return color.value
+        }
+        // default device color should be the default css:
+        const deviceColor = settingsStore.allUIDeviceSettings.get(item.deviceUID)?.userColor
+        color.value = deviceColor != null ? deviceColor + '8C' : ''
+        return color.value
+    }
+    // Entity colors
+    return entityColor(item.id).value + '8C'
+}
+
 const deviceChannelIconSize = (deviceUID: UID | undefined, name: string | undefined): number => {
     if (deviceUID == null) {
         // Group root like Dashboards, Modes, etc
@@ -1871,6 +1887,7 @@ onUnmounted(() => {
                                 <div
                                     class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
                                     :class="{ 'h-12': childItem.isControllable }"
+                                    :style="{ 'border-color': getSideBorderColor(item) }"
                                 />
                                 <svg-icon
                                     v-if="childItem.icon"
