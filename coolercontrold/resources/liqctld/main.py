@@ -521,6 +521,7 @@ class DeviceService:
             ]
             return devices
         try:  # otherwise find devices
+            log.info("Searching for liquidctl devices...")
             log.debug("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
@@ -557,7 +558,7 @@ class DeviceService:
                     )
                 )
             device_names = [device.description for device in devices]
-            log.info(f"Devices found: {device_names}")
+            log.info(f"liquidctl devices found: {device_names}")
             return devices
         except ValueError as ve:  # ValueError can happen when no devices were found
             log.debug(f"ValueError when trying to find all devices: {ve}")
@@ -636,6 +637,7 @@ class DeviceService:
         )
 
     def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
+        log.info(f"Connecting to LC #{device_id} {lc_device.__class__.__name__}")
         log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
         # currently only smbus devices have options for connect()
         connect_job = self.device_executor.submit(device_id, lc_device.connect)
@@ -1296,6 +1298,7 @@ def server_run(device_service: DeviceService) -> None:
     os.chmod(SOCKET_ADDRESS, 0o600)
     # creates a listener thread for each connection:
     queue_size = max(1, len(device_service.devices))
+    log.info(f"liqctld initialized and listening for connections")
     server.socket.listen(queue_size)
 
     def shutdown_gracefully(_signum, _frame) -> None:
@@ -1371,14 +1374,14 @@ def main() -> None:
     # set the process name
     with open("/proc/self/comm", "w") as f:
         f.write("coolercontrol-liqctld")
-    log.info("Initializing liquidctl service...")
+    log.info("liqctld service starting...")
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.
     device_service.get_devices()
 
     server_run(device_service)
-    log.info("Liqctld service shutdown complete.")
+    log.info("liqctld service shutdown complete.")
 
 
 if __name__ == "__main__":
