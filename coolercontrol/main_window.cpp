@@ -387,25 +387,24 @@ void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")
 void MainWindow::notifyDaemonConnectionError() const {
   m_sysTrayIcon->showMessage("Daemon Connection Error",
                              "Connection with the daemon could not be established",
-                             // Qt doesn't support custom message icons - would have to use dbus
-                             QSystemTrayIcon::Critical);
+                             QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonErrors() const {
   m_sysTrayIcon->showMessage("Daemon Errors",
                              "The daemon logs contain errors. You should investigate.",
-                             QSystemTrayIcon::Warning);
+                             QIcon::fromTheme("dialog-warning", QIcon()));
 }
 
 void MainWindow::notifyDaemonDisconnected() const {
   m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
-                             QSystemTrayIcon::Warning);
+                             QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonConnectionRestored() const {
   m_sysTrayIcon->showMessage("Daemon Connection Restored",
                              "Connection with the daemon has been restored.",
-                             QSystemTrayIcon::Information);
+                             QIcon::fromTheme("emblem-default", QIcon()));
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
@@ -732,7 +731,7 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    m_sysTrayIcon->showMessage(msgTitle, "", QSystemTrayIcon::Information);
+    m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.
