@@ -385,30 +385,26 @@ void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")
 void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
 void MainWindow::notifyDaemonConnectionError() const {
-  m_sysTrayIcon->showMessage(
-      "Daemon Connection Error", "Connection with the daemon could not be established",
-      // Qt some issues around message icons, and we now use DBus notifications
-      // now directly to handle this better.
-      // Better to use theme icons here, as Gnome will use QSystemTrayIcons
-      // in the system tray, even though the notifications are in DBus.
-      QIcon::fromTheme("network-error", QIcon()));
+  // Qt has some issues around message icons, and we now use DBus notifications
+  // now directly to handle the important ones better.
+  // Better to the default message icons here, as Gnome and Ubuntu have funny issues
+  // in the system tray when using custom icons.
+  m_sysTrayIcon->showMessage("Daemon Connection Error",
+                             "Connection with the daemon could not be established");
 }
 
 void MainWindow::notifyDaemonErrors() const {
   m_sysTrayIcon->showMessage("Daemon Errors",
-                             "The daemon logs contain errors. You should investigate.",
-                             QIcon::fromTheme("dialog-warning", QIcon()));
+                             "The daemon logs contain errors. You should investigate.");
 }
 
 void MainWindow::notifyDaemonDisconnected() const {
-  m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
-                             QIcon::fromTheme("network-error", QIcon()));
+  m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
 }
 
 void MainWindow::notifyDaemonConnectionRestored() const {
   m_sysTrayIcon->showMessage("Daemon Connection Restored",
-                             "Connection with the daemon has been restored.",
-                             QIcon::fromTheme("emblem-default", QIcon()));
+                             "Connection with the daemon has been restored.");
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
@@ -738,7 +734,7 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    m_sysTrayIcon->showMessage(msgTitle, "", QIcon::fromTheme("dialog-information", QIcon()));
+    m_sysTrayIcon->showMessage(msgTitle, "");
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.
