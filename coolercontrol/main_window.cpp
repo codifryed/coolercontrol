@@ -28,6 +28,7 @@
 #include <QMenu>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
+#include <QProcess>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringBuilder>  // for % operator
@@ -384,27 +385,47 @@ void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")
 
 void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
-void MainWindow::notifyDaemonConnectionError() const {
+void MainWindow::notifyDaemonConnectionError() {
   // Qt has some issues around message icons, and we now use DBus notifications
   // now directly to handle the important ones better.
   // Better to the default message icons here, as Gnome and Ubuntu have funny issues
   // in the system tray when using custom icons.
-  m_sysTrayIcon->showMessage("Daemon Connection Error",
-                             "Connection with the daemon could not be established");
+  // m_sysTrayIcon->showMessage("Daemon Connection Error",
+  //                            "Connection with the daemon could not be established");
+  QProcess::startDetached("coolercontrold",
+                          QStringList() << "notify"
+                                        << "Daemon Connection Error"
+                                        << "Connection with the daemon could not be established"
+                                        << "1");
 }
 
-void MainWindow::notifyDaemonErrors() const {
-  m_sysTrayIcon->showMessage("Daemon Errors",
-                             "The daemon logs contain errors. You should investigate.");
+void MainWindow::notifyDaemonErrors() {
+  // m_sysTrayIcon->showMessage("Daemon Errors",
+  //                            "The daemon logs contain errors. You should investigate.");
+  QProcess::startDetached("coolercontrold",
+                          QStringList() << "notify"
+                                        << "Daemon Errors"
+                                        << "The daemon logs contain errors. You should investigate."
+                                        << "4");
 }
 
-void MainWindow::notifyDaemonDisconnected() const {
-  m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
+void MainWindow::notifyDaemonDisconnected() {
+  // m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
+  QProcess::startDetached("coolercontrold", QStringList()
+                                                << "notify"
+                                                << "Daemon Disconnected"
+                                                << "Connection with the daemon has been lost"
+                                                << "1");
 }
 
-void MainWindow::notifyDaemonConnectionRestored() const {
-  m_sysTrayIcon->showMessage("Daemon Connection Restored",
-                             "Connection with the daemon has been restored.");
+void MainWindow::notifyDaemonConnectionRestored() {
+  // m_sysTrayIcon->showMessage("Daemon Connection Restored",
+  //                            "Connection with the daemon has been restored.");
+  QProcess::startDetached("coolercontrold", QStringList()
+                                                << "notify"
+                                                << "Daemon Connection Restored"
+                                                << "Connection with the daemon has been restored."
+                                                << "2");
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
@@ -712,7 +733,9 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    m_sysTrayIcon->showMessage(msgTitle, "");
+    // m_sysTrayIcon->showMessage(msgTitle, "");
+    QProcess::startDetached("coolercontrold", QStringList() << "notify" << msgTitle << ""
+                                                            << "4");
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.
