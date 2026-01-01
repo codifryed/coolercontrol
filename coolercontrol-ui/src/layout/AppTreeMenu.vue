@@ -120,6 +120,13 @@ const daemonState = useDaemonState()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const { t } = useI18n()
 
+// Reactive key to force re-computation of colors when theme changes
+const themeColorKey = ref(0)
+const onThemeChanged = () => {
+    colorStore.reLoadThemeColors()
+    themeColorKey.value++
+}
+
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
 const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Ref<Color> => {
@@ -141,6 +148,8 @@ const deviceChannelColor = (deviceUID: UID | undefined, channelName: string): Re
     return color
 }
 const deviceColor = (deviceUID: UID | undefined): Ref<Color> => {
+    // Access themeColorKey to trigger reactivity on theme change
+    void themeColorKey.value
     // blank color will use the theme's css
     const color = ref('')
     if (deviceUID != null) {
@@ -174,6 +183,8 @@ const entityColor = (entityID: string): Ref<Color> => {
     return color
 }
 const getIconColor = (item: any): Color => {
+    // Access themeColorKey to trigger reactivity on theme change
+    void themeColorKey.value
     if (item.color != null) {
         return item.color
     }
@@ -1183,6 +1194,9 @@ onMounted(async () => {
         createPinnedMenu()
     })
 
+    // Listen for theme change events to update colors
+    window.addEventListener('theme-changed', onThemeChanged)
+
     addGroup()
 })
 
@@ -1192,6 +1206,7 @@ onUnmounted(() => {
         createTreeMenu()
         createPinnedMenu()
     })
+    window.removeEventListener('theme-changed', onThemeChanged)
 })
 </script>
 
