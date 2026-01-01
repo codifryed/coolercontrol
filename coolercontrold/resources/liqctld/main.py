@@ -64,6 +64,7 @@ from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 SOCKET_ADDRESS: str = "/run/coolercontrold-liqctld.sock"
 DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
+MAX_CONNECT_LIQUIDCTL_RETRIES: int = 5
 
 #####################################################################
 # Models
@@ -529,8 +530,9 @@ class DeviceService:
             self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
-                self.devices[index_id] = lc_device
+                # connect to the device before adding it to the list as "ready"
                 self._connect_device(index_id, lc_device)
+                self.devices[index_id] = lc_device
                 description: str = getattr(lc_device, "description", "")
                 serial_number: Optional[str] = getattr(
                     lc_device, "_serial_number", None
@@ -564,6 +566,10 @@ class DeviceService:
             log.debug(f"ValueError when trying to find all devices: {ve}")
             log.info("No Liquidctl devices detected")
             return []
+        except BaseException as e:
+            self.devices.clear()  # in case a single device has an issue and gets hung up
+            raise e
+        # all other exceptions are handled on startup with retry
 
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
@@ -1369,6 +1375,24 @@ def setup_logging() -> None:
     root_logger.addHandler(console_handler)
 
 
+def try_connect_to_liquidctl_devices(device_service: DeviceService) -> None:
+    for attempt in range(MAX_CONNECT_LIQUIDCTL_RETRIES):
+        try:
+            device_service.get_devices()
+            return
+        except BaseException as e:
+            if attempt < MAX_CONNECT_LIQUIDCTL_RETRIES - 1:
+                log.info(
+                    f"Exception when trying to connect to liquidctl devices (attempt {attempt + 1}/{MAX_CONNECT_LIQUIDCTL_RETRIES}): {e}"
+                )
+                time.sleep(1)
+            else:
+                log.error(
+                    f"Failed to connect to liquidctl devices after {MAX_CONNECT_LIQUIDCTL_RETRIES} attempts. Shutting down liqctld: {traceback.format_exc()}"
+                )
+                raise e
+
+
 def main() -> None:
     setup_logging()
     # set the process name
@@ -1378,7 +1402,7 @@ def main() -> None:
     device_service = DeviceService()
     # We call liquidctl to find all devices, so that we can adjust the number of threads needed
     #  for parallel device communication.
-    device_service.get_devices()
+    try_connect_to_liquidctl_devices(device_service)
 
     server_run(device_service)
     log.info("liqctld service shutdown complete.")
