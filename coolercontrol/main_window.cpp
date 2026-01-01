@@ -690,7 +690,10 @@ void MainWindow::tryDaemonConnection() const {
     } else {
       qInfo() << "Connection to the Daemon Reestablished";
       notifyDaemonConnectionRestored();
-      m_alertCount = 0;  // reset alert count on reconnection
+      // reset states on reconnection
+      m_alertCount = 0;
+      m_daemonHasErrors = false;
+      m_daemonHasWarnings = false;
       // systray badge update will be handled by re-checking for Alerts and Errors:
       requestAllAlerts();
       requestDaemonErrors();
