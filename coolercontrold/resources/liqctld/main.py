@@ -1304,7 +1304,7 @@ def server_run(device_service: DeviceService) -> None:
     os.chmod(SOCKET_ADDRESS, 0o600)
     # creates a listener thread for each connection:
     queue_size = max(1, len(device_service.devices))
-    log.info(f"liqctld initialized and listening for connections")
+    log.info("liqctld initialized and listening for connections")
     server.socket.listen(queue_size)
 
     def shutdown_gracefully(_signum, _frame) -> None:
@@ -1383,12 +1383,14 @@ def try_connect_to_liquidctl_devices(device_service: DeviceService) -> None:
         except BaseException as e:
             if attempt < MAX_CONNECT_LIQUIDCTL_RETRIES - 1:
                 log.info(
-                    f"Exception when trying to connect to liquidctl devices (attempt {attempt + 1}/{MAX_CONNECT_LIQUIDCTL_RETRIES}): {e}"
+                    "Exception when trying to connect to liquidctl devices "
+                    f"(attempt {attempt + 1}/{MAX_CONNECT_LIQUIDCTL_RETRIES}): {e}"
                 )
                 time.sleep(1)
             else:
                 log.error(
-                    f"Failed to connect to liquidctl devices after {MAX_CONNECT_LIQUIDCTL_RETRIES} attempts. Shutting down liqctld: {traceback.format_exc()}"
+                    f"Failed to connect to liquidctl devices after {MAX_CONNECT_LIQUIDCTL_RETRIES} "
+                    f"attempts. Shutting down liqctld: {traceback.format_exc()}"
                 )
                 raise e
 
