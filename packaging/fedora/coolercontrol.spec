@@ -42,8 +42,11 @@ your system quiet, cool, and stable.
 %cmake_install
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications metadata/%{ap_id}.desktop
 install -Dpm 644 metadata/%{ap_id}.svg -t %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
+install -Dpm 644 metadata/%{ap_id}-alert.svg -t %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 install -Dpm 644 metadata/%{ap_id}-symbolic.svg -t %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
+install -Dpm 644 metadata/%{ap_id}-symbolic-alert.svg -t %{buildroot}%{_datadir}/icons/hicolor/symbolic/apps
 install -Dpm 644 metadata/%{ap_id}.png -t %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+install -Dpm 644 metadata/%{ap_id}-alert.png -t %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 install -Dpm 644 metadata/%{ap_id}.metainfo.xml -t %{buildroot}%{_metainfodir}
 install -Dpm 644 man/%{name}.1 -t %{buildroot}%{_mandir}/man1
 
