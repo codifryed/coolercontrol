@@ -385,9 +385,13 @@ void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")
 void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
 void MainWindow::notifyDaemonConnectionError() const {
-  m_sysTrayIcon->showMessage("Daemon Connection Error",
-                             "Connection with the daemon could not be established",
-                             QIcon::fromTheme("network-error", QIcon()));
+  m_sysTrayIcon->showMessage(
+      "Daemon Connection Error", "Connection with the daemon could not be established",
+      // Qt some issues around message icons, and we now use DBus notifications
+      // now directly to handle this better.
+      // Better to use theme icons here, as Gnome will use QSystemTrayIcons
+      // in the system tray, even though the notifications are in DBus.
+      QIcon::fromTheme("network-error", QIcon()));
 }
 
 void MainWindow::notifyDaemonErrors() const {
