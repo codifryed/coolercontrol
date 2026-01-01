@@ -26,23 +26,22 @@ export default {
             'relative',
             {
                 '!transition-none !transform-none !w-screen !h-screen !max-h-full !top-0 !left-0':
-                    props.position == 'full',
+                    props.position === 'full',
             },
 
             // Size
             {
-                'h-full w-80': props.position == 'left' || props.position == 'right',
-                'h-auto w-full': props.position == 'top' || props.position == 'bottom',
+                'h-full w-80': props.position === 'left' || props.position === 'right',
+                'h-auto w-full': props.position === 'top' || props.position === 'bottom',
             },
 
             // Shape
-            'border-0 dark:border',
+            // 'border-0 dark:border',
             'shadow-lg',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-white/80',
-            'dark:border-surface-700',
+            'bg-bg-two',
+            'text-text-color',
 
             // Transitions
             'transition-transform',
@@ -59,11 +58,11 @@ export default {
             'shrink-0',
 
             // Spacing
-            'p-5',
+            'p-2',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80',
+            'bg-bg-two',
+            'text-text-color',
         ],
     },
     title: {
@@ -89,17 +88,17 @@ export default {
             'rounded-full',
 
             // Colors
-            'text-surface-500',
+            'text-text-color-secondary',
             'bg-transparent',
 
             // Transitions
             'transition duration-200 ease-in-out',
 
             // States
-            'hover:text-surface-700 dark:hover:text-white/80',
-            'hover:bg-surface-100 dark:hover:bg-surface-800/80',
+            'hover:text-text-color',
+            // 'hover:bg-surface-100 dark:hover:bg-surface-800/80',
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-inset',
-            'focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+            // 'focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Misc
             'overflow-hidden',
@@ -118,7 +117,7 @@ export default {
     content: {
         class: [
             // Spacing and Size
-            'p-5',
+            // 'p-5', // let caller set the spacing
             'pt-0',
             'h-full',
             'w-full',
@@ -133,7 +132,7 @@ export default {
             // Transitions
             'transition-all',
             'duration-300',
-            { 'p-5': !props.position == 'full' },
+            { 'p-5': !props.position === 'full' },
 
             // Background and Effects
             {

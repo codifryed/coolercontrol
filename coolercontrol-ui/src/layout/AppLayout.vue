@@ -19,6 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiMenu } from '@mdi/js'
 import {
     ScrollAreaRoot,
     ScrollAreaScrollbar,
@@ -34,6 +35,9 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, inject, onMounted, Ref, ref } from 'vue'
 import { Emitter, EventType } from 'mitt'
+import { useWindowSize } from '@vueuse/core'
+import Button from 'primevue/button'
+import Drawer from 'primevue/drawer'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -43,6 +47,7 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const minMenuWidthRem: number = 14
 const minViewWidthRem: number = 18
 const splitterGroupWidthPx: Ref<number> = ref(1900)
+const { width } = useWindowSize()
 
 const calculateSplitterWidthPercent = (rem: number): number =>
     (deviceStore.getREMSize(rem) / splitterGroupWidthPx.value) * 100
@@ -82,6 +87,7 @@ const expandSideMenu = (): void => {
 }
 emitter.on('expand-side-menu', expandSideMenu)
 
+const drawerVisible = ref(false)
 onMounted(async () => {
     // apply the saved change on startup to the menu itself.
     // Note: Expand automatically happens on startup for the Splitter
@@ -121,7 +127,91 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="flex flex-row h-screen w-full bg-bg-two text-text-color">
+    <!--Mobile View-->
+    <div
+        v-if="width < 768"
+        class="relative align-middle justify-items-center w-full bg-bg-two text-text-color"
+    >
+        <Drawer
+            v-model:visible="drawerVisible"
+            header="CoolerControl"
+            class="!w-full bg-bg-two text-text-color"
+        >
+            <div class="flex flex-row" @click="drawerVisible = false">
+                <div class="flex-col w-18 py-2 px-3 mx-0 h-full bg-bg-two">
+                    <app-side-topbar />
+                </div>
+                <div class="h-full w-full pr-1 pb-2 bg-bg-two">
+                    <ScrollAreaRoot
+                        class="h-full w-full p-2 bg-bg-one rounded-lg border-border-one border"
+                        type="hover"
+                        :scroll-hide-delay="100"
+                    >
+                        <ScrollAreaViewport class="h-full">
+                            <AppTreeMenu />
+                        </ScrollAreaViewport>
+                        <ScrollAreaScrollbar
+                            class="flex select-none touch-none py-2 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-1.5"
+                            orientation="vertical"
+                        >
+                            <ScrollAreaThumb
+                                class="flex-1 bg-text-color-secondary opacity-40 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-2 before:min-h-[44px]"
+                            />
+                        </ScrollAreaScrollbar>
+                    </ScrollAreaRoot>
+                </div>
+            </div>
+        </Drawer>
+        <div class="absolute top-0 left-1 z-50">
+            <Button
+                class="!rounded-lg left-0 top-1 !border border-border-one w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none bg-bg-two"
+                @click="drawerVisible = true"
+            >
+                <svg-icon
+                    type="mdi"
+                    class="text-text-color"
+                    :path="mdiMenu"
+                    :size="deviceStore.getREMSize(2)"
+                />
+            </Button>
+        </div>
+        <div class="flex flex-row h-screen w-full p-2 bg-bg-two text-text-color">
+            <ScrollAreaRoot
+                class="h-full w-full bg-bg-one rounded-lg border-border-one border"
+                type="hover"
+                :scroll-hide-delay="100"
+            >
+                <ScrollAreaViewport class="h-full">
+                    <router-view v-slot="{ Component, route }">
+                        <Suspense>
+                            <component
+                                :is="Component"
+                                :key="route.path + (route.query?.key ?? '')"
+                            />
+                        </Suspense>
+                    </router-view>
+                </ScrollAreaViewport>
+                <ScrollAreaScrollbar
+                    class="flex select-none touch-none py-2 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-1.5"
+                    orientation="vertical"
+                >
+                    <ScrollAreaThumb
+                        class="flex-1 bg-text-color-secondary opacity-40 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-2 before:min-h-[44px]"
+                    />
+                </ScrollAreaScrollbar>
+                <ScrollAreaScrollbar
+                    class="flex select-none touch-none py-2 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-1.5"
+                    orientation="horizontal"
+                >
+                    <ScrollAreaThumb
+                        class="flex-1 bg-text-color-secondary opacity-40 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-2 before:min-h-[44px]"
+                    />
+                </ScrollAreaScrollbar>
+            </ScrollAreaRoot>
+        </div>
+    </div>
+    <!--Desktop View-->
+    <div v-else class="flex flex-row h-screen w-full bg-bg-two text-text-color">
         <div class="flex-col w-18 py-2 px-3 mx-auto h-screen bg-bg-two">
             <app-side-topbar />
         </div>
