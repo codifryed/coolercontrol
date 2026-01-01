@@ -155,6 +155,6 @@ class MainWindow final : public QMainWindow {
 
   static QIcon createIconWithNotificationBadge(const QIcon& baseIcon, bool redColor);
 
-  void applyTrayIconNotificationBadge(bool forceRedBadge = false) const;
+  void applyTrayIconNotificationBadge(bool forceBadge = false) const;
 };
 #endif  // MAINWINDOW_H

@@ -408,6 +408,7 @@ void MainWindow::notifyDaemonConnectionRestored() const {
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
+  // This doesn't work very well with newer Gnome and symbolic icons. Using actual icons.
   constexpr int iconSize = 64;
   QPixmap pixmap = baseIcon.pixmap(iconSize, iconSize);
   QPainter painter(&pixmap);
@@ -425,38 +426,15 @@ QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const b
   return (pixmap);
 }
 
-void MainWindow::applyTrayIconNotificationBadge(const bool forceRedBadge) const {
-  auto addBadge = false;
-  auto redColor = true;
-  if (forceRedBadge) {
-    addBadge = true;
-  } else {
-    if (m_daemonHasWarnings) {
-      addBadge = true;
-      redColor = false;
-    }
-    if (m_daemonHasErrors) {
-      addBadge = true;
-      redColor = true;
-    }
-    if (m_alertCount > 0) {
-      addBadge = true;
-      redColor = true;
-    }
-  }
-  if (addBadge) {
-    const QIcon baseIcon = QIcon::fromTheme(
-        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
-    m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon, redColor));
+void MainWindow::applyTrayIconNotificationBadge(const bool forceBadge) const {
+  if (forceBadge || m_daemonHasErrors || m_daemonHasWarnings || m_alertCount > 0) {
+    m_sysTrayIcon->setIcon(QIcon::fromTheme(
+        APP_ID_SYMBOLIC_ALERT.data(),
+        QIcon::fromTheme(APP_ID_ALERT.data(),
+                         QIcon(":/icons/org.coolercontrol.CoolerControl-alert.svg"))));
   } else {
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
         APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
-    // hide/show is needed to "refresh" Gnome's system tray icon, as residual color stays
-    if (const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
-        desktop.contains("gnome")) {
-      m_sysTrayIcon->hide();
-      m_sysTrayIcon->show();
-    }
   }
 }
 

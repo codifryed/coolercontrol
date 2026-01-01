@@ -21,7 +21,9 @@
 
 const std::string COOLER_CONTROL_VERSION = "3.0.3";
 const std::string APP_ID = "org.coolercontrol.CoolerControl";
+const std::string APP_ID_ALERT = "org.coolercontrol.CoolerControl-alert";
 const std::string APP_ID_SYMBOLIC = "org.coolercontrol.CoolerControl-symbolic";
+const std::string APP_ID_SYMBOLIC_ALERT = "org.coolercontrol.CoolerControl-symbolic-alert";
 const std::string DBUS_SERVICE_NAME = "org.coolercontrol.CoolerControl.SingleInstance";
 const std::string DBUS_PATH = "/";
 const std::string SETTING_DAEMON_ADDRESS = "daemonAddress";
