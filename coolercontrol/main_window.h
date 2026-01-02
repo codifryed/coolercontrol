@@ -145,16 +145,16 @@ class MainWindow final : public QMainWindow {
 
   void watchAlerts() const;
 
-  void notifyDaemonConnectionError() const;
+  static void notifyDaemonConnectionError();
 
-  void notifyDaemonErrors() const;
+  static void notifyDaemonErrors();
 
-  void notifyDaemonDisconnected() const;
+  static void notifyDaemonDisconnected();
 
-  void notifyDaemonConnectionRestored() const;
+  static void notifyDaemonConnectionRestored();
 
   static QIcon createIconWithNotificationBadge(const QIcon& baseIcon, bool redColor);
 
-  void applyTrayIconNotificationBadge(bool forceRedBadge = false) const;
+  void applyTrayIconNotificationBadge(bool forceBadge = false) const;
 };
 #endif  // MAINWINDOW_H

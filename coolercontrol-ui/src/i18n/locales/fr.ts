@@ -859,7 +859,7 @@ export default {
             beforeStart: "Avant de commencer, l'une des choses les plus importantes à savoir est",
             settingUpDrivers: 'la configuration de vos pilotes matériels',
             fansNotShowing:
-                "Si vos ventilateurs n'apparaissent pas ou ne peuvent pas être contrôlés, il y a probablement un problème avec les pilotes du noyau actuellement installés.",
+                "Si vos ventilateurs ou appareils n'apparaissent pas ou ne peuvent pas être contrôlés, cela est souvent dû à des pilotes du noyau manquants ou obsolètes.",
             checkDocs:
                 "Avant d'ouvrir un problème, veuillez confirmer que tous les pilotes ont été correctement chargés en",
             checkingDocs: 'consultant la documentation de Support Matériel',
@@ -868,34 +868,33 @@ export default {
             letsStart: "D'accord, commençons !",
             dashboards: 'Tableaux de Bord',
             dashboardsDesc:
-                'Les tableaux de bord sont une collection organisée de graphiques pour visualiser les données des capteurs de votre système.',
+                'Les tableaux de bord permettent de créer des vues personnalisées avec des graphiques pour surveiller les températures, vitesses de ventilateurs et autres données en temps réel.',
             controls: 'Contrôles',
             controlsDesc:
-                "Les contrôles offrent une interface interactive pour gérer les ventilateurs et autres appareils de votre système. Chaque canal contrôlable vous permet d'ajuster les vitesses, de définir des profils et de surveiller l'état en temps réel.",
+                'Les contrôles permettent de régler les vitesses des ventilateurs, appliquer des profils et gérer les dispositifs de refroidissement.',
             profiles: 'Profils',
             profilesDesc:
-                'Les profils définissent des paramètres personnalisables pour contrôler les vitesses des ventilateurs. Le même profil peut être utilisé pour plusieurs ventilateurs et appareils.',
+                'Les profils définissent des courbes de ventilateur qui réagissent aux changements de température. Réutilisez le même profil sur plusieurs appareils.',
             functions: 'Fonctions',
             functionsDesc:
-                "Les fonctions sont des algorithmes configurables qui peuvent être appliqués à la sortie d'un profil. Cela peut être utile pour gérer quand les changements de vitesse des ventilateurs se produisent.",
+                'Les fonctions sont appliquées aux profils pour lisser les transitions de vitesse des ventilateurs et réduire le bruit.',
             appInfo: "Informations sur l'Application et le Daemon",
             appInfoDesc:
-                "En cliquant sur le logo, vous ouvrez la page d'Informations sur l'Application, où vous pouvez obtenir des informations sur l'application, le daemon du système et les journaux. C'est là que vous devez aller lors du dépannage, et il y a un petit badge de statut du daemon ici pour vous informer de tout problème potentiel.",
+                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon et les journaux. Un badge de statut vous alerte en cas de problème.",
             quickAdd: 'Ajout Rapide',
             quickAddDesc:
-                "Il s'agit d'un menu pour ajouter facilement de nouveaux éléments comme des Tableaux de bord, des Profils, etc.",
+                'Créez rapidement de nouveaux tableaux de bord, profils, fonctions et plus.',
             dashboardQuick: 'Menu Rapide du Tableau de Bord',
             dashboardQuickDesc:
-                "Il s'agit d'un menu pour accéder rapidement à vos tableaux de bord, même si le menu principal est réduit.",
+                "Accédez à n'importe quel tableau de bord, même lorsque le menu principal est réduit.",
             settings: 'Paramètres',
             settingsDesc:
-                "Ce bouton ouvrira la page des paramètres contenant différents paramètres d'interface utilisateur et de daemon.",
+                "Configurez les préférences de l'interface, les options du daemon et le comportement du système.",
             restartMenu: 'Menu de Redémarrage',
-            restartMenuDesc:
-                "Ici, vous pouvez choisir de recharger l'interface utilisateur ou de redémarrer le daemon du système.",
+            restartMenuDesc: "Rechargez l'interface ou redémarrez le daemon système si nécessaire.",
             thatsIt: "C'est tout !",
-            ready: "Et n'oubliez pas, si vos ventilateurs n'apparaissent pas ou ne peuvent pas être contrôlés, consultez la documentation de Support Matériel",
-            startNow: "D'accord, vous êtes prêt à commencer !",
+            ready: 'Si des appareils sont manquants ou non contrôlables, essayez',
+            startNow: 'Tout est prêt !',
         },
         axisOptions: {
             title: "Options d'Axe",

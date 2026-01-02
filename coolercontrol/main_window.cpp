@@ -28,6 +28,7 @@
 #include <QMenu>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
+#include <QProcess>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringBuilder>  // for % operator
@@ -210,7 +211,9 @@ void MainWindow::initSystemTray() {
 
   m_sysTrayIcon->setContextMenu(m_trayIconMenu);
   m_sysTrayIcon->setIcon(QIcon::fromTheme(
-      APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
+      APP_ID_SYMBOLIC.data(),
+      QIcon::fromTheme(APP_ID.data(),
+                       QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic.svg"))));
   m_sysTrayIcon->setToolTip("CoolerControl");
   m_sysTrayIcon->show();
 
@@ -384,31 +387,51 @@ void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")
 
 void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
-void MainWindow::notifyDaemonConnectionError() const {
-  m_sysTrayIcon->showMessage("Daemon Connection Error",
-                             "Connection with the daemon could not be established",
-                             // Qt doesn't support custom message icons - would have to use dbus
-                             QSystemTrayIcon::Critical);
+void MainWindow::notifyDaemonConnectionError() {
+  // Qt has some issues around message icons, and we now use DBus notifications
+  // now directly to handle the important ones better.
+  // Better to the default message icons here, as Gnome and Ubuntu have funny issues
+  // in the system tray when using custom icons.
+  // m_sysTrayIcon->showMessage("Daemon Connection Error",
+  //                            "Connection with the daemon could not be established");
+  QProcess::startDetached("coolercontrold",
+                          QStringList() << "notify"
+                                        << "Daemon Connection Error"
+                                        << "Connection with the daemon could not be established"
+                                        << "1");
 }
 
-void MainWindow::notifyDaemonErrors() const {
-  m_sysTrayIcon->showMessage("Daemon Errors",
-                             "The daemon logs contain errors. You should investigate.",
-                             QSystemTrayIcon::Warning);
+void MainWindow::notifyDaemonErrors() {
+  // m_sysTrayIcon->showMessage("Daemon Errors",
+  //                            "The daemon logs contain errors. You should investigate.");
+  QProcess::startDetached("coolercontrold",
+                          QStringList() << "notify"
+                                        << "Daemon Errors"
+                                        << "The daemon logs contain errors. You should investigate."
+                                        << "4");
 }
 
-void MainWindow::notifyDaemonDisconnected() const {
-  m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost",
-                             QSystemTrayIcon::Warning);
+void MainWindow::notifyDaemonDisconnected() {
+  // m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
+  QProcess::startDetached("coolercontrold", QStringList()
+                                                << "notify"
+                                                << "Daemon Disconnected"
+                                                << "Connection with the daemon has been lost"
+                                                << "1");
 }
 
-void MainWindow::notifyDaemonConnectionRestored() const {
-  m_sysTrayIcon->showMessage("Daemon Connection Restored",
-                             "Connection with the daemon has been restored.",
-                             QSystemTrayIcon::Information);
+void MainWindow::notifyDaemonConnectionRestored() {
+  // m_sysTrayIcon->showMessage("Daemon Connection Restored",
+  //                            "Connection with the daemon has been restored.");
+  QProcess::startDetached("coolercontrold", QStringList()
+                                                << "notify"
+                                                << "Daemon Connection Restored"
+                                                << "Connection with the daemon has been restored."
+                                                << "2");
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
+  // This doesn't work very well with newer Gnome and symbolic icons. Using actual icons.
   constexpr int iconSize = 64;
   QPixmap pixmap = baseIcon.pixmap(iconSize, iconSize);
   QPainter painter(&pixmap);
@@ -426,38 +449,17 @@ QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const b
   return (pixmap);
 }
 
-void MainWindow::applyTrayIconNotificationBadge(const bool forceRedBadge) const {
-  auto addBadge = false;
-  auto redColor = true;
-  if (forceRedBadge) {
-    addBadge = true;
-  } else {
-    if (m_daemonHasWarnings) {
-      addBadge = true;
-      redColor = false;
-    }
-    if (m_daemonHasErrors) {
-      addBadge = true;
-      redColor = true;
-    }
-    if (m_alertCount > 0) {
-      addBadge = true;
-      redColor = true;
-    }
-  }
-  if (addBadge) {
-    const QIcon baseIcon = QIcon::fromTheme(
-        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
-    m_sysTrayIcon->setIcon(createIconWithNotificationBadge(baseIcon, redColor));
+void MainWindow::applyTrayIconNotificationBadge(const bool forceBadge) const {
+  if (forceBadge || m_daemonHasErrors || m_daemonHasWarnings || m_alertCount > 0) {
+    m_sysTrayIcon->setIcon(QIcon::fromTheme(
+        APP_ID_SYMBOLIC_ALERT.data(),
+        QIcon::fromTheme(APP_ID_ALERT.data(),
+                         QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic-alert.svg"))));
   } else {
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
-        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
-    // hide/show is needed to "refresh" Gnome's system tray icon, as residual color stays
-    if (const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toLower();
-        desktop.contains("gnome")) {
-      m_sysTrayIcon->hide();
-      m_sysTrayIcon->show();
-    }
+        APP_ID_SYMBOLIC.data(),
+        QIcon::fromTheme(APP_ID.data(),
+                         QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic.svg"))));
   }
 }
 
@@ -687,7 +689,10 @@ void MainWindow::tryDaemonConnection() const {
     } else {
       qInfo() << "Connection to the Daemon Reestablished";
       notifyDaemonConnectionRestored();
-      m_alertCount = 0;  // reset alert count on reconnection
+      // reset states on reconnection
+      m_alertCount = 0;
+      m_daemonHasErrors = false;
+      m_daemonHasWarnings = false;
       // systray badge update will be handled by re-checking for Alerts and Errors:
       requestAllAlerts();
       requestDaemonErrors();
@@ -732,7 +737,9 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    m_sysTrayIcon->showMessage(msgTitle, "", QSystemTrayIcon::Information);
+    // m_sysTrayIcon->showMessage(msgTitle, "");
+    QProcess::startDetached("coolercontrold", QStringList() << "notify" << msgTitle << ""
+                                                            << "4");
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.

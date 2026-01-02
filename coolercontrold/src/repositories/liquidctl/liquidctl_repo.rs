@@ -202,6 +202,10 @@ impl LiquidctlRepo {
             self.shutdown_service_and_client().await?;
         }
         debug!("List of received Devices: {:?}", self.devices);
+        info!(
+            "Number of liquidctl devices received: {}",
+            self.devices.len()
+        );
         Ok(())
     }
 

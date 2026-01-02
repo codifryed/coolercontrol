@@ -27,7 +27,9 @@ target_link_libraries(
                         Qt::WebChannel Qt::DBus)
 
 # Resources:
-set(cc_resource_files "icons/icon.svg")
+set(cc_resource_files
+    "icons/org.coolercontrol.CoolerControl-symbolic.svg"
+    "icons/org.coolercontrol.CoolerControl-symbolic-alert.svg")
 
 qt_add_resources(
   coolercontrol "coolercontrol" PREFIX "/"
