@@ -33,7 +33,7 @@ import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, inject, onMounted, Ref, ref } from 'vue'
+import { computed, inject, onMounted, Ref, ref, watch } from 'vue'
 import { Emitter, EventType } from 'mitt'
 import { useWindowSize } from '@vueuse/core'
 import Button from 'primevue/button'
@@ -88,14 +88,12 @@ const expandSideMenu = (): void => {
 emitter.on('expand-side-menu', expandSideMenu)
 
 const drawerVisible = ref(false)
-onMounted(async () => {
-    // apply the saved change on startup to the menu itself.
-    // Note: Expand automatically happens on startup for the Splitter
-    if (settingsStore.collapsedMainMenu) {
-        // timeout needed as the auto-expand happens after onMounted code.
-        setTimeout(menuPanelRef.value!.collapse)
-    }
-    const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
+const isMobile = computed(() => width.value < 768)
+let resizeObserver: ResizeObserver | null = null
+
+const initDesktopMenu = (): void => {
+    const splitterEl: HTMLElement | undefined = splitterGroupRef.value?.$el
+    if (!splitterEl) return
     splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
     menuPanelWidthPercent.value = calculateSplitterWidthPercent(settingsStore.mainMenuWidthRem)
     // This is called when the Splitter Handle is dragged and the REM size will change:
@@ -111,7 +109,7 @@ onMounted(async () => {
     }
     // This is called when the window is resized,
     // which resizes the Menu Splitter to maintain a certain REM size:
-    const resizeObserver = new ResizeObserver((_) => {
+    resizeObserver = new ResizeObserver((_) => {
         if (
             menuPanelRef.value?.isCollapsed ||
             splitterEl.getBoundingClientRect().width < minMenuWidthPx
@@ -123,6 +121,35 @@ onMounted(async () => {
         settingsStore.mainMenuWidthRem = calculateMenuRemWidth(menuPanelWidthPercent.value)
     })
     resizeObserver.observe(splitterEl)
+    // apply the saved collapse state on startup/switch to desktop
+    if (settingsStore.collapsedMainMenu) {
+        // timeout needed as the auto-expand happens after onMounted code.
+        setTimeout(() => menuPanelRef.value?.collapse())
+    }
+}
+
+const disableDesktopMenu = (): void => {
+    onResize = (_: number): void => {}
+    if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+    }
+}
+
+watch(isMobile, (mobile, wasMobile) => {
+    if (mobile && !wasMobile) {
+        // switched to mobile view - disable desktop menu logic
+        disableDesktopMenu()
+    } else if (!mobile && wasMobile) {
+        // switched to desktop view - re-enable desktop menu logic
+        // use nextTick equivalent to ensure DOM is updated
+        setTimeout(initDesktopMenu)
+    }
+})
+
+onMounted(async () => {
+    if (isMobile.value) return
+    initDesktopMenu()
 })
 </script>
 
