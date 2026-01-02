@@ -862,7 +862,7 @@ export default {
                 'Bevor wir beginnen, ist eine der wichtigsten Dinge, die Sie wissen sollten,',
             settingUpDrivers: 'das Einrichten Ihrer Hardware-Treiber',
             fansNotShowing:
-                'Wenn Ihre Lüfter nicht angezeigt werden oder nicht gesteuert werden können, dann gibt es wahrscheinlich ein Problem mit Ihren derzeit installierten Kernel-Treibern.',
+                'Wenn Ihre Lüfter oder Geräte nicht angezeigt werden oder nicht gesteuert werden können, liegt dies oft an fehlenden oder veralteten Kernel-Treibern.',
             checkDocs:
                 'Bevor Sie ein Problem melden, stellen Sie bitte sicher, dass alle Treiber ordnungsgemäß geladen wurden, indem Sie',
             checkingDocs: 'die Hardware-Support-Dokumentation überprüfen',
@@ -871,34 +871,32 @@ export default {
             letsStart: 'Ok, lass uns beginnen!',
             dashboards: 'Dashboards',
             dashboardsDesc:
-                'Dashboards sind eine kuratierte Sammlung von Diagrammen zur Ansicht der Sensordaten Ihres Systems.',
+                'Dashboards ermöglichen benutzerdefinierte Ansichten mit Diagrammen zur Echtzeitüberwachung von Temperaturen, Lüftergeschwindigkeiten und anderen Sensordaten.',
             controls: 'Steuerungen',
             controlsDesc:
-                'Steuerungen bieten eine interaktive Oberfläche zur Verwaltung der Lüfter und anderer Geräte Ihres Systems. Jeder steuerbare Kanal ermöglicht es Ihnen, die Geschwindigkeiten anzupassen, Profile festzulegen und den Status in Echtzeit zu überwachen.',
+                'Steuerungen ermöglichen die Anpassung von Lüftergeschwindigkeiten, das Anwenden von Profilen und die Verwaltung von Kühlgeräten.',
             profiles: 'Profile',
             profilesDesc:
-                'Profile definieren anpassbare Einstellungen zur Steuerung der Lüftergeschwindigkeiten. Dasselbe Profil kann für mehrere Lüfter und Geräte verwendet werden.',
+                'Profile definieren Lüfterkurven, die auf Temperaturänderungen reagieren. Dasselbe Profil kann auf mehreren Geräten wiederverwendet werden.',
             functions: 'Funktionen',
             functionsDesc:
-                'Funktionen sind konfigurierbare Algorithmen, die auf die Ausgabe eines Profils angewendet werden können. Dies kann hilfreich sein, um zu verwalten, wann Lüftergeschwindigkeitsänderungen auftreten.',
+                'Funktionen werden auf Profile angewendet, um Lüftergeschwindigkeitsübergänge zu glätten und Geräusche zu reduzieren.',
             appInfo: 'Anwendungs- und Daemon-Informationen',
             appInfoDesc:
-                'Durch Klicken auf das Logo wird die Anwendungsinformationsseite geöffnet, wo Sie Informationen über die Anwendung, den Systemdaemon und Logs erhalten können. Hier sollten Sie bei der Fehlerbehebung nachsehen, und es gibt ein kleines Daemon-Status-Symbol, das Sie über potenzielle Probleme informiert.',
+                'Klicken Sie auf das Logo, um App-Info, Daemon-Status und Logs anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
             quickAdd: 'Schnelles Hinzufügen',
-            quickAddDesc:
-                'Dies ist ein Menü, um neue Elemente wie Dashboards, Profile usw. einfach hinzuzufügen.',
+            quickAddDesc: 'Schnelles Erstellen neuer Dashboards, Profile, Funktionen und mehr.',
             dashboardQuick: 'Dashboard-Schnellmenü',
             dashboardQuickDesc:
-                'Dies ist ein Menü, um schnell zu Ihren Dashboards zu springen, auch wenn das Hauptmenü eingeklappt ist.',
+                'Springen Sie zu jedem Dashboard, auch wenn das Hauptmenü eingeklappt ist.',
             settings: 'Einstellungen',
             settingsDesc:
-                'Diese Schaltfläche öffnet die Einstellungsseite mit verschiedenen UI- und Daemon-Einstellungen.',
+                'Konfigurieren Sie UI-Einstellungen, Daemon-Optionen und Systemverhalten.',
             restartMenu: 'Neustart-Menü',
-            restartMenuDesc:
-                'Hier können Sie wählen, ob Sie die UI neu laden oder den Systemdaemon neu starten möchten.',
+            restartMenuDesc: 'UI neu laden oder Systemdaemon bei Bedarf neu starten.',
             thatsIt: "Das war's!",
-            ready: 'Und denken Sie daran, wenn Ihre Lüfter nicht angezeigt werden oder nicht gesteuert werden können, überprüfen Sie die Hardware-Support-Dokumentation',
-            startNow: 'Ok, Sie können jetzt loslegen!',
+            ready: 'Wenn Geräte fehlen oder nicht steuerbar sind, versuchen Sie',
+            startNow: 'Alles bereit!',
         },
         axisOptions: {
             title: 'Achsenoptionen',

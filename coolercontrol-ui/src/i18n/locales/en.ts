@@ -838,7 +838,7 @@ export default {
             beforeStart: 'Before we get started, one of the most important things to know about is',
             settingUpDrivers: 'setting up your hardware drivers',
             fansNotShowing:
-                'If your fans are not showing up or cannot be controlled, then likely there is an issue with your currently installed kernel drivers.',
+                'If your fans or devices are not showing up or cannot be controlled, this is often due to missing or outdated kernel drivers.',
             checkDocs:
                 'Before opening an issue, please confirm that all drivers have been properly loaded by',
             checkingDocs: 'checking the Hardware Support documentation',
@@ -847,33 +847,30 @@ export default {
             letsStart: "Ok, let's get started!",
             dashboards: 'Dashboards',
             dashboardsDesc:
-                "Dashboards are a curated collection of charts to view your system's sensor data.",
+                'Dashboards let you create custom views with charts and graphs to monitor temperatures, fan speeds, and other sensor data in real-time.',
             controls: 'Controls',
             controlsDesc:
-                "Controls provide an interactive interface to manage your system's fans and other devices. Each controllable channel lets you adjust speeds, set Profiles, and monitor status in real-time.",
+                'Controls let you adjust fan speeds, apply Profiles, and manage cooling devices.',
             profiles: 'Profiles',
             profilesDesc:
-                'Profiles define customizable settings for controlling fan speeds. The same Profile can be used for multiple fans and devices.',
+                'Profiles define fan curves that respond to temperature changes. Reuse the same Profile across multiple devices.',
             functions: 'Functions',
             functionsDesc:
-                "Functions are configurable algorithms that can be applied to a Profile's output. This can be helpful for managing when fan speed changes occur.",
+                'Functions are applied to Profiles to smooth out fan speed transitions and reduce noise.',
             appInfo: 'Application and Daemon Information',
             appInfoDesc:
-                "Clicking the logo opens the Application Information page, where you can to get information about the application, the system daemon, and logs. It's where you want to go when troubleshooting issues and there's a small daemon-status badge here to notify you of any potential issues.",
+                'Click the logo to view app info, daemon status, and logs. A status badge here alerts you to any issues.',
             quickAdd: 'Quick Add',
-            quickAddDesc: 'This is a menu to easily add new items like Dashboards, Profiles, etc.',
+            quickAddDesc: 'Quickly create new Dashboards, Profiles, Functions, and more.',
             dashboardQuick: 'Dashboard Quick Menu',
-            dashboardQuickDesc:
-                'This is a menu to quickly jump to your dashboards, even if the main menu is collapsed.',
+            dashboardQuickDesc: 'Jump to any dashboard, even when the main menu is collapsed.',
             settings: 'Settings',
-            settingsDesc:
-                'This button will open up the settings page containing different UI and daemon settings.',
+            settingsDesc: 'Configure UI preferences, daemon options, and system behavior.',
             restartMenu: 'Restart Menu',
-            restartMenuDesc:
-                'Here you can choose whether to reload the UI or restart the system daemon.',
+            restartMenuDesc: 'Reload the UI or restart the system daemon when needed.',
             thatsIt: "That's it!",
-            ready: 'And remember, if your fans are not showing up or cannot be controlled, check the Hardware Support documentation',
-            startNow: "Ok, you're ready to get started!",
+            ready: 'If devices are missing or uncontrollable, try',
+            startNow: "You're all set!",
         },
         axisOptions: {
             title: 'Axis Options',

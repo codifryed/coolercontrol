@@ -845,7 +845,7 @@ export default {
             beforeStart: 'Antes de comenzar, una de las cosas más importantes a saber es sobre',
             settingUpDrivers: 'configurar sus controladores de hardware',
             fansNotShowing:
-                'Si sus ventiladores no aparecen o no se pueden controlar, entonces es probable que haya un problema con los controladores del kernel actualmente instalados.',
+                'Si sus ventiladores o dispositivos no aparecen o no se pueden controlar, esto suele deberse a controladores del kernel faltantes o desactualizados.',
             checkDocs:
                 'Antes de abrir un problema, confirme que todos los controladores se han cargado correctamente',
             checkingDocs: 'consultando la documentación de Soporte de Hardware',
@@ -854,34 +854,33 @@ export default {
             letsStart: '¡Bien, comencemos!',
             dashboards: 'Paneles',
             dashboardsDesc:
-                'Los paneles son una colección seleccionada de gráficos para ver los datos de los sensores de su sistema.',
+                'Los paneles permiten crear vistas personalizadas con gráficos para monitorear temperaturas, velocidades de ventiladores y otros datos de sensores en tiempo real.',
             controls: 'Controles',
             controlsDesc:
-                'Los controles proporcionan una interfaz interactiva para gestionar los ventiladores y otros dispositivos de su sistema. Cada canal controlable le permite ajustar velocidades, establecer Perfiles y monitorear el estado en tiempo real.',
+                'Los controles permiten ajustar velocidades de ventiladores, aplicar Perfiles y gestionar dispositivos de refrigeración.',
             profiles: 'Perfiles',
             profilesDesc:
-                'Los perfiles definen configuraciones personalizables para controlar las velocidades de los ventiladores. El mismo Perfil puede usarse para múltiples ventiladores y dispositivos.',
+                'Los perfiles definen curvas de ventilador que responden a cambios de temperatura. Reutilice el mismo Perfil en múltiples dispositivos.',
             functions: 'Funciones',
             functionsDesc:
-                'Las funciones son algoritmos configurables que pueden aplicarse a la salida de un Perfil. Esto puede ser útil para gestionar cuándo ocurren los cambios de velocidad del ventilador.',
+                'Las funciones se aplican a los Perfiles para suavizar las transiciones de velocidad del ventilador y reducir el ruido.',
             appInfo: 'Información de la Aplicación y el Daemon',
             appInfoDesc:
-                'Al hacer clic en el logotipo se abre la página de Información de la Aplicación, donde puede obtener información sobre la aplicación, el daemon del sistema y los registros. Es donde debe ir cuando soluciona problemas y hay una pequeña insignia de estado del daemon aquí para notificarle de cualquier problema potencial.',
+                'Haga clic en el logo para ver info de la app, estado del daemon y registros. Una insignia de estado le alerta sobre problemas.',
             quickAdd: 'Agregar Rápido',
-            quickAddDesc:
-                'Este es un menú para agregar fácilmente nuevos elementos como Paneles, Perfiles, etc.',
+            quickAddDesc: 'Cree rápidamente nuevos Paneles, Perfiles, Funciones y más.',
             dashboardQuick: 'Menú Rápido de Panel',
             dashboardQuickDesc:
-                'Este es un menú para saltar rápidamente a sus paneles, incluso si el menú principal está contraído.',
+                'Salte a cualquier panel, incluso cuando el menú principal esté contraído.',
             settings: 'Configuración',
             settingsDesc:
-                'Este botón abrirá la página de configuración que contiene diferentes configuraciones de UI y daemon.',
+                'Configure preferencias de interfaz, opciones del daemon y comportamiento del sistema.',
             restartMenu: 'Menú de Reinicio',
             restartMenuDesc:
-                'Aquí puede elegir si desea recargar la UI o reiniciar el daemon del sistema.',
+                'Recargue la interfaz o reinicie el daemon del sistema cuando sea necesario.',
             thatsIt: '¡Eso es todo!',
-            ready: 'Y recuerde, si sus ventiladores no aparecen o no se pueden controlar, consulte la documentación de Soporte de Hardware',
-            startNow: '¡Bien, está listo para comenzar!',
+            ready: 'Si faltan dispositivos o no se pueden controlar, intente',
+            startNow: '¡Todo listo!',
         },
         axisOptions: {
             title: 'Opciones de Ejes',
