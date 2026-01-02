@@ -211,7 +211,9 @@ void MainWindow::initSystemTray() {
 
   m_sysTrayIcon->setContextMenu(m_trayIconMenu);
   m_sysTrayIcon->setIcon(QIcon::fromTheme(
-      APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
+      APP_ID_SYMBOLIC.data(),
+      QIcon::fromTheme(APP_ID.data(),
+                       QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic.svg"))));
   m_sysTrayIcon->setToolTip("CoolerControl");
   m_sysTrayIcon->show();
 
@@ -452,10 +454,12 @@ void MainWindow::applyTrayIconNotificationBadge(const bool forceBadge) const {
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
         APP_ID_SYMBOLIC_ALERT.data(),
         QIcon::fromTheme(APP_ID_ALERT.data(),
-                         QIcon(":/icons/org.coolercontrol.CoolerControl-alert.svg"))));
+                         QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic-alert.svg"))));
   } else {
     m_sysTrayIcon->setIcon(QIcon::fromTheme(
-        APP_ID_SYMBOLIC.data(), QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg"))));
+        APP_ID_SYMBOLIC.data(),
+        QIcon::fromTheme(APP_ID.data(),
+                         QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic.svg"))));
   }
 }
 
