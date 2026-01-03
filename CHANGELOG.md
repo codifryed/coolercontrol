@@ -10,6 +10,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [3.1.0] - 2026-01-03
+
+### Added
+
+- support for applesmc and macsmc-hwmon drivers
+- Advanced Device Settings per device
+- direct-access device setting for all liquidctl devices that also have a hwmon driver
+- convience device setting for swapping driver types
+- support for dynamic CPU Cores (#529)
+- plugin system (beta) for device and integration services
+- ability to connect multiple daemons together (read-only)
+- groundwork layed for plugins to extended functionality and integration with other services
+- additional Alert options: notifications, audio, shutdown
+- system tray icon displays badge when alert or error is present
+- information tooltip when using a Default Profile to explain it's effects on various device drivers
+- new Function settings: asymmetric and fixed step sizes, plus threshold hopping toggle
+- channel and entity names can now be directly edited directly on their respective pages by clicking
+  on them
+- device and entity menu drop-down border colors
+- mobil menu and drawer for smaller screens
+
+### Changed
+
+- improved support for liquidctl Corsair PSU drivers (#530)
+- improved resilience, logging, and retry behavior for liquidctl devices at boot. (#531)
+- improved handling of Kraken bucket errors (#532)
+- alert states are always reevaluated on startup (#489)
+- improved UI asset caching
+- UI asset compression by default
+- improved handling of slow connections to the UI
+- app info page and log view improvements, including auto-scroll to bottom and an expand view
+  button.
+- improved various description and tooltips text throughout the app
+
+### Fixed
+
+- Aura LED device issues at startup (#531)
+- move-to-top issue with pinned menu items
+- issue where using the move-top-top buttons didn't save the menu state
+- various Gnome related issues around notifications and the system tray
+- default device colors not changing with theme change
+
 ## [3.0.2] - 2025-11-03
 
 ### Added

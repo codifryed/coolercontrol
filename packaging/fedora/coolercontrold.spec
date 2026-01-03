@@ -5,7 +5,7 @@
 %global cargo_install_lib 0
 
 Name:           %{project}d
-Version:        3.0.2
+Version:        3.1.0
 Release:        %autorelease
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
@@ -73,6 +73,9 @@ install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
 %systemd_postun_with_restart %{name}.service
 
 %changelog
+* Sat Jan 03 2026 Guy Boldon <gb@guyboldon.com> - 3.1.0-1
+- 3.1.0 Release
+
 * Mon Nov 03 2025 Guy Boldon <gb@guyboldon.com> - 3.0.2-1
 - 3.0.2 Release
 
