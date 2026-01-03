@@ -44,7 +44,6 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const inputArea = ref()
 const saveButton = ref()
 
 const mode = computed(() => settingsStore.modes.find((mode) => mode.uid === props.modeUID)!)
@@ -88,7 +87,6 @@ const nameInvalid = computed(() => {
                         {{ currentName }}
                     </small>
                     <InputText
-                        ref="inputArea"
                         id="property-name"
                         class="w-20rem"
                         :invalid="nameInvalid"

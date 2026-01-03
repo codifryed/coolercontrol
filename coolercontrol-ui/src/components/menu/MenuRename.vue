@@ -44,7 +44,6 @@ const popRef = ref()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const inputArea = ref()
 const saveButton = ref()
 
 const deviceSettings = useSettingsStore().allUIDeviceSettings.get(props.deviceUID)!
@@ -125,7 +124,6 @@ const nameInvalid = computed(() => {
                         {{ systemDisplayName }}
                     </small>
                     <InputText
-                        ref="inputArea"
                         id="property-name"
                         class="w-20rem"
                         :invalid="nameInvalid"

@@ -46,7 +46,6 @@ const settingsStore = useSettingsStore()
 const toast = useToast()
 const { t } = useI18n()
 
-const inputArea = ref()
 const saveButton = ref()
 
 const fun = computed(() => settingsStore.functions.find((fun) => fun.uid === props.functionUID)!)
@@ -105,7 +104,6 @@ const nameInvalid = computed(() => {
                         {{ currentName }}
                     </small>
                     <InputText
-                        ref="inputArea"
                         id="property-name"
                         class="w-20rem"
                         :invalid="nameInvalid"
