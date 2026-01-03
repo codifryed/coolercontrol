@@ -40,7 +40,10 @@ one.
       8. check that the release notes look correct (gitlab -> Deployment -> Releases)
       9. close the current Milestone
       10. create the next release milestone (can easily change the milestone name/version later)
-   4. Update DockerHub Image links
+   4. Cloudsmith: Verify amd and arm package uploads are all present and add any missing ones.
+   5. DockerHub: Adjust Image links on main page
+   6. Copr: Adjust git tag version for each package and trigger new builds.
+   7. Merge any website changes to be made.
 
 5. Update OpenAPI specification
    1. Update locally running daemon with a new version: `make dev-build && make dev-install`
@@ -69,5 +72,6 @@ one.
    2. without argument for a quick patch update 1.0.0 -> 1.0.1
    3. After a release we just want to at least bump the source version by a patch number, for
       clarity when testing. We can increase it later for the next release.
+   4. Update all depdencies - allows us a good amount of testing before the next release.
 
 <!--Test-->
