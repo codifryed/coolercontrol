@@ -262,7 +262,10 @@ async fn create_api_server(
             .layer(cors_layer())
             .layer((
                 TraceLayer::new_for_http(),
-                TimeoutLayer::new(Duration::from_secs(API_TIMEOUT_SECS)),
+                TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    Duration::from_secs(API_TIMEOUT_SECS),
+                ),
             ))
             .layer(limiter_layer),
     );

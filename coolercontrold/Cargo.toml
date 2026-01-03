@@ -19,15 +19,15 @@ default = []
 io_uring = ["dep:tokio-uring"]
 
 [dependencies]
-log = "0.4.28"
+log = "0.4.29"
 env_logger = "0.11.8"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.49", features = [
+clap = { version = "4.5.54", features = [
   "derive",
 ] } # Command line argument parser - pkg
 anyhow = "1.0.100"
-derive_more = { version = "2.0.1", features = ["display", "error"] }
-tokio = { version = "1.48.0", default-features = false, features = [
+derive_more = { version = "2.1.1", features = ["display", "error"] }
+tokio = { version = "1.49.0", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -40,7 +40,7 @@ tokio = { version = "1.48.0", default-features = false, features = [
   "io-util",
 ] }
 tokio-uring = { version = "0.5.0", optional = true }
-tokio-util = "0.7.16"
+tokio-util = "0.7.17"
 tokio-stream = { version = "0.1.17", default-features = false, features = [
   "sync",
   "io-util",
@@ -48,11 +48,11 @@ tokio-stream = { version = "0.1.17", default-features = false, features = [
 moro-local = "0.4.0"
 async-trait = "0.1.89"
 bitflags = { version = "2.9.4", features = ["serde"] }
-axum = { version = "0.8.6", features = ["multipart", "macros", "query"] }
-axum-extra = { version = "0.10.3", features = ["typed-header"] }
+axum = { version = "0.8.8", features = ["multipart", "macros", "query"] }
+axum-extra = { version = "0.12.5", features = ["typed-header"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.2" }
-tower-http = { version = "0.6.6", features = [
+tower-http = { version = "0.6.8", features = [
   "timeout",
   "trace",
   "limit",
@@ -64,7 +64,7 @@ tower-http = { version = "0.6.6", features = [
 ] }
 tower-sessions = { version = "0.14.0", features = ["private"] }
 # disable the quanta feature, as it introduces a bug in the rate limiter when resuming from sleep:
-governor = { version = "0.10.1", default-features = false, features = ["std"] }
+governor = { version = "0.10.4", default-features = false, features = ["std"] }
 pin-project = "1.1.10"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
@@ -79,22 +79,22 @@ headers = "0.4.1"
 # this needs to follow the aide version above (currently 0.9.0)
 schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
-axum_typed_multipart = "0.16.4"
+axum_typed_multipart = "0.16.5"
 # possible openApi improvement, but doesn't work for us currently:
 #aide-axum-typed-multipart-2 = "0.16.0"
-tempfile = "3.23.0"
-hyper = { version = "1.7.0", default-features = false, features = [
+tempfile = "3.24.0"
+hyper = { version = "1.8.1", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.17", default-features = false, features = [
+hyper-util = { version = "0.1.19", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
 http-body-util = "0.1.3"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.145"
+serde_json = "1.0.148"
 zbus = { version = "5.12.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
@@ -125,7 +125,7 @@ psutil = { version = "5.4.0", default-features = false, features = [
 nu-glob = "=0.107.0"
 nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
-toml_edit = "0.23.4"
+toml_edit = "0.23.7"
 nix = { version = "0.30.1", default-features = false, features = [
   "user",
   "signal",
@@ -136,14 +136,14 @@ pciid-parser = "0.8.0"
 libdrm_amdgpu_sys = { version = "0.8.8", default-features = false, features = [
   "dynamic_loading",
 ] }
-hashlink = "0.10.0" # pkg
+hashlink = "0.11.0" # pkg
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.8", default-features = false, features = [
+image = { version = "0.25.9", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",
@@ -158,7 +158,7 @@ gifski = { version = "1.34.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.12.0" # for gif processing
 rgb = "0.8.52" # for gif processing
-uuid = { version = "1.18.1", features = ["v4"] }
+uuid = { version = "1.19.0", features = ["v4"] }
 # service plugin dependencies
 tonic = { version = "0.14.2", default-features = false, features = [
   "channel",
