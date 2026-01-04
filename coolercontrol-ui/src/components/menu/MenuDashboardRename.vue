@@ -43,7 +43,6 @@ const popRef = ref()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const inputArea = ref()
 const saveButton = ref()
 
 const dashboard = settingsStore.dashboards.find(
@@ -88,7 +87,6 @@ const nameInvalid = computed(() => {
                         {{ currentName }}
                     </small>
                     <InputText
-                        ref="inputArea"
                         id="property-name"
                         class="w-20rem"
                         :invalid="nameInvalid"
