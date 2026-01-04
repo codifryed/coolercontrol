@@ -41,6 +41,7 @@ COPY --from=liquidctl-builder /root/.local /root/.local
 RUN coolercontrold --version
 
 EXPOSE 11987
+EXPOSE 11988
 
 ENTRYPOINT ["coolercontrold"]
 
