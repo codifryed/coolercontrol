@@ -70,3 +70,8 @@ declare module './hi.ts' {
     const content: any
     export default content
 }
+
+declare module './ko.ts' {
+    const content: any
+    export default content
+}
