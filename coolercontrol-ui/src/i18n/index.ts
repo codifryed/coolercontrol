@@ -28,6 +28,7 @@ import es from './locales/es.ts'
 import ar from './locales/ar.ts'
 import pt from './locales/pt.ts'
 import hi from './locales/hi.ts'
+import hi from './locales/ko.ts'
 
 // Get saved language settings or use English as default
 const savedLocale = localStorage.getItem('locale') || 'en'
@@ -48,6 +49,7 @@ const i18n = createI18n({
         ar,
         pt,
         hi,
+        ko,
     },
     silentTranslationWarn: true,
     silentFallbackWarn: true,
