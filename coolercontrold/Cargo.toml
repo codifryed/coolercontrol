@@ -40,8 +40,8 @@ tokio = { version = "1.49.0", default-features = false, features = [
   "io-util",
 ] }
 tokio-uring = { version = "0.5.0", optional = true }
-tokio-util = "0.7.17"
-tokio-stream = { version = "0.1.17", default-features = false, features = [
+tokio-util = "0.7.18"
+tokio-stream = { version = "0.1.18", default-features = false, features = [
   "sync",
   "io-util",
 ] }
@@ -101,8 +101,7 @@ zbus = { version = "5.12.0", default-features = false, features = [
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-# sysinfo 0.37.0 requires >Rust 1.88
-sysinfo = { version = "=0.36.1", default-features = false, features = [
+sysinfo = { version = "0.37.2", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.42", features = [
@@ -121,8 +120,7 @@ psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-# nu-glob 0.108.0 requires >= Rust 1.88
-nu-glob = "=0.107.0"
+nu-glob = "0.109.1"
 nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
 toml_edit = "0.23.7"
