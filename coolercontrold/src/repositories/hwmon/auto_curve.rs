@@ -46,7 +46,7 @@ use crate::repositories::hwmon::fans::{
     PWM_ENABLE_AUTO_VALUE, PWM_ENABLE_MANUAL_VALUE, PWM_ENABLE_NCT6775_SMART_FAN_IV_VALUE,
 };
 use crate::repositories::hwmon::hwmon_repo::{AutoCurveInfo, HwmonChannelInfo};
-use crate::repositories::hwmon::{fans, temps};
+use crate::repositories::hwmon::{devices, fans, temps};
 use crate::{cc_fs, engine};
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, warn};
@@ -78,6 +78,7 @@ const CURVE_RANGE_TEMP: RangeInclusive<CurveTemp> = 0..=100_000; // millidegrees
 const DEVICE_NAMES_NZXT_KRAKEN3: [&str; 3] = ["z53", "kraken2023", "kraken2023elite"];
 const POINT_LENGTH_NZXT_KRAKEN3: u8 = 40;
 const CURVE_RANGE_TEMP_NZXT_KRAKEN3: RangeInclusive<CurveTemp> = 20..=59;
+const DISABLED_DRIVER_NAMES: [&str; 1] = ["it87"]; // Driver's that have issues or poor implementation for auto curves
 
 /// This initializes pwm channels that support auto curves.
 ///
@@ -92,6 +93,11 @@ pub async fn init_auto_curve_fans(
     fans: &mut Vec<HwmonChannelInfo>,
     device_name: &str,
 ) -> Result<()> {
+    if let Some(driver_name) = devices::get_device_driver_name(base_path).await {
+        if DISABLED_DRIVER_NAMES.contains(&driver_name.as_str()) {
+            return Ok(());
+        }
+    }
     for fan in fans {
         if fan.caps.is_fan_controllable().not() {
             continue; // we only support fans that have pwmN controls
