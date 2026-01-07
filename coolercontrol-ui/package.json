@@ -27,7 +27,7 @@
         "lodash": "^4.17.21",
         "lodash.debounce": "^4.0.8",
         "mitt": "^3.0.1",
-        "pinia": "2.2.4",
+        "pinia": "^3.0.4",
         "primeicons": "^7.0.0",
         "primevue": "4.4.1",
         "radix-vue": "^1.9.17",

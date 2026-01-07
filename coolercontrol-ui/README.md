@@ -54,8 +54,6 @@ make dev
 
 ## Held-back Dependencies
 
-- `"pinia": "2.2.4"` greater than this breaks some functionality in the UI with reactive
-  text/numbers.
 - `"primevue": "4.3.9"` updates can break the original Primevue tailwind implementation that we
   have, updates should be well-tested.
 - `"tailwindcss-primeui": "^0.4.0"` breaks our original Primevue tailwind implementation
