@@ -23,10 +23,9 @@ import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { onMounted, Ref, ref, watch } from 'vue'
+import { onMounted, Ref, ref, toRaw, watch } from 'vue'
 
 echarts.use([CanvasRenderer, GaugeChart])
 
@@ -40,7 +39,9 @@ interface Props {
 const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore. (
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
@@ -64,16 +65,17 @@ const getDutySensorColor = (): string => {
 
 const getDuty = (): number => {
     return Number(
-        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
-            -1,
+        deviceStore.currentDeviceStatus.get(props.currentDeviceUID)?.get(props.currentSensorName)
+            ?.duty ?? -1,
     )
 }
 
 const getRPMs = (): number => {
     return (
         Number(
-            currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)
-                ?.rpm,
+            deviceStore.currentDeviceStatus
+                .get(props.currentDeviceUID)
+                ?.get(props.currentSensorName)?.rpm,
         ) ?? -1
     )
 }
@@ -249,7 +251,7 @@ setGraphData()
 
 const fixedGaugeChart = ref<InstanceType<typeof VChart> | null>(null)
 
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     setGraphData()
     fixedGaugeChart.value?.setOption({
         series: [

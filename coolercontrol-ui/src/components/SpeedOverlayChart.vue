@@ -26,10 +26,9 @@ import VChart from 'vue-echarts'
 import { FunctionType, Profile, ProfileType } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { Ref, ref, watch } from 'vue'
+import { Ref, ref, toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 echarts.use([
@@ -50,7 +49,9 @@ interface Props {
 const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const { t } = useI18n()
@@ -140,8 +141,8 @@ const getTempLineColor = (profileIndex: number): string => {
 
 const getDuty = (): number => {
     return Number(
-        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
-            0,
+        deviceStore.currentDeviceStatus.get(props.currentDeviceUID)?.get(props.currentSensorName)
+            ?.duty ?? 0,
     )
 }
 
@@ -570,7 +571,7 @@ setDutyData()
 
 const overlayGraph = ref<InstanceType<typeof VChart> | null>(null)
 
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     const duty = setDutyData()
     overlayGraph.value?.setOption({
         series: [

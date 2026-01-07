@@ -45,7 +45,6 @@ import SpeedMixChart from '@/components/SpeedMixChart.vue'
 import SpeedOverlayChart from '@/components/SpeedOverlayChart.vue'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { storeToRefs } from 'pinia'
 import {
     DeviceSettingReadDTO,
     DeviceSettingWriteManualDTO,
@@ -80,7 +79,6 @@ const { t } = useI18n()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const componentKey: Ref<number> = ref(0)
 const confirm = useConfirm()
 const dialog = useDialog()
@@ -216,7 +214,7 @@ const chartMinutesChanged = (value: number): void => {
 const chartKey: Ref<string> = ref(uuidV4())
 
 const getCurrentDuty = (): number | undefined => {
-    const duty = currentDeviceStatus.value.get(props.deviceUID)?.get(props.channelName)?.duty
+    const duty = deviceStore.currentDeviceStatus.get(props.deviceUID)?.get(props.channelName)?.duty
     return duty != null ? Number(duty) : undefined
 }
 

@@ -31,7 +31,6 @@ import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
-import { storeToRefs } from 'pinia'
 import { Profile, ProfileType } from '@/models/Profile.ts'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
 import { v4 as uuidV4 } from 'uuid'
@@ -51,7 +50,6 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const toast = useToast()
 const router = useRouter()
@@ -62,7 +60,7 @@ const channelLabel =
         ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
 
 const getCurrentDuty = (): number | undefined => {
-    const duty = currentDeviceStatus.value.get(props.deviceUID)?.get(props.channelName)?.duty
+    const duty = deviceStore.currentDeviceStatus.get(props.deviceUID)?.get(props.channelName)?.duty
     return duty != null ? Number(duty) : undefined
 }
 const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)

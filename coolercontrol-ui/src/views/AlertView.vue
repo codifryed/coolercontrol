@@ -22,10 +22,9 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
-import { inject, onMounted, ref, type Ref, watch } from 'vue'
+import { inject, onMounted, ref, toRaw, type Ref, watch } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { storeToRefs } from 'pinia'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
@@ -63,10 +62,12 @@ interface AvailableChannelSources {
 const props = defineProps<Props>()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const { t } = useI18n()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
 const contextIsDirty: Ref<boolean> = ref(false)
@@ -228,24 +229,28 @@ const updateValues = (): void => {
                 case ChannelMetric.Duty:
                 case ChannelMetric.Load:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .duty || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.duty || '0'
                     break
                 case ChannelMetric.RPM:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .rpm || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.rpm || '0'
                     break
                 case ChannelMetric.Freq:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .freq || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.freq || '0'
                     break
                 case ChannelMetric.Temp:
                 default:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .temp || '0.0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.temp || '0.0'
                     break
             }
         }
@@ -354,7 +359,7 @@ const addScrollEventListeners = (): void => {
 }
 
 onMounted(async () => {
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateValues()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {

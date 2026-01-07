@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { onMounted, ref, Ref, watch } from 'vue'
+import { onMounted, ref, Ref, toRaw, watch } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -28,7 +28,6 @@ import Button from 'primevue/button'
 import { DeviceType, UID } from '@/models/Device.ts'
 import MultiSelect from 'primevue/multiselect'
 import { ChannelMetric } from '@/models/ChannelSource.ts'
-import { storeToRefs } from 'pinia'
 import { DeviceSettingWriteProfileDTO } from '@/models/DaemonSettings.ts'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -56,10 +55,12 @@ interface AvailableChannelSources {
 }
 
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const route = useRoute()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const { t } = useI18n()
 
 const availableControlChannels: Ref<Array<AvailableChannelSources>> = ref([])
@@ -161,14 +162,16 @@ const updateValues = (): void => {
             switch (channel.metric) {
                 case ChannelMetric.RPM:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .rpm || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.rpm || '0'
                     break
                 case ChannelMetric.Duty:
                 default:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .duty || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.duty || '0'
                     break
             }
         }
@@ -196,7 +199,7 @@ const applyProfileToChannels = async (): Promise<void> => {
 }
 
 onMounted(async () => {
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateValues()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {

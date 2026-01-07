@@ -24,10 +24,9 @@ import Button from 'primevue/button'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import Select from 'primevue/select'
-import { ref, Ref, watch } from 'vue'
+import { ref, Ref, toRaw, watch } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ProfileTempSource } from '@/models/Profile.ts'
-import { storeToRefs } from 'pinia'
 
 interface Props {
     name: string
@@ -42,7 +41,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 
 interface AvailableTemp {
@@ -131,8 +132,9 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
@@ -141,7 +143,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
     // update all temp sources:
     fillTempSources()
 })
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     updateTemps()
 })
 </script>

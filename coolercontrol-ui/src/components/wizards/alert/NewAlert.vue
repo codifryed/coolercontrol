@@ -23,10 +23,9 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiMemory } from '@mdi/js'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
-import { computed, onMounted, ref, type Ref, watch } from 'vue'
+import { computed, onMounted, ref, toRaw, type Ref, watch } from 'vue'
 import { DEFAULT_NAME_STRING_LENGTH, useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { storeToRefs } from 'pinia'
 import { Alert } from '@/models/Alert.ts'
 import { ChannelMetric, ChannelSource } from '@/models/ChannelSource.ts'
 import Slider from 'primevue/slider'
@@ -64,9 +63,11 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const pollRate: Ref<number> = ref(settingsStore.ccSettings.poll_rate)
 
 const collectAlert = (): Alert => {
@@ -172,24 +173,28 @@ const updateValues = (): void => {
                 case ChannelMetric.Duty:
                 case ChannelMetric.Load:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .duty || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.duty || '0'
                     break
                 case ChannelMetric.RPM:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .rpm || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.rpm || '0'
                     break
                 case ChannelMetric.Freq:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .freq || '0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.freq || '0'
                     break
                 case ChannelMetric.Temp:
                 default:
                     channel.value =
-                        currentDeviceStatus.value.get(channel.deviceUID)!.get(channel.channelName)!
-                            .temp || '0.0'
+                        deviceStore.currentDeviceStatus
+                            .get(channel.deviceUID)!
+                            .get(channel.channelName)!.temp || '0.0'
                     break
             }
         }
@@ -282,7 +287,7 @@ const nameInvalid = computed(() => {
 })
 
 onMounted(async () => {
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateValues()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {
