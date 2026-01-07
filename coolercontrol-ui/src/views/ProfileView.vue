@@ -42,6 +42,7 @@ import {
     ref,
     type Ref,
     watch,
+    toRaw,
     type WatchStopHandle,
 } from 'vue'
 import InputNumber from 'primevue/inputnumber'
@@ -63,7 +64,6 @@ import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
-import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
@@ -97,7 +97,9 @@ const props = defineProps<Props>()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const toast = useToast()
@@ -747,8 +749,9 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
@@ -768,7 +771,7 @@ watch(chosenFunction, () => {
     controlGraph.value?.setOption(option)
 })
 
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     updateTemps()
     if (selectedTempSource == null) {
         return

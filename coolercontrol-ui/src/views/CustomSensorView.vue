@@ -34,12 +34,11 @@ import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import { onMounted, ref, type Ref, watch, computed, inject } from 'vue'
+import { onMounted, ref, toRaw, type Ref, watch, computed, inject } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
-import { storeToRefs } from 'pinia'
 import {
     ChannelViewType,
     SensorAndChannelSettings,
@@ -86,8 +85,10 @@ interface AvailableTempSources {
 
 const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 const { t } = useI18n()
 
@@ -354,8 +355,9 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
@@ -455,7 +457,7 @@ const saveButtonDisabled = (): boolean => {
 }
 
 onMounted(async () => {
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateTemps()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {

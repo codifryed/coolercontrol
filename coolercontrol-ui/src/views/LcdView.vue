@@ -41,6 +41,7 @@ import {
     onUnmounted,
     type Ref,
     ref,
+    toRaw,
     watch,
 } from 'vue'
 import { LcdMode, LcdModeType } from '@/models/LcdMode'
@@ -52,7 +53,6 @@ import {
 } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
-import { storeToRefs } from 'pinia'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -88,9 +88,11 @@ interface AvailableTempSources {
 }
 
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const toast = useToast()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const confirm = useConfirm()
 
 const channelLabel = ref(
@@ -339,8 +341,9 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
@@ -441,7 +444,7 @@ onMounted(async () => {
             files.push(response)
         }
     }
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateTemps()
     })
     watch(settingsStore.allUIDeviceSettings, () => {

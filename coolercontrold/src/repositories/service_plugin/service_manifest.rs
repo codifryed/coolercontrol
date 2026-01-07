@@ -94,7 +94,7 @@ impl ServiceManifest {
         let address_opt = document
             .get("address")
             .and_then(|item| item.as_str().map(str::trim).map(str::to_string))
-            .or_else(|| Some(format!("/run/coolercontrol-plugin-{id}.sock")))
+            .or_else(|| Some(format!("/tmp/{id}.sock")))
             .filter(|_| service_type == ServiceType::Device);
         let address = match address_opt {
             None => ConnectionType::None,

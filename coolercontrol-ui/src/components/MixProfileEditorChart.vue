@@ -29,10 +29,9 @@ import { UniversalTransition } from 'echarts/features'
 import VChart from 'vue-echarts'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { ref, watch } from 'vue'
+import { ref, toRaw, watch } from 'vue'
 import { ProfileMixFunctionType, Profile, FunctionType } from '@/models/Profile'
 import { useI18n } from 'vue-i18n'
 
@@ -54,7 +53,9 @@ interface Props {
 const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const { t } = useI18n()
@@ -461,7 +462,7 @@ setCalculatedDutyLine()
 //--------------------------------------------------------------------------------------------------
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     const duty = setCalculatedDutyLine()
     mixGraph.value?.setOption({
         series: [

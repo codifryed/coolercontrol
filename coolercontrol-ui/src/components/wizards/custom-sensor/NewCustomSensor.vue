@@ -34,12 +34,11 @@ import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-import { onMounted, ref, type Ref, watch, computed } from 'vue'
+import { onMounted, ref, toRaw, type Ref, watch, computed } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { DEFAULT_NAME_STRING_LENGTH, useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
-import { storeToRefs } from 'pinia'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
 import { useI18n } from 'vue-i18n'
@@ -79,8 +78,10 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const { t } = useI18n()
 
 const customSensorIdNumbers: Array<number> = []
@@ -253,8 +254,9 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
@@ -284,7 +286,7 @@ const nameInvalid = computed(() => {
 })
 
 onMounted(async () => {
-    watch(currentDeviceStatus, () => {
+    watch(rawStore.currentDeviceStatus, () => {
         updateTemps()
     })
     watch(settingsStore.allUIDeviceSettings, async () => {

@@ -45,9 +45,8 @@ import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
-import { storeToRefs } from 'pinia'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
-import { computed, onMounted, onUnmounted, ref, Ref, watch, type WatchStopHandle } from 'vue'
+import { computed, onMounted, onUnmounted, ref, Ref, toRaw, watch, type WatchStopHandle } from 'vue'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import _ from 'lodash'
@@ -83,7 +82,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
@@ -663,12 +664,13 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
-                    .temp || '0.0'
+                deviceStore.currentDeviceStatus
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
         }
     }
 }
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     updateTemps()
     if (selectedTempSource == null) {
         return

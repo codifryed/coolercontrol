@@ -23,7 +23,6 @@ import { mdiArrowLeft, mdiContentSaveOutline } from '@mdi/js'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
 import { ref, Ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { UID } from '@/models/Device.ts'
 import Button from 'primevue/button'
@@ -35,7 +34,6 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const router = useRouter()
 
@@ -50,7 +48,7 @@ const emit = defineEmits<{
 }>()
 const props = defineProps<Props>()
 const getCurrentDuty = (): number | undefined => {
-    const duty = currentDeviceStatus.value.get(props.deviceUID)?.get(props.channelName)?.duty
+    const duty = deviceStore.currentDeviceStatus.get(props.deviceUID)?.get(props.channelName)?.duty
     return duty != null ? Number(duty) : undefined
 }
 const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)

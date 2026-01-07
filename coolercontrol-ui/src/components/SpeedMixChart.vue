@@ -26,10 +26,9 @@ import VChart from 'vue-echarts'
 import { FunctionType, Profile } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { Ref, ref, watch } from 'vue'
+import { Ref, ref, toRaw, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -51,7 +50,9 @@ interface Props {
 const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
-const { currentDeviceStatus } = storeToRefs(deviceStore)
+// We need to use the raw state to watch for changes, as the pinia reactive proxy isn't properly
+// reacting to changes from Vue's shallowRef & triggerRef anymore.
+const rawStore = toRaw(deviceStore.$state)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const router = useRouter()
@@ -139,8 +140,8 @@ const getTempLineColor = (profileIndex: number): string => {
 
 const getDuty = (): number => {
     return Number(
-        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
-            0,
+        deviceStore.currentDeviceStatus.get(props.currentDeviceUID)?.get(props.currentSensorName)
+            ?.duty ?? 0,
     )
 }
 
@@ -456,7 +457,7 @@ const handleGraphClick = (params: any): void => {
 
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
-watch(currentDeviceStatus, () => {
+watch(rawStore.currentDeviceStatus, () => {
     const duty = setDutyData()
     mixGraph.value?.setOption({
         series: [
