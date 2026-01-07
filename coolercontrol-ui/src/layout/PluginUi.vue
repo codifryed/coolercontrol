@@ -251,7 +251,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="flex flex-col justify-between min-w-96 w-[40vw] min-h-max h-[40vh]">
+    <div class="flex flex-col min-w-[40vw] min-h-[40vw] w-[60vw] h-[80vh]">
         <iframe
             ref="iframeRef"
             :name="`iframe-${pluginId}`"
