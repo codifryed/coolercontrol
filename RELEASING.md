@@ -26,9 +26,10 @@ one.
    4. Update `packaging/obs/coolercontrol.dsc`
       1. Version near the top
       2. Debtransform-Tar filename (to match gitlab release filename)
-      3. If you need to generate a new .dsc file (eg new dependencies added to `debian/control`), from the root of the tree:
-         a. `dpkg-source -D"Debtransform-Tar: coolercontrol-$VERSION.tar.gz" -D"Debtransform-Files: coolercontrold-vendor.tar.gz" -D"Debtransform-Files-Tar: debian.tar.gz" -b .`
-         b. `sed -i -E 's/native/quilt/' ../*.dsc`
+      3. File size and checksums are ignored
+      4. If you need to generate a new .dsc file (eg new dependencies added to `debian/control`), from the root of the tree:
+         - `dpkg-source -D"Debtransform-Tar: coolercontrol-$VERSION.tar.gz" -D"Debtransform-Files: coolercontrold-vendor.tar.gz" -D"Debtransform-Files-Tar: debian.tar.gz" -b .`
+         - `sed -i -E 's/native/quilt/' ../*.dsc`
 
 4. Create Release Tag and Commit and Build Release Artifacts
    1. Verify Milestone exists for the to-be-released version in GitLab
