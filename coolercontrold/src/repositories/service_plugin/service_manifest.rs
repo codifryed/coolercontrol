@@ -28,6 +28,8 @@ pub struct ServiceManifest {
     pub id: String,                // required for all service plugins
     pub service_type: ServiceType, // required for all service plugins
     pub description: Option<String>,
+    pub version: Option<String>,
+    pub url: Option<String>,
     pub executable: Option<PathBuf>, // required IF user wants to have the service managed
     pub args: Vec<String>,           // if needed (set log level, etc.) "--arg1 --arg2"
     pub envs: Vec<(String, String)>, // if needed (set log level, etc.) "ENV1=value1 ENV2=value2"
@@ -38,14 +40,9 @@ pub struct ServiceManifest {
 
 impl ServiceManifest {
     pub fn from_document(document: &DocumentMut, path: PathBuf) -> Result<Self> {
-        let id = document
-            .get("id")
-            .and_then(|item| item.as_str())
-            .with_context(|| "Service manifest id should be present")?
-            .to_string();
-        let service_type_str = document
-            .get("type")
-            .and_then(|item| item.as_str())
+        let id = Self::get_optional_string(document, "id")
+            .with_context(|| "Service manifest id should be present")?;
+        let service_type_str = Self::get_optional_string(document, "type")
             .with_context(|| "Service manifest service type should be present")?
             .to_lowercase();
         let service_type = match service_type_str.as_str() {
@@ -53,36 +50,22 @@ impl ServiceManifest {
             "integration" => ServiceType::Integration,
             _ => return Err(anyhow!("Invalid service type")),
         };
-        let description = document
-            .get("description")
-            .and_then(|item| item.as_str())
-            .filter(|d| d.is_empty().not())
-            .map(|d| d.trim().to_string());
-        let executable = document
-            .get("executable")
-            .and_then(|item| item.as_str())
-            .filter(|exe| exe.trim().is_empty().not())
-            .map(|exe| {
-                let mut exe_path = PathBuf::from(exe);
-                if exe_path.is_relative() {
-                    exe_path = Path::new(DEFAULT_PLUGINS_PATH).join(&id).join(exe_path);
-                }
-                exe_path
-            });
-        let args_str = document
-            .get("args")
-            .and_then(|item| item.as_str())
-            .unwrap_or_default()
-            .trim();
+        let description = Self::get_optional_string(document, "description");
+        let version = Self::get_optional_string(document, "version");
+        let url = Self::get_optional_string(document, "url");
+        let executable = Self::get_optional_string(document, "executable").map(|exe| {
+            let mut exe_path = PathBuf::from(exe);
+            if exe_path.is_relative() {
+                exe_path = Path::new(DEFAULT_PLUGINS_PATH).join(&id).join(exe_path);
+            }
+            exe_path
+        });
+        let args_str = Self::get_optional_string(document, "args").unwrap_or_default();
         let args = args_str
             .split_whitespace()
             .map(ToString::to_string)
             .collect();
-        let envs_str = document
-            .get("envs")
-            .and_then(|item| item.as_str())
-            .unwrap_or_default()
-            .trim();
+        let envs_str = Self::get_optional_string(document, "envs").unwrap_or_default();
         let envs = envs_str
             .split_whitespace()
             .filter_map(|env_str| {
@@ -91,9 +74,7 @@ impl ServiceManifest {
                     .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
             })
             .collect();
-        let address_opt = document
-            .get("address")
-            .and_then(|item| item.as_str().map(str::trim).map(str::to_string))
+        let address_opt = Self::get_optional_string(document, "address")
             .or_else(|| Some(format!("/tmp/{id}.sock")))
             .filter(|_| service_type == ServiceType::Device);
         let address = match address_opt {
@@ -121,6 +102,8 @@ impl ServiceManifest {
             id,
             service_type,
             description,
+            version,
+            url,
             executable,
             args,
             envs,
@@ -128,6 +111,14 @@ impl ServiceManifest {
             privileged,
             path,
         })
+    }
+
+    fn get_optional_string(document: &DocumentMut, field_name: &str) -> Option<String> {
+        document
+            .get(field_name)
+            .and_then(|item| item.as_str())
+            .map(|d| d.trim().to_string())
+            .filter(|d| d.is_empty().not())
     }
 
     pub fn is_managed(&self) -> bool {
