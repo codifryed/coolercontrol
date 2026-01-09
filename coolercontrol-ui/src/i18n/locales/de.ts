@@ -145,6 +145,7 @@ export default {
                 device: 'Geräte-Service-Plugin',
                 integration: 'Integrations-Plugin',
                 privileged: 'Privilegierter Zugriff',
+                pluginUrl: 'Startseite',
                 restricted: 'Eingeschränkter Zugriff',
                 settingsSaved: 'Plugin-Einstellungen erfolgreich gespeichert',
                 settingsNotSaved: 'Plugin-Einstellungen konnten nicht gespeichert werden',

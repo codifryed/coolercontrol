@@ -101,9 +101,11 @@ impl SystemdManager {
     /// This will return an error if the user already exists.
     async fn create_plugin_user(username: &str) -> Result<()> {
         Command::new("useradd")
-            .arg("-M") // no home dir
-            .arg("-s")
-            .arg("/bin/false") // no login shell
+            .arg("--system") // no home dir and id < 1000
+            .arg("--comment")
+            .arg("CoolerControl unprivileged plugin user")
+            .arg("--shell")
+            .arg("/usr/sbin/nologin") // no login shell
             .arg(username)
             .status()
             .await
@@ -114,6 +116,25 @@ impl SystemdManager {
                 } else {
                     Err(anyhow!(
                         "Failed to create user {username} with exit code: {}",
+                        status.code().unwrap_or(-1)
+                    ))
+                }
+            })
+    }
+
+    /// This deletes the user if it exists.
+    pub async fn delete_plugin_user(username: &str) -> Result<()> {
+        Command::new("userdel")
+            .arg(username)
+            .status()
+            .await
+            .map_err(Into::into)
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "Failed to delete user {username} with exit code: {}",
                         status.code().unwrap_or(-1)
                     ))
                 }

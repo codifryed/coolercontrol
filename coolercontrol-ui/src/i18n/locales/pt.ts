@@ -143,6 +143,7 @@ export default {
                 device: 'Plugin de serviço de dispositivo',
                 integration: 'Plugin de integração',
                 privileged: 'Acesso privilegiado',
+                pluginUrl: 'Página inicial',
                 restricted: 'Acesso restrito',
                 settingsSaved: 'Configurações do plugin salvas com sucesso',
                 settingsNotSaved: 'Falha ao salvar configurações do plugin',

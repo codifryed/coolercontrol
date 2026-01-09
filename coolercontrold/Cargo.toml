@@ -4,7 +4,9 @@ version = "3.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2024"
 # MSRV for all included libraries
-rust-version = "1.88"
+# We should only increase this when we drop support for older distros.
+# 1.85 is the newest-supported version for 22.04 LTS Jammy.
+rust-version = "1.85"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
@@ -79,7 +81,10 @@ headers = "0.4.1"
 # this needs to follow the aide version above (currently 0.9.0)
 schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
-axum_typed_multipart = "0.16.5"
+# axum-typed-multipart 0.16.5 requires >=1.88
+axum_typed_multipart = "=0.16.4"
+# axum-typed-multipart-macros is a dependency of axum-typed-multipart that, if pinned, we should pin to the same version
+axum_typed_multipart_macros = "=0.16.4"
 # possible openApi improvement, but doesn't work for us currently:
 #aide-axum-typed-multipart-2 = "0.16.0"
 tempfile = "3.24.0"
@@ -101,7 +106,8 @@ zbus = { version = "5.12.0", default-features = false, features = [
 futures-util = { version = "0.3.31", default-features = false, features = [
   "std",
 ] } # future utilities we use like join3
-sysinfo = { version = "0.37.2", default-features = false, features = [
+# sysinfo 0.37 requires >=1.88
+sysinfo = { version = "=0.36", default-features = false, features = [
   "system",
 ] } # gets detailed system info
 chrono = { version = "0.4.42", features = [
@@ -120,7 +126,8 @@ psutil = { version = "5.4.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.109.1"
+# nu-glob 0.108 requires >=1.86
+nu-glob = "=0.107"
 nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
 toml_edit = "0.23.7"
@@ -141,7 +148,8 @@ ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.9", default-features = false, features = [
+# image 0.25.9 requires >=1.87
+image = { version = "=0.25.8", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",

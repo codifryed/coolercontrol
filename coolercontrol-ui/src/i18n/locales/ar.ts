@@ -141,6 +141,7 @@ export default {
                 device: 'إضافة خدمة الجهاز',
                 integration: 'إضافة التكامل',
                 privileged: 'وصول مميز',
+                pluginUrl: 'الصفحة الرئيسية',
                 restricted: 'وصول مقيد',
                 settingsSaved: 'تم حفظ إعدادات الإضافة بنجاح',
                 settingsNotSaved: 'فشل في حفظ إعدادات الإضافة',

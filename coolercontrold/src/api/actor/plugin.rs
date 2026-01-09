@@ -85,6 +85,8 @@ impl ApiActor<PluginMessage> for PluginActor {
                         id: manifest.id.clone(),
                         service_type: manifest.service_type.to_string(),
                         description: manifest.description.clone(),
+                        version: manifest.version.clone(),
+                        url: manifest.url.clone(),
                         address,
                         privileged: manifest.privileged,
                         path: manifest.path.display().to_string(),
