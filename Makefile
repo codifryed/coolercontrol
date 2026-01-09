@@ -11,8 +11,8 @@ appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
 appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
-# Detect cargo or fallback to cargo-1.88
-CARGO := $(shell command -v cargo || command -v cargo-1.88)
+# Detect cargo or fallback to cargo-1.85
+CARGO := $(shell command -v cargo || command -v cargo-1.85)
 
 .PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
 		appimages bump release push-release validate-metadata
