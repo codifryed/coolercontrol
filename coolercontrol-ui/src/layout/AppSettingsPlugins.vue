@@ -93,10 +93,22 @@ const openPluginUi = (pluginId: string): void => {
                 </div>
             </template>
             <template #subtitle
-                >{{ getSubTitle(plugin.service_type) }}<br />{{
-                    getPluginVersion(plugin.version)
-                }}</template
-            >
+                >{{ getSubTitle(plugin.service_type) }}
+                <span v-if="plugin.version">
+                    <br />
+                    {{ getPluginVersion(plugin.version) }}
+                </span>
+                <span v-if="plugin.url">
+                    <br />
+                    <a
+                        class="outline-0 underline"
+                        :href="plugin.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ t('layout.settings.plugins.pluginUrl') }}</a
+                    >
+                </span>
+            </template>
             <template #content>
                 <p v-if="plugin.description" class="text-wrap italic mb-4">
                     {{ plugin.description }}
@@ -109,11 +121,6 @@ const openPluginUi = (pluginId: string): void => {
                                 : t('layout.settings.plugins.restricted')
                         }}
                         <br />
-                    </span>
-                    <span v-if="plugin.url">
-                        <a :href="plugin.url" target="_blank" rel="noopener noreferrer">{{
-                            plugin.url
-                        }}</a>
                     </span>
                     <span v-if="plugin.address">
                         <code>{{ plugin.address }}</code>

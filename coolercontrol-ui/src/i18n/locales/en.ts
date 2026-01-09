@@ -141,6 +141,7 @@ export default {
                 device: 'Device Service Plugin',
                 integration: 'Integration Plugin',
                 privileged: 'Privileged Access',
+                pluginUrl: 'Homepage',
                 restricted: 'Restricted Access',
                 settingsSaved: 'Plugin settings successfully saved',
                 settingsNotSaved: 'Failed to save plugin settings',

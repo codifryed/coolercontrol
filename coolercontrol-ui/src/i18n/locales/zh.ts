@@ -139,6 +139,7 @@ export default {
                 device: '设备服务插件',
                 integration: '集成插件',
                 privileged: '特权访问',
+                pluginUrl: '主页',
                 restricted: '受限访问',
                 settingsSaved: '插件设置保存成功',
                 settingsNotSaved: '插件设置保存失败',

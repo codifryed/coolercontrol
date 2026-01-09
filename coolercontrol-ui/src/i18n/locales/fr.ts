@@ -144,6 +144,7 @@ export default {
                 device: 'Plugin de service de périphérique',
                 integration: "Plugin d'intégration",
                 privileged: 'Accès privilégié',
+                pluginUrl: "Page d'accueil",
                 restricted: 'Accès restreint',
                 settingsSaved: 'Paramètres du plugin enregistrés avec succès',
                 settingsNotSaved: "Échec de l'enregistrement des paramètres du plugin",

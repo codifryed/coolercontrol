@@ -139,6 +139,7 @@ export default {
                 device: '裝置服務外掛程式',
                 integration: '整合外掛程式',
                 privileged: '特權存取',
+                pluginUrl: '首頁',
                 restricted: '受限存取',
                 settingsSaved: '外掛程式設定儲存成功',
                 settingsNotSaved: '外掛程式設定儲存失敗',
