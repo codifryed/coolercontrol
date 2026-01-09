@@ -101,9 +101,11 @@ impl SystemdManager {
     /// This will return an error if the user already exists.
     async fn create_plugin_user(username: &str) -> Result<()> {
         Command::new("useradd")
-            .arg("-M") // no home dir
-            .arg("-s")
-            .arg("/bin/false") // no login shell
+            .arg("--system") // no home dir and id < 1000
+            .arg("--comment")
+            .arg("CoolerControl unprivileged plugin user")
+            .arg("--shell")
+            .arg("/usr/sbin/nologin") // no login shell
             .arg(username)
             .status()
             .await
