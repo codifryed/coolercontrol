@@ -121,6 +121,25 @@ impl SystemdManager {
                 }
             })
     }
+
+    /// This deletes the user if it exists.
+    pub async fn delete_plugin_user(username: &str) -> Result<()> {
+        Command::new("userdel")
+            .arg(username)
+            .status()
+            .await
+            .map_err(Into::into)
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "Failed to delete user {username} with exit code: {}",
+                        status.code().unwrap_or(-1)
+                    ))
+                }
+            })
+    }
 }
 
 impl ServiceManager for SystemdManager {
