@@ -24,6 +24,8 @@ export class PluginDto {
     id: string = ''
     service_type: ServiceType = ServiceType.Integration
     description?: string
+    version?: string
+    url?: string
     address: String = ''
     privileged: boolean = false
     path: String = ''

@@ -136,6 +136,8 @@ pub struct PluginDto {
     pub id: String,
     pub service_type: String,
     pub description: Option<String>,
+    pub version: Option<String>,
+    pub url: Option<String>,
     pub address: String,
     pub privileged: bool,
     pub path: String,

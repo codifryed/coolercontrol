@@ -56,6 +56,13 @@ const getSubTitle = (serviceType: ServiceType): string => {
     }
 }
 
+const getPluginVersion = (version?: string): string => {
+    if (version) {
+        return `v${version}`
+    }
+    return ''
+}
+
 // onClick of settings, open up model with iframe to plugin UI
 const openPluginUi = (pluginId: string): void => {
     dialog.open(pluginUi, {
@@ -85,7 +92,11 @@ const openPluginUi = (pluginId: string): void => {
                     {{ plugin.id }}
                 </div>
             </template>
-            <template #subtitle>{{ getSubTitle(plugin.service_type) }}</template>
+            <template #subtitle
+                >{{ getSubTitle(plugin.service_type) }}<br />{{
+                    getPluginVersion(plugin.version)
+                }}</template
+            >
             <template #content>
                 <p v-if="plugin.description" class="text-wrap italic mb-4">
                     {{ plugin.description }}
@@ -98,6 +109,11 @@ const openPluginUi = (pluginId: string): void => {
                                 : t('layout.settings.plugins.restricted')
                         }}
                         <br />
+                    </span>
+                    <span v-if="plugin.url">
+                        <a :href="plugin.url" target="_blank" rel="noopener noreferrer">{{
+                            plugin.url
+                        }}</a>
                     </span>
                     <span v-if="plugin.address">
                         <code>{{ plugin.address }}</code>
