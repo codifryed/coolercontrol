@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 pub mod manager;
 mod openrc;
-mod systemd;
+pub mod systemd;
 
 pub type ServiceId = String;
 

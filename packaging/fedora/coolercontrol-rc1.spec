@@ -5,7 +5,8 @@
 %{!?_metainfodir: %define _metainfodir %{_datadir}/metainfo}
 
 Name:           coolercontrol
-Version:        3.1.0~rc1
+Version:        3.1.2~rc1
+Release:        %autorelease
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64

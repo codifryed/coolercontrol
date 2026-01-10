@@ -141,6 +141,7 @@ export default {
                 device: 'डिवाइस सर्विस प्लगइन',
                 integration: 'इंटीग्रेशन प्लगइन',
                 privileged: 'विशेषाधिकार प्राप्त पहुँच',
+                pluginUrl: 'होमपेज',
                 restricted: 'प्रतिबंधित पहुँच',
                 settingsSaved: 'प्लगइन सेटिंग्स सफलतापूर्वक सहेजी गईं',
                 settingsNotSaved: 'प्लगइन सेटिंग्स सहेजने में विफल',

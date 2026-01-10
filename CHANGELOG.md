@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [3.1.1] - 2026-01-10
+
+### Changed
+
+- excluded it87 driver when detecting firmware profile support (not working)
+- expose gRPC port by default in docker images
+- plugin UI improvements
+- changed default socket location for device service plugins
+- various dependency adjustments to help with packaging efforts
+
+### Fixed
+
+- long standing issue with a held-back dependency
+- unprivileged plugin service user should be a system user
+
 ## [3.1.0] - 2026-01-03
 
 ### Added

@@ -27,6 +27,7 @@ use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
+use crate::repositories::service_plugin::service_management::systemd::SystemdManager;
 use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -737,6 +738,7 @@ impl Repository for ServicePluginRepo {
         let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
         let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
         let poll_rate = self.config.get_settings()?.poll_rate;
+        remove_plugin_user().await;
         moro_local::async_scope!(|service_init_scope| {
             for (service_id, service_manifest) in Self::find_service_manifests().await {
                 let service_manager = Rc::clone(&service_manager);
@@ -1156,4 +1158,11 @@ impl Repository for ServicePluginRepo {
         })
         .await;
     }
+}
+
+/// This will delete the plugin user if it exists.
+/// This is used to clean up the original plugin user which was a non-system user.
+/// We can remove this after v3.1.1 is released.
+async fn remove_plugin_user() {
+    let _ = SystemdManager::delete_plugin_user(CC_PLUGIN_USER).await;
 }
