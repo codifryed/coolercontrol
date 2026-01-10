@@ -252,6 +252,7 @@ build_deb_bookworm_amd64:
     - saas-linux-xlarge-amd64
   needs:
     - compile_artifacts
+    - build_source_assets
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -302,6 +303,7 @@ build_deb_bookworm_arm64:
     - saas-linux-large-arm64
   needs:
     - compile_artifacts
+    - build_source_assets
     # For some reason (emulation?), if the amd64 build is running at the same time, there are problems
     - build_deb_bookworm_amd64
   rules:
@@ -357,6 +359,7 @@ build_ubuntu:
     - saas-linux-xlarge-amd64
   needs:
     - compile_artifacts
+    - build_source_assets
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
