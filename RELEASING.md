@@ -21,6 +21,7 @@ one.
       1. Version near the top
       2. Changelog at the bottom
    2. Update `packaging/fedora/coolercontrol-rc1.spec`,`packaging/fedora/coolercontrold-rc1.spec`
+      1. Use the 'next' patch version.
    3. Update `packaging/debian/changelog`
       1. Add a whole new section at the beginning with top version and changelog entry
 
