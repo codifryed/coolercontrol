@@ -9,10 +9,10 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
 # current bookworm rust version is 1.63.0 - a bit old and possiblity not compatible with some crates
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.90.0
+#ENV RUSTUP_HOME=/usr/local/rustup \
+#    CARGO_HOME=/usr/local/cargo \
+#    PATH=/usr/local/cargo/bin:$PATH \
+#    RUST_VERSION=1.90.0
 # bookworm used node 18
 ENV NODE_MAJOR=22
 # bookworm has modern python dependencies - no issue.
@@ -37,16 +37,18 @@ RUN apt update && apt install -y --no-install-recommends \
     qt6-webengine-dev \
     qt6-webengine-dev-tools \
     libdrm-dev \
-    cargo \
-    # rustup:
+    # 1.85:
+    cargo-web \
+    # external libs:
     curl \
     ca-certificates \
     protobuf-compiler \
     debhelper
 
 # rust toolchain
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+#RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
+#    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+# cargo-web does not need a symlink for cargo
 
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
