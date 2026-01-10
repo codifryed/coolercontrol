@@ -276,7 +276,7 @@ build_deb_bookworm_amd64:
       #qt6-webengine-dev
       #qt6-webengine-dev-tools
       #libdrm-dev
-      #cargo
+      #cargo-web
     - |
       python3 --version
       cargo --version
@@ -328,7 +328,7 @@ build_deb_bookworm_arm64:
       #qt6-webengine-dev
       #qt6-webengine-dev-tools
       #libdrm-dev
-      #cargo
+      #cargo-web
     - |
       python3 --version
       cargo --version
@@ -381,7 +381,7 @@ build_ubuntu:
       #qt6-webengine-dev
       #qt6-webengine-dev-tools
       #libdrm-dev
-      #cargo
+      #cargo-1.85
     - |
       python3 --version
       cargo --version

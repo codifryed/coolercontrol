@@ -10,17 +10,15 @@ ENV LANG=C.UTF-8
 ENV CI=true
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
-    # pip
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100
-# Using 22.04 LTS rust version, currently 1.70 - not supported by many libs now
-# on 2024-03-01 22.04 updated rust to 1.75, so we can use that.
-# on 2024-09-17 22.04 updated rust to 1.80, and likely will be updated to 1.81 soon.
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.90.0
-ENV PATH=/root/.cargo/bin:$PATH
+
+# Using 22.04 LTS rust version, currently 1.85
+#ENV RUSTUP_HOME=/usr/local/rustup \
+#    CARGO_HOME=/usr/local/cargo \
+#    PATH=/usr/local/cargo/bin:$PATH \
+#    RUST_VERSION=1.90.0
+#ENV PATH=/root/.cargo/bin:$PATH
 
 ENV NODE_MAJOR=22
 
@@ -31,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # for standard appstream checks:
         desktop-file-utils appstream-util \
         # rust
-        cargo \
+        cargo-1.85 \
+        rust-1.85-clippy \
         jq \
         protobuf-compiler \
         # python
@@ -62,8 +61,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         debhelper
 
 # rust toolchain
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+#RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
+#    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+# needed for cargo-* versions
+RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.85 10 && \
+    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.85 10
 
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
@@ -73,7 +75,7 @@ RUN mkdir -p /etc/apt/keyrings && \
 RUN pip3 install --upgrade pip
 
 # for our conversion to gitlib test results
-RUN rustup component add clippy && \
-    cargo install cargo-audit gitlab-report nixpkgs-fmt --locked
+#RUN rustup component add clippy && \
+RUN cargo install cargo-audit gitlab-report nixpkgs-fmt --locked
 
 RUN apt-get -y autoclean

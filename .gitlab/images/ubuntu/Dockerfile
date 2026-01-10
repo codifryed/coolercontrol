@@ -9,11 +9,11 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 ENV CI=true
 
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.90.0
-ENV PATH=/root/.cargo/bin:$PATH
+#ENV RUSTUP_HOME=/usr/local/rustup \
+#    CARGO_HOME=/usr/local/cargo \
+#    PATH=/usr/local/cargo/bin:$PATH \
+#    RUST_VERSION=1.90.0
+#ENV PATH=/root/.cargo/bin:$PATH
 
 ENV NODE_MAJOR=22
 
@@ -35,7 +35,7 @@ RUN apt update && apt install -y --no-install-recommends \
     qt6-webengine-dev-tools \
     # coolercontrold
     libdrm-dev \
-    cargo \
+    cargo-1.85 \
     protobuf-compiler \
     # nodesource:
     curl \
@@ -45,8 +45,11 @@ RUN apt update && apt install -y --no-install-recommends \
     debhelper
 
 # rust toolchain
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+#RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
+#    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+# needed for cargo-* versions
+RUN update-alternatives --install /usr/bin/cargo cargo /usr/bin/cargo-1.85 10 && \
+    update-alternatives --install /usr/bin/rustc rustc /usr/bin/rustc-1.85 10
 
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
