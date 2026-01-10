@@ -19,7 +19,7 @@
 
 #include <string>
 
-const std::string COOLER_CONTROL_VERSION = "3.1.1";
+const std::string COOLER_CONTROL_VERSION = "3.1.2";
 const std::string APP_ID = "org.coolercontrol.CoolerControl";
 const std::string APP_ID_ALERT = "org.coolercontrol.CoolerControl-alert";
 const std::string APP_ID_SYMBOLIC = "org.coolercontrol.CoolerControl-symbolic";
