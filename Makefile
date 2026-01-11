@@ -56,7 +56,7 @@ test-qt:
 # Trunk needs: libxcrypt-compat on local system
 ci-install:
 	@./trunk install --ci
-	@cargo install gitlab-report --locked
+	@$(CARGO) install gitlab-report --locked
  
 ci-test: validate-metadata ci-test-ui ci-test-daemon ci-test-qt
 
