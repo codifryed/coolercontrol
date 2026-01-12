@@ -172,8 +172,9 @@ void MainWindow::initDelay() const {
 
 void MainWindow::initSystemTray() {
   m_sysTrayIcon = new QSystemTrayIcon(this->parent());
-  const auto ccHeader = new QAction(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")),
-                                    tr("CoolerControl"), m_sysTrayIcon);
+  const auto ccHeader = new QAction(
+      QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/org.coolercontrol.CoolerControl.svg")),
+      tr("CoolerControl"), m_sysTrayIcon);
   ccHeader->setDisabled(true);
   m_showAction = m_ipc->getStartInTray() ? new QAction(tr("&Show"), m_sysTrayIcon)
                                          : new QAction(tr("&Hide"), m_sysTrayIcon);
