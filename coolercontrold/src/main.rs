@@ -112,9 +112,9 @@ const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 ///
 /// # Example
 /// ```
-/// CC_TLS_ENABLED=ON coolercontrold
+/// CC_TLS=OFF coolercontrold
 /// ```
-const ENV_TLS_ENABLED: &str = "CC_TLS_ENABLED";
+const ENV_TLS: &str = "CC_TLS";
 
 /// Environment Variable: To disable dbus integration (sleep listener)
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]

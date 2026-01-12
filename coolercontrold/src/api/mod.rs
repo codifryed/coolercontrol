@@ -48,7 +48,7 @@ use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
-use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, ENV_TLS_ENABLED, VERSION};
+use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, ENV_TLS, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -534,7 +534,7 @@ fn cors_layer() -> cors::CorsLayer {
 
 /// TLS Configuration
 async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
-    let tls_enabled = env::var(ENV_TLS_ENABLED)
+    let tls_enabled = env::var(ENV_TLS)
         .ok()
         .and_then(|env_tls| {
             env_tls
