@@ -24,6 +24,7 @@
 #include <QPainter>
 #include <QSystemTrayIcon>
 #include <QWebChannel>
+#include <QWebEngineCertificateError>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
