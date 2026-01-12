@@ -107,6 +107,15 @@ const ENV_HOST_IP4: &str = "CC_HOST_IP4";
 /// ```
 const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
+/// Environment Variable: Disable TLS/SSL for the REST API.
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_TLS_ENABLED=ON coolercontrold
+/// ```
+const ENV_TLS_ENABLED: &str = "CC_TLS_ENABLED";
+
 /// Environment Variable: To disable dbus integration (sleep listener)
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///

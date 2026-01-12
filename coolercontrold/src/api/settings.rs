@@ -178,6 +178,9 @@ impl CoolerControlSettingsDto {
             compress,
             poll_rate,
             drivetemp_suspend,
+            tls_enabled: current_settings.tls_enabled,
+            tls_cert_path: current_settings.tls_cert_path,
+            tls_key_path: current_settings.tls_key_path,
         }
     }
 }

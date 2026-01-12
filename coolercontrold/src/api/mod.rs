@@ -22,6 +22,7 @@ mod auth;
 mod base;
 mod custom_sensors;
 pub mod devices;
+mod dual_protocol;
 mod functions;
 pub mod limiter;
 pub mod modes;
@@ -31,6 +32,7 @@ mod router;
 mod settings;
 mod sse;
 pub mod status;
+mod tls;
 
 use crate::alerts::AlertController;
 use crate::api::actor::{
@@ -45,7 +47,8 @@ use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
-use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, VERSION};
+use crate::setting::CoolerControlSettings;
+use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, ENV_TLS_ENABLED, VERSION};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -56,6 +59,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
+use axum_server::tls_rustls::RustlsConfig;
 use derive_more::{Display, Error};
 use limiter::LimiterLayer;
 use log::{debug, info, warn};
@@ -64,6 +68,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::ops::Not;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -87,6 +92,7 @@ const SESSION_COOKIE_NAME: &str = "cc";
 const API_RATE_BURST: u32 = 120; // Multiple UIs restarted at the same time creates lots of requests
 const API_RATE_REQ_PER_SEC: u64 = 20;
 const API_TIMEOUT_SECS: u64 = 30;
+const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 type Port = u16;
 
@@ -127,7 +133,8 @@ pub async fn start_server<'s>(
         ));
     }
 
-    let compression_layers = if config.get_settings()?.compress {
+    let settings = config.get_settings()?;
+    let compression_layers = if settings.compress {
         Some((CompressionLayer::new(), DecompressionLayer::new()))
     } else {
         None
@@ -146,11 +153,13 @@ pub async fn start_server<'s>(
         &cancel_token,
         main_scope,
     );
+    let tls_config = tls_config(&settings).await;
     // Note: to persist user login session across daemon restarts would require a
     //  persisted master key and local db backend for the session data.
     let session_layer = SessionManagerLayer::new(MemoryStore::default())
         .with_name(SESSION_COOKIE_NAME)
         .with_private(Key::generate())
+        // unsecure is used for local connections:
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
@@ -173,6 +182,7 @@ pub async fn start_server<'s>(
             session_layer.clone(),
             compression_layers.clone(),
             limiter_layer.clone(),
+            tls_config.clone(),
             cancel_token.clone(),
         ));
     }
@@ -183,6 +193,7 @@ pub async fn start_server<'s>(
             session_layer,
             compression_layers,
             limiter_layer,
+            tls_config,
             cancel_token.clone(),
         ));
     }
@@ -235,6 +246,7 @@ async fn create_api_server(
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     limiter_layer: LimiterLayer,
+    tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
     aide::generate::on_error(|error| {
@@ -244,37 +256,65 @@ async fn create_api_server(
     let router = router::init(app_state)
         .finish_api_with(&mut open_api, api_docs)
         .layer(Extension(Arc::new(open_api)));
-    let listener = TcpListener::bind(addr).await?;
-    info!("API bound to address: {addr}");
 
-    // The NormalizePathLayer needs to be before the router layer.
-    let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(
-        // Would like to use ServiceBuilder, but there are issues with getting all our
-        // layers to work together properly.
-        // Layers are processed bottom to top: (last is first in the chain)
-        // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
-        optional_layers(compression_layers, router)
-            // Limits the size of the payload in bytes: (Max 50MB for image files)
-            .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
-            // 2MB is the default payload limit:
-            .route_layer(DefaultBodyLimit::disable())
-            .route_layer(session_layer)
-            .layer(cors_layer())
-            .layer((
-                TraceLayer::new_for_http(),
-                TimeoutLayer::with_status_code(
-                    StatusCode::REQUEST_TIMEOUT,
-                    Duration::from_secs(API_TIMEOUT_SECS),
+    // Build the base router with all layers
+    // Layers are processed bottom to top: (last is first in the chain)
+    // See: https://docs.rs/axum/latest/axum/middleware/index.html#ordering
+    let base_router = optional_layers(compression_layers, router)
+        // Limits the size of the payload in bytes: (Max 50MB for image files)
+        .route_layer(RequestBodyLimitLayer::new(50 * 1024 * 1024))
+        // 2MB is the default payload limit:
+        .route_layer(DefaultBodyLimit::disable())
+        .route_layer(session_layer)
+        .layer(cors_layer())
+        .layer((
+            TraceLayer::new_for_http(),
+            TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::from_secs(API_TIMEOUT_SECS),
+            ),
+        ))
+        .layer(limiter_layer);
+
+    let listener = TcpListener::bind(addr).await?;
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::task::spawn_local(async move {
+        cancel_token.cancelled().await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(API_SHUTDOWN_TIMEOUT_SECS)));
+    });
+
+    if let Some(tls) = tls_config {
+        // Dual-protocol server: accepts both HTTP and HTTPS on the same port
+        // HTTP requests from non-localhost are redirected to HTTPS (via middleware)
+        // HTTP requests from localhost and to /health are allowed
+        info!("Serving HTTP and HTTPS API on {addr}");
+
+        // Add HTTPS redirect layer for non-localhost HTTP requests
+        let redirect_layer = dual_protocol::HttpsRedirectLayer { port: addr.port() };
+        let router_with_redirect = base_router.layer(redirect_layer);
+        let normalized_router =
+            NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
+
+        let acceptor = dual_protocol::DualProtocolAcceptor::new(tls);
+        axum_server::from_tcp(listener.into_std()?)?
+            .acceptor(acceptor)
+            .handle(handle)
+            .serve(
+                ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(
+                    normalized_router,
                 ),
-            ))
-            .layer(limiter_layer),
-    );
-    axum::serve(
-        listener,
-        ServiceExt::<Request>::into_make_service(normalized_router),
-    )
-    .with_graceful_shutdown(async move { cancel_token.cancelled().await })
-    .await?;
+            )
+            .await?;
+    } else {
+        // Plain HTTP server (no redirect needed)
+        info!("Serving HTTP API on: {addr}");
+        let normalized_router = NormalizePathLayer::trim_trailing_slash().layer(base_router);
+        axum_server::from_tcp(listener.into_std()?)?
+            .handle(handle)
+            .serve(ServiceExt::<Request>::into_make_service(normalized_router))
+            .await?;
+    }
     Ok(())
 }
 
@@ -490,6 +530,39 @@ fn cors_layer() -> cors::CorsLayer {
     //                 false
     //             }
     //         })
+}
+
+/// TLS Configuration
+async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
+    let tls_enabled = env::var(ENV_TLS_ENABLED)
+        .ok()
+        .and_then(|env_tls| {
+            env_tls
+                .parse::<u8>()
+                .ok()
+                .map(|bb| bb != 0)
+                .or_else(|| Some(env_tls.trim().to_lowercase() != "off"))
+        })
+        .unwrap_or(settings.tls_enabled);
+    if tls_enabled.not() {
+        return None;
+    }
+    let (cert_path, key_path) = tls::ensure_certificates(
+        settings.tls_cert_path.as_deref(),
+        settings.tls_key_path.as_deref(),
+    )
+    .await
+    .inspect_err(|err| {
+        warn!("Failed to ensure TLS certificates: {err}");
+    })
+    .ok()?;
+    match RustlsConfig::from_pem_file(&cert_path, &key_path).await {
+        Ok(tls_config) => Some(tls_config),
+        Err(err) => {
+            warn!("Failed to load TLS certificates: {err}");
+            None
+        }
+    }
 }
 
 fn handle_error(err: anyhow::Error) -> CCError {

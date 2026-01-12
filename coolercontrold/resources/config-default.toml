@@ -109,7 +109,8 @@ thinkpad_full_speed = false
 # The daemon by default uses port 11987 and the standard loopback IPv4 and IPv6 addresses.
 # You can set an IPv4, IPv6 or both addresses to listen on. An empty string will disable the address.
 # It is highly recommended to use the default settings unless you have a specific reason to change them
-# and understand the implications. The API is not secure and should not be exposed to a public network.
+# and understand the implications.
+# If you expose the API to a public network, it is recommended to use TLS/HTTPS (see below).
 # For more information see the project wiki.
 # Example:
 # port = 11987
@@ -129,6 +130,18 @@ compress_payload = true
 # Whether to check if drivetemp supported drives are in a suspended state/spun down, and if so,
 # return 0C as their reporting temperature.
 drivetemp_suspend = false
+
+# TLS/HTTPS Configuration:
+# TLS to secure the REST API with HTTPS. (enabled by default)
+# When enabled, a self-signed certificate will be automatically generated on first startup if no
+# certificate paths are specified. The certificate and key are stored in /etc/coolercontrol/ by
+# default.
+# Note: Self-signed certificates will cause browser warnings. You can provide your own
+# certificate by specifying the paths below, or use a reverse proxy (nginx, caddy, traefik)
+# to handle TLS termination as an alternative approach.
+# tls_enabled = true
+# tls_cert_path = "/etc/coolercontrol/coolercontrol.crt"
+# tls_key_path = "/etc/coolercontrol/coolercontrol.key"
 
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]

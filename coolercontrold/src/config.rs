@@ -986,6 +986,39 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "drivetemp_suspend should be a boolean value")?;
+            let tls_enabled = settings
+                .get("tls_enabled")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool()
+                .with_context(|| "tls_enabled should be a boolean value")?;
+            let tls_cert_path = if let Some(value) = settings.get("tls_cert_path") {
+                let path_str = value
+                    .as_str()
+                    .with_context(|| "tls_cert_path should be a string")?
+                    .trim()
+                    .to_string();
+                if path_str.is_empty() {
+                    None
+                } else {
+                    Some(path_str)
+                }
+            } else {
+                None
+            };
+            let tls_key_path = if let Some(value) = settings.get("tls_key_path") {
+                let path_str = value
+                    .as_str()
+                    .with_context(|| "tls_key_path should be a string")?
+                    .trim()
+                    .to_string();
+                if path_str.is_empty() {
+                    None
+                } else {
+                    Some(path_str)
+                }
+            } else {
+                None
+            };
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -999,6 +1032,9 @@ impl Config {
                 compress: compress_payload,
                 poll_rate,
                 drivetemp_suspend,
+                tls_enabled,
+                tls_cert_path,
+                tls_key_path,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1032,6 +1068,16 @@ impl Config {
         base_settings["drivetemp_suspend"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.drivetemp_suspend,
         )));
+        base_settings["tls_enabled"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.tls_enabled)));
+        if let Some(ref cert_path) = cc_settings.tls_cert_path {
+            base_settings["tls_cert_path"] =
+                Item::Value(Value::String(Formatted::new(cert_path.clone())));
+        }
+        if let Some(ref key_path) = cc_settings.tls_key_path {
+            base_settings["tls_key_path"] =
+                Item::Value(Value::String(Formatted::new(key_path.clone())));
+        }
     }
 
     /// This gets the `CoolerControl` settings for specific devices

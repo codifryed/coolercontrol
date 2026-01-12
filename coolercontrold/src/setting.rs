@@ -165,6 +165,9 @@ pub struct CoolerControlSettings {
     pub compress: bool,
     pub poll_rate: f64,
     pub drivetemp_suspend: bool,
+    pub tls_enabled: bool,
+    pub tls_cert_path: Option<String>,
+    pub tls_key_path: Option<String>,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.
