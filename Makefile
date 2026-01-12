@@ -11,6 +11,9 @@ appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
 appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
+# Detect cargo or fallback to cargo-1.85
+CARGO := $(shell command -v cargo || command -v cargo-1.85)
+
 .PHONY: build build-ui build-source build-appimages test clean install install-source uninstall \
 		appimages bump release push-release validate-metadata
 
@@ -53,7 +56,7 @@ test-qt:
 # Trunk needs: libxcrypt-compat on local system
 ci-install:
 	@./trunk install --ci
-	@cargo install gitlab-report --locked
+	@$(CARGO) install gitlab-report --locked
  
 ci-test: validate-metadata ci-test-ui ci-test-daemon ci-test-qt
 
