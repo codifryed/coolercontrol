@@ -328,7 +328,7 @@ pub struct Function {
     pub step_size_min: Duty,
 
     /// The maximum duty change (step size) to apply
-    /// A duty maximum of `0` indicates a fixed step size. Use duty_minimum to set the step size.
+    /// A duty maximum of `0` indicates a fixed step size. Use `duty_minimum` to set the step size.
     /// Previously `duty_maximum`.
     #[serde(rename = "duty_maximum")]
     pub step_size_max: Duty,
