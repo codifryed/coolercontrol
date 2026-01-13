@@ -1013,7 +1013,8 @@ class DeviceService:
                 f"Setting control mode for device: {device_id} with args: {control_mode_kwargs}"
             )
             log.debug(
-                f"LC #{device_id} {lc_device.__class__.__name__}.set_fan_control_mode({control_mode_kwargs}) "
+                f"LC #{device_id} {lc_device.__class__.__name__}."
+                f"set_fan_control_mode({control_mode_kwargs}) "
             )
             status_job = self.device_executor.submit(
                 device_id, lc_device.set_fan_control_mode, **control_mode_kwargs
