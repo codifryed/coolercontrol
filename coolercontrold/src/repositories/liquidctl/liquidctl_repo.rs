@@ -942,26 +942,13 @@ impl Repository for LiquidctlRepo {
         }
     }
 
-    /// liquidctl drivers generally handle this themselves, so we don't need to do anything.
+    /// liquidctl drivers handle this themselves, so we don't need to do anything.
     async fn apply_setting_manual_control(
         &self,
-        device_uid: &UID,
-        channel_name: &str,
+        _device_uid: &UID,
+        _channel_name: &str,
     ) -> Result<()> {
-        let cached_device_data = self.cache_device_data(device_uid)?;
-        if cached_device_data.driver_type == BaseDriver::LianLiUni {
-            self.liqctld_client
-                .put_control_mode(&cached_device_data.type_index, channel_name, "fixed")
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "Resetting to fixed control for LIQUIDCTL Device #{}: {device_uid} | {channel_name} - {err}",
-                        cached_device_data.type_index
-                    )
-                })
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     async fn apply_setting_speed_fixed(
