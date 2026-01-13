@@ -77,14 +77,30 @@ pub async fn ensure_certificates(
 }
 
 fn generate_self_signed_cert() -> Result<CertifiedKey<KeyPair>> {
+    let mut distinguished_name = DistinguishedName::new();
+    distinguished_name.push(DnType::CommonName, "CoolerControl self signed cert");
+    distinguished_name.push(DnType::OrganizationName, "CoolerControl");
     let subject_alt_names = vec![
+        // standard localhost DNS names
         "localhost".to_string(),
+        "localhost4".to_string(),
+        "localhost6".to_string(),
+        "localhost.localdomain".to_string(),
+        "localhost4.localdomain4".to_string(),
+        "localhost6.localdomain6".to_string(),
         "127.0.0.1".to_string(),
         "::1".to_string(),
+        // catch-all IPs
+        "0.0.0.0".to_string(),
+        "::".to_string(),
     ];
-
-    generate_simple_self_signed(subject_alt_names)
-        .context("Failed to generate self-signed certificate")
+    let mut params = CertificateParams::new(subject_alt_names)?;
+    params.distinguished_name = distinguished_name;
+    let signing_key = KeyPair::generate()?;
+    let cert = params
+        .self_signed(&signing_key)
+        .context("Failed to generate self-signed certificate")?;
+    Ok(CertifiedKey { cert, signing_key })
 }
 
 #[cfg(test)]
