@@ -1,15 +1,17 @@
 %global qt_dir coolercontrol
 %global ap_id org.coolercontrol.CoolerControl
+%{!?_metainfodir: %define _metainfodir %{_datadir}/metainfo}
 
 Name:           coolercontrol
 Version:        3.1.1
-Release:        %autorelease
+Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64
 License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{name}/%{name}
 
-BuildRequires:  libappstream-glib
+BuildRequires:  pkgconfig(appstream-glib)
+BuildRequires:  pkgconfig(ocl-icd)
 BuildRequires:  desktop-file-utils
 BuildRequires:  make
 BuildRequires:  cmake
@@ -18,6 +20,7 @@ BuildRequires:  cmake(Qt6)
 BuildRequires:  cmake(Qt6WebEngineCore)
 BuildRequires:  cmake(Qt6WebEngineWidgets)
 BuildRequires:  cmake(Qt6WebChannel)
+BuildRequires:  hicolor-icon-theme > 0
 Requires:       hicolor-icon-theme > 0
 Recommends:     coolercontrold = %{version}
 

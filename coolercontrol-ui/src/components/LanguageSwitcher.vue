@@ -69,6 +69,7 @@ const localeOptions = [
     { name: 'العربية', code: 'ar' },
     { name: 'Português', code: 'pt' },
     { name: 'हिन्दी', code: 'hi' },
+    { name: '한국어', code: 'ko' },
 ]
 
 // Ensure currentLocale matches locale when component is mounted

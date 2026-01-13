@@ -8,7 +8,7 @@
 
 Name:           %{project}d
 Version:        3.1.2~rc1
-Release:        %autorelease
+Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 Obsoletes:      coolercontrol-liqctld <= 2.2.2
 ExclusiveArch:  x86_64 aarch64
@@ -16,10 +16,10 @@ License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
 
 BuildRequires:  systemd-rpm-macros
-BuildRequires:  cargo-rpm-macros >= 25
+BuildRequires:  rpm_macro(cargo_build)
 BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
-BuildRequires:  protobuf-compiler
+BuildRequires:  pkgconfig(protobuf)
 Recommends:     python3-liquidctl
 Recommends:     lm_sensors
 
@@ -35,17 +35,15 @@ your system quiet, cool, and stable.
 %prep
 %autosetup -n %{project}-%{branch}/%{name} -a 0
 tar -xzf %{SOURCE1}
-%cargo_prep -v vendor
-#cargo_prep
+%{?cargo_prep:%cargo_prep -v vendor}
 
-%generate_buildrequires
-#cargo_generate_buildrequires
+%{?generate_buildrequires}
 
 %build
 %cargo_build
-%{cargo_license_summary}
-%{cargo_license} > LICENSE.dependencies
-%{cargo_vendor_manifest}
+%{?cargo_license_summary}
+%{?cargo_license:%{cargo_license} > LICENSE.dependencies}
+%{?cargo_vendor_manifest}
 
 %install
 install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
@@ -64,6 +62,11 @@ install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
 %{_mandir}/man8/%{name}.8*
 %license LICENSE
 %doc CHANGELOG.md
+
+%if 0%{?suse_version}
+%pre
+%systemd_pre %{name}.service
+%endif
 
 %post
 %systemd_post %{name}.service
