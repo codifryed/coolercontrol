@@ -18,7 +18,7 @@ ENV PYTHONFAULTHANDLER=1 \
 #    CARGO_HOME=/usr/local/cargo \
 #    PATH=/usr/local/cargo/bin:$PATH \
 #    RUST_VERSION=1.90.0
-#ENV PATH=/root/.cargo/bin:$PATH
+ENV PATH=/root/.cargo/bin:$PATH
 
 ENV NODE_MAJOR=22
 
