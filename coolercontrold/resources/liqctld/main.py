@@ -48,6 +48,10 @@ except ImportError:
     AuraLed = None
     CommanderCore = None
     H1V2 = None
+try:  # >= 1.16.0
+    from liquidctl.driver.lianli_uni import LianLiUni
+except ImportError:
+    LianLiUni = None
 from liquidctl.driver.asetek import Legacy690Lc, Modern690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
@@ -304,6 +308,30 @@ class SpeedProfileRequest(BaseModel):
         except KeyError:
             raise LiqctldException(
                 HTTPStatus.BAD_REQUEST, f"Invalid SpeedProfileRequest Body: {data}"
+            ) from None
+
+
+class ControlModeRequest(BaseModel):
+    def __init__(self, channel: str, control_mode: str):
+        self.channel: str = channel
+        self.control_mode: str = control_mode
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "channel": self.channel,
+            "control_mode": self.control_mode,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ControlModeRequest":
+        try:
+            return cls(
+                channel=data["channel"],
+                control_mode=data["control_mode"],
+            )
+        except KeyError:
+            raise LiqctldException(
+                HTTPStatus.BAD_REQUEST, f"Invalid ControlModeRequest Body: {data}"
             ) from None
 
 
@@ -967,6 +995,43 @@ class DeviceService:
                 f"Unexpected Device communication error: {err}"
             ) from err
 
+    def set_control_mode(
+        self, device_id: int, control_mode_kwargs: Dict[str, str]
+    ) -> None:
+        try:
+            if self.devices.get(device_id) is None:
+                raise LiqctldException(
+                    HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+                )
+            lc_device = self.devices[device_id]
+            if LianLiUni is None or not isinstance(lc_device, LianLiUni):
+                raise LiqctldException(
+                    HTTPStatus.BAD_REQUEST,
+                    f"Device id:{device_id} does not support control mode",
+                )
+            log.debug(
+                f"Setting control mode for device: {device_id} with args: {control_mode_kwargs}"
+            )
+            log.debug(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_fan_control_mode({control_mode_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_fan_control_mode, **control_mode_kwargs
+            )
+            # maximum timeout for setting data on the device:
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+        except LiquidctlException as err:
+            raise err
+        except BaseException as err:
+            if log.getLogger().isEnabledFor(logging.DEBUG):
+                log.error(
+                    f"Liquidctl Error setting control mode: "
+                    f"{control_mode_kwargs} - {traceback.format_exc()}"
+                )
+            raise LiquidctlException(
+                f"Unexpected Device communication error: {err}"
+            ) from err
+
     def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise LiqctldException(
@@ -1102,6 +1167,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
         self._send(HTTPStatus.OK, json.dumps(device.to_dict()))
 
+    # put("/devices/{device_id}/direct-access")
     def force_direct_access(self, device_id: int):
         self.device_service.force_direct_access(device_id)
         self._send(HTTPStatus.OK, json.dumps({}))
@@ -1130,6 +1196,15 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def set_speed_profile(self, device_id: int, speed_request: dict):
         speed_kwargs = SpeedProfileRequest.from_dict(speed_request).to_dict_no_none()
         self.device_service.set_speed_profile(device_id, speed_kwargs)
+        self._send(HTTPStatus.OK, json.dumps({}))
+
+    # put("/devices/{device_id}/control-mode")
+    def set_control_mode(self, device_id: int, control_mode_request: dict):
+        control_mode_kwargs = ControlModeRequest.from_dict(
+            control_mode_request
+        ).to_dict_no_none()
+        self.device_service.set_control_mode(device_id, control_mode_kwargs)
+        # empty success response needed for systemd socket service to not error on 0 byte content
         self._send(HTTPStatus.OK, json.dumps({}))
 
     # put("/devices/{device_id}/color")
@@ -1211,6 +1286,10 @@ class HTTPHandler(BaseHTTPRequestHandler):
             # put("/devices/{device_id}/direct-access")
             device_id = self._try_cast_int(path[1])
             self.force_direct_access(device_id)
+        elif len(path) == 3 and path[0] == "devices" and path[2] == "control-mode":
+            # put("/devices/{device_id}/control-mode")
+            device_id = self._try_cast_int(path[1])
+            self.set_control_mode(device_id, request_body)
         else:
             raise LiqctldException(HTTPStatus.NOT_FOUND, f"Path: {path} Not Found")
 

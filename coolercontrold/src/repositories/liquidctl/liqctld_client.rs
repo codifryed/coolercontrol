@@ -55,6 +55,7 @@ const LIQCTLD_INITIALIZE: &str = "/devices/{}/initialize";
 const LIQCTLD_STATUS: &str = "/devices/{}/status";
 const LIQCTLD_FIXED_SPEED: &str = "/devices/{}/speed/fixed";
 const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
+const LIQCTLD_CONTROL_MODE: &str = "/devices/{}/control-mode";
 const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
@@ -474,6 +475,24 @@ impl LiqctldClient {
         Ok(())
     }
 
+    pub async fn put_control_mode(
+        &self,
+        device_index: &u8,
+        channel_name: &str,
+        control_mode: &str,
+    ) -> Result<()> {
+        let request_body = serde_json::to_string(&ControlModeRequest {
+            channel: channel_name.to_string(),
+            control_mode: control_mode.to_string(),
+        })?;
+        let request = Self::request_builder()
+            .uri(LIQCTLD_CONTROL_MODE.replace("{}", &device_index.to_string()))
+            .method("PUT")
+            .body(request_body)?;
+        self.make_request::<IgnoredAny>(&request).await?;
+        Ok(())
+    }
+
     /// Sets a particular device channel to the given color setting.
     ///
     /// Arguments:
@@ -662,6 +681,12 @@ struct SpeedProfileRequest {
     // INFO: Some liquidctl device drivers need ints. coolercontrol-liqctld will handle this.
     profile: Vec<(f64, u8)>,
     temperature_sensor: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ControlModeRequest {
+    channel: String,
+    control_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
