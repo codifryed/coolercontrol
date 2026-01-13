@@ -48,7 +48,10 @@ use crate::modes::ModeController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
-use crate::{AllDevices, Repos, ENV_HOST_IP4, ENV_HOST_IP6, ENV_PORT, ENV_TLS, VERSION};
+use crate::{
+    AllDevices, Repos, ENV_CERT_PATH, ENV_HOST_IP4, ENV_HOST_IP6, ENV_KEY_PATH, ENV_PORT, ENV_TLS,
+    VERSION,
+};
 use aide::openapi::{ApiKeyLocation, Contact, License, OpenApi, SecurityScheme, Tag};
 use aide::transform::TransformOpenApi;
 use aide::OperationOutput;
@@ -547,15 +550,14 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
     if tls_enabled.not() {
         return None;
     }
-    let (cert_path, key_path) = tls::ensure_certificates(
-        settings.tls_cert_path.as_deref(),
-        settings.tls_key_path.as_deref(),
-    )
-    .await
-    .inspect_err(|err| {
-        warn!("Failed to ensure TLS certificates: {err}");
-    })
-    .ok()?;
+    let cert_path = get_tls_path(ENV_CERT_PATH, settings.tls_cert_path.as_ref());
+    let key_path = get_tls_path(ENV_KEY_PATH, settings.tls_key_path.as_ref());
+    let (cert_path, key_path) = tls::ensure_certificates(cert_path, key_path)
+        .await
+        .inspect_err(|err| {
+            warn!("Failed to ensure TLS certificates: {err}");
+        })
+        .ok()?;
     match RustlsConfig::from_pem_file(&cert_path, &key_path).await {
         Ok(tls_config) => Some(tls_config),
         Err(err) => {
@@ -563,6 +565,18 @@ async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
             None
         }
     }
+}
+
+fn get_tls_path(env_var: &str, settings_opt: Option<&String>) -> Option<String> {
+    let mut tls_path = env::var(env_var)
+        .ok()
+        .map(|c| c.trim().to_string())
+        .filter(|c_path| c_path.is_empty().not());
+    if tls_path.is_none() {
+        // settings path is already sanitized
+        tls_path = settings_opt.cloned();
+    }
+    tls_path
 }
 
 fn handle_error(err: anyhow::Error) -> CCError {
