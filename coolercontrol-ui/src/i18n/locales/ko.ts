@@ -1104,4 +1104,4 @@ export default {
             custom: '커스텀',
         },
     },
-})
+}
