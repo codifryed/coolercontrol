@@ -23,6 +23,10 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
+// https://github.com/liquidctl/liquidctl/blob/a04de8b855145e9298a6fe0bf3c7efef7b4e3b79/liquidctl/driver/lianli_uni.py#L29-L31
+const MIN_CHANNEL: u8 = 1;
+const MAX_CHANNEL: u8 = 4;
+
 #[derive(Debug)]
 pub struct LianLiUniSupport;
 // lianli_uni.py
@@ -40,9 +44,9 @@ impl DeviceSupport for LianLiUniSupport {
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        for i in 1..=4 { // TODO: Is it always 4?
+        for i in MIN_CHANNEL..=MAX_CHANNEL {
             channels.insert(
-                format!("Channel {}", i),
+                format!("fan{i}"),
                 ChannelInfo {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,
