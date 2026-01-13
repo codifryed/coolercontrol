@@ -20,8 +20,8 @@ use crate::cc_fs;
 use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::{anyhow, Context, Result};
 use log::info;
-use rcgen::{generate_simple_self_signed, CertifiedKey, KeyPair};
-use std::path::{Path, PathBuf};
+use rcgen::{CertificateParams, CertifiedKey, DistinguishedName, DnType, KeyPair};
+use std::path::PathBuf;
 
 const DEFAULT_CERT_FILE: &str = "coolercontrol.crt";
 const DEFAULT_KEY_FILE: &str = "coolercontrol.key";
@@ -35,11 +35,11 @@ pub fn default_key_path() -> String {
 }
 
 pub async fn ensure_certificates(
-    cert_path: Option<&str>,
-    key_path: Option<&str>,
+    cert_path: Option<String>,
+    key_path: Option<String>,
 ) -> Result<(PathBuf, PathBuf)> {
-    let cert_path = PathBuf::from(&cert_path.map_or_else(default_cert_path, String::from));
-    let key_path = PathBuf::from(&key_path.map_or_else(default_key_path, String::from));
+    let cert_path = PathBuf::from(cert_path.unwrap_or_else(default_cert_path));
+    let key_path = PathBuf::from(key_path.unwrap_or_else(default_key_path));
     let cert_exists = cert_path.exists();
     let key_exists = key_path.exists();
     if cert_exists && key_exists {
@@ -56,23 +56,18 @@ pub async fn ensure_certificates(
     info!("Generating self-signed TLS certificate...");
     let CertifiedKey { cert, signing_key } = generate_self_signed_cert()?;
 
-    cc_fs::write_string(&Path::new(&cert_path).to_path_buf(), cert.pem())
+    cc_fs::write_string(&cert_path, cert.pem())
         .await
         .with_context(|| format!("Writing TLS certificate to {}", cert_path.display()))?;
-
-    cc_fs::write_string(
-        &Path::new(&key_path).to_path_buf(),
-        signing_key.serialize_pem(),
-    )
-    .await
-    .with_context(|| format!("Writing TLS private key to {}", key_path.display()))?;
+    cc_fs::write_string(&key_path, signing_key.serialize_pem())
+        .await
+        .with_context(|| format!("Writing TLS private key to {}", key_path.display()))?;
 
     info!(
         "Generated self-signed TLS certificate: {}",
         cert_path.display()
     );
     info!("Generated TLS private key: {}", key_path.display());
-
     Ok((cert_path, key_path))
 }
 
@@ -115,14 +110,14 @@ mod tests {
         let key_path = temp_dir.path().join("test.key");
 
         let (result_cert, result_key) = ensure_certificates(
-            Some(cert_path.to_str().unwrap()),
-            Some(key_path.to_str().unwrap()),
+            Some(cert_path.to_str().unwrap().to_string()),
+            Some(key_path.to_str().unwrap().to_string()),
         )
         .await
         .unwrap();
 
-        assert!(Path::new(&result_cert).exists());
-        assert!(Path::new(&result_key).exists());
+        assert!(result_cert.exists());
+        assert!(&result_key.exists());
 
         let cert_content = std::fs::read_to_string(&result_cert).unwrap();
         let key_content = std::fs::read_to_string(&result_key).unwrap();
