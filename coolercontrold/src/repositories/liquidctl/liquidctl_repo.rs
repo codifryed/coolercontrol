@@ -913,7 +913,7 @@ impl Repository for LiquidctlRepo {
 
     /// On `LiquidCtl` devices, reset basically does nothing with the device itself.
     /// All internal `CoolerControl` processes for this device channel are reset though.
-    async fn apply_setting_reset(&self, device_uid: &UID, _channel_name: &str) -> Result<()> {
+    async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid)?;
         if cached_device_data.driver_type == BaseDriver::CorsairHidPsu {
             // The only device so far that can be reset to hardware control
@@ -924,6 +924,16 @@ impl Repository for LiquidctlRepo {
                 .map_err(|err| {
                     anyhow!(
                         "Resetting to hardware control through initialization for LIQUIDCTL Device #{}: {device_uid} - {err}",
+                        cached_device_data.type_index
+                    )
+                })
+        } else if cached_device_data.driver_type == BaseDriver::LianLiUni {
+            self.liqctld_client
+                .put_control_mode(&cached_device_data.type_index, channel_name, "auto")
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Resetting to auto control for LIQUIDCTL Device #{}: {device_uid} | {channel_name} - {err}",
                         cached_device_data.type_index
                     )
                 })

@@ -51,5 +51,6 @@ pub enum BaseDriver {
     SmartDevice2,    // smart_device.py
     H1V2,            // smart_device.py
     MsiAcpiEc,       // custom out-of-tree driver
+    LianLiUni,       // lianli_uni.py
     NotSupported,    // Used to indicate that this liquidctl driver is not currently supported
 }
