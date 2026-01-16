@@ -452,6 +452,10 @@ export const useDeviceStore = defineStore('device', () => {
         return Date.now() - lastHiddenTime < reloadAllStatusesThreshold
     }
 
+    function isChromeNetworkError(err: any): boolean {
+        return err.message.includes('network error')
+    }
+
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
         const sessionIsValid = await daemonClient.sessionIsValid()
@@ -763,7 +767,15 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 // @ts-ignore
                 // changing onerror to async causes spam retry loop
-                onerror() {
+                onerror(err: any) {
+                    if (isChromeNetworkError(err)) {
+                        // net::ERR_NETWORK_CHANGED
+                        // https://issues.chromium.org/issues/41465264
+                        // There is an issue with docker and chrome, where chrome interprets
+                        // docker network activity as a network change, and throws a network error.
+                        console.warn('Chrome Network error. Retrying...')
+                        return
+                    }
                     daemonState.setConnected(false)
                     thisStore.loggedIn = false
                     // auto-retry every second (return number to specify retry interval)
@@ -795,6 +807,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (isChromeNetworkError(err)) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })
@@ -823,6 +839,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (isChromeNetworkError(err)) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })
@@ -876,6 +896,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (isChromeNetworkError(err)) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })
