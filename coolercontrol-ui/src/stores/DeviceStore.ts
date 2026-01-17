@@ -75,6 +75,8 @@ export const useDeviceStore = defineStore('device', () => {
     let lastHiddenTime: number = 0 // start of the epoch
     const appStartTime = Date.now()
     const showLoginMessageThreshold: number = 3_000
+    let chromeNetworkErrorCount: number = 0
+    const chromeNetworkErrorThreshold: number = 7
     const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
@@ -757,23 +759,29 @@ export const useDeviceStore = defineStore('device', () => {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
                     await daemonState.setConnected(true)
+                    chromeNetworkErrorCount = 0
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
                     await daemonState.setConnected(false)
                     thisStore.loggedIn = false
+                    chromeNetworkErrorCount = 0
                     await sleep(1000)
                     await startSSE()
                 },
                 // @ts-ignore
                 // changing onerror to async causes spam retry loop
                 onerror(err: any) {
-                    if (isChromeNetworkError(err)) {
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
                         // net::ERR_NETWORK_CHANGED
                         // https://issues.chromium.org/issues/41465264
                         // There is an issue with docker and chrome, where chrome interprets
                         // docker network activity as a network change, and throws a network error.
                         console.warn('Chrome Network error. Retrying...')
+                        chromeNetworkErrorCount++
                         return
                     }
                     daemonState.setConnected(false)
@@ -807,7 +815,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
-                    if (isChromeNetworkError(err)) {
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
                         // net::ERR_NETWORK_CHANGED - retry
                         return
                     }
@@ -839,7 +850,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
-                    if (isChromeNetworkError(err)) {
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
                         // net::ERR_NETWORK_CHANGED - retry
                         return
                     }
@@ -896,7 +910,10 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
-                    if (isChromeNetworkError(err)) {
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
                         // net::ERR_NETWORK_CHANGED - retry
                         return
                     }
