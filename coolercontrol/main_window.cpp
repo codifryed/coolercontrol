@@ -346,14 +346,14 @@ void MainWindow::showEvent(QShowEvent* event) {
   event->accept();
 }
 
-QUrl MainWindow::getDaemonUrl() {
+QUrl MainWindow::getDaemonUrl(const bool forceHttp) {
   const QSettings settings;
   const auto host =
       settings.value(SETTING_DAEMON_ADDRESS.data(), DEFAULT_DAEMON_ADDRESS.data()).toString();
   const auto port = settings.value(SETTING_DAEMON_PORT.data(), DEFAULT_DAEMON_PORT).toInt();
   const auto sslEnabled =
       settings.value(SETTING_DAEMON_SSL_ENABLED.data(), DEFAULT_DAEMON_SSL_ENABLED).toBool();
-  const auto schema = sslEnabled ? tr("https") : tr("http");
+  const auto schema = forceHttp ? tr("http") : sslEnabled ? tr("https") : tr("http");
   QUrl url;
   url.setScheme(schema);
   url.setHost(host);
@@ -361,8 +361,8 @@ QUrl MainWindow::getDaemonUrl() {
   return url;
 }
 
-QUrl MainWindow::getEndpointUrl(const QString& endpoint) {
-  auto url = getDaemonUrl();
+QUrl MainWindow::getEndpointUrl(const QString& endpoint, const bool forceHttp) {
+  auto url = getDaemonUrl(forceHttp);
   url.setPath(endpoint);
   // for testing with npm dev server:
   // url.setPort(DEFAULT_DAEMON_PORT);
@@ -662,7 +662,7 @@ void MainWindow::watchConnectionAndLogs() const {
   QNetworkRequest sseLogsRequest;
   sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                               QNetworkRequest::AlwaysNetwork);
-  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data()));
+  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data(), true));
   const auto sseLogsReply = m_manager->get(sseLogsRequest);
   connect(sseLogsReply, &QNetworkReply::sslErrors, sseLogsReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));
@@ -749,7 +749,7 @@ void MainWindow::watchModeActivation() const {
   QNetworkRequest sseModesRequest;
   sseModesRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                                QNetworkRequest::AlwaysNetwork);
-  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
+  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data(), true));
   const auto sseModesReply = m_manager->get(sseModesRequest);
   connect(sseModesReply, &QNetworkReply::sslErrors, sseModesReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));
@@ -790,7 +790,7 @@ void MainWindow::watchAlerts() const {
   QNetworkRequest alertsRequest;
   alertsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                              QNetworkRequest::AlwaysNetwork);
-  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
+  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data(), true));
   const auto alertsReply = m_manager->get(alertsRequest);
   connect(alertsReply, &QNetworkReply::sslErrors, alertsReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));

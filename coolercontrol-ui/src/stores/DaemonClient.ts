@@ -58,6 +58,8 @@ import PluginsDto from '@/models/Plugins.ts'
  */
 export default class DaemonClient {
     public readonly daemonURL: string
+    // This is used specifically for SSE connections, which work better with http in Chrome
+    public readonly daemonHttpURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 10_000
     private daemonTimeoutExtended: number = 15_000 // this is for image processing calls that can take significantly longer
@@ -75,6 +77,7 @@ export default class DaemonClient {
     constructor(daemonAddress: string, daemonPort: number, sslEnabled: boolean) {
         const prefix = sslEnabled ? 'https' : 'http'
         this.daemonURL = `${prefix}://${daemonAddress}:${daemonPort}/`
+        this.daemonHttpURL = `http://${daemonAddress}:${daemonPort}/`
     }
 
     /**

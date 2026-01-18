@@ -325,9 +325,9 @@ where
                 return inner.call(req).await;
             }
 
-            // Check if request is to /health endpoint - allow HTTP
+            // Allow HTTP if /health or /sse endpoints
             let path = req.uri().path();
-            if path == "/health" || path == "/health/" {
+            if path.starts_with("/health") || path.starts_with("/sse") {
                 return inner.call(req).await;
             }
 
