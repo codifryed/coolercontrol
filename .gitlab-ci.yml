@@ -50,6 +50,7 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
           - coolercontrold/Cargo.lock
       paths:
         - .cargo
+        - /root/.cargo
     - key: '${CI_JOB_NAME}'
       paths:
         - .pip
@@ -106,6 +107,12 @@ test_all:
   tags:
     - saas-linux-xlarge-amd64
   <<: [*cache_template, *main_image_template]
+  cache:
+    - key:
+        files:
+          - coolercontrold/Cargo.lock
+      paths:
+        - coolercontrold/target
   rules:
     # This allows us to run a single job for MR branches that are pushed to, and allow these tests
     # to run for external MRs.
