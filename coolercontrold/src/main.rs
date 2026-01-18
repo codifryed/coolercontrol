@@ -107,6 +107,33 @@ const ENV_HOST_IP4: &str = "CC_HOST_IP4";
 /// ```
 const ENV_HOST_IP6: &str = "CC_HOST_IP6";
 
+/// Environment Variable: Disable TLS/SSL for the REST API.
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_TLS=OFF coolercontrold
+/// ```
+const ENV_TLS: &str = "CC_TLS";
+
+/// Environment Variable: Override the path to the TLS certificate file.
+/// Takes a file path string.
+///
+/// # Example
+/// ```
+/// CC_CERT_PATH=/etc/coolercontrol/custom.crt coolercontrold
+/// ```
+const ENV_CERT_PATH: &str = "CC_CERT_PATH";
+
+/// Environment Variable: Override the path to the TLS private key file.
+/// Takes a file path string.
+///
+/// # Example
+/// ```
+/// CC_KEY_PATH=/etc/coolercontrol/custom.key coolercontrold
+/// ```
+const ENV_KEY_PATH: &str = "CC_KEY_PATH";
+
 /// Environment Variable: To disable dbus integration (sleep listener)
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///

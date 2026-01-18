@@ -75,6 +75,8 @@ export const useDeviceStore = defineStore('device', () => {
     let lastHiddenTime: number = 0 // start of the epoch
     const appStartTime = Date.now()
     const showLoginMessageThreshold: number = 3_000
+    let chromeNetworkErrorCount: number = 0
+    const chromeNetworkErrorThreshold: number = 7
     const { t } = useI18n()
     // -----------------------------------------------------------------------------------------------------------------
 
@@ -452,6 +454,10 @@ export const useDeviceStore = defineStore('device', () => {
         return Date.now() - lastHiddenTime < reloadAllStatusesThreshold
     }
 
+    function isChromeNetworkError(err: any): boolean {
+        return err.message.includes('network error')
+    }
+
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
         const sessionIsValid = await daemonClient.sessionIsValid()
@@ -748,22 +754,36 @@ export const useDeviceStore = defineStore('device', () => {
         const daemonState = useDaemonState()
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
-            await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
+            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/status`, {
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
                     await daemonState.setConnected(true)
+                    chromeNetworkErrorCount = 0
                 },
                 async onclose() {
                     // attempt to re-establish connection automatically (resume/restart)
                     await daemonState.setConnected(false)
                     thisStore.loggedIn = false
+                    chromeNetworkErrorCount = 0
                     await sleep(1000)
                     await startSSE()
                 },
                 // @ts-ignore
                 // changing onerror to async causes spam retry loop
-                onerror() {
+                onerror(err: any) {
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
+                        // net::ERR_NETWORK_CHANGED
+                        // https://issues.chromium.org/issues/41465264
+                        // There is an issue with docker and chrome, where chrome interprets
+                        // docker network activity as a network change, and throws a network error.
+                        console.warn('Chrome Network error. Retrying...')
+                        chromeNetworkErrorCount++
+                        return
+                    }
                     daemonState.setConnected(false)
                     thisStore.loggedIn = false
                     // auto-retry every second (return number to specify retry interval)
@@ -777,7 +797,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateLogsFromSSE(): Promise<void> {
         const daemonState = useDaemonState()
         async function startLogSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
+            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/logs`, {
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const newLog = event.data
@@ -795,6 +815,13 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })
@@ -806,7 +833,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateActiveModeFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startModeSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
+            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/modes`, {
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const modeMessage = plainToInstance(
@@ -823,6 +850,13 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })
@@ -834,7 +868,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateAlertsFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startAlertSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonURL}sse/alerts`, {
+            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/alerts`, {
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const alertMessage = plainToInstance(AlertLog, JSON.parse(event.data) as object)
@@ -876,6 +910,13 @@ export const useDeviceStore = defineStore('device', () => {
                 },
                 onerror(err) {
                     // we only retry with the status SSE
+                    if (
+                        isChromeNetworkError(err) &&
+                        chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                    ) {
+                        // net::ERR_NETWORK_CHANGED - retry
+                        return
+                    }
                     throw err // rethrow will stop retry
                 },
             })

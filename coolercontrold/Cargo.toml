@@ -87,6 +87,11 @@ axum_typed_multipart = "=0.16.4"
 axum_typed_multipart_macros = "=0.16.4"
 # possible openApi improvement, but doesn't work for us currently:
 #aide-axum-typed-multipart-2 = "0.16.0"
+# TLS support
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
+rcgen = "0.14.6"
+pin-project-lite = "0.2"
+tokio-rustls = "0.26"
 tempfile = "3.24.0"
 hyper = { version = "1.8.1", default-features = false, features = [
   "http1",
@@ -176,6 +181,7 @@ tonic = { version = "0.14.2", default-features = false, features = [
 prost = "0.14.1"
 tonic-prost = "0.14.2"
 tonic-health = "0.14.2"
+tonic-reflection = "0.14.2"
 
 [dev-dependencies]
 serial_test = "3.2.0"

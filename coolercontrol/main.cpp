@@ -97,7 +97,9 @@ int main(int argc, char* argv[]) {
   // https://doc.qt.io/qt-6/qstandardpaths.html
   // settings: ~/.config/{app_id}/{app_id}.conf
   const QApplication a(argc, argv);
-  QApplication::setWindowIcon(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")));
+
+  QApplication::setWindowIcon(QIcon::fromTheme(
+      APP_ID.data(), QIcon(":/icons/org.coolercontrol.CoolerControl-symbolic.svg")));
   QCoreApplication::setOrganizationName(APP_ID.data());
   QApplication::setApplicationName("CoolerControl");
   QApplication::setDesktopFileName(APP_ID.data());

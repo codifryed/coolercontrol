@@ -28,6 +28,7 @@ target_link_libraries(
 
 # Resources:
 set(cc_resource_files
+    "icons/org.coolercontrol.CoolerControl.svg"
     "icons/org.coolercontrol.CoolerControl-symbolic.svg"
     "icons/org.coolercontrol.CoolerControl-symbolic-alert.svg")
 

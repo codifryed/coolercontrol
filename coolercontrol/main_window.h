@@ -24,6 +24,7 @@
 #include <QPainter>
 #include <QSystemTrayIcon>
 #include <QWebChannel>
+#include <QWebEngineCertificateError>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
@@ -123,9 +124,9 @@ class MainWindow final : public QMainWindow {
 
   void initDelay() const;
 
-  static QUrl getDaemonUrl();
+  static QUrl getDaemonUrl(bool forceHttp = false);
 
-  static QUrl getEndpointUrl(const QString& endpoint);
+  static QUrl getEndpointUrl(const QString& endpoint, bool forceHttp = false);
 
   void displayAddressWizard() const;
 

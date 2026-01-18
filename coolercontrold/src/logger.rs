@@ -175,6 +175,7 @@ impl CCLogger {
             .filter_module("tower_http", lib_disabled_level)
             // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
             .filter_module("hyper", lib_log_level)
+            .filter_module("h2", lib_disabled_level) // h2::codec writes every frame
             .build();
         let logger: Box<dyn Log> = if connected_to_journal() {
             Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))

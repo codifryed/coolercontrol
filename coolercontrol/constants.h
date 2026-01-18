@@ -36,7 +36,7 @@ const std::string SETTING_ZOOM_FACTOR = "zoomFactor";
 const std::string SETTING_WINDOW_GEOMETRY = "windowGeometry";
 const std::string DEFAULT_DAEMON_ADDRESS = "localhost";
 constexpr int DEFAULT_DAEMON_PORT = 11987;
-constexpr bool DEFAULT_DAEMON_SSL_ENABLED = false;
+constexpr bool DEFAULT_DAEMON_SSL_ENABLED = true;
 constexpr int DEFAULT_CONNECTION_TIMEOUT_MS = 8000;
 // 2s is good at startup, so as not to hit the daemon with lots of requests at once (+UI)
 constexpr int DEFAULT_CONNECTION_RETRY_INTERVAL_MS = 2000;

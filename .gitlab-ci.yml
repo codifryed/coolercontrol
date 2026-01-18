@@ -50,6 +50,7 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
           - coolercontrold/Cargo.lock
       paths:
         - .cargo
+        - /root/.cargo
     - key: '${CI_JOB_NAME}'
       paths:
         - .pip

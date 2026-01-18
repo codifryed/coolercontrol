@@ -172,8 +172,9 @@ void MainWindow::initDelay() const {
 
 void MainWindow::initSystemTray() {
   m_sysTrayIcon = new QSystemTrayIcon(this->parent());
-  const auto ccHeader = new QAction(QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/icon.svg")),
-                                    tr("CoolerControl"), m_sysTrayIcon);
+  const auto ccHeader = new QAction(
+      QIcon::fromTheme(APP_ID.data(), QIcon(":/icons/org.coolercontrol.CoolerControl.svg")),
+      tr("CoolerControl"), m_sysTrayIcon);
   ccHeader->setDisabled(true);
   m_showAction = m_ipc->getStartInTray() ? new QAction(tr("&Show"), m_sysTrayIcon)
                                          : new QAction(tr("&Hide"), m_sysTrayIcon);
@@ -235,6 +236,28 @@ void MainWindow::initSystemTray() {
 }
 
 void MainWindow::initWebUI() {
+  connect(m_page, &QWebEnginePage::certificateError, [](QWebEngineCertificateError error) {
+    QList<QSslCertificate> chain = error.certificateChain();
+    qDebug() << error.description()
+             << tr(" there are %1 certificates in chain. From %2")
+                    .arg(chain.count())
+                    .arg(error.url().toDisplayString());
+    auto has_self_signed = false;
+    foreach (QSslCertificate cert, chain) {
+      qDebug() << tr("name: %1 expires:%2 isSelf-signed: %3")
+                      .arg(cert.subjectDisplayName(), cert.expiryDate().toString(),
+                           cert.isSelfSigned() ? "yes" : "no");
+      if (cert.isSelfSigned()) {
+        has_self_signed = true;
+      }
+    }
+    if (error.type() == QWebEngineCertificateError::CertificateAuthorityInvalid &&
+        has_self_signed) {
+      qInfo() << "Accepting self-signed certificate.";
+      return error.acceptCertificate();
+    }
+    return error.defer();
+  });
   m_view->load(getDaemonUrl());
   connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
     if (!pageLoadedSuccessfully) {
@@ -323,14 +346,14 @@ void MainWindow::showEvent(QShowEvent* event) {
   event->accept();
 }
 
-QUrl MainWindow::getDaemonUrl() {
+QUrl MainWindow::getDaemonUrl(const bool forceHttp) {
   const QSettings settings;
   const auto host =
       settings.value(SETTING_DAEMON_ADDRESS.data(), DEFAULT_DAEMON_ADDRESS.data()).toString();
   const auto port = settings.value(SETTING_DAEMON_PORT.data(), DEFAULT_DAEMON_PORT).toInt();
   const auto sslEnabled =
       settings.value(SETTING_DAEMON_SSL_ENABLED.data(), DEFAULT_DAEMON_SSL_ENABLED).toBool();
-  const auto schema = sslEnabled ? tr("https") : tr("http");
+  const auto schema = forceHttp ? tr("http") : sslEnabled ? tr("https") : tr("http");
   QUrl url;
   url.setScheme(schema);
   url.setHost(host);
@@ -338,8 +361,8 @@ QUrl MainWindow::getDaemonUrl() {
   return url;
 }
 
-QUrl MainWindow::getEndpointUrl(const QString& endpoint) {
-  auto url = getDaemonUrl();
+QUrl MainWindow::getEndpointUrl(const QString& endpoint, const bool forceHttp) {
+  auto url = getDaemonUrl(forceHttp);
   url.setPath(endpoint);
   // for testing with npm dev server:
   // url.setPort(DEFAULT_DAEMON_PORT);
@@ -468,6 +491,8 @@ void MainWindow::requestDaemonErrors() const {
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
+  connect(healthReply, &QNetworkReply::sslErrors, healthReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
     const auto status = healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString replyText = healthReply->readAll();
@@ -511,6 +536,8 @@ void MainWindow::requestAllAlerts() const {
   alertsRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   alertsRequest.setUrl(getEndpointUrl(ENDPOINT_ALERTS.data()));
   const auto alertsReply = m_manager->get(alertsRequest);
+  connect(alertsReply, &QNetworkReply::sslErrors, alertsReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
     const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString replyText = alertsReply->readAll();
@@ -540,6 +567,8 @@ void MainWindow::requestAllModes() const {
   modesRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesRequest.setUrl(getEndpointUrl(ENDPOINT_MODES.data()));
   const auto modesReply = m_manager->get(modesRequest);
+  connect(modesReply, &QNetworkReply::sslErrors, modesReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(modesReply, &QNetworkReply::finished, [modesReply, this]() {
     const auto status = modesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString modesJson = modesReply->readAll();
@@ -610,6 +639,8 @@ void MainWindow::requestActiveMode() const {
   modesActiveRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   modesActiveRequest.setUrl(getEndpointUrl(ENDPOINT_MODES_ACTIVE.data()));
   const auto modesActiveReply = m_manager->get(modesActiveRequest);
+  connect(modesActiveReply, &QNetworkReply::sslErrors, modesActiveReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(modesActiveReply, &QNetworkReply::finished, [modesActiveReply, this]() {
     const auto status =
         modesActiveReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -631,8 +662,10 @@ void MainWindow::watchConnectionAndLogs() const {
   QNetworkRequest sseLogsRequest;
   sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                               QNetworkRequest::AlwaysNetwork);
-  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data()));
+  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data(), true));
   const auto sseLogsReply = m_manager->get(sseLogsRequest);
+  connect(sseLogsReply, &QNetworkReply::sslErrors, sseLogsReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(this, &MainWindow::dropConnections, sseLogsReply, &QNetworkReply::abort,
           Qt::DirectConnection);
   connect(sseLogsReply, &QNetworkReply::readyRead, [sseLogsReply, this]() {
@@ -675,6 +708,8 @@ void MainWindow::tryDaemonConnection() const {
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
   const auto healthReply = m_manager->get(healthRequest);
+  connect(healthReply, &QNetworkReply::sslErrors, healthReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   qDebug() << "Attempting to establish connection to the daemon...";
   connect(healthReply, &QNetworkReply::readyRead, [this, healthReply]() {
     m_retryTimer->stop();
@@ -714,8 +749,10 @@ void MainWindow::watchModeActivation() const {
   QNetworkRequest sseModesRequest;
   sseModesRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                                QNetworkRequest::AlwaysNetwork);
-  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data()));
+  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data(), true));
   const auto sseModesReply = m_manager->get(sseModesRequest);
+  connect(sseModesReply, &QNetworkReply::sslErrors, sseModesReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(this, &MainWindow::dropConnections, sseModesReply, &QNetworkReply::abort,
           Qt::DirectConnection);
   connect(sseModesReply, &QNetworkReply::readyRead, [sseModesReply, this]() {
@@ -753,8 +790,10 @@ void MainWindow::watchAlerts() const {
   QNetworkRequest alertsRequest;
   alertsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                              QNetworkRequest::AlwaysNetwork);
-  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data()));
+  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data(), true));
   const auto alertsReply = m_manager->get(alertsRequest);
+  connect(alertsReply, &QNetworkReply::sslErrors, alertsReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(this, &MainWindow::dropConnections, alertsReply, &QNetworkReply::abort,
           Qt::DirectConnection);
   connect(alertsReply, &QNetworkReply::readyRead, [alertsReply, this]() {
