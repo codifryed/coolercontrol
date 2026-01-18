@@ -20,6 +20,7 @@ use anyhow::Result;
 use image::ImageReader;
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::ops::Not;
 use zbus::names::WellKnownName;
 use zbus::zvariant::{self, Structure};
 use zbus::Connection;
@@ -52,8 +53,14 @@ pub async fn notify(
     let replace_id: u32 = 0; // 0 = new notification
     let actions: Vec<String> = vec![];
     let mut hints: HashMap<&str, zvariant::Value<'_>> = HashMap::new();
-    // This seems to break Gnome DBus Notifications (Notifications won't show or close quickly)
-    //hints.insert("desktop-entry", APP_ID.into());
+    let is_gnome = std::env::var("XDG_CURRENT_DESKTOP")
+        .ok()
+        .is_some_and(|desktop| desktop.to_lowercase().contains("gnome"));
+    if is_gnome.not() {
+        // Gnome has a bug if the desktop-entry is set
+        // For KDE it enables proper persistence of notifications
+        hints.insert("desktop-entry", APP_ID.into());
+    }
     hints.insert("resident", true.into());
     if icon == 0 || icon > 5 {
         hints.insert("image-path", APP_ID.into());
