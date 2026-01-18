@@ -194,6 +194,7 @@ pin_project! {
         #[pin]
         inner: I,
         peeked_byte: Option<u8>,
+        buf: [u8; 1],
     }
 }
 
@@ -205,6 +206,7 @@ where
         Self {
             inner,
             peeked_byte: None,
+            buf: [0],
         }
     }
 
@@ -213,8 +215,7 @@ where
             return Ok(byte);
         }
 
-        let mut buf = [0u8; 1];
-        let n = self.inner.read(&mut buf).await?;
+        let n = self.inner.read(&mut self.buf).await?;
         if n == 0 {
             return Err(io::Error::new(
                 ErrorKind::UnexpectedEof,
@@ -222,8 +223,8 @@ where
             ));
         }
 
-        self.peeked_byte = Some(buf[0]);
-        Ok(buf[0])
+        self.peeked_byte = Some(self.buf[0]);
+        Ok(self.buf[0])
     }
 }
 
