@@ -76,11 +76,13 @@ ci-check:
 ci-fmt:
 	@./trunk fmt --all
 
-clean:
+clean: clean-ui
 	@$(MAKE) -C $(daemon_dir) $@
-	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(qt_dir) $@
 	@-$(RM) -rf assets-built
+
+clean-ui:
+	@$(MAKE) -C $(ui_dir) clean
 
 install:
 	@$(MAKE) -C $(daemon_dir) $@
@@ -111,8 +113,8 @@ dev-run: build-qt
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 
-# full clean release build of daemon and UI binaries:
-dev-build: clean build
+# full release build of daemon and UI binaries:
+dev-build: clean-ui build
 
 dev-test: clean ci-install validate-metadata ci-check ci-test-ui ci-test-daemon ci-test-qt
 
