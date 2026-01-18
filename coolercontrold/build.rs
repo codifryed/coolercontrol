@@ -16,12 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::path::PathBuf;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
     tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
         // needed for older protoc packages:
         .protoc_arg("--experimental_allow_proto3_optional")
+        .file_descriptor_set_path(out_dir.join("device_service_descriptor.bin"))
         .compile_protos(
             &[
                 "resources/proto/coolercontrol/models/v1/device.proto",
