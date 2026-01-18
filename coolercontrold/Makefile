@@ -34,10 +34,12 @@ vendor:
 	@cargo vendor --locked > .cargo/config.toml
 	@-chmod -x vendor/brotli-decompressor/src/*.rs
 
-clean:
+clean: clean-app
 	@-$(RM) -rf target
 	@-$(RM) -rf vendor
 	@-$(RM) -rf .cargo
+
+clean-app:
 	@-$(RM) -rf resources/app/*
 
 install:
