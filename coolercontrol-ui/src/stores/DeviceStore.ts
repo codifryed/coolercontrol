@@ -72,7 +72,9 @@ export const useDeviceStore = defineStore('device', () => {
     // This threshold helps deal with closing to tray, network latency, and max polling rate
     // When this threshold is exceeded, and the app has been suspended recently, a full UI refresh is made
     const reloadAllStatusesThreshold: number = 7_000
-    let lastHiddenTime: number = 0 // start of the epoch
+    // We watch when the browser suspends or resumes the app, and use this to determine if we need to reload the UI
+    let appShownTimestamp: number = 0 // start of the epoch
+    let appHiddenTimestamp: number = 0 // start of the epoch
     const appStartTime = Date.now()
     const showLoginMessageThreshold: number = 3_000
     let chromeNetworkErrorCount: number = 0
@@ -450,9 +452,9 @@ export const useDeviceStore = defineStore('device', () => {
         return Date.now() - appStartTime
     }
 
-    function appRecentlyHidden(): boolean {
-        return Date.now() - lastHiddenTime < reloadAllStatusesThreshold
-    }
+    // function appRecentlyHidden(): boolean {
+    //     return Date.now() - appShownTimestamp < reloadAllStatusesThreshold
+    // }
 
     function isChromeNetworkError(err: any): boolean {
         return err.message.includes('network error')
@@ -667,9 +669,10 @@ export const useDeviceStore = defineStore('device', () => {
             //  - if the daemon has disconnected
             //  - if the app recently woke from a 'hidden' / sleep status (SSE's are suspended in this state)
             //  - otherwise, we allow very slow connections to not trigger a full reload (when connected, and not recently asleep)
-            if (timeDiffMillis > reloadAllStatusesThreshold && appRecentlyHidden()) {
-                onlyLatestStatus = false
-            }
+            // we now react immediately to a resume event change, if we've been hidden for a while. (assumes SSE suspension)
+            // if (timeDiffMillis > reloadAllStatusesThreshold && appRecentlyHidden()) {
+            //     onlyLatestStatus = false
+            // }
         }
 
         if (onlyLatestStatus) {
@@ -959,8 +962,16 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            lastHiddenTime = Date.now()
+        if (document.hidden) {
+            // app suspension starts shortly after this
+            appHiddenTimestamp = Date.now()
+        } else {
+            // app resume starts when the app has been hidden for a while (a second is too short to suspend)
+            appShownTimestamp = Date.now()
+            if (appShownTimestamp - appHiddenTimestamp > reloadAllStatusesThreshold) {
+                console.info(`App resumed after ${reloadAllStatusesThreshold}ms, reloading UI`)
+                reloadUI()
+            }
         }
     })
 
