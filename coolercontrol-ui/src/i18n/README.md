@@ -14,6 +14,7 @@ languages:
 - Arabic (ar) - العربية
 - Portuguese (pt) - Português
 - Hindi (hi) - हिन्दी
+- Korean (ko) - 한국어
 
 ## Directory Structure
 
@@ -32,6 +33,7 @@ src/i18n/
 │   ├── ar.ts         # Arabic
 │   ├── pt.ts         # Portuguese
 │   ├── hi.ts         # Hindi
+│   ├── ko.ts         # Korean
 │   └── index.d.ts    # Type definitions
 └── README.md         # This documentation
 ```
