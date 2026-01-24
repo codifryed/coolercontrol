@@ -46,7 +46,7 @@ export default defineConfig({
         cssMinify: 'esbuild',
         assetsInlineLimit: 10_240_000,
         cssCodeSplit: false,
-        chunkSizeWarningLimit: 2_000,
+        chunkSizeWarningLimit: 2_500,
     },
     css: {
         postcss: './postcss.config.js',

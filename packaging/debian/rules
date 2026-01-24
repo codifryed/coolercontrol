@@ -3,8 +3,6 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-export PYBUILD_NAME=coolercontrol_liqctld
-export PYBUILD_DESTDIR_python3=debian/coolercontrol-liqctld
 export APP_ID=org.coolercontrol.CoolerControl
 
 %:

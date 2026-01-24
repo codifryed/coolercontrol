@@ -69,14 +69,15 @@ export const useDeviceStore = defineStore('device', () => {
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-    // This threshold helps deal with closing to tray, network latency, and max polling rate
-    // When this threshold is exceeded, and the app has been suspended recently, a full UI refresh is made
-    const reloadAllStatusesThreshold: number = 7_000
+    // This is the threshold for status timestamp differences, which is the only way to determine if the system has been suspended.
+    const reloadAfterTimeoutThreshold: number = 30_000 // ms
+    // This is the threshold for determining if the app has been suspended recently enough
+    const reloadAfterShownThreshold: number = 7_000 // ms
     // We watch when the browser suspends or resumes the app, and use this to determine if we need to reload the UI
     let appShownTimestamp: number = 0 // start of the epoch
     let appHiddenTimestamp: number = 0 // start of the epoch
     const appStartTime = Date.now()
-    const showLoginMessageThreshold: number = 3_000
+    const showLoginMessageThreshold: number = 3_000 // ms
     let chromeNetworkErrorCount: number = 0
     const chromeNetworkErrorThreshold: number = 7
     const { t } = useI18n()
@@ -452,10 +453,6 @@ export const useDeviceStore = defineStore('device', () => {
         return Date.now() - appStartTime
     }
 
-    // function appRecentlyHidden(): boolean {
-    //     return Date.now() - appShownTimestamp < reloadAllStatusesThreshold
-    // }
-
     function isChromeNetworkError(err: any): boolean {
         return err.message.includes('network error')
     }
@@ -665,14 +662,17 @@ export const useDeviceStore = defineStore('device', () => {
                 new Date(device.status.timestamp).getTime() -
                     new Date(dto.devices[0].status_history[0].timestamp).getTime(),
             )
-            // We only do a full reload:
-            //  - if the daemon has disconnected
-            //  - if the app recently woke from a 'hidden' / sleep status (SSE's are suspended in this state)
-            //  - otherwise, we allow very slow connections to not trigger a full reload (when connected, and not recently asleep)
-            // we now react immediately to a resume event change, if we've been hidden for a while. (assumes SSE suspension)
-            // if (timeDiffMillis > reloadAllStatusesThreshold && appRecentlyHidden()) {
-            //     onlyLatestStatus = false
-            // }
+            // UI Reload use cases:
+            // - Daemon Disconnected (SSE closed - auto SSE retry every second - reload on reconnect)
+            //   - Daemon disconnect is handled below by `daemonState.connected` logic
+            // - App Recently Hidden (doc event - hidden = true, just take a timestamp - start of app suspension)
+            // - App Recently Shown (doc event - hidden = false, if suspended for above the threshold time, reload))
+            //   - App browser suspension is handled near the bottom by watching for the 'visibilitychange' event
+            // - System Sleep (no noticeable event - time difference between last status and current status exceeds threshold (30 seconds) then Reload)
+            //   - System sleep is handled here (no event/time difference):
+            if (timeDiffMillis > reloadAfterTimeoutThreshold) {
+                onlyLatestStatus = false
+            }
         }
 
         if (onlyLatestStatus) {
@@ -968,8 +968,8 @@ export const useDeviceStore = defineStore('device', () => {
         } else {
             // app resume starts when the app has been hidden for a while (a second is too short to suspend)
             appShownTimestamp = Date.now()
-            if (appShownTimestamp - appHiddenTimestamp > reloadAllStatusesThreshold) {
-                console.info(`App resumed after ${reloadAllStatusesThreshold}ms, reloading UI`)
+            if (appShownTimestamp - appHiddenTimestamp > reloadAfterShownThreshold) {
+                console.info(`App resumed after ${reloadAfterShownThreshold}ms, reloading UI`)
                 reloadUI()
             }
         }
