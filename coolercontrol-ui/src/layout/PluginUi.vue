@@ -19,7 +19,6 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-
 import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
@@ -28,6 +27,7 @@ import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { ErrorResponse } from '@/models/ErrorResponse.ts'
 import { ThemeMode } from '@/models/UISettings.ts'
+import { useConfirm } from 'primevue/useconfirm'
 
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
@@ -37,6 +37,7 @@ const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const closeDialog = () => {
     dialogRef.value.close()
 }
+const confirm = useConfirm()
 const pluginId = dialogRef.value.data.pluginId ?? 'Unknown'
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const nullOriginTarget: string = '*'
@@ -156,6 +157,35 @@ const handleIframeMessage = async (event: MessageEvent): Promise<void> => {
             break
         case 'close':
             closeDialog()
+            break
+        case 'restart':
+            // will cause all plugins to be restarted
+            closeDialog()
+            confirm.require({
+                message: t('layout.topbar.restartConfirmMessage'),
+                header: t('layout.topbar.restartConfirmHeader'),
+                icon: 'pi pi-exclamation-triangle',
+                defaultFocus: 'accept',
+                accept: async () => {
+                    const successful = await deviceStore.daemonClient.shutdownDaemon()
+                    if (successful) {
+                        toast.add({
+                            severity: 'success',
+                            summary: t('common.success'),
+                            detail: t('layout.topbar.shutdownSuccess'),
+                            life: 6000,
+                        })
+                        await deviceStore.waitAndReload()
+                    } else {
+                        toast.add({
+                            severity: 'error',
+                            summary: t('common.error'),
+                            detail: t('layout.topbar.shutdownError'),
+                            life: 4000,
+                        })
+                    }
+                },
+            })
             break
         case 'modes':
             const modes = settingsStore.modes.map((mode) => {

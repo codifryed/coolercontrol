@@ -180,6 +180,11 @@ const close = () => {
     window.parent.postMessage({ type: 'close' }, document.location.origin)
 }
 
+/* Restart the daemon & UI. This has the effect of applying any plugin changes to service configs. */
+const restart = () => {
+    window.parent.postMessage({ type: 'restart' }, document.location.origin)
+}
+
 // Data Exchange Functions
 /////////////////////////////////////////////////////////////
 
