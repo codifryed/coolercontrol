@@ -282,6 +282,7 @@ build_deb_bookworm_amd64:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG
       when: always
   script:
@@ -337,6 +338,7 @@ build_deb_bookworm_arm64:
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
       when: manual
+      allow_failure: true
     - if: $CI_COMMIT_TAG
       when: always
   script:
