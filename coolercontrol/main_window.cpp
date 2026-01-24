@@ -728,8 +728,11 @@ void MainWindow::tryDaemonConnection() const {
       m_alertCount = 0;
       m_daemonHasErrors = false;
       m_daemonHasWarnings = false;
-      // if the window was closed/hidden, this will refresh the app anyway
-      m_view->load(getDaemonUrl());
+      if (isHidden()) {
+        // if the window was closed/hidden/suspended, this will refresh the app
+        // This is particularly helpful when closed to tray and the daemon reconnects
+        m_view->load(getDaemonUrl());
+      }
       // systray badge update will be handled by re-checking for Alerts and Errors:
       requestAllAlerts();
       requestDaemonErrors();
