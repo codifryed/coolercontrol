@@ -280,7 +280,10 @@ build_deb_bookworm_amd64:
   needs:
     - compile_artifacts
   rules:
-    - if: $CI_PIPELINE_SOURCE
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+      when: manual
+    - if: $CI_COMMIT_TAG
+      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
@@ -332,7 +335,10 @@ build_deb_bookworm_arm64:
     # For some reason (emulation?), if the amd64 build is running at the same time, there are problems
     - build_deb_bookworm_amd64
   rules:
-    - if: $CI_PIPELINE_SOURCE
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+      when: manual
+    - if: $CI_COMMIT_TAG
+      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
