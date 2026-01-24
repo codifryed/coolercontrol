@@ -45,19 +45,44 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
           - coolercontrol-ui/package-lock.json
       paths:
         - .npm
+      policy: pull-push
     - key:
         files:
           - coolercontrold/Cargo.lock
       paths:
         - .cargo
-        - /root/.cargo
+      policy: pull-push
+    # This is used for appimage python cache and trunk cache
     - key: '${CI_JOB_NAME}'
       paths:
         - .pip
         - .cache
-        # ~/.cache/trunk
-        # this can add up over time to a very large cache and isn't very clean, but could speed up compilation:
-        #- coolercontrold/target
+
+# Rust release build cache for amd64 - caches compiled dependencies for faster rebuilds
+.rust_release_cache_amd64: &rust_release_cache_amd64
+  cache:
+    - key:
+        files:
+          - coolercontrold/Cargo.lock
+        prefix: "rust-release-amd64"
+      paths:
+        - coolercontrold/target/release/deps
+        - coolercontrold/target/release/.fingerprint
+        - coolercontrold/target/release/build
+      policy: pull-push
+
+# Rust release build cache for arm64 - caches compiled dependencies for faster rebuilds
+.rust_release_cache_arm64: &rust_release_cache_arm64
+  cache:
+    - key:
+        files:
+          - coolercontrold/Cargo.lock
+        prefix: "rust-release-arm64"
+      paths:
+        - coolercontrold/target/release/deps
+        - coolercontrold/target/release/.fingerprint
+        - coolercontrold/target/release/build
+      policy: pull-push
 
 .main_image_template: &main_image_template
   before_script:
@@ -106,7 +131,7 @@ test_all:
   stage: test
   tags:
     - saas-linux-xlarge-amd64
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   rules:
     # This allows us to run a single job for MR branches that are pushed to, and allow these tests
     # to run for external MRs.
@@ -140,6 +165,7 @@ test_all:
 ####################################### source tarball
 build_source_assets:
   stage: build
+  # no caching here due to vendoring and for a clean solid build
   <<: [*main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE
@@ -169,7 +195,7 @@ build_source_assets:
 # manual and automatic trigger for all artifacts & packages
 compile_artifacts:
   stage: build
-  <<: [*cache_template, *main_image_template]
+  <<: [*main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: on_success
@@ -185,7 +211,7 @@ compile_artifacts:
 ####################################### AppImages (Ubuntu 22.04)
 build_appimages:
   image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
@@ -219,7 +245,7 @@ build_appimages:
 ####################################### aarch64 build assets (Ubuntu 22.04)
 build_arm64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu-arm64:${IMAGE_VERSION}
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
     - saas-linux-large-arm64
@@ -247,7 +273,7 @@ build_arm64:
 ####################################### Debian >=BookWorm Base Package
 build_deb_bookworm_amd64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
@@ -298,7 +324,7 @@ build_deb_bookworm_amd64:
 
 build_deb_bookworm_arm64:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_arm64, *main_image_template]
   stage: build
   tags:
     - saas-linux-large-arm64
@@ -354,7 +380,7 @@ build_deb_bookworm_arm64:
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
 build_ubuntu:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
-  <<: [*cache_template, *main_image_template]
+  <<: [*cache_template, *rust_release_cache_amd64, *main_image_template]
   stage: build
   tags:
     - saas-linux-xlarge-amd64
