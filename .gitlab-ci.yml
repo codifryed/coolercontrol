@@ -393,7 +393,11 @@ build_ubuntu:
   needs:
     - compile_artifacts
   rules:
-    - if: $CI_PIPELINE_SOURCE
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG
+      when: always
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
