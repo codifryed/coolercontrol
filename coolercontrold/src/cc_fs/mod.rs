@@ -104,6 +104,8 @@ pub fn runtime<F: Future>(future: F) -> F::Output {
         .max_blocking_threads(4)
         .thread_keep_alive(Duration::from_secs(60))
         .thread_name("coolercontrold-wrk")
+        .event_interval(200)
+        .global_queue_interval(200)
         .build();
     // requires tokio unstable: (but would make all our spawns !Send by default)
     // .build_local(&Default::default());
