@@ -16,16 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use anyhow::{anyhow, Error, Result};
+use async_trait::async_trait;
+use heck::ToTitleCase;
+use log::{debug, error, info, trace};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
 use std::rc::Rc;
 use std::string::ToString;
-
-use anyhow::{anyhow, Error, Result};
-use async_trait::async_trait;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace};
+use std::sync::Arc;
 use tokio::time::Instant;
 
 use crate::api::CCError;
@@ -228,9 +228,11 @@ impl CustomSensorsRepo {
             .borrow()
             .status_history
             .clone();
+        // Get mutable access to the VecDeque (will clone if there are other Arc refs)
+        let history = Arc::make_mut(&mut status_history);
         match sensor.cs_type {
             CustomSensorType::Mix | CustomSensorType::Offset => {
-                for (index, status) in status_history.iter_mut().enumerate() {
+                for (index, status) in history.iter_mut().enumerate() {
                     let temp_status = self.process_custom_sensor_data_indexed(sensor, index)?;
                     status.temps.push(temp_status);
                 }
@@ -239,8 +241,8 @@ impl CustomSensorsRepo {
                 Self::get_custom_sensor_file_temp(sensor).await?; // make sure it's valid
                 let current_temp_status =
                     Self::process_custom_sensor_data_file_current(sensor).await;
-                let status_history_last_index = status_history.len() - 1;
-                for (index, status) in status_history.iter_mut().enumerate() {
+                let status_history_last_index = history.len() - 1;
+                for (index, status) in history.iter_mut().enumerate() {
                     if index == status_history_last_index {
                         status.temps.push(current_temp_status.clone());
                     } else {
@@ -608,7 +610,8 @@ impl CustomSensorsRepo {
 
     fn remove_status_history_for_sensor(&self, sensor_id: &str) {
         let mut device_lock = self.custom_sensor_device.as_ref().unwrap().borrow_mut();
-        for status in &mut device_lock.status_history {
+        let history = Arc::make_mut(&mut device_lock.status_history);
+        for status in history {
             status
                 .temps
                 .retain(|temp_status| temp_status.name != sensor_id);

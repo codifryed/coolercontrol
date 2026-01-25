@@ -25,8 +25,9 @@ use crate::AllDevices;
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use moro_local::Scope;
+use std::collections::VecDeque;
 use std::ops::Deref;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -191,31 +192,31 @@ fn get_statuses_since(
 ) -> DeviceStatusDto {
     let timestamp_limit = since_timestamp + *MAX_UPDATE_TIMESTAMP_VARIATION;
     let device = device_lock.borrow();
-    let filtered_history = device
+    let filtered_history: VecDeque<Status> = device
         .status_history
         .iter()
         .filter(|device_status| device_status.timestamp > timestamp_limit)
         .cloned()
         .collect();
     DeviceStatusDto {
-        d_type: device.d_type.clone(),
+        d_type: device.d_type,
         type_index: device.type_index,
         uid: device.uid.clone(),
-        status_history: filtered_history,
+        status_history: Arc::new(filtered_history),
     }
 }
 
 fn get_most_recent_status(device_lock: &DeviceLock) -> DeviceStatusDto {
-    let mut status_history: Vec<Status> = Vec::with_capacity(1);
+    let mut status_history: VecDeque<Status> = VecDeque::with_capacity(1);
     let device = device_lock.borrow();
     if let Some(most_recent_status) = device.status_current() {
-        status_history.push(most_recent_status);
+        status_history.push_back(most_recent_status);
     }
     DeviceStatusDto {
-        d_type: device.d_type.clone(),
+        d_type: device.d_type,
         type_index: device.type_index,
         uid: device.uid.clone(),
-        status_history,
+        status_history: Arc::new(status_history),
     }
 }
 

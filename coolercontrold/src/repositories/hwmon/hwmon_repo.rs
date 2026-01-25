@@ -625,11 +625,10 @@ impl Repository for HwmonRepo {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let device_index = device.borrow().type_index;
             let preloaded_statuses = preloaded_statuses_map.get(&device_index);
-            if preloaded_statuses.is_none() {
+            let Some((channels, temps)) = preloaded_statuses.cloned() else {
                 error!("There is no status preloaded for this device: {device_index}");
                 continue;
-            }
-            let (channels, temps) = preloaded_statuses.unwrap().clone();
+            };
             let status = Status {
                 temps,
                 channels,

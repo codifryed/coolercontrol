@@ -17,6 +17,7 @@
  */
 
 use std::fmt::Debug;
+use std::sync::Arc;
 use std::{
     collections::{HashMap, VecDeque},
     time::Duration,
@@ -67,8 +68,8 @@ pub struct Device {
     #[allow(clippy::struct_field_names)]
     device_id: Option<String>,
 
-    /// A double-sided Vector of statuses
-    pub status_history: VecDeque<Status>,
+    /// A double-sided Vector of statuses wrapped in Arc for efficient sharing
+    pub status_history: Arc<VecDeque<Status>>,
 
     /// Specific Liquidctl device information
     pub lc_info: Option<LcInfo>,
@@ -114,7 +115,9 @@ impl Device {
         poll_rate: f64,
     ) -> Self {
         let uid = Self::create_uid_from(&name, &d_type, type_index, device_id.as_ref());
-        let status_history = VecDeque::with_capacity(Self::calc_history_stack_size(poll_rate));
+        let status_history = Arc::new(VecDeque::with_capacity(Self::calc_history_stack_size(
+            poll_rate,
+        )));
         Device {
             name,
             d_type,
@@ -192,7 +195,8 @@ impl Device {
                 ..c.clone()
             })
             .collect::<Vec<ChannelStatus>>();
-        self.status_history.clear();
+        let history = Arc::make_mut(&mut self.status_history);
+        history.clear();
         let status_stack_size = Self::calc_history_stack_size(poll_rate);
         for pos in (1..status_stack_size).rev() {
             let zeroed_status = Status {
@@ -200,20 +204,23 @@ impl Device {
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };
-            self.status_history.push_back(zeroed_status);
+            history.push_back(zeroed_status);
         }
-        self.status_history.push_back(status);
+        history.push_back(status);
     }
 
     /// Adds a new status to a history list and removes the oldest status.
     /// This should be used every time a new status is to be added.
+    /// Uses `Arc::make_mut` for copy-on-write semantics - only clones if there
+    /// are other references to the history.
     ///
     /// Arguments:
     ///
     /// * `status`: The `Status` to be consumed and added to the history stack.
     pub fn set_status(&mut self, status: Status) {
-        self.status_history.pop_front();
-        self.status_history.push_back(status);
+        let history = Arc::make_mut(&mut self.status_history);
+        history.pop_front();
+        history.push_back(status);
     }
 }
 
@@ -259,7 +266,7 @@ impl Default for Status {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize, JsonSchema,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize, JsonSchema,
 )]
 pub enum DeviceType {
     #[allow(clippy::upper_case_acronyms)]

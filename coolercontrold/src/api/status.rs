@@ -21,8 +21,10 @@ use axum::Json;
 use chrono::{DateTime, Local};
 use schemars::JsonSchema;
 use serde::{de, Deserialize, Deserializer, Serialize};
+use std::collections::VecDeque;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::api::devices::{DeviceChannelPath, DevicePath};
 use crate::api::{AppState, CCError};
@@ -110,16 +112,18 @@ pub struct DeviceStatusDto {
     pub d_type: DeviceType,
     pub type_index: u8,
     pub uid: UID,
-    pub status_history: Vec<Status>,
+    /// Status history wrapped in Arc for O(1) cloning for serialization
+    pub status_history: Arc<VecDeque<Status>>,
 }
 
 impl From<&Device> for DeviceStatusDto {
     fn from(device: &Device) -> Self {
         Self {
-            d_type: device.d_type.clone(),
+            d_type: device.d_type,
             type_index: device.type_index,
             uid: device.uid.clone(),
-            status_history: device.status_history.clone().into(),
+            // Clone the Arc pointer, not the data - O(1) operation
+            status_history: Arc::clone(&device.status_history),
         }
     }
 }
