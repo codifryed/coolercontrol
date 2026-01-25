@@ -44,6 +44,7 @@ macro_rules! format_fan_max { ($($arg:tt)*) => {{ format!("fan{}_max", $($arg)*)
 macro_rules! format_fan_output { ($($arg:tt)*) => {{ format!("fan{}_output", $($arg)*) }}; }
 /// `macsmc-hwmon` uses a more appropriate `fanN_target` instead of `fanN_output`
 macro_rules! format_fan_target { ($($arg:tt)*) => {{ format!("fan{}_target", $($arg)*) }}; }
+macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 
 /// This is a `HWMon` repository extension for Apple hardware supported by the Linux Kernel.
 ///
@@ -167,7 +168,7 @@ impl AppleMacSMC {
         } else if Self::fan_target_is_writable(base_path, channel_number).not() {
             return Ok(()); // skip if fan_target file isn't writable
         }
-        if fans::get_fan_rpm(base_path, &channel_number, true)
+        if fans::get_fan_rpm(base_path, &channel_number, None, true)
             .await
             .is_none()
         {
@@ -300,6 +301,11 @@ impl AppleMacSMC {
                     base_path.display()
                 );
             }
+            let rpm_path = if fan_cap.has_rpm() {
+                Some(base_path.join(format_fan_input!(channel_number)))
+            } else {
+                None
+            };
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
@@ -308,6 +314,9 @@ impl AppleMacSMC {
                 label,
                 caps: fan_cap,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path,
+                temp_path: None,
             });
         }
         Ok(fans)
@@ -320,12 +329,19 @@ impl AppleMacSMC {
                 continue;
             }
             let fan_duty = if channel.caps.is_apple_smc() {
-                self.get_fan_duty(channel.number).await
+                self.get_fan_duty(channel.number, channel.rpm_path.as_ref())
+                    .await
             } else {
                 None
             };
             let fan_rpm = if channel.caps.has_rpm() {
-                fans::get_fan_rpm(&driver.path, &channel.number, false).await
+                fans::get_fan_rpm(
+                    &driver.path,
+                    &channel.number,
+                    channel.rpm_path.as_ref(),
+                    false,
+                )
+                .await
             } else {
                 None
             };
@@ -416,8 +432,12 @@ impl AppleMacSMC {
             .ok()
     }
 
-    pub async fn get_fan_duty(&self, channel_number: u8) -> Option<f64> {
-        fans::get_fan_rpm(&self.path, &channel_number, false)
+    pub async fn get_fan_duty(
+        &self,
+        channel_number: u8,
+        rpm_path: Option<&PathBuf>,
+    ) -> Option<f64> {
+        fans::get_fan_rpm(&self.path, &channel_number, rpm_path, false)
             .await
             .and_then(|rpm| self.interpolate_duty_from_rpm(channel_number, rpm))
     }
@@ -1160,7 +1180,7 @@ mod tests {
             };
 
             // when:
-            let result = apple_smc.get_fan_duty(1).await;
+            let result = apple_smc.get_fan_duty(1, None).await;
 
             // then:
             teardown(&ctx);
@@ -1213,6 +1233,9 @@ mod tests {
                         | HwmonChannelCapabilities::FAN_WRITABLE
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: Some(test_base_path.join("fan1_input")),
+                    temp_path: None,
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Fan,
@@ -1224,6 +1247,9 @@ mod tests {
                         | HwmonChannelCapabilities::FAN_WRITABLE
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: Some(test_base_path.join("fan2_input")),
+                    temp_path: None,
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1274,6 +1300,9 @@ mod tests {
                     | HwmonChannelCapabilities::FAN_WRITABLE
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: Some(test_base_path.join("fan1_input")),
+                temp_path: None,
             }];
 
             // when:
@@ -1306,6 +1335,9 @@ mod tests {
                     | HwmonChannelCapabilities::FAN_WRITABLE
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: Some(test_base_path.join("fan1_input")),
+                temp_path: None,
             }];
 
             // when:
@@ -1686,6 +1718,9 @@ mod tests {
                     | HwmonChannelCapabilities::FAN_WRITABLE
                     | HwmonChannelCapabilities::RPM,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             }];
 
             // when:
@@ -1715,6 +1750,9 @@ mod tests {
                     label: None,
                     caps: HwmonChannelCapabilities::RPM, // Not APPLE_SMC
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: None,
+                    temp_path: None,
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1724,6 +1762,9 @@ mod tests {
                     label: None,
                     caps: HwmonChannelCapabilities::APPLE_SMC,
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: None,
+                    temp_path: None,
                 },
             ];
 
@@ -1772,6 +1813,9 @@ mod tests {
                         | HwmonChannelCapabilities::FAN_WRITABLE
                         | HwmonChannelCapabilities::RPM,
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: None,
+                    temp_path: None,
                 },
                 HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Temp,
@@ -1781,6 +1825,9 @@ mod tests {
                     label: None,
                     caps: HwmonChannelCapabilities::empty(),
                     auto_curve: AutoCurveInfo::None,
+                    pwm_path: None,
+                    rpm_path: None,
+                    temp_path: None,
                 },
             ];
             let driver = Rc::new(HwmonDriverInfo {
@@ -1827,6 +1874,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::RPM, // RPM only, not APPLE_SMC
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             }];
             let driver = Rc::new(HwmonDriverInfo {
                 name: "applesmc".to_string(),

@@ -75,6 +75,10 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub auto_curve: AutoCurveInfo,
     pub caps: HwmonChannelCapabilities,
+    // Paths that are often used are saved to avoid cloning
+    pub pwm_path: Option<PathBuf>,
+    pub rpm_path: Option<PathBuf>,
+    pub temp_path: Option<PathBuf>,
 }
 
 impl Default for HwmonChannelInfo {
@@ -87,6 +91,9 @@ impl Default for HwmonChannelInfo {
             label: None,
             auto_curve: AutoCurveInfo::None,
             caps: HwmonChannelCapabilities::empty(),
+            pwm_path: None,
+            rpm_path: None,
+            temp_path: None,
         }
     }
 }

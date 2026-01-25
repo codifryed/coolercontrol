@@ -29,7 +29,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::ops::Not;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
@@ -79,7 +79,7 @@ async fn detect_pwm(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_pwm_duty(base_path, &channel_number, true)
+    if get_pwm_duty(base_path, &channel_number, None, true)
         .await
         .is_none()
     {
@@ -111,7 +111,7 @@ pub async fn detect_rpm(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_fan_rpm(base_path, &channel_number, true)
+    if get_fan_rpm(base_path, &channel_number, None, true)
         .await
         .is_none()
     {
@@ -144,6 +144,16 @@ async fn caps_to_hwmon_fans(
                 base_path.display()
             );
         }
+        let pwm_path = if fan_cap.has_pwm() {
+            Some(base_path.join(format_pwm!(channel_number)))
+        } else {
+            None
+        };
+        let rpm_path = if fan_cap.has_rpm() {
+            Some(base_path.join(format_fan_input!(channel_number)))
+        } else {
+            None
+        };
         fans.push(HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Fan,
             number: channel_number,
@@ -152,6 +162,9 @@ async fn caps_to_hwmon_fans(
             label,
             caps: fan_cap,
             auto_curve: AutoCurveInfo::None,
+            pwm_path,
+            rpm_path,
+            temp_path: None,
         });
     }
     Ok(fans)
@@ -169,12 +182,24 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             continue;
         }
         let fan_duty = if channel.caps.has_pwm() {
-            get_pwm_duty(&driver.path, &channel.number, false).await
+            get_pwm_duty(
+                &driver.path,
+                &channel.number,
+                channel.pwm_path.as_ref(),
+                false,
+            )
+            .await
         } else {
             None
         };
         let fan_rpm = if channel.caps.has_rpm() {
-            get_fan_rpm(&driver.path, &channel.number, false).await
+            get_fan_rpm(
+                &driver.path,
+                &channel.number,
+                channel.rpm_path.as_ref(),
+                false,
+            )
+            .await
         } else {
             None
         };
@@ -201,14 +226,26 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
                 moro_local::async_scope!(|channel_scope| {
                     let fan_rpm_task = channel_scope.spawn(async {
                         if channel.caps.has_rpm() {
-                            get_fan_rpm(&driver.path, &channel.number, false).await
+                            get_fan_rpm(
+                                &driver.path,
+                                &channel.number,
+                                channel.rpm_path.as_ref(),
+                                false,
+                            )
+                            .await
                         } else {
                             None
                         }
                     });
                     let fan_duty_task = channel_scope.spawn(async {
                         if channel.caps.has_pwm() {
-                            get_pwm_duty(&driver.path, &channel.number, false).await
+                            get_pwm_duty(
+                                &driver.path,
+                                &channel.number,
+                                channel.pwm_path.as_ref(),
+                                false,
+                            )
+                            .await
                         } else {
                             None
                         }
@@ -242,9 +279,17 @@ pub async fn extract_fan_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<
     .await
 }
 
-async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<f64> {
-    let pwm_path = base_path.join(format_pwm!(channel_number));
-    cc_fs::read_sysfs(&pwm_path)
+async fn get_pwm_duty(
+    base_path: &Path,
+    channel_number: &u8,
+    pwm_path: Option<&PathBuf>,
+    log_error: bool,
+) -> Option<f64> {
+    let pwm_path = match pwm_path {
+        Some(path) => path,
+        None => &base_path.join(format_pwm!(channel_number)),
+    };
+    cc_fs::read_sysfs(pwm_path)
         .await
         .and_then(check_parsing_8)
         .map(pwm_value_to_duty)
@@ -259,9 +304,17 @@ async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) ->
         .ok()
 }
 
-pub async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
-    let fan_input_path = base_path.join(format_fan_input!(channel_number));
-    cc_fs::read_sysfs(&fan_input_path)
+pub async fn get_fan_rpm(
+    base_path: &Path,
+    channel_number: &u8,
+    rpm_path: Option<&PathBuf>,
+    log_error: bool,
+) -> Option<u32> {
+    let fan_input_path = match rpm_path {
+        Some(path) => path,
+        None => &base_path.join(format_fan_input!(channel_number)),
+    };
+    cc_fs::read_sysfs(fan_input_path)
         .await
         .and_then(check_parsing_32)
         // Edge case where on spin-up the output is max value until it begins moving
@@ -496,7 +549,10 @@ pub async fn set_pwm_duty(
     speed_duty: u8,
 ) -> Result<()> {
     let pwm_value = duty_to_pwm_value(speed_duty);
-    let pwm_path = base_path.join(format_pwm!(channel_info.number));
+    let pwm_path = match channel_info.pwm_path.as_ref() {
+        Some(path) => path,
+        None => &base_path.join(format_pwm!(channel_info.number)),
+    };
     cc_fs::write_string(&pwm_path, pwm_value.to_string())
         .await
         .map_err(|err| {
@@ -688,6 +744,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -718,6 +777,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -753,6 +815,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -787,6 +852,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -819,6 +887,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -853,6 +924,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -891,6 +965,47 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
+            };
+
+            // when:
+            let result = set_pwm_duty(test_base_path, &channel_info, 50).await;
+
+            // then:
+            let current_duty = cc_fs::read_sysfs(&test_base_path.join("pwm1"))
+                .await
+                .and_then(check_parsing_8)
+                .map(pwm_value_to_duty)
+                .unwrap();
+            teardown(&ctx);
+            assert!(result.is_ok());
+            assert_eq!(format!("{current_duty:.1}"), "50.0");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_pwm_duty_using_path() {
+        cc_fs::test_runtime(async {
+            let ctx = setup();
+            // given:
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
+                .await
+                .unwrap();
+            let channel_info = HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                pwm_enable_default: Some(2),
+                name: String::new(),
+                label: None,
+                caps: HwmonChannelCapabilities::FAN_WRITABLE,
+                auto_curve: AutoCurveInfo::None,
+                pwm_path: Some(test_base_path.join("pwm1")),
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
@@ -926,6 +1041,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: None,
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:
