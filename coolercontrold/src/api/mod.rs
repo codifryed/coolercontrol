@@ -24,7 +24,6 @@ mod custom_sensors;
 pub mod devices;
 mod dual_protocol;
 mod functions;
-pub mod limiter;
 pub mod modes;
 mod plugins;
 mod profiles;
@@ -39,7 +38,6 @@ use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
     ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
-use crate::api::limiter::throttler::LimiterConfig;
 use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
@@ -64,7 +62,6 @@ use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
 use axum_server::tls_rustls::RustlsConfig;
 use derive_more::{Display, Error};
-use limiter::LimiterLayer;
 use log::{debug, info, warn};
 use moro_local::Scope;
 use schemars::JsonSchema;
@@ -92,8 +89,6 @@ use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
 const SESSION_COOKIE_NAME: &str = "cc";
-const API_RATE_BURST: u32 = 120; // Multiple UIs restarted at the same time creates lots of requests
-const API_RATE_REQ_PER_SEC: u64 = 20;
 const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
@@ -167,14 +162,6 @@ pub async fn start_server<'s>(
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnSessionEnd);
-    let limiter_layer = LimiterLayer {
-        config: Arc::new(LimiterConfig::new(
-            Duration::from_millis(1000 / API_RATE_REQ_PER_SEC),
-            // startup has quite a few requests (e.g. per device)
-            API_RATE_BURST,
-        )),
-    };
-
     // REST API
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
@@ -248,7 +235,6 @@ async fn create_api_server(
     app_state: AppState,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
-    limiter_layer: LimiterLayer,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
 ) -> Result<()> {
@@ -276,8 +262,7 @@ async fn create_api_server(
                 StatusCode::REQUEST_TIMEOUT,
                 Duration::from_secs(API_TIMEOUT_SECS),
             ),
-        ))
-        .layer(limiter_layer);
+        ));
 
     let listener = TcpListener::bind(addr).await?;
     let handle = axum_server::Handle::new();
