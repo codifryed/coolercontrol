@@ -73,6 +73,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, ToSocketAddrs};
+use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 use tower::Layer;
 use tower_http::compression::CompressionLayer;
@@ -162,31 +163,6 @@ pub async fn start_server<'s>(
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_expiry(Expiry::OnSessionEnd);
-    // REST API
-    let grpc_device_handle = app_state.device_handle.clone();
-    let grpc_status_handle = app_state.status_handle.clone();
-    if let Ok(ipv4) = ipv4 {
-        main_scope.spawn(create_api_server(
-            SocketAddr::from(ipv4),
-            app_state.clone(),
-            session_layer.clone(),
-            compression_layers.clone(),
-            limiter_layer.clone(),
-            tls_config.clone(),
-            cancel_token.clone(),
-        ));
-    }
-    if let Ok(ipv6) = ipv6 {
-        main_scope.spawn(create_api_server(
-            SocketAddr::from(ipv6),
-            app_state,
-            session_layer,
-            compression_layers,
-            limiter_layer,
-            tls_config,
-            cancel_token.clone(),
-        ));
-    }
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively
@@ -211,23 +187,95 @@ pub async fn start_server<'s>(
             "Could not bind GRPC API to any address. External Device services are unavailable."
         ));
     }
-    if let Ok(ipv4) = grpc_ipv4 {
-        main_scope.spawn(create_grpc_api_server(
+
+    // Spawn all API servers on a dedicated thread
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
+            .max_blocking_threads(1) // not needed for API servers
+            .thread_keep_alive(Duration::from_secs(60))
+            .thread_name("cc-api")
+            .event_interval(200)
+            .global_queue_interval(200)
+            .build()
+            .expect("Failed to create API server runtime");
+        rt.block_on(LocalSet::new().run_until(run_all_api_servers(
+            ipv4.ok(),
+            ipv6.ok(),
+            grpc_ipv4.ok(),
+            grpc_ipv6.ok(),
+            app_state,
+            session_layer,
+            compression_layers,
+            tls_config,
+            cancel_token,
+        )));
+    });
+    Ok(())
+}
+
+async fn run_all_api_servers(
+    ipv4: Option<SocketAddrV4>,
+    ipv6: Option<SocketAddrV6>,
+    grpc_ipv4: Option<SocketAddrV4>,
+    grpc_ipv6: Option<SocketAddrV6>,
+    app_state: AppState,
+    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
+    tls_config: Option<RustlsConfig>,
+    cancel_token: CancellationToken,
+) {
+    let mut handles = Vec::new();
+    let grpc_device_handle = app_state.device_handle.clone();
+    let grpc_status_handle = app_state.status_handle.clone();
+
+    // REST API servers
+    if let Some(ipv4) = ipv4 {
+        handles.push(tokio::task::spawn_local(create_api_server(
+            SocketAddr::from(ipv4),
+            app_state.clone(),
+            session_layer.clone(),
+            compression_layers.clone(),
+            tls_config.clone(),
+            cancel_token.clone(),
+        )));
+    }
+    if let Some(ipv6) = ipv6 {
+        handles.push(tokio::task::spawn_local(create_api_server(
+            SocketAddr::from(ipv6),
+            app_state,
+            session_layer,
+            compression_layers,
+            tls_config,
+            cancel_token.clone(),
+        )));
+    }
+
+    // gRPC API servers
+    if let Some(ipv4) = grpc_ipv4 {
+        handles.push(tokio::task::spawn_local(create_grpc_api_server(
             SocketAddr::from(ipv4),
             grpc_device_handle.clone(),
             grpc_status_handle.clone(),
             cancel_token.clone(),
-        ));
+        )));
     }
-    if let Ok(ipv6) = grpc_ipv6 {
-        main_scope.spawn(create_grpc_api_server(
+    if let Some(ipv6) = grpc_ipv6 {
+        handles.push(tokio::task::spawn_local(create_grpc_api_server(
             SocketAddr::from(ipv6),
             grpc_device_handle,
             grpc_status_handle,
             cancel_token,
-        ));
+        )));
     }
-    Ok(())
+
+    // Wait for all servers (they run until canceled)
+    for handle in handles {
+        if let Err(e) = handle.await {
+            log::error!("API server task error: {e}");
+        }
+    }
 }
 
 async fn create_api_server(
