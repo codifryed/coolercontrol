@@ -1110,11 +1110,46 @@ const addPointToLine = (params: any) => {
     // Validate minimum temperature separation from adjacent points
     const prevPoint = data[indexToInsertAt - 1]
     const nextPoint = data[indexToInsertAt]
-    if (
-        posXY[0] - prevPoint.value[0] < MIN_TEMP_SEPARATION ||
-        nextPoint.value[0] - posXY[0] < MIN_TEMP_SEPARATION
-    ) {
-        return // Too close to adjacent points
+    // Ensure new point's duty is between previous and next point's duty
+    posXY[1] = Math.max(posXY[1], prevPoint.value[1])
+    posXY[1] = Math.min(posXY[1], nextPoint.value[1])
+
+    // Calculate how much room we have to move each adjacent point
+    let lowerMinTemp: number
+    if (indexToInsertAt - 1 === 0) {
+        lowerMinTemp = Math.max(selectedTempSource!.tempMin, axisXTempMin.value)
+    } else {
+        lowerMinTemp = data[indexToInsertAt - 2].value[0] + MIN_TEMP_SEPARATION
+    }
+    const lowerRoom = Math.max(0, prevPoint.value[0] - lowerMinTemp)
+
+    let upperMaxTemp: number
+    if (indexToInsertAt === data.length - 1) {
+        upperMaxTemp = Math.min(selectedTempSource!.tempMax, axisXTempMax.value)
+    } else {
+        upperMaxTemp = data[indexToInsertAt + 1].value[0] - MIN_TEMP_SEPARATION
+    }
+    const upperRoom = Math.max(0, upperMaxTemp - nextPoint.value[0])
+
+    // Calculate valid range for the new point
+    const minValidPos = prevPoint.value[0] + MIN_TEMP_SEPARATION - lowerRoom
+    const maxValidPos = nextPoint.value[0] - MIN_TEMP_SEPARATION + upperRoom
+
+    // Check if there's any valid position for the new point
+    if (minValidPos > maxValidPos) return // No room at all
+
+    // Clamp click position to valid range
+    posXY[0] = Math.max(minValidPos, Math.min(maxValidPos, posXY[0]))
+
+    // Now adjust adjacent points as needed
+    const gapToPrev = posXY[0] - prevPoint.value[0]
+    const gapToNext = nextPoint.value[0] - posXY[0]
+
+    if (gapToPrev < MIN_TEMP_SEPARATION) {
+        prevPoint.value[0] = posXY[0] - MIN_TEMP_SEPARATION
+    }
+    if (gapToNext < MIN_TEMP_SEPARATION) {
+        nextPoint.value[0] = posXY[0] + MIN_TEMP_SEPARATION
     }
 
     data.splice(indexToInsertAt, 0, {
@@ -1319,10 +1354,46 @@ const addPointFromTable = (afterIdx: number): void => {
 
     // Ensure minimum temperature separation
     const tempGap = nextPoint[0] - currentPoint[0]
-    if (tempGap < MIN_TEMP_SEPARATION * 2) return
+    const requiredGap = MIN_TEMP_SEPARATION * 2
+
+    // If gap is too small, try to make room by moving adjacent points
+    if (tempGap < requiredGap) {
+        const deficit = requiredGap - tempGap
+
+        // Calculate how much room we have to move each point
+        let lowerMinTemp: number
+        if (afterIdx === 0) {
+            // First point: constrained by temp source min
+            lowerMinTemp = Math.max(selectedTempSource!.tempMin, axisXTempMin.value)
+        } else {
+            // Middle point: constrained by previous point
+            lowerMinTemp = data[afterIdx - 1].value[0] + MIN_TEMP_SEPARATION
+        }
+        const lowerRoom = Math.max(0, currentPoint[0] - lowerMinTemp)
+
+        let upperMaxTemp: number
+        if (afterIdx + 1 === data.length - 1) {
+            // Last point: constrained by temp source max
+            upperMaxTemp = Math.min(selectedTempSource!.tempMax, axisXTempMax.value)
+        } else {
+            // Middle point: constrained by next point
+            upperMaxTemp = data[afterIdx + 2].value[0] - MIN_TEMP_SEPARATION
+        }
+        const upperRoom = Math.max(0, upperMaxTemp - nextPoint[0])
+
+        // Check if we have enough total room
+        if (lowerRoom + upperRoom < deficit) return // Can't make enough room
+
+        // Move points to make room
+        const lowerMove = Math.min(lowerRoom, deficit)
+        const upperMove = deficit - lowerMove
+        if (lowerMove > 0) currentPoint[0] -= lowerMove
+        if (upperMove > 0) nextPoint[0] += upperMove
+    }
 
     const newTemp = (currentPoint[0] + nextPoint[0]) / 2
-    const newDuty = (currentPoint[1] + nextPoint[1]) / 2
+    // Ensure new point's duty is between previous and next point's duty
+    const newDuty = Math.min(Math.max((currentPoint[1] + nextPoint[1]) / 2, currentPoint[1]), nextPoint[1])
 
     data.splice(afterIdx + 1, 0, {
         value: [newTemp, newDuty],
@@ -1370,12 +1441,38 @@ const canRemovePoint = (idx: number): boolean => {
     )
 }
 
-// Check if point can be added after this index (requires at least 2x min separation for a midpoint)
+// Check if point can be added after this index (considers moving adjacent points to make room)
 const canAddPointAfter = (idx: number): boolean => {
     if (data.length >= selectedTempSource!.profileMaxLength) return false
     if (idx >= data.length - 1) return false
-    const tempGap = data[idx + 1].value[0] - data[idx].value[0]
-    return tempGap >= MIN_TEMP_SEPARATION * 2
+
+    const currentPoint = data[idx].value
+    const nextPoint = data[idx + 1].value
+    const tempGap = nextPoint[0] - currentPoint[0]
+    const requiredGap = MIN_TEMP_SEPARATION * 2
+
+    if (tempGap >= requiredGap) return true
+
+    // Check if we can make room by moving adjacent points
+    const deficit = requiredGap - tempGap
+
+    let lowerMinTemp: number
+    if (idx === 0) {
+        lowerMinTemp = Math.max(selectedTempSource!.tempMin, axisXTempMin.value)
+    } else {
+        lowerMinTemp = data[idx - 1].value[0] + MIN_TEMP_SEPARATION
+    }
+    const lowerRoom = Math.max(0, currentPoint[0] - lowerMinTemp)
+
+    let upperMaxTemp: number
+    if (idx + 1 === data.length - 1) {
+        upperMaxTemp = Math.min(selectedTempSource!.tempMax, axisXTempMax.value)
+    } else {
+        upperMaxTemp = data[idx + 2].value[0] - MIN_TEMP_SEPARATION
+    }
+    const upperRoom = Math.max(0, upperMaxTemp - nextPoint[0])
+
+    return lowerRoom + upperRoom >= deficit
 }
 
 const showGraph = computed(() => {
