@@ -570,7 +570,7 @@ const option = {
             symbol: 'none',
             lineStyle: {
                 color: 'transparent',
-                width: 24,
+                width: 12,
             },
             emphasis: {
                 disabled: true,
