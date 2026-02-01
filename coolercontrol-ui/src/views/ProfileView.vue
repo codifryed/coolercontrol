@@ -525,7 +525,6 @@ const option = {
             },
             lineStyle: {
                 color: colors.themeColors.accent,
-                // todo: so, this is simply too small for clicking to add a line...
                 width: 6,
                 type: 'solid',
                 shadowColor: undefined,
@@ -561,6 +560,23 @@ const option = {
             },
             // This is for the symbols that don't have draggable graphics on top, aka the last point
             cursor: 'no-drop',
+            data: data,
+        },
+        {
+            // Invisible wide line for easier click hit detection
+            id: 'hit-area',
+            type: 'line',
+            smooth: 0.0,
+            symbol: 'none',
+            lineStyle: {
+                color: 'transparent',
+                width: 24,
+            },
+            emphasis: {
+                disabled: true,
+            },
+            silent: false,
+            z: 5,
             data: data,
         },
         {
@@ -704,26 +720,28 @@ const setGraphData = () => {
     ]
     setTempSourceTemp()
     // @ts-ignore
-    option.series[1].lineStyle.color = selectedTempSource.color
+    option.series[2].lineStyle.color = selectedTempSource.color
     // @ts-ignore
-    option.series[1].markPoint.label.color = selectedTempSource.color
+    option.series[2].markPoint.label.color = selectedTempSource.color
     // @ts-ignore
-    option.series[1].markPoint.data[0].coord[0] = selectedTempSourceTemp.value
+    option.series[2].markPoint.data[0].coord[0] = selectedTempSourceTemp.value
     // @ts-ignore
-    option.series[1].markPoint.data[0].value = selectedTempSourceTemp.value
+    option.series[2].markPoint.data[0].value = selectedTempSourceTemp.value
     tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
     tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
 }
 const setFunctionGraphData = (): void => {
     if (chosenFunction.value.f_type === FunctionType.Identity) {
         option.series[0].smooth = 0.0
-        option.series[2].smooth = 0.0
+        option.series[1].smooth = 0.0
+        option.series[3].smooth = 0.0
         // @ts-ignore
         option.series[0].lineStyle.shadowColor = colors.themeColors.bg_one
         option.series[0].lineStyle.shadowBlur = 10
     } else {
         option.series[0].smooth = 0.1
-        option.series[2].smooth = 0.1
+        option.series[1].smooth = 0.1
+        option.series[3].smooth = 0.1
         // @ts-ignore
         option.series[0].lineStyle.shadowColor = colors.themeColors.accent
         // size of the blur around the line:
@@ -812,7 +830,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
         return
     }
     // @ts-ignore
-    option.series[1].lineStyle.color = selectedTempSource.color
+    option.series[2].lineStyle.color = selectedTempSource.color
     controlGraph.value?.setOption({
         series: {
             id: 'tempLine',
@@ -900,6 +918,7 @@ const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
     })
@@ -912,6 +931,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data, markArea: { data: markAreaData } },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
         graphic: data
@@ -960,6 +980,7 @@ const createWatcherOfTempDutyText = (): WatchStopHandle =>
             controlGraph.value?.setOption({
                 series: [
                     { id: 'a', data: data },
+                    { id: 'hit-area', data: data },
                     { id: 'line-area', data: data },
                 ],
                 graphic: graphicData,
@@ -1199,6 +1220,7 @@ const refreshGraphAfterTableEdit = (idx?: number): void => {
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
         graphic: graphicData,
