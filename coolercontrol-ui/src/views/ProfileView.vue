@@ -107,6 +107,7 @@ const confirm = useConfirm()
 const { t } = useI18n()
 
 const contextIsDirty: Ref<boolean> = ref(false)
+const tableDataKey: Ref<number> = ref(0)
 
 const currentProfile = computed(
     () => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!,
@@ -293,6 +294,7 @@ const dutyMin: number = 0
 const dutyMax: number = 100
 const offsetMin: number = -100
 const offsetMax: number = 100
+const MIN_TEMP_SEPARATION: number = 1.0 // Minimum temperature separation between adjacent points
 let firstTimeChoosingTemp: boolean = true
 const staticOffsetPrefix = computed(() =>
     selectedStaticOffset.value != null && selectedStaticOffset.value > 0 ? '+' : '',
@@ -457,6 +459,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
@@ -481,6 +484,7 @@ const option = {
         cursor: 'no-drop',
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
@@ -521,6 +525,7 @@ const option = {
             },
             lineStyle: {
                 color: colors.themeColors.accent,
+                // todo: so, this is simply too small for clicking to add a line...
                 width: 6,
                 type: 'solid',
                 shadowColor: undefined,
@@ -1080,6 +1085,17 @@ const addPointToLine = (params: any) => {
             break
         }
     }
+
+    // Validate minimum temperature separation from adjacent points
+    const prevPoint = data[indexToInsertAt - 1]
+    const nextPoint = data[indexToInsertAt]
+    if (
+        posXY[0] - prevPoint.value[0] < MIN_TEMP_SEPARATION ||
+        nextPoint.value[0] - posXY[0] < MIN_TEMP_SEPARATION
+    ) {
+        return // Too close to adjacent points
+    }
+
     data.splice(indexToInsertAt, 0, {
         value: posXY,
         symbolSize: selectedSymbolSize,
@@ -1100,6 +1116,7 @@ const addPointToLine = (params: any) => {
     // this needs a bit of time for the graph to refresh before being set correctly:
     setTimeout(() => (selectedPointIndex.value = indexToInsertAt), 50)
     setTimeout(() => showTooltip(indexToInsertAt), 350) // wait until point animation is complete before showing tooltip
+    tableDataKey.value++
     contextIsDirty.value = true
 }
 
@@ -1129,10 +1146,215 @@ const deletePointFromLine = (params: any) => {
     // @ts-ignore
     option.graphic = graphicData
     controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
+    tableDataKey.value++
     contextIsDirty.value = true
 }
 
 //--------------------------------------------------------------------------------------------------
+
+// Points table position (local state, not persisted)
+type TablePosition = 'top-left' | 'bottom-right'
+const tablePosition: Ref<TablePosition> = ref('top-left')
+
+const tablePositionClasses = computed(() => ({
+    'top-16 left-[5.5rem]': tablePosition.value === 'top-left',
+    'bottom-16 right-[7rem]': tablePosition.value === 'bottom-right',
+}))
+
+const cycleTablePosition = () => {
+    tablePosition.value = tablePosition.value === 'top-left' ? 'bottom-right' : 'top-left'
+}
+
+const selectPointFromTable = (idx: number) => {
+    tempDutyTextWatchStopper()
+    selectedPointIndex.value = idx
+    setTempAndDutyValues(idx)
+    showTooltip(idx)
+}
+
+// Calculate min/max temp for a specific point index (for table editing)
+const getPointTempMin = (idx: number): number => {
+    if (selectedTempSource == null) return axisXTempMin.value
+    return Math.max(selectedTempSource.tempMin, axisXTempMin.value) + idx
+}
+
+const getPointTempMax = (idx: number): number => {
+    if (selectedTempSource == null) return axisXTempMax.value
+    if (idx === 0) return Math.max(selectedTempSource.tempMin, axisXTempMin.value)
+    if (idx === data.length - 1)
+        return Math.min(selectedTempSource.tempMax, axisXTempMax.value)
+    return Math.min(selectedTempSource.tempMax, axisXTempMax.value) - (data.length - 1 - idx)
+}
+
+// Update point value from table (reuses existing constraint functions)
+const updatePointFromTable = (idx: number, newTemp: number, newDuty: number): void => {
+    selectPointFromTable(idx)
+    controlPointMotionForTempX(newTemp, idx)
+    controlPointMotionForDutyY(newDuty, idx)
+    refreshGraphAfterTableEdit(idx)
+}
+
+const refreshGraphAfterTableEdit = (idx?: number): void => {
+    createGraphicDataFromPointData()
+    controlGraph.value?.setOption({
+        series: [
+            { id: 'a', data: data },
+            { id: 'line-area', data: data },
+        ],
+        graphic: graphicData,
+    })
+    // Refresh tooltip position and values after chart finishes updating
+    if (idx !== undefined) {
+        // force position recalculation
+        nextTick(() => showTooltip(idx))
+        // for larger movements, the animation can last long enough that we need to delay the tooltip
+        setTimeout(() => showTooltip(idx), 300)
+    }
+}
+
+// Increment/decrement handlers for table cells
+const incrementPointTemp = (idx: number): void => {
+    const newTemp = Math.min(data[idx].value[0] + 0.1, getPointTempMax(idx))
+    updatePointFromTable(idx, newTemp, data[idx].value[1])
+}
+
+const decrementPointTemp = (idx: number): void => {
+    const newTemp = Math.max(data[idx].value[0] - 0.1, getPointTempMin(idx))
+    updatePointFromTable(idx, newTemp, data[idx].value[1])
+}
+
+const incrementPointDuty = (idx: number): void => {
+    if (idx === data.length - 1) return // Last point duty is fixed
+    const newDuty = Math.min(data[idx].value[1] + 1, dutyMax)
+    updatePointFromTable(idx, data[idx].value[0], newDuty)
+}
+
+const decrementPointDuty = (idx: number): void => {
+    if (idx === data.length - 1) return // Last point duty is fixed
+    const newDuty = Math.max(data[idx].value[1] - 1, dutyMin)
+    updatePointFromTable(idx, data[idx].value[0], newDuty)
+}
+
+// Scroll wheel handlers for table cells
+const handleTempScroll = (event: WheelEvent, idx: number): void => {
+    event.preventDefault()
+    if (event.deltaY < 0) incrementPointTemp(idx)
+    else decrementPointTemp(idx)
+}
+
+const handleDutyScroll = (event: WheelEvent, idx: number): void => {
+    event.preventDefault()
+    if (event.deltaY < 0) incrementPointDuty(idx)
+    else decrementPointDuty(idx)
+}
+
+// Direct input handlers for table cells
+const handleTempInput = (idx: number, value: number | null): void => {
+    if (value == null || idx === 0 || idx === data.length - 1) return
+    const clampedTemp = Math.max(getPointTempMin(idx), Math.min(value, getPointTempMax(idx)))
+    updatePointFromTable(idx, clampedTemp, data[idx].value[1])
+}
+
+const handleDutyInput = (idx: number, value: number | null): void => {
+    if (value == null || idx === data.length - 1) return
+    const clampedDuty = Math.max(dutyMin, Math.min(value, dutyMax))
+    updatePointFromTable(idx, data[idx].value[0], clampedDuty)
+}
+
+// Press-and-hold repeat functionality for increment/decrement buttons
+let repeatTimeout: ReturnType<typeof setTimeout> | null = null
+let repeatInterval: ReturnType<typeof setInterval> | null = null
+const REPEAT_DELAY = 400 // Initial delay before repeat starts (ms)
+const REPEAT_RATE = 75 // Interval between repeats (ms)
+
+const startRepeat = (action: () => void): void => {
+    stopRepeat()
+    action() // Execute immediately on press
+    repeatTimeout = setTimeout(() => {
+        repeatInterval = setInterval(action, REPEAT_RATE)
+    }, REPEAT_DELAY)
+}
+
+const stopRepeat = (): void => {
+    if (repeatTimeout) {
+        clearTimeout(repeatTimeout)
+        repeatTimeout = null
+    }
+    if (repeatInterval) {
+        clearInterval(repeatInterval)
+        repeatInterval = null
+    }
+}
+
+// Add point after the selected index
+const addPointFromTable = (afterIdx: number): void => {
+    if (data.length >= selectedTempSource!.profileMaxLength) return
+    if (afterIdx >= data.length - 1) return // Can't add after last point
+
+    // Calculate midpoint between current and next point
+    const currentPoint = data[afterIdx].value
+    const nextPoint = data[afterIdx + 1].value
+
+    // Ensure minimum temperature separation
+    const tempGap = nextPoint[0] - currentPoint[0]
+    if (tempGap < MIN_TEMP_SEPARATION * 2) return
+
+    const newTemp = (currentPoint[0] + nextPoint[0]) / 2
+    const newDuty = (currentPoint[1] + nextPoint[1]) / 2
+
+    data.splice(afterIdx + 1, 0, {
+        value: [newTemp, newDuty],
+        symbolSize: selectedSymbolSize,
+        itemStyle: { color: selectedSymbolColor },
+    })
+
+    createGraphicDataFromPointData()
+    // @ts-ignore
+    option.series[0].data = data
+    // @ts-ignore
+    option.graphic = graphicData
+    controlGraph.value?.setOption(option)
+
+    selectedPointIndex.value = afterIdx + 1
+    setTempAndDutyValues(afterIdx + 1)
+    tableDataKey.value++
+    contextIsDirty.value = true
+}
+
+// Remove point at index
+const removePointFromTable = (idx: number): void => {
+    if (data.length <= selectedTempSource!.profileMinLength) return
+    if (idx === 0 || idx === data.length - 1) return // Can't remove first/last
+
+    data.splice(idx, 1)
+    selectedPointIndex.value = undefined
+    hideTooltip()
+    createGraphicDataFromPointData()
+    // @ts-ignore
+    option.series[0].data = data
+    // @ts-ignore
+    option.graphic = graphicData
+    controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
+    tableDataKey.value++
+    contextIsDirty.value = true
+}
+
+// Check if point can be removed
+const canRemovePoint = (idx: number): boolean => {
+    return (
+        data.length > selectedTempSource!.profileMinLength &&
+        idx !== 0 &&
+        idx !== data.length - 1
+    )
+}
+
+// Check if point can be added after this index (requires at least 2x min separation for a midpoint)
+const canAddPointAfter = (idx: number): boolean => {
+    if (data.length >= selectedTempSource!.profileMaxLength) return false
+    if (idx >= data.length - 1) return false
+    const tempGap = data[idx + 1].value[0] - data[idx].value[0]
+    return tempGap >= MIN_TEMP_SEPARATION * 2
+}
 
 const showGraph = computed(() => {
     const shouldShow =
@@ -1604,6 +1826,7 @@ onUnmounted(() => {
     window.removeEventListener('resize', updateResponsiveGraphHeight)
     window.removeEventListener('resize', updatePosition)
     window.removeEventListener('resize', updateKnobSize)
+    stopRepeat()
 })
 </script>
 
@@ -1831,32 +2054,6 @@ onUnmounted(() => {
                 </template>
             </InputNumber>
             <div class="flex flex-row">
-                <InputNumber
-                    :placeholder="t('common.temperature')"
-                    v-model="selectedTemp"
-                    inputId="selected-temp"
-                    mode="decimal"
-                    class="temp-input h-11"
-                    :suffix="` ${t('common.tempUnit')}`"
-                    showButtons
-                    :min="inputNumberTempMin"
-                    :max="inputNumberTempMax"
-                    :disabled="selectedPointIndex == null"
-                    :use-grouping="false"
-                    :step="0.1"
-                    :min-fraction-digits="1"
-                    :max-fraction-digits="1"
-                    button-layout="horizontal"
-                    :input-style="{ width: '5rem' }"
-                    v-tooltip.right="t('views.profiles.selectedPointTemp')"
-                >
-                    <template #incrementicon>
-                        <span class="pi pi-plus" />
-                    </template>
-                    <template #decrementicon>
-                        <span class="pi pi-minus" />
-                    </template>
-                </InputNumber>
                 <div
                     class="p-2 mx-4 leading-none items-center"
                     v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
@@ -1868,30 +2065,6 @@ onUnmounted(() => {
                         :size="deviceStore.getREMSize(1.25)"
                     />
                 </div>
-                <InputNumber
-                    :placeholder="t('common.duty')"
-                    v-model="selectedDuty"
-                    inputId="selected-duty"
-                    mode="decimal"
-                    class="duty-input h-11"
-                    :suffix="` ${t('common.percentUnit')}`"
-                    showButtons
-                    :min="dutyMin"
-                    :max="dutyMax"
-                    :disabled="selectedPointIndex == null"
-                    :use-grouping="false"
-                    :step="1"
-                    button-layout="horizontal"
-                    :input-style="{ width: '5rem' }"
-                    v-tooltip.left="t('views.profiles.selectedPointDuty')"
-                >
-                    <template #incrementicon>
-                        <span class="pi pi-plus" />
-                    </template>
-                    <template #decrementicon>
-                        <span class="pi pi-minus" />
-                    </template>
-                </InputNumber>
             </div>
             <InputNumber
                 :placeholder="t('components.axisOptions.max')"
@@ -1933,18 +2106,198 @@ onUnmounted(() => {
             :stroke-width="deviceStore.getREMSize(0.75)"
             :size="knobSize"
         />
-        <v-chart
-            v-else-if="showGraph"
-            id="control-graph"
-            class="pt-6 pr-11 pl-4 pb-6"
-            ref="controlGraph"
-            :option="option"
-            :autoresize="true"
-            :manual-update="true"
-            @contextmenu="deletePointFromLine"
-            @zr:click="addPointToLine"
-            @zr:contextmenu="deletePointFromLine"
-        />
+        <div v-else-if="showGraph" class="relative">
+            <v-chart
+                id="control-graph"
+                class="pt-6 pr-11 pl-4 pb-6"
+                ref="controlGraph"
+                :option="option"
+                :autoresize="true"
+                :manual-update="true"
+                @contextmenu="deletePointFromLine"
+                @zr:click="addPointToLine"
+                @zr:contextmenu="deletePointFromLine"
+            />
+            <!-- Points Table Overlay -->
+            <div
+                class="absolute z-10 bg-bg-two/90 border border-border-one rounded-lg shadow-lg max-h-[calc(100vh-6rem)] overflow-y-auto"
+                :class="tablePositionClasses"
+            >
+                <div
+                    class="flex justify-between items-center px-2 py-1 border-b border-border-one sticky top-0 bg-bg-two/95"
+                >
+                    <span class="font-semibold text-text-color cursor-default">{{
+                        t('views.profiles.points')
+                    }}</span>
+                    <Button
+                        @click="cycleTablePosition"
+                        icon="pi pi-arrow-up-right-and-arrow-down-left-from-center rotate-90"
+                        text
+                        rounded
+                        class="!w-7 !h-7 !p-0"
+                        v-tooltip.top="t('views.profiles.moveTable')"
+                    />
+                </div>
+                <table class="w-full">
+                    <thead class="sticky top-7 bg-bg-two/95 cursor-default">
+                        <tr class="text-text-color-secondary">
+                            <th class="px-2 py-1 text-left">#</th>
+                            <th class="px-1 py-1 text-center">{{ t('common.temperature') }}</th>
+                            <th class="px-1 py-1 text-center">{{ t('common.duty') }}</th>
+                            <th class="px-1 py-1 w-6"></th>
+                        </tr>
+                    </thead>
+                    <tbody :key="tableDataKey">
+                        <tr
+                            v-for="(point, idx) in data"
+                            :key="`${tableDataKey}-${idx}`"
+                            class="transition-colors group"
+                            :class="{
+                                'bg-accent/30': idx === selectedPointIndex,
+                                'hover:bg-bg-one/20': idx !== selectedPointIndex && idx !== data.length - 1,
+                            }"
+                        >
+                            <!-- Point Index -->
+                            <td class="px-2 py-0.5 text-text-color-secondary cursor-pointer" @click="selectPointFromTable(idx)">
+                                {{ idx + 1 }}
+                            </td>
+
+                            <!-- Temperature Cell with +/- buttons -->
+                            <td class="pr-2 py-1">
+                                <div
+                                    class="flex items-center justify-center gap-0.5"
+                                    @wheel.prevent="
+                                        idx !== 0 &&
+                                            idx !== data.length - 1 &&
+                                            handleTempScroll($event, idx)
+                                    "
+                                >
+                                    <Button
+                                        icon="pi pi-minus"
+                                        text
+                                        size="small"
+                                        class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                        :disabled="
+                                            idx === 0 ||
+                                            idx === data.length - 1 ||
+                                            data[idx].value[0] <= getPointTempMin(idx)
+                                        "
+                                        @pointerdown.stop="startRepeat(() => decrementPointTemp(idx))"
+                                        @pointerup.stop="stopRepeat"
+                                        @pointerleave="stopRepeat"
+                                    />
+                                    <InputNumber
+                                        :modelValue="point.value[0]"
+                                        @update:modelValue="handleTempInput(idx, $event)"
+                                        @focus="selectPointFromTable(idx)"
+                                        mode="decimal"
+                                        :minFractionDigits="1"
+                                        :maxFractionDigits="1"
+                                        :min="getPointTempMin(idx)"
+                                        :max="getPointTempMax(idx)"
+                                        :suffix="t('common.tempUnit')"
+                                        :disabled="idx === 0 || idx === data.length - 1"
+                                        :inputStyle="{ width: '3.75rem', textAlign: 'center', padding: '0.125rem' }"
+                                        class="table-input"
+                                    />
+                                    <Button
+                                        icon="pi pi-plus"
+                                        text
+                                        size="small"
+                                        class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                        :disabled="
+                                            idx === 0 ||
+                                            idx === data.length - 1 ||
+                                            data[idx].value[0] >= getPointTempMax(idx)
+                                        "
+                                        @pointerdown.stop="startRepeat(() => incrementPointTemp(idx))"
+                                        @pointerup.stop="stopRepeat"
+                                        @pointerleave="stopRepeat"
+                                    />
+                                </div>
+                            </td>
+
+                            <!-- Duty Cell with +/- buttons -->
+                            <td class="px-2 py-0.5">
+                                <div
+                                    class="flex items-center justify-center gap-0.5"
+                                    @wheel.prevent="
+                                        idx !== data.length - 1 && handleDutyScroll($event, idx)
+                                    "
+                                >
+                                    <Button
+                                        icon="pi pi-minus"
+                                        text
+                                        size="small"
+                                        class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                        :disabled="
+                                            idx === data.length - 1 || data[idx].value[1] <= dutyMin
+                                        "
+                                        @pointerdown.stop="startRepeat(() => decrementPointDuty(idx))"
+                                        @pointerup.stop="stopRepeat"
+                                        @pointerleave="stopRepeat"
+                                    />
+                                    <InputNumber
+                                        :modelValue="point.value[1]"
+                                        @update:modelValue="handleDutyInput(idx, $event)"
+                                        @focus="selectPointFromTable(idx)"
+                                        mode="decimal"
+                                        :minFractionDigits="0"
+                                        :maxFractionDigits="0"
+                                        :min="dutyMin"
+                                        :max="dutyMax"
+                                        :suffix="t('common.percentUnit')"
+                                        :disabled="idx === data.length - 1"
+                                        :inputStyle="{ width: '3rem', textAlign: 'center', padding: '0.125rem' }"
+                                        class="table-input"
+                                    />
+                                    <Button
+                                        icon="pi pi-plus"
+                                        text
+                                        size="small"
+                                        class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                        :disabled="
+                                            idx === data.length - 1 || data[idx].value[1] >= dutyMax
+                                        "
+                                        @pointerdown.stop="startRepeat(() => incrementPointDuty(idx))"
+                                        @pointerup.stop="stopRepeat"
+                                        @pointerleave="stopRepeat"
+                                    />
+                                </div>
+                            </td>
+
+                            <!-- Add/Remove Actions -->
+                            <td class="px-0.5 py-0.5">
+                                <div
+                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Button
+                                        v-if="canAddPointAfter(idx)"
+                                        icon="pi pi-plus-circle"
+                                        text
+                                        severity="success"
+                                        size="small"
+                                        class="!w-6 !h-6 !p-0"
+                                        v-tooltip.top="t('views.profiles.addPointAfter')"
+                                        @click.stop="addPointFromTable(idx)"
+                                    />
+                                    <Button
+                                        v-if="canRemovePoint(idx)"
+                                        icon="pi pi-trash"
+                                        text
+                                        severity="danger"
+                                        size="small"
+                                        class="!w-6 !h-6 !p-0"
+                                        v-tooltip.top="t('views.profiles.removePoint')"
+                                        @click.stop="removePointFromTable(idx)"
+                                    />
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
         <MixProfileEditorChart
             v-else-if="showMixChart"
             class="p-6"
@@ -1983,6 +2336,25 @@ onUnmounted(() => {
     // This is adjusted dynamically on resize with js above
     height: max(calc(100vh - 8rem), 20rem);
     //width: max(calc(90vw - 17rem), 30rem);
+    cursor: default;
+}
+
+// Compact styling for points table InputNumber components
+:deep(.table-input) {
+    input {
+        background: transparent;
+        border: none;
+        height: 1.5rem;
+
+        &:focus {
+            box-shadow: none;
+            background: var(--cc-bg-one);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+        }
+    }
 }
 
 // This is needed particularly in Tauri, as it moves to multiline flex-wrap as soon as the scrollbar
