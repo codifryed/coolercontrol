@@ -219,6 +219,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
@@ -251,6 +252,7 @@ const option = {
         cursor: 'no-drop',
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => {
                 const prefix = value > 0 ? '+' : ''
                 return `${prefix}${value}${t('common.percentUnit')}`

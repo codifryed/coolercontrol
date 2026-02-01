@@ -195,6 +195,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => `${value}${t('common.tempUnit')} `,
         },
         axisLine: {
@@ -218,6 +219,7 @@ const option = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
+            color: colors.themeColors.text_color_secondary,
             formatter: (value: any): string => `${value}${t('common.percentUnit')}`,
         },
         axisLine: {
