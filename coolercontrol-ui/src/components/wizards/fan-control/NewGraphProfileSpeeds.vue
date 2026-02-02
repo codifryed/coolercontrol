@@ -46,16 +46,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
-import {
-    computed,
-    onMounted,
-    onUnmounted,
-    ref,
-    Ref,
-    toRaw,
-    watch,
-    type WatchStopHandle,
-} from 'vue'
+import { computed, onMounted, onUnmounted, ref, Ref, toRaw, watch, type WatchStopHandle } from 'vue'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import _ from 'lodash'
@@ -1759,9 +1750,7 @@ const nextStep = () => {
 
                             <!-- Action buttons (add/remove) -->
                             <td class="px-1 py-0.5">
-                                <div
-                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100"
-                                >
+                                <div class="flex gap-0.5 opacity-0 group-hover:opacity-100">
                                     <Button
                                         v-if="canAddPointAfter(idx)"
                                         icon="pi pi-plus-circle"

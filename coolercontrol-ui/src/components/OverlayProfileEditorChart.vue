@@ -1303,9 +1303,7 @@ onUnmounted(() => {
 
                         <!-- Action buttons (add/remove) -->
                         <td class="px-1 py-0.5">
-                            <div
-                                class="flex gap-0.5 opacity-0 group-hover:opacity-100"
-                            >
+                            <div class="flex gap-0.5 opacity-0 group-hover:opacity-100">
                                 <Button
                                     v-if="canAddPointAfter(idx)"
                                     icon="pi pi-plus-circle"
