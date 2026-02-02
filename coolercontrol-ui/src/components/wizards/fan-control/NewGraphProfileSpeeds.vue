@@ -838,6 +838,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
             })),
         xAxis: { min: axisXTempMin.value, max: axisXTempMax.value },
     })
+    tableDataKey.value++
 }
 
 const showTooltip = (dataIndex: number): void => {
@@ -1121,7 +1122,6 @@ const selectPointFromTable = (idx: number): void => {
     tempDutyTextWatchStopper()
     selectedPointIndex.value = idx
     setTempAndDutyValues(idx)
-    showTooltip(idx)
 }
 
 // Calculate min/max temp for a specific point index (for table editing)
@@ -1156,13 +1156,7 @@ const refreshGraphAfterTableEdit = (idx?: number): void => {
         ],
         graphic: graphicData,
     })
-    // Refresh tooltip position and values after chart finishes updating
-    if (idx !== undefined) {
-        // force position recalculation
-        nextTick(() => showTooltip(idx))
-        // for larger movements, the animation can last long enough that we need to delay the tooltip
-        setTimeout(() => showTooltip(idx), 300)
-    }
+    tableDataKey.value++
 }
 
 // Increment/decrement handlers for table cells
