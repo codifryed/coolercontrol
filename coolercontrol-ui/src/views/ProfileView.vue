@@ -1237,8 +1237,7 @@ const getPointTempMin = (idx: number): number => {
 const getPointTempMax = (idx: number): number => {
     if (selectedTempSource == null) return axisXTempMax.value
     if (idx === 0) return Math.max(selectedTempSource.tempMin, axisXTempMin.value)
-    if (idx === data.length - 1)
-        return Math.min(selectedTempSource.tempMax, axisXTempMax.value)
+    if (idx === data.length - 1) return Math.min(selectedTempSource.tempMax, axisXTempMax.value)
     return Math.min(selectedTempSource.tempMax, axisXTempMax.value) - (data.length - 1 - idx)
 }
 
@@ -1387,7 +1386,10 @@ const addPointFromTable = (afterIdx: number): void => {
 
     const newTemp = (currentPoint[0] + nextPoint[0]) / 2
     // Ensure new point's duty is between previous and next point's duty
-    const newDuty = Math.min(Math.max((currentPoint[1] + nextPoint[1]) / 2, currentPoint[1]), nextPoint[1])
+    const newDuty = Math.min(
+        Math.max((currentPoint[1] + nextPoint[1]) / 2, currentPoint[1]),
+        nextPoint[1],
+    )
 
     data.splice(afterIdx + 1, 0, {
         value: [newTemp, newDuty],
@@ -1429,9 +1431,7 @@ const removePointFromTable = (idx: number): void => {
 // Check if point can be removed
 const canRemovePoint = (idx: number): boolean => {
     return (
-        data.length > selectedTempSource!.profileMinLength &&
-        idx !== 0 &&
-        idx !== data.length - 1
+        data.length > selectedTempSource!.profileMinLength && idx !== 0 && idx !== data.length - 1
     )
 }
 
@@ -2267,11 +2267,15 @@ onUnmounted(() => {
                             class="transition-colors group"
                             :class="{
                                 'bg-accent/30': idx === selectedPointIndex,
-                                'hover:bg-bg-one/20': idx !== selectedPointIndex && idx !== data.length - 1,
+                                'hover:bg-bg-one/20':
+                                    idx !== selectedPointIndex && idx !== data.length - 1,
                             }"
                         >
                             <!-- Point Index -->
-                            <td class="px-2 py-0.5 text-text-color-secondary cursor-pointer" @click="selectPointFromTable(idx)">
+                            <td
+                                class="px-2 py-0.5 text-text-color-secondary cursor-pointer"
+                                @click="selectPointFromTable(idx)"
+                            >
                                 {{ idx + 1 }}
                             </td>
 
@@ -2281,8 +2285,8 @@ onUnmounted(() => {
                                     class="flex items-center justify-center gap-0.5"
                                     @wheel.prevent="
                                         idx !== 0 &&
-                                            idx !== data.length - 1 &&
-                                            handleTempScroll($event, idx)
+                                        idx !== data.length - 1 &&
+                                        handleTempScroll($event, idx)
                                     "
                                 >
                                     <Button
@@ -2295,7 +2299,9 @@ onUnmounted(() => {
                                             idx === data.length - 1 ||
                                             data[idx].value[0] <= getPointTempMin(idx)
                                         "
-                                        @pointerdown.stop="startRepeat(() => decrementPointTemp(idx))"
+                                        @pointerdown.stop="
+                                            startRepeat(() => decrementPointTemp(idx))
+                                        "
                                         @pointerup.stop="stopRepeat"
                                         @pointerleave="stopRepeat"
                                     />
@@ -2310,7 +2316,11 @@ onUnmounted(() => {
                                         :max="getPointTempMax(idx)"
                                         :suffix="t('common.tempUnit')"
                                         :disabled="idx === 0 || idx === data.length - 1"
-                                        :inputStyle="{ width: '3.75rem', textAlign: 'center', padding: '0.125rem' }"
+                                        :inputStyle="{
+                                            width: '3.75rem',
+                                            textAlign: 'center',
+                                            padding: '0.125rem',
+                                        }"
                                         class="table-input"
                                     />
                                     <Button
@@ -2323,7 +2333,9 @@ onUnmounted(() => {
                                             idx === data.length - 1 ||
                                             data[idx].value[0] >= getPointTempMax(idx)
                                         "
-                                        @pointerdown.stop="startRepeat(() => incrementPointTemp(idx))"
+                                        @pointerdown.stop="
+                                            startRepeat(() => incrementPointTemp(idx))
+                                        "
                                         @pointerup.stop="stopRepeat"
                                         @pointerleave="stopRepeat"
                                     />
@@ -2346,7 +2358,9 @@ onUnmounted(() => {
                                         :disabled="
                                             idx === data.length - 1 || data[idx].value[1] <= dutyMin
                                         "
-                                        @pointerdown.stop="startRepeat(() => decrementPointDuty(idx))"
+                                        @pointerdown.stop="
+                                            startRepeat(() => decrementPointDuty(idx))
+                                        "
                                         @pointerup.stop="stopRepeat"
                                         @pointerleave="stopRepeat"
                                     />
@@ -2361,7 +2375,11 @@ onUnmounted(() => {
                                         :max="dutyMax"
                                         :suffix="t('common.percentUnit')"
                                         :disabled="idx === data.length - 1"
-                                        :inputStyle="{ width: '3rem', textAlign: 'center', padding: '0.125rem' }"
+                                        :inputStyle="{
+                                            width: '3rem',
+                                            textAlign: 'center',
+                                            padding: '0.125rem',
+                                        }"
                                         class="table-input"
                                     />
                                     <Button
@@ -2372,7 +2390,9 @@ onUnmounted(() => {
                                         :disabled="
                                             idx === data.length - 1 || data[idx].value[1] >= dutyMax
                                         "
-                                        @pointerdown.stop="startRepeat(() => incrementPointDuty(idx))"
+                                        @pointerdown.stop="
+                                            startRepeat(() => incrementPointDuty(idx))
+                                        "
                                         @pointerup.stop="stopRepeat"
                                         @pointerleave="stopRepeat"
                                     />
