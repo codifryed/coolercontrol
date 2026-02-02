@@ -22,6 +22,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import VChart from 'vue-echarts'
 import { mdiInformationSlabCircleOutline } from '@mdi/js'
 import InputNumber from 'primevue/inputnumber'
+import Button from 'primevue/button'
 import { computed, onMounted, onUnmounted, ref, Ref, watch, type WatchStopHandle } from 'vue'
 import * as echarts from 'echarts/core'
 import {
@@ -76,6 +77,7 @@ const currentProfile = computed(
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedOffset: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
+const tableDataKey: Ref<number> = ref(0)
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
@@ -438,6 +440,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
             position: controlGraph.value?.convertToPixel('grid', item.value),
         })),
     })
+    tableDataKey.value++
 }
 
 const showTooltip = (dataIndex: number): void => {
@@ -633,6 +636,7 @@ const addPointToLine = (params: any) => {
     // this needs a bit of time for the graph to refresh before being set correctly:
     setTimeout(() => (selectedPointIndex.value = indexToInsertAt), 50)
     setTimeout(() => showTooltip(indexToInsertAt), 350) // wait until point animation is complete before showing tooltip
+    tableDataKey.value++
     emit('changed', collectPoints())
 }
 
@@ -684,7 +688,281 @@ const deletePointFromLine = (params: any) => {
         true,
     )
     controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
+    tableDataKey.value++
     emit('changed', collectPoints())
+}
+
+//--------------------------------------------------------------------------------------------------
+// Points Table Overlay
+
+// Minimum duty separation between points (1%)
+const MIN_DUTY_SEPARATION = 1
+
+// Points table position (local state, not persisted)
+type TablePosition = 'top-left' | 'bottom-right'
+const tablePosition: Ref<TablePosition> = ref('top-left')
+
+const tablePositionClasses = computed(() => ({
+    'top-14 left-[7.5rem]': tablePosition.value === 'top-left',
+    'bottom-36 right-[6.5rem]': tablePosition.value === 'bottom-right',
+}))
+
+const cycleTablePosition = () => {
+    tablePosition.value = tablePosition.value === 'top-left' ? 'bottom-right' : 'top-left'
+}
+
+// Select point from table
+const selectPointFromTable = (idx: number): void => {
+    dutyOffsetTextWatchStopper()
+    selectedPointIndex.value = idx
+    setDutyAndOffsetValues(idx)
+}
+
+// Calculate min/max duty for a specific point index (for table editing)
+const getPointDutyMin = (idx: number): number => {
+    return dutyMin + idx
+}
+
+const getPointDutyMax = (idx: number): number => {
+    if (idx === 0) return dutyMin
+    if (idx === data.length - 1) return dutyMax
+    return dutyMax - (data.length - 1 - idx)
+}
+
+// Update point value from table (reuses existing constraint functions)
+const updatePointFromTable = (idx: number, newDuty: number, newOffset: number): void => {
+    selectPointFromTable(idx)
+    controlPointMotionForDutyX(newDuty, idx)
+    controlPointMotionForOffsetY(newOffset, idx)
+    refreshGraphAfterTableEdit()
+}
+
+const refreshGraphAfterTableEdit = (): void => {
+    createGraphicDataFromPointData()
+    controlGraph.value?.setOption({
+        series: [
+            { id: 'a', data: data },
+            { id: 'line-area', data: data },
+        ],
+        graphic: graphicData,
+    })
+    tableDataKey.value++
+}
+
+// Increment/decrement handlers for table cells
+const incrementPointDuty = (idx: number): void => {
+    const newDuty = Math.min(data[idx].value[0] + 1, getPointDutyMax(idx))
+    updatePointFromTable(idx, newDuty, data[idx].value[1])
+}
+
+const decrementPointDuty = (idx: number): void => {
+    const newDuty = Math.max(data[idx].value[0] - 1, getPointDutyMin(idx))
+    updatePointFromTable(idx, newDuty, data[idx].value[1])
+}
+
+const incrementPointOffset = (idx: number): void => {
+    const newOffset = Math.min(data[idx].value[1] + 1, offsetMax)
+    updatePointFromTable(idx, data[idx].value[0], newOffset)
+}
+
+const decrementPointOffset = (idx: number): void => {
+    const newOffset = Math.max(data[idx].value[1] - 1, offsetMin)
+    updatePointFromTable(idx, data[idx].value[0], newOffset)
+}
+
+// Scroll wheel handlers for table cells
+const handleDutyTableScroll = (event: WheelEvent, idx: number): void => {
+    event.preventDefault()
+    if (event.deltaY < 0) incrementPointDuty(idx)
+    else decrementPointDuty(idx)
+}
+
+const handleOffsetTableScroll = (event: WheelEvent, idx: number): void => {
+    event.preventDefault()
+    if (event.deltaY < 0) incrementPointOffset(idx)
+    else decrementPointOffset(idx)
+}
+
+// Direct input handlers for table cells
+const handleDutyTableInput = (idx: number, value: number | null): void => {
+    if (value == null || idx === 0 || idx === data.length - 1) return
+    const clampedDuty = Math.max(getPointDutyMin(idx), Math.min(value, getPointDutyMax(idx)))
+    updatePointFromTable(idx, clampedDuty, data[idx].value[1])
+}
+
+const handleOffsetTableInput = (idx: number, value: number | null): void => {
+    if (value == null) return
+    const clampedOffset = Math.max(offsetMin, Math.min(value, offsetMax))
+    updatePointFromTable(idx, data[idx].value[0], clampedOffset)
+}
+
+// Press-and-hold repeat functionality for increment/decrement buttons
+let repeatTimeout: ReturnType<typeof setTimeout> | null = null
+let repeatInterval: ReturnType<typeof setInterval> | null = null
+const REPEAT_DELAY = 400 // Initial delay before repeat starts (ms)
+const REPEAT_RATE = 75 // Interval between repeats (ms)
+
+const startRepeat = (action: () => void): void => {
+    stopRepeat()
+    action() // Execute immediately on press
+    repeatTimeout = setTimeout(() => {
+        repeatInterval = setInterval(action, REPEAT_RATE)
+    }, REPEAT_DELAY)
+}
+
+const stopRepeat = (): void => {
+    if (repeatTimeout) {
+        clearTimeout(repeatTimeout)
+        repeatTimeout = null
+    }
+    if (repeatInterval) {
+        clearInterval(repeatInterval)
+        repeatInterval = null
+    }
+}
+
+// Add point after the selected index
+const addPointFromTable = (afterIdx: number): void => {
+    if (data.length >= profileMaxLength) return
+    if (afterIdx >= data.length - 1) return // Can't add after last point
+
+    // Calculate midpoint between current and next point
+    const currentPoint = data[afterIdx].value
+    const nextPoint = data[afterIdx + 1].value
+
+    // Ensure minimum duty separation
+    const dutyGap = nextPoint[0] - currentPoint[0]
+    const requiredGap = MIN_DUTY_SEPARATION * 2
+
+    // If gap is too small, try to make room by moving adjacent points
+    if (dutyGap < requiredGap) {
+        const deficit = requiredGap - dutyGap
+
+        // Calculate how much room we have to move each point
+        let lowerMinDuty: number
+        if (afterIdx === 0) {
+            lowerMinDuty = dutyMin
+        } else {
+            lowerMinDuty = data[afterIdx - 1].value[0] + MIN_DUTY_SEPARATION
+        }
+        const lowerRoom = Math.max(0, currentPoint[0] - lowerMinDuty)
+
+        let upperMaxDuty: number
+        if (afterIdx + 1 === data.length - 1) {
+            upperMaxDuty = dutyMax
+        } else {
+            upperMaxDuty = data[afterIdx + 2].value[0] - MIN_DUTY_SEPARATION
+        }
+        const upperRoom = Math.max(0, upperMaxDuty - nextPoint[0])
+
+        // Check if we have enough total room
+        if (lowerRoom + upperRoom < deficit) return // Can't make enough room
+
+        // Move points to make room
+        const lowerMove = Math.min(lowerRoom, deficit)
+        const upperMove = deficit - lowerMove
+        if (lowerMove > 0) currentPoint[0] -= lowerMove
+        if (upperMove > 0) nextPoint[0] += upperMove
+    }
+
+    const newDuty = (currentPoint[0] + nextPoint[0]) / 2
+    const newOffset = (currentPoint[1] + nextPoint[1]) / 2
+
+    data.splice(afterIdx + 1, 0, {
+        value: [newDuty, newOffset],
+        symbolSize: selectedSymbolSize,
+        itemStyle: { color: selectedSymbolColor },
+    })
+
+    createGraphicDataFromPointData()
+    // @ts-ignore
+    option.series[0].data = data
+    // @ts-ignore
+    option.graphic = graphicData
+    // @ts-ignore
+    option.series[1].areaStyle.color = new echarts.graphic.LinearGradient(
+        0,
+        0,
+        0,
+        controlGraph.value?.convertToPixel('grid', [0, -100])[1] ?? 100,
+        [
+            {
+                offset: 0,
+                color: colors.convertColorToRGBA(colors.themeColors.accent, 0.8),
+            },
+            {
+                offset: 0.5,
+                color: colors.convertColorToRGBA(colors.themeColors.accent, 0.3),
+            },
+            {
+                offset: 1,
+                color: colors.convertColorToRGBA(colors.themeColors.accent, 0.8),
+            },
+        ],
+        true,
+    )
+    controlGraph.value?.setOption(option)
+
+    selectedPointIndex.value = afterIdx + 1
+    setDutyAndOffsetValues(afterIdx + 1)
+    tableDataKey.value++
+    emit('changed', collectPoints())
+}
+
+// Remove point at index
+const removePointFromTable = (idx: number): void => {
+    if (data.length <= profileMinLength) return
+    if (idx === 0 || idx === data.length - 1) return // Can't remove first/last
+
+    data.splice(idx, 1)
+    selectedPointIndex.value = undefined
+    hideTooltip()
+    createGraphicDataFromPointData()
+    // @ts-ignore
+    option.series[0].data = data
+    // @ts-ignore
+    option.graphic = graphicData
+    controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
+    tableDataKey.value++
+    emit('changed', collectPoints())
+}
+
+// Check if point can be removed
+const canRemovePoint = (idx: number): boolean => {
+    return data.length > profileMinLength && idx !== 0 && idx !== data.length - 1
+}
+
+// Check if point can be added after this index
+const canAddPointAfter = (idx: number): boolean => {
+    if (data.length >= profileMaxLength) return false
+    if (idx >= data.length - 1) return false
+
+    const currentPoint = data[idx].value
+    const nextPoint = data[idx + 1].value
+    const dutyGap = nextPoint[0] - currentPoint[0]
+    const requiredGap = MIN_DUTY_SEPARATION * 2
+
+    if (dutyGap >= requiredGap) return true
+
+    // Check if we can make room by moving adjacent points
+    const deficit = requiredGap - dutyGap
+    let lowerMinDuty: number
+    if (idx === 0) {
+        lowerMinDuty = dutyMin
+    } else {
+        lowerMinDuty = data[idx - 1].value[0] + MIN_DUTY_SEPARATION
+    }
+    const lowerRoom = Math.max(0, currentPoint[0] - lowerMinDuty)
+
+    let upperMaxDuty: number
+    if (idx + 1 === data.length - 1) {
+        upperMaxDuty = dutyMax
+    } else {
+        upperMaxDuty = data[idx + 2].value[0] - MIN_DUTY_SEPARATION
+    }
+    const upperRoom = Math.max(0, upperMaxDuty - nextPoint[0])
+
+    return lowerRoom + upperRoom >= deficit
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -829,33 +1107,6 @@ onUnmounted(() => {
 <template>
     <div class="flex flex-row justify-center mt-4 mx-4 w-full">
         <div class="flex flex-row">
-            <InputNumber
-                :placeholder="t('common.duty')"
-                v-model="selectedDuty"
-                mode="decimal"
-                class="duty-input h-11"
-                :suffix="` ${t('common.percentUnit')}`"
-                showButtons
-                :min="dutyMin"
-                :max="dutyMax"
-                :disabled="
-                    selectedPointIndex == null ||
-                    selectedPointIndex >= data.length - 1 ||
-                    selectedPointIndex === 0
-                "
-                :use-grouping="false"
-                :step="1"
-                button-layout="horizontal"
-                :input-style="{ width: '5rem' }"
-                v-tooltip.left="t('views.profiles.selectedPointOutputDuty')"
-            >
-                <template #incrementicon>
-                    <span class="pi pi-plus" />
-                </template>
-                <template #decrementicon>
-                    <span class="pi pi-minus" />
-                </template>
-            </InputNumber>
             <div
                 class="p-2 mx-4 leading-none items-center"
                 v-tooltip.top="t('views.profiles.graphProfileMouseActions')"
@@ -867,33 +1118,9 @@ onUnmounted(() => {
                     :size="deviceStore.getREMSize(1.25)"
                 />
             </div>
-            <InputNumber
-                :placeholder="t('common.offset')"
-                v-model="selectedOffset"
-                mode="decimal"
-                class="offset-input h-11"
-                :suffix="` ${t('common.percentUnit')}`"
-                :prefix="staticOffsetPrefix"
-                showButtons
-                :min="offsetMin"
-                :max="offsetMax"
-                :disabled="selectedPointIndex == null"
-                :use-grouping="false"
-                :step="1"
-                button-layout="horizontal"
-                :input-style="{ width: '5rem' }"
-                v-tooltip.right="t('views.profiles.selectedPointOffset')"
-            >
-                <template #incrementicon>
-                    <span class="pi pi-plus" />
-                </template>
-                <template #decrementicon>
-                    <span class="pi pi-minus" />
-                </template>
-            </InputNumber>
         </div>
     </div>
-    <div id="profile-display" class="flex flex-col h-full">
+    <div id="profile-display" class="flex flex-col h-full relative">
         <v-chart
             id="control-graph"
             class="pt-6 pr-11 pl-4 pb-6"
@@ -905,6 +1132,189 @@ onUnmounted(() => {
             @zr:click="addPointToLine"
             @zr:contextmenu="deletePointFromLine"
         />
+        <!-- Points Table Overlay -->
+        <div
+            class="absolute z-10 bg-bg-two/90 border border-border-one rounded-lg shadow-lg max-h-[calc(100vh-6rem)] overflow-y-auto"
+            :class="tablePositionClasses"
+        >
+            <div
+                class="flex justify-between items-center px-2 py-1 border-b border-border-one sticky top-0 bg-bg-two/95"
+            >
+                <span class="font-semibold text-text-color cursor-default">{{
+                    t('views.profiles.points')
+                }}</span>
+                <Button
+                    @click="cycleTablePosition"
+                    icon="pi pi-arrow-up-right-and-arrow-down-left-from-center rotate-90"
+                    text
+                    rounded
+                    class="!w-7 !h-7 !p-0"
+                    v-tooltip.top="t('views.profiles.moveTable')"
+                />
+            </div>
+            <table class="w-full">
+                <thead class="sticky top-7 bg-bg-two/95 cursor-default">
+                    <tr class="text-text-color-secondary">
+                        <th class="px-2 py-1 text-left">#</th>
+                        <th class="px-1 py-1 text-center">{{ t('common.duty') }}</th>
+                        <th class="px-1 py-1 text-center">{{ t('common.offset') }}</th>
+                        <th class="px-1 py-1 w-6"></th>
+                    </tr>
+                </thead>
+                <tbody :key="tableDataKey">
+                    <tr
+                        v-for="(point, idx) in data"
+                        :key="`${tableDataKey}-${idx}`"
+                        class="group"
+                        :class="{
+                            'bg-accent/30': idx === selectedPointIndex,
+                            'hover:bg-bg-one/20': idx !== selectedPointIndex,
+                        }"
+                    >
+                        <!-- Point Index -->
+                        <td
+                            class="px-2 py-0.5 text-text-color-secondary cursor-pointer"
+                            @click="selectPointFromTable(idx)"
+                        >
+                            {{ idx + 1 }}
+                        </td>
+
+                        <!-- Duty Cell with +/- buttons -->
+                        <td class="pr-2 py-1">
+                            <div
+                                class="flex items-center justify-center gap-0.5"
+                                @wheel.prevent="
+                                    idx !== 0 &&
+                                    idx !== data.length - 1 &&
+                                    handleDutyTableScroll($event, idx)
+                                "
+                            >
+                                <Button
+                                    icon="pi pi-minus"
+                                    text
+                                    size="small"
+                                    class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                    :disabled="
+                                        idx === 0 ||
+                                        idx === data.length - 1 ||
+                                        data[idx].value[0] <= getPointDutyMin(idx)
+                                    "
+                                    @pointerdown.stop="startRepeat(() => decrementPointDuty(idx))"
+                                    @pointerup.stop="stopRepeat"
+                                    @pointerleave="stopRepeat"
+                                />
+                                <InputNumber
+                                    :modelValue="point.value[0]"
+                                    @update:modelValue="handleDutyTableInput(idx, $event)"
+                                    @focus="selectPointFromTable(idx)"
+                                    mode="decimal"
+                                    :minFractionDigits="0"
+                                    :maxFractionDigits="0"
+                                    :min="getPointDutyMin(idx)"
+                                    :max="getPointDutyMax(idx)"
+                                    :suffix="t('common.percentUnit')"
+                                    :disabled="idx === 0 || idx === data.length - 1"
+                                    :inputStyle="{
+                                        width: '3rem',
+                                        textAlign: 'center',
+                                        padding: '0.125rem',
+                                    }"
+                                    class="table-input"
+                                />
+                                <Button
+                                    icon="pi pi-plus"
+                                    text
+                                    size="small"
+                                    class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                    :disabled="
+                                        idx === 0 ||
+                                        idx === data.length - 1 ||
+                                        data[idx].value[0] >= getPointDutyMax(idx)
+                                    "
+                                    @pointerdown.stop="startRepeat(() => incrementPointDuty(idx))"
+                                    @pointerup.stop="stopRepeat"
+                                    @pointerleave="stopRepeat"
+                                />
+                            </div>
+                        </td>
+
+                        <!-- Offset Cell with +/- buttons -->
+                        <td class="pr-2 py-1">
+                            <div
+                                class="flex items-center justify-center gap-0.5"
+                                @wheel.prevent="handleOffsetTableScroll($event, idx)"
+                            >
+                                <Button
+                                    icon="pi pi-minus"
+                                    text
+                                    size="small"
+                                    class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                    :disabled="data[idx].value[1] <= offsetMin"
+                                    @pointerdown.stop="startRepeat(() => decrementPointOffset(idx))"
+                                    @pointerup.stop="stopRepeat"
+                                    @pointerleave="stopRepeat"
+                                />
+                                <InputNumber
+                                    :modelValue="point.value[1]"
+                                    @update:modelValue="handleOffsetTableInput(idx, $event)"
+                                    @focus="selectPointFromTable(idx)"
+                                    mode="decimal"
+                                    :minFractionDigits="0"
+                                    :maxFractionDigits="0"
+                                    :min="offsetMin"
+                                    :max="offsetMax"
+                                    :suffix="t('common.percentUnit')"
+                                    :inputStyle="{
+                                        width: '3.5rem',
+                                        textAlign: 'center',
+                                        padding: '0.125rem',
+                                    }"
+                                    class="table-input"
+                                />
+                                <Button
+                                    icon="pi pi-plus"
+                                    text
+                                    size="small"
+                                    class="!w-5 !h-5 !p-0 [&>span]:text-[0.6rem]"
+                                    :disabled="data[idx].value[1] >= offsetMax"
+                                    @pointerdown.stop="startRepeat(() => incrementPointOffset(idx))"
+                                    @pointerup.stop="stopRepeat"
+                                    @pointerleave="stopRepeat"
+                                />
+                            </div>
+                        </td>
+
+                        <!-- Action buttons (add/remove) -->
+                        <td class="px-1 py-0.5">
+                            <div
+                                class="flex gap-0.5 opacity-0 group-hover:opacity-100"
+                            >
+                                <Button
+                                    v-if="canAddPointAfter(idx)"
+                                    icon="pi pi-plus-circle"
+                                    text
+                                    severity="success"
+                                    size="small"
+                                    class="!w-6 !h-6 !p-0"
+                                    v-tooltip.top="t('views.profiles.addPointAfter')"
+                                    @click.stop="addPointFromTable(idx)"
+                                />
+                                <Button
+                                    v-if="canRemovePoint(idx)"
+                                    icon="pi pi-trash"
+                                    text
+                                    severity="danger"
+                                    size="small"
+                                    class="!w-6 !h-6 !p-0"
+                                    v-tooltip.top="t('views.profiles.removePoint')"
+                                    @click.stop="removePointFromTable(idx)"
+                                />
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </template>
 
@@ -913,5 +1323,23 @@ onUnmounted(() => {
     overflow: hidden;
     // This is adjusted dynamically on resize with js above
     height: max(calc(100vh - 8rem), 20rem);
+}
+
+// Compact styling for points table InputNumber components
+:deep(.table-input) {
+    input {
+        background: transparent;
+        border: none;
+        height: 1.5rem;
+
+        &:focus {
+            box-shadow: none;
+            background: var(--cc-bg-one);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+        }
+    }
 }
 </style>
