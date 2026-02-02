@@ -94,10 +94,6 @@ const profileMinLength: number = 2
 const profileMaxLength: number = 12
 const defaultProfileLength = 2
 
-const staticOffsetPrefix = computed(() =>
-    selectedOffset.value != null && selectedOffset.value > 0 ? '+' : '',
-)
-
 interface PointData {
     value: [number, number]
     symbolSize: number
@@ -313,6 +309,23 @@ const option = {
             data: data,
         },
         {
+            // Invisible wide line for easier click hit detection
+            id: 'hit-area',
+            type: 'line',
+            smooth: 0.0,
+            symbol: 'none',
+            lineStyle: {
+                color: 'transparent',
+                width: 12,
+            },
+            emphasis: {
+                disabled: true,
+            },
+            silent: false,
+            z: 5,
+            data: data,
+        },
+        {
             // this is used as a non-interactable line area style
             id: 'line-area',
             type: 'line',
@@ -420,6 +433,7 @@ const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
     })
@@ -432,6 +446,7 @@ const afterPointDragging = (dataIndex: number, posXY: [number, number]): void =>
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
         graphic: data.map((item, dataIndex) => ({
@@ -477,6 +492,7 @@ const createWatcherOfDutyOffsetText = (): WatchStopHandle =>
             controlGraph.value?.setOption({
                 series: [
                     { id: 'a', data: data },
+                    { id: 'hit-area', data: data },
                     { id: 'line-area', data: data },
                 ],
                 graphic: graphicData,
@@ -608,7 +624,7 @@ const addPointToLine = (params: any) => {
     // @ts-ignore
     option.graphic = graphicData
     // @ts-ignore
-    option.series[1].areaStyle.color = new echarts.graphic.LinearGradient(
+    option.series[2].areaStyle.color = new echarts.graphic.LinearGradient(
         0,
         0,
         0,
@@ -666,7 +682,7 @@ const deletePointFromLine = (params: any) => {
     // @ts-ignore
     option.graphic = graphicData
     // @ts-ignore
-    option.series[1].areaStyle.color = new echarts.graphic.LinearGradient(
+    option.series[2].areaStyle.color = new echarts.graphic.LinearGradient(
         0,
         0,
         0,
@@ -742,6 +758,7 @@ const refreshGraphAfterTableEdit = (): void => {
     controlGraph.value?.setOption({
         series: [
             { id: 'a', data: data },
+            { id: 'hit-area', data: data },
             { id: 'line-area', data: data },
         ],
         graphic: graphicData,
@@ -880,7 +897,7 @@ const addPointFromTable = (afterIdx: number): void => {
     // @ts-ignore
     option.graphic = graphicData
     // @ts-ignore
-    option.series[1].areaStyle.color = new echarts.graphic.LinearGradient(
+    option.series[2].areaStyle.color = new echarts.graphic.LinearGradient(
         0,
         0,
         0,
