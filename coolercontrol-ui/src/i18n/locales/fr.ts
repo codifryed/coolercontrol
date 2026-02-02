@@ -573,6 +573,10 @@ export default {
             selectedPointOffset: 'Puissance de décalage du point sélectionné',
             profileOutputDuty: 'Puissance de sortie du profil',
             offsetDuty: 'Puissance de décalage',
+            points: 'Points',
+            moveTable: 'Déplacer vers un autre coin',
+            addPointAfter: 'Ajouter un point après',
+            removePoint: 'Supprimer le point',
         },
         controls: {
             viewType: 'Type de Vue',

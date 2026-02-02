@@ -567,6 +567,10 @@ export default {
             selectedPointOffset: 'Versatzleistung am ausgewählten Punkt',
             profileOutputDuty: 'Profil-Ausgabeleistung',
             offsetDuty: 'Versatzleistung',
+            points: 'Punkte',
+            moveTable: 'In andere Ecke verschieben',
+            addPointAfter: 'Punkt danach hinzufügen',
+            removePoint: 'Punkt entfernen',
         },
         controls: {
             viewType: 'Ansichtstyp',

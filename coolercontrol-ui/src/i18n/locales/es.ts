@@ -563,6 +563,10 @@ export default {
             selectedPointOffset: 'Velocidad de desplazamiento del punto seleccionado',
             profileOutputDuty: 'Velocidad de salida del perfil',
             offsetDuty: 'Velocidad de desplazamiento',
+            points: 'Puntos',
+            moveTable: 'Mover a otra esquina',
+            addPointAfter: 'Añadir punto después',
+            removePoint: 'Eliminar punto',
         },
         controls: {
             viewType: 'Tipo de Vista',
