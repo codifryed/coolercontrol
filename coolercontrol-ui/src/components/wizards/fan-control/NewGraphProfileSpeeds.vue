@@ -48,7 +48,6 @@ import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import {
     computed,
-    nextTick,
     onMounted,
     onUnmounted,
     ref,
@@ -1155,7 +1154,7 @@ const updatePointFromTable = (idx: number, newTemp: number, newDuty: number): vo
     refreshGraphAfterTableEdit(idx)
 }
 
-const refreshGraphAfterTableEdit = (idx?: number): void => {
+const refreshGraphAfterTableEdit = (_idx?: number): void => {
     createGraphicDataFromPointData()
     controlGraph.value?.setOption({
         series: [
