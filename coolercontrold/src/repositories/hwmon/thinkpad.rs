@@ -139,6 +139,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: Some(test_base_path.join("pwm1")),
+                rpm_path: None,
+                temp_path: None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -195,6 +198,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: Some(test_base_path.join("pwm1")),
+                rpm_path: None,
+                temp_path: None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -254,6 +260,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: Some(test_base_path.join("pwm1")),
+                rpm_path: None,
+                temp_path: None,
             };
             let config = Rc::new(Config::init_default_config().unwrap());
             // set full_speed setting
@@ -310,6 +319,9 @@ mod tests {
                 label: None,
                 caps: HwmonChannelCapabilities::FAN_WRITABLE,
                 auto_curve: AutoCurveInfo::None,
+                pwm_path: Some(test_base_path.join("pwm1")),
+                rpm_path: None,
+                temp_path: None,
             };
 
             // when:

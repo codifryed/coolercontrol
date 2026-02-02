@@ -75,6 +75,10 @@ pub struct HwmonChannelInfo {
     pub label: Option<String>,
     pub auto_curve: AutoCurveInfo,
     pub caps: HwmonChannelCapabilities,
+    // Paths that are often used are saved to avoid cloning
+    pub pwm_path: Option<PathBuf>,
+    pub rpm_path: Option<PathBuf>,
+    pub temp_path: Option<PathBuf>,
 }
 
 impl Default for HwmonChannelInfo {
@@ -87,6 +91,9 @@ impl Default for HwmonChannelInfo {
             label: None,
             auto_curve: AutoCurveInfo::None,
             caps: HwmonChannelCapabilities::empty(),
+            pwm_path: None,
+            rpm_path: None,
+            temp_path: None,
         }
     }
 }
@@ -625,11 +632,10 @@ impl Repository for HwmonRepo {
             let preloaded_statuses_map = self.preloaded_statuses.borrow();
             let device_index = device.borrow().type_index;
             let preloaded_statuses = preloaded_statuses_map.get(&device_index);
-            if preloaded_statuses.is_none() {
+            let Some((channels, temps)) = preloaded_statuses.cloned() else {
                 error!("There is no status preloaded for this device: {device_index}");
                 continue;
-            }
-            let (channels, temps) = preloaded_statuses.unwrap().clone();
+            };
             let status = Status {
                 temps,
                 channels,

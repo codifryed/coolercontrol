@@ -32,6 +32,7 @@ use regex::Regex;
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
 const TEMP_SANITY_MAX: f64 = 140.0;
+macro_rules! format_temp_input { ($($arg:tt)*) => {{ format!("temp{}_input", $($arg)*) }}; }
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
@@ -62,6 +63,7 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
                 number: channel_number,
                 name: channel_name,
                 label,
+                temp_path: Some(base_path.join(format_temp_input!(channel_number))),
                 ..Default::default()
             });
         }
@@ -85,7 +87,11 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        let temp = cc_fs::read_sysfs(driver.path.join(format!("temp{}_input", channel.number)))
+        let temp_path = match channel.temp_path.as_ref() {
+            Some(path) => path,
+            None => &driver.path.join(format_temp_input!(channel.number)),
+        };
+        let temp = cc_fs::read_sysfs(temp_path)
             .await
             .and_then(check_parsing_32)
             // hwmon temps are in millidegrees:
@@ -109,13 +115,12 @@ pub async fn extract_temp_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec
                 continue;
             }
             let temp_task = scope.spawn(async {
-                let temp =
-                    cc_fs::read_sysfs(driver.path.join(format!("temp{}_input", channel.number)))
-                        .await
-                        .and_then(check_parsing_32)
-                        // hwmon temps are in millidegrees:
-                        .map(|degrees| f64::from(degrees) / 1000.0f64)
-                        .unwrap_or(0f64);
+                let temp = cc_fs::read_sysfs(driver.path.join(format_temp_input!(channel.number)))
+                    .await
+                    .and_then(check_parsing_32)
+                    // hwmon temps are in millidegrees:
+                    .map(|degrees| f64::from(degrees) / 1000.0f64)
+                    .unwrap_or(0f64);
                 TempStatus {
                     name: channel.name.clone(),
                     temp,
@@ -136,7 +141,7 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 /// Returns whether the temperature sensor is returning valid and sane values
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
-    let temp_path = base_path.join(format!("temp{channel_number}_input"));
+    let temp_path = base_path.join(format_temp_input!(channel_number));
     let possible_degrees = cc_fs::read_sysfs(&temp_path)
         .await
         .and_then(check_parsing_32)

@@ -267,15 +267,20 @@ impl From<TempInfo> for models::v1::TempInfo {
 }
 
 impl From<DeviceStatusDto> for Vec<models::v1::Status> {
-    fn from(mut value: DeviceStatusDto) -> Self {
-        value.status_history.pop().map_or_else(Vec::new, |s| {
-            let mut status: Vec<models::v1::Status> = s.temps.into_iter().map(Into::into).collect();
-            s.channels
-                .into_iter()
-                .map(Into::into)
-                .for_each(|s| status.push(s));
-            status
-        })
+    fn from(value: DeviceStatusDto) -> Self {
+        value
+            .status_history
+            .back()
+            .cloned()
+            .map_or_else(Vec::new, |s| {
+                let mut status: Vec<models::v1::Status> =
+                    s.temps.into_iter().map(Into::into).collect();
+                s.channels
+                    .into_iter()
+                    .map(Into::into)
+                    .for_each(|s| status.push(s));
+                status
+            })
     }
 }
 

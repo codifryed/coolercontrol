@@ -99,29 +99,44 @@ pub fn normalize_offset_profile(profile: &[(Duty, Offset)]) -> Vec<(Duty, Offset
 /// Returned duty is rounded to the nearest integer.
 ///
 /// This is a custom interpolation function that is designed for our use case.
-/// Other interpolation libraries benched are not near as efficient as this.
+/// Uses binary search for O(log n) lookup instead of linear scan.
 #[allow(
     clippy::float_cmp,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
 pub fn interpolate_profile(normalized_profile: &[(Temp, Duty)], temp: Temp) -> Duty {
-    let mut step_below = &normalized_profile[0];
-    let mut step_above = normalized_profile.last().unwrap();
-    for step in normalized_profile {
-        if step.0 <= temp {
-            step_below = step;
-        }
-        if step.0 >= temp {
-            step_above = step;
-            break;
-        }
+    // Handle edge cases
+    if normalized_profile.is_empty() {
+        return 0;
     }
-    if step_below.0 == step_above.0 {
-        return step_below.1; // temp matches exactly, no duty calculation needed
+    if normalized_profile.len() == 1 {
+        return normalized_profile[0].1;
     }
-    let (step_below_temp, step_below_duty) = (step_below.0, f64::from(step_below.1));
-    let (step_above_temp, step_above_duty) = (step_above.0, f64::from(step_above.1));
+
+    // Binary search for the insertion point
+    let idx = normalized_profile
+        .binary_search_by(|(t, _)| t.partial_cmp(&temp).unwrap())
+        .unwrap_or_else(|i| i);
+
+    // Clamp to valid range
+    if idx == 0 {
+        return normalized_profile[0].1;
+    }
+    if idx >= normalized_profile.len() {
+        return normalized_profile.last().unwrap().1;
+    }
+
+    // Interpolate between idx-1 and idx
+    let (step_below_temp, step_below_duty) = normalized_profile[idx - 1];
+    let (step_above_temp, step_above_duty) = normalized_profile[idx];
+
+    if step_below_temp == step_above_temp {
+        return step_below_duty; // temp matches exactly, no duty calculation needed
+    }
+
+    let step_below_duty = f64::from(step_below_duty);
+    let step_above_duty = f64::from(step_above_duty);
     (step_below_duty
         + (temp - step_below_temp) / (step_above_temp - step_below_temp)
             * (step_above_duty - step_below_duty))
@@ -133,25 +148,42 @@ pub fn interpolate_profile(normalized_profile: &[(Temp, Duty)], temp: Temp) -> D
 /// Returned offset is rounded to the nearest integer.
 ///
 /// This is a custom interpolation function that is designed for our use case.
-/// Other interpolation libraries benched are not near as efficient as this.
+/// Uses binary search for O(log n) lookup instead of linear scan.
 #[allow(clippy::cast_possible_truncation)]
 pub fn interpolate_offset_profile(normalized_profile: &[(Duty, Offset)], duty: Duty) -> Offset {
-    let mut step_below = &normalized_profile[0];
-    let mut step_above = normalized_profile.last().unwrap();
-    for step in normalized_profile {
-        if step.0 <= duty {
-            step_below = step;
-        }
-        if step.0 >= duty {
-            step_above = step;
-            break;
-        }
+    // Handle edge cases
+    if normalized_profile.is_empty() {
+        return 0;
     }
-    if step_below.0 == step_above.0 {
-        return step_below.1; // duty matches exactly, no offset calculation needed
+    if normalized_profile.len() == 1 {
+        return normalized_profile[0].1;
     }
-    let (step_below_duty, step_below_offset) = (f64::from(step_below.0), f64::from(step_below.1));
-    let (step_above_duty, step_above_offset) = (f64::from(step_above.0), f64::from(step_above.1));
+
+    // Binary search for the insertion point
+    let idx = normalized_profile
+        .binary_search_by(|(d, _)| d.cmp(&duty))
+        .unwrap_or_else(|i| i);
+
+    // Clamp to valid range
+    if idx == 0 {
+        return normalized_profile[0].1;
+    }
+    if idx >= normalized_profile.len() {
+        return normalized_profile.last().unwrap().1;
+    }
+
+    // Interpolate between idx-1 and idx
+    let (step_below_duty, step_below_offset) = normalized_profile[idx - 1];
+    let (step_above_duty, step_above_offset) = normalized_profile[idx];
+
+    if step_below_duty == step_above_duty {
+        return step_below_offset; // duty matches exactly, no offset calculation needed
+    }
+
+    let step_below_duty = f64::from(step_below_duty);
+    let step_below_offset = f64::from(step_below_offset);
+    let step_above_duty = f64::from(step_above_duty);
+    let step_above_offset = f64::from(step_above_offset);
     (step_below_offset
         + (f64::from(duty) - step_below_duty) / (step_above_duty - step_below_duty)
             * (step_above_offset - step_below_offset))
