@@ -2264,7 +2264,7 @@ onUnmounted(() => {
                         <tr
                             v-for="(point, idx) in data"
                             :key="`${tableDataKey}-${idx}`"
-                            class="transition-colors group"
+                            class="group"
                             :class="{
                                 'bg-accent/30': idx === selectedPointIndex,
                                 'hover:bg-bg-one/20':
@@ -2402,7 +2402,7 @@ onUnmounted(() => {
                             <!-- Add/Remove Actions -->
                             <td class="px-0.5 py-0.5">
                                 <div
-                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100"
                                 >
                                     <Button
                                         v-if="canAddPointAfter(idx)"

@@ -1622,7 +1622,7 @@ const nextStep = () => {
                         <tr
                             v-for="(point, idx) in data"
                             :key="`${tableDataKey}-${idx}`"
-                            class="transition-colors group"
+                            class="group"
                             :class="{
                                 'bg-accent/30': idx === selectedPointIndex,
                                 'hover:bg-bg-one/20':
@@ -1760,7 +1760,7 @@ const nextStep = () => {
                             <!-- Action buttons (add/remove) -->
                             <td class="px-1 py-0.5">
                                 <div
-                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    class="flex gap-0.5 opacity-0 group-hover:opacity-100"
                                 >
                                     <Button
                                         v-if="canAddPointAfter(idx)"
