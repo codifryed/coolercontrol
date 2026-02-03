@@ -75,7 +75,8 @@ fn base_routes() -> ApiRouter<AppState> {
                 o.summary("Acknowledge Log Issues")
                     .description("This acknowledges existing log warnings and errors, and sets a timestamp of when this occurred")
                     .tag("base")
-            }),
+                .security_requirement("CookieAuth")
+            }).layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
             "/shutdown",
@@ -130,7 +131,9 @@ fn auth_routes() -> ApiRouter<AppState> {
                 o.summary("Logout")
                     .description("Logout and invalidate the current session.")
                     .tag("auth")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
@@ -270,7 +273,9 @@ fn device_routes() -> ApiRouter<AppState> {
                     to set Legacy690Lc or Modern690Lc device driver type.",
                     )
                     .tag("device")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
@@ -365,7 +370,9 @@ fn profile_routes() -> ApiRouter<AppState> {
                 o.summary("Save Profile Order")
                     .description("Saves the order of Profiles as given.")
                     .tag("profile")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
@@ -414,7 +421,9 @@ fn function_routes() -> ApiRouter<AppState> {
                 o.summary("Save Function Order")
                     .description("Saves the order of the Functions as given.")
                     .tag("function")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
@@ -471,10 +480,13 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
                 o.summary("Save Custom Sensor Order")
                     .description("Saves the order of the Custom Sensors as given.")
                     .tag("custom-sensor")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
+#[allow(clippy::too_many_lines)]
 fn mode_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
@@ -574,7 +586,9 @@ fn mode_routes() -> ApiRouter<AppState> {
                 o.summary("Save Mode Order")
                     .description("Saves the order of the Modes as given.")
                     .tag("mode")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
@@ -631,11 +645,16 @@ fn settings_routes() -> ApiRouter<AppState> {
                     .description("Returns the current CoolerControl UI Settings.")
                     .tag("setting")
             })
-            .put_with(settings::update_ui, |o| {
+        )
+        .api_route(
+            "/settings/ui",
+            put_with(settings::update_ui, |o| {
                 o.summary("Update CoolerControl UI Settings")
                     .description("Updates and persists the CoolerControl UI settings.")
                     .tag("setting")
-            }),
+                    .security_requirement("CookieAuth")
+            })
+                .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
 }
 
