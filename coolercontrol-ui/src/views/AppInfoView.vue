@@ -43,6 +43,9 @@ const { t } = useI18n()
 const healthCheck = await deviceStore.health()
 const convertLogsToHtml = computed((): string => {
     return deviceStore.logs
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
         .replaceAll('\n', '<br/>')
         .replaceAll('INFO', '<span class="text-success">INFO</span>')
         .replaceAll('ERROR', '<span class="text-error">ERROR</span>')
