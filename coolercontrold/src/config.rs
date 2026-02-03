@@ -1602,7 +1602,7 @@ impl Config {
                     None
                 }
             })
-            .ok_or(anyhow!("Function with UID: {function_uid} not found"))
+            .ok_or(anyhow!("Function not found"))
     }
 
     #[allow(clippy::too_many_lines)]

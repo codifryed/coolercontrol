@@ -205,9 +205,8 @@ impl ModeController {
     /// This method handles several edge cases and unknowns.
     pub async fn activate_mode(&self, mode_uid: &UID) -> Result<()> {
         let Some(mode) = self.modes.borrow().get(mode_uid).cloned() else {
-            error!("Mode not found: {mode_uid}");
             return Err(CCError::NotFound {
-                msg: format!("Mode not found: {mode_uid}"),
+                msg: "Mode not found".to_string(),
             }
             .into());
         };
@@ -410,7 +409,7 @@ impl ModeController {
             let mode_to_dup = modes_lock
                 .get(mode_uid_to_dup)
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {mode_uid_to_dup}"),
+                    msg: "Mode not found.".to_string(),
                 })?;
             Mode {
                 uid: Uuid::new_v4().to_string(),
@@ -450,7 +449,7 @@ impl ModeController {
             let mode = modes_lock
                 .get_mut(mode_uid)
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {mode_uid}"),
+                    msg: "Mode not found".to_string(),
                 })?;
             mode.name = name;
         }
@@ -465,7 +464,7 @@ impl ModeController {
             let mode = modes_lock
                 .get_mut(mode_uid)
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {mode_uid}"),
+                    msg: "Mode not found".to_string(),
                 })?;
             mode.all_device_settings = self.get_all_device_settings()?;
             mode.clone()
@@ -501,7 +500,7 @@ impl ModeController {
     pub async fn delete_mode(&self, mode_uid: &UID) -> Result<()> {
         if self.modes.borrow().contains_key(mode_uid).not() {
             return Err(CCError::NotFound {
-                msg: format!("Mode not found: {mode_uid}"),
+                msg: "Mode not found".to_string(),
             }
             .into());
         }
