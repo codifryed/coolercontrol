@@ -20,7 +20,8 @@ use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::UID;
-use crate::repositories::utils::{ShellCommand, ShellCommandResult};
+use crate::notifier::NotificationIcon;
+use crate::repositories::utils::{sanitize_for_shell, ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
 use anyhow::{anyhow, Result};
@@ -568,15 +569,26 @@ impl AlertController {
                 if alert.desktop_notify {
                     for uid in &user_ids {
                         if alert.shutdown_on_activation {
-                            Self::fire_command(&format!(
-                                "sudo -u \\#{} {} notify \"Shutdown Alert Triggered: {}!\" \"Shutdown will commence in 1 Minute.\n{}\" 5 {} 2",
-                                uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
-                            ));
+                            let title = format!("Shutdown Alert Triggered: {}!", alert.name);
+                            let body = format!("Shutdown will commence in 1 Minute.\n{message}");
+                            self.fire_notification(
+                                *uid,
+                                &title,
+                                &body,
+                                NotificationIcon::Shutdown,
+                                alert.desktop_notify_audio,
+                                Some(2),
+                            );
                         } else {
-                            Self::fire_command(&format!(
-                                "sudo -u \\#{} {} notify \"Alert Triggered: {}!\" \"{}\" 1 {}",
-                                uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
-                            ));
+                            let title = format!("Alert Triggered: {}!", alert.name);
+                            self.fire_notification(
+                                *uid,
+                                &title,
+                                message,
+                                NotificationIcon::Triggered,
+                                alert.desktop_notify_audio,
+                                None,
+                            );
                         }
                     }
                 }
@@ -598,20 +610,30 @@ impl AlertController {
                 }
                 if alert.desktop_notify && alert.desktop_notify_recovery {
                     for uid in &user_ids {
-                        Self::fire_command(&format!(
-                            "sudo -u \\#{} {} notify \"Alert Resolved: {}\" \"{}\" 2 false",
-                            uid, self.bin_path, alert.name, message
-                        ));
+                        let title = format!("Alert Resolved: {}", alert.name);
+                        self.fire_notification(
+                            *uid,
+                            &title,
+                            message,
+                            NotificationIcon::Resolved,
+                            false,
+                            None,
+                        );
                     }
                 }
             }
             AlertState::Error => {
                 if alert.desktop_notify {
                     for uid in &user_ids {
-                        Self::fire_command(&format!(
-                            "sudo -u \\#{} {} notify \"Alert Error: {}\" \"{}\" 3 {}",
-                            uid, self.bin_path, alert.name, message, alert.desktop_notify_audio
-                        ));
+                        let title = format!("Alert Error: {}", alert.name);
+                        self.fire_notification(
+                            *uid,
+                            &title,
+                            message,
+                            NotificationIcon::Error,
+                            alert.desktop_notify_audio,
+                            None,
+                        );
                     }
                 }
                 if alert.desktop_notify || alert.shutdown_on_activation {
@@ -620,6 +642,32 @@ impl AlertController {
             }
             AlertState::WarmUp(_) => {} // Warmup state is never fired.
         }
+    }
+
+    /// Fires a desktop notification with automatic sanitization of title and message.
+    fn fire_notification(
+        &self,
+        uid: u32,
+        title: &str,
+        message: &str,
+        icon: NotificationIcon,
+        audio: bool,
+        urgency_lvl: Option<u8>,
+    ) {
+        let safe_title = sanitize_for_shell(title);
+        let safe_message = sanitize_for_shell(message);
+
+        let cmd = match urgency_lvl {
+            Some(urgency) => format!(
+                "sudo -u \\#{} {} notify \"{}\" \"{}\" {} {} {}",
+                uid, self.bin_path, safe_title, safe_message, icon as u8, audio, urgency
+            ),
+            None => format!(
+                "sudo -u \\#{} {} notify \"{}\" \"{}\" {} {}",
+                uid, self.bin_path, safe_title, safe_message, icon as u8, audio
+            ),
+        };
+        Self::fire_command(&cmd);
     }
 
     fn fire_command(cmd: &str) {

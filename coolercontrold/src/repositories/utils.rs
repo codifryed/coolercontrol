@@ -49,6 +49,8 @@ pub enum ShellCommandResult {
 }
 
 impl ShellCommand {
+    /// Creates a new `ShellCommand` instance with the specified command and timeout.
+    /// Make sure to sanitize the command input before passing it to this function.
     pub fn new(command: &str, timeout: Duration) -> Self {
         let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
         Self {
@@ -162,9 +164,92 @@ fn limit_output_length(output: &mut String) {
     }
 }
 
+/// Sanitizes a string for safe use in shell commands and notification displays.
+/// Removes characters that could enable command injection or XSS attacks.
+pub fn sanitize_for_shell(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            // Allowlist: alphanumeric, spaces, and safe punctuation
+            c.is_alphanumeric()
+                || matches!(c, ' ' | '.' | ',' | ':' | '-' | '_' | '/' | '%' | '°' | '+')
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::repositories::utils::limit_output_length;
+    use crate::repositories::utils::{limit_output_length, sanitize_for_shell};
+
+    #[test]
+    fn sanitize_allows_alphanumeric() {
+        assert_eq!(sanitize_for_shell("Hello123"), "Hello123");
+        assert_eq!(sanitize_for_shell("ABCxyz"), "ABCxyz");
+    }
+
+    #[test]
+    fn sanitize_allows_safe_punctuation() {
+        assert_eq!(sanitize_for_shell("temp: 45.5°C"), "temp: 45.5°C");
+        assert_eq!(sanitize_for_shell("fan_1, fan-2"), "fan_1, fan-2");
+        assert_eq!(sanitize_for_shell("path/to/file"), "path/to/file");
+        assert_eq!(sanitize_for_shell("100% +5"), "100% +5");
+    }
+
+    #[test]
+    fn sanitize_removes_shell_injection_chars() {
+        assert_eq!(sanitize_for_shell("test; rm -rf /"), "test rm -rf /");
+        assert_eq!(sanitize_for_shell("$(whoami)"), "whoami");
+        assert_eq!(sanitize_for_shell("`id`"), "id");
+        assert_eq!(sanitize_for_shell("a && b || c"), "a  b  c");
+        assert_eq!(
+            sanitize_for_shell("cat /etc/passwd | grep root"),
+            "cat /etc/passwd  grep root"
+        );
+    }
+
+    #[test]
+    fn sanitize_removes_quotes() {
+        assert_eq!(sanitize_for_shell("it's a \"test\""), "its a test");
+        assert_eq!(sanitize_for_shell("name='value'"), "namevalue");
+    }
+
+    #[test]
+    fn sanitize_removes_xss_chars() {
+        assert_eq!(
+            sanitize_for_shell("<script>alert(1)</script>"),
+            "scriptalert1/script"
+        );
+        assert_eq!(sanitize_for_shell("a > b < c"), "a  b  c");
+    }
+
+    #[test]
+    fn sanitize_removes_newlines_and_special_whitespace() {
+        assert_eq!(sanitize_for_shell("line1\nline2"), "line1line2");
+        assert_eq!(sanitize_for_shell("tab\there"), "tabhere");
+        assert_eq!(sanitize_for_shell("cr\rhere"), "crhere");
+    }
+
+    #[test]
+    fn sanitize_handles_empty_input() {
+        assert_eq!(sanitize_for_shell(""), "");
+    }
+
+    #[test]
+    fn sanitize_handles_only_dangerous_chars() {
+        assert_eq!(sanitize_for_shell("$;|&`'\"<>()[]{}!#*?\\~^"), "");
+    }
+
+    #[test]
+    fn sanitize_realistic_alert_message() {
+        let input = "CPU Temp: 85.5°C is greater than allowed maximum: 80";
+        assert_eq!(sanitize_for_shell(input), input);
+
+        let malicious = "Alert: $(reboot); test & echo pwned";
+        assert_eq!(
+            sanitize_for_shell(malicious),
+            "Alert: reboot test  echo pwned"
+        );
+    }
 
     // Should truncate the output string if it exceeds the maximum length and is ASCII-encoded
     #[test]
