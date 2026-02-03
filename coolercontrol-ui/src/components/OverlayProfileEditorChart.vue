@@ -1272,7 +1272,7 @@ onUnmounted(() => {
                                     @pointerleave="stopRepeat"
                                 />
                                 <InputNumber
-                                    :modelValue="point.value[1]"
+                                    :modelValue="Math.round(point.value[1]) || 0"
                                     @update:modelValue="handleOffsetTableInput(idx, $event)"
                                     @focus="selectPointFromTable(idx)"
                                     mode="decimal"
