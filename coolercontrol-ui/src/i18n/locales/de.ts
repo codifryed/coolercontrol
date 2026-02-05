@@ -662,6 +662,9 @@ export default {
                 'Beim Versuch, diese Funktion zu aktualisieren, ist ein Fehler aufgetreten',
         },
         error: {
+            accessDenied: 'Zugriff verweigert',
+            accessDeniedMessage:
+                'Authentifizierung fehlgeschlagen. Bitte überprüfen Sie Ihr Passwort und versuchen Sie es erneut.',
             connectionError: 'CoolerControl-Verbindungsfehler',
             connectionToast: 'Verbindung zum Daemon nicht möglich',
             connectionToastDetail:

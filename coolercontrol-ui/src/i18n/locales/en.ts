@@ -651,6 +651,8 @@ export default {
             functionUpdateError: 'There was an error attempting to update this Function',
         },
         error: {
+            accessDenied: 'Access Denied',
+            accessDeniedMessage: 'Authentication failed. Please check your password and try again.',
             connectionError: 'CoolerControl Connection Error',
             connectionToast: 'Unable to connect to daemon',
             connectionToastDetail:

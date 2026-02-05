@@ -352,6 +352,8 @@ export default {
     },
     views: {
         error: {
+            accessDenied: 'アクセス拒否',
+            accessDeniedMessage: '認証に失敗しました。パスワードを確認して再度お試しください。',
             connectionError: 'CoolerControl 接続エラー',
             connectionToast: 'デーモンに接続できません',
             connectionToastDetail:

@@ -602,6 +602,9 @@ export default {
             functionUpdateError: 'Ocorreu um erro ao tentar atualizar esta Função',
         },
         error: {
+            accessDenied: 'Acesso Negado',
+            accessDeniedMessage:
+                'A autenticação falhou. Por favor, verifique sua senha e tente novamente.',
             connectionError: 'Erro de Conexão CoolerControl',
             connectionToast: 'Não foi possível conectar ao daemon',
             connectionToastDetail:

@@ -655,6 +655,9 @@ export default {
             functionUpdateError: 'Произошла ошибка при попытке обновить эту функцию',
         },
         error: {
+            accessDenied: 'Доступ запрещён',
+            accessDeniedMessage:
+                'Аутентификация не удалась. Пожалуйста, проверьте пароль и попробуйте снова.',
             connectionError: 'Ошибка подключения CoolerControl',
             connectionToast: 'Не удается подключиться к демону',
             connectionToastDetail:

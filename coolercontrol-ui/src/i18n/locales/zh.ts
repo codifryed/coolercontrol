@@ -526,6 +526,8 @@ export default {
             duplicateMode: '复制模式',
         },
         error: {
+            accessDenied: '访问被拒绝',
+            accessDeniedMessage: '身份验证失败。请检查您的密码并重试。',
             connectionError: 'CoolerControl 连接错误',
             connectionToast: '无法连接到后台服务',
             connectionToastDetail: '无法连接到后台服务。请确保服务正在运行并尝试重新连接。',

@@ -645,6 +645,9 @@ export default {
             functionUpdateError: 'حدث خطأ أثناء محاولة تحديث هذه الوظيفة',
         },
         error: {
+            accessDenied: 'الوصول مرفوض',
+            accessDeniedMessage:
+                'فشل التحقق من الهوية. يرجى التحقق من كلمة المرور والمحاولة مرة أخرى.',
             connectionError: 'خطأ اتصال CoolerControl',
             connectionToast: 'غير قادر على الاتصال بالخدمة',
             connectionToastDetail:

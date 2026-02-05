@@ -526,6 +526,8 @@ export default {
             duplicateMode: '複製模式',
         },
         error: {
+            accessDenied: '存取被拒絕',
+            accessDeniedMessage: '身份驗證失敗。請檢查您的密碼並重試。',
             connectionError: 'CoolerControl 連接錯誤',
             connectionToast: '無法連接到後台服務',
             connectionToastDetail: '無法連接到後台服務。請確保服務正在運行並嘗試重新連接。',

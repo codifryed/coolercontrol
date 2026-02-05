@@ -644,6 +644,8 @@ export default {
             functionUpdateError: '이 기능을 업데이트하는 동안 오류 발생',
         },
         error: {
+            accessDenied: '접근 거부',
+            accessDeniedMessage: '인증에 실패했습니다. 비밀번호를 확인하고 다시 시도해 주세요.',
             connectionError: 'CoolerControl 연결 오류',
             connectionToast: '데몬에 연결할 수 없음',
             connectionToastDetail:

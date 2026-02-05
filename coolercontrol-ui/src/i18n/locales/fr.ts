@@ -669,6 +669,9 @@ export default {
                 "Une erreur s'est produite lors de la tentative de mise à jour de cette Fonction",
         },
         error: {
+            accessDenied: 'Accès Refusé',
+            accessDeniedMessage:
+                "L'authentification a échoué. Veuillez vérifier votre mot de passe et réessayer.",
             connectionError: 'Erreur de Connexion CoolerControl',
             connectionToast: 'Impossible de se connecter au daemon',
             connectionToastDetail:

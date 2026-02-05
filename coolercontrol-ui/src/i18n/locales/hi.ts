@@ -654,6 +654,8 @@ export default {
             functionUpdateError: 'इस फ़ंक्शन को अपडेट करने का प्रयास करते समय एक त्रुटि हुई',
         },
         error: {
+            accessDenied: 'पहुँच अस्वीकृत',
+            accessDeniedMessage: 'प्रमाणीकरण विफल। कृपया अपना पासवर्ड जाँचें और पुनः प्रयास करें।',
             connectionError: 'CoolerControl कनेक्शन त्रुटि',
             connectionToast: 'डेमॉन से कनेक्ट करने में असमर्थ',
             connectionToastDetail:
