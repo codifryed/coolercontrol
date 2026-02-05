@@ -629,7 +629,6 @@ fn is_origin_allowed(origin: &str, allowed_hosts: &[String], exact_origins: &[St
     allowed_hosts.iter().any(|h| h == host)
 }
 
-
 /// TLS Configuration
 async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
     let tls_enabled = env::var(ENV_TLS)
@@ -1054,7 +1053,11 @@ mod tests {
         let mut hosts = default_allowed_hosts();
         hosts.push("192.168.1.100".to_string());
         assert!(is_origin_allowed("http://192.168.1.100:11987", &hosts, &[]));
-        assert!(is_origin_allowed("https://192.168.1.100:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "https://192.168.1.100:11987",
+            &hosts,
+            &[]
+        ));
     }
 
     #[test]

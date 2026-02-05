@@ -1119,8 +1119,9 @@ impl Config {
                 .collect();
             base_settings["origins"] = Item::Value(Value::Array(origins_array));
         }
-        base_settings["allow_unencrypted"] =
-            Item::Value(Value::Boolean(Formatted::new(cc_settings.allow_unencrypted)));
+        base_settings["allow_unencrypted"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.allow_unencrypted,
+        )));
         if let Some(ref header) = cc_settings.protocol_header {
             base_settings["protocol_header"] =
                 Item::Value(Value::String(Formatted::new(header.clone())));
