@@ -568,22 +568,24 @@ fn cors_layer(
     ipv6: Option<SocketAddrV6>,
     custom_origins: Vec<String>,
 ) -> cors::CorsLayer {
-    // Build allowlist combining host patterns and custom origins
-    // Host patterns use "//host:" format to match any scheme (http/https)
-    // Custom origins are matched exactly as specified
-    let mut allowed_origins = vec![
-        "//localhost:".to_string(),
-        "//127.0.0.1:".to_string(),
-        "//[::1]:".to_string(),
+    // Allowed hosts for localhost and bound IPs (matched against parsed origin host)
+    let mut allowed_hosts = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "[::1]".to_string(),
     ];
     if let Some(addr) = ipv4 {
-        allowed_origins.push(format!("//{}:", addr.ip()));
+        allowed_hosts.push(addr.ip().to_string());
     }
     if let Some(addr) = ipv6 {
-        allowed_origins.push(format!("//[{}]:", addr.ip()));
+        allowed_hosts.push(format!("[{}]", addr.ip()));
     }
-    // Add custom origins from settings (for reverse proxy setups)
-    allowed_origins.extend(custom_origins.into_iter().filter(|o| !o.is_empty()));
+
+    // Custom origins from settings - exact match only
+    let exact_origins: Vec<String> = custom_origins
+        .into_iter()
+        .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
+        .collect();
 
     cors::CorsLayer::new()
         .allow_credentials(true)
@@ -593,11 +595,40 @@ fn cors_layer(
             move |origin: &HeaderValue, _req: &Parts| {
                 origin
                     .to_str()
-                    .is_ok_and(|s| allowed_origins.iter().any(|pattern| s.contains(pattern)))
+                    .is_ok_and(|s| is_origin_allowed(s, &allowed_hosts, &exact_origins))
             },
         ))
         .max_age(Duration::from_secs(60) * 5)
 }
+
+/// Checks if an origin is allowed based on allowed hosts and exact origins.
+fn is_origin_allowed(origin: &str, allowed_hosts: &[String], exact_origins: &[String]) -> bool {
+    // Check exact custom origins first (e.g., "https://coolercontrol.example.com")
+    if exact_origins.iter().any(|o| origin == o) {
+        return true;
+    }
+
+    // Parse origin and check host against allowed hosts
+    // Origin format: scheme://host[:port]
+    let Some(host_start) = origin.find("://") else {
+        return false;
+    };
+    let after_scheme = &origin[host_start + 3..];
+
+    // Extract host, handling IPv6 addresses in brackets
+    let host = if after_scheme.starts_with('[') {
+        // IPv6: find closing bracket, host includes brackets
+        after_scheme
+            .find(']')
+            .map_or(after_scheme, |i| &after_scheme[..=i])
+    } else {
+        // IPv4 or hostname: everything before the port
+        after_scheme.split(':').next().unwrap_or(after_scheme)
+    };
+
+    allowed_hosts.iter().any(|h| h == host)
+}
+
 
 /// TLS Configuration
 async fn tls_config(settings: &CoolerControlSettings) -> Option<RustlsConfig> {
@@ -972,4 +1003,167 @@ pub struct AppState {
     pub alert_handle: AlertHandle,
     pub plugin_handle: PluginHandle,
     pub log_buf_handle: LogBufHandle,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn default_allowed_hosts() -> Vec<String> {
+        vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+            "[::1]".to_string(),
+        ]
+    }
+
+    #[test]
+    fn test_origin_localhost_http() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_localhost_https() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("https://localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_localhost_no_port() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://localhost", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_ipv4_loopback() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://127.0.0.1:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://127.0.0.1:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_ipv6_loopback() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://[::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://[::1]:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_bound_ipv4() {
+        let mut hosts = default_allowed_hosts();
+        hosts.push("192.168.1.100".to_string());
+        assert!(is_origin_allowed("http://192.168.1.100:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://192.168.1.100:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_bound_ipv6() {
+        let mut hosts = default_allowed_hosts();
+        hosts.push("[fe80::1]".to_string());
+        assert!(is_origin_allowed("http://[fe80::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://[fe80::1]:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_custom_exact_match() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com".to_string()];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.example.com",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_custom_exact_match_with_port() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com:8443".to_string()];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.example.com:8443",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_custom_no_partial_match() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com".to_string()];
+        // Different port should not match exact origin
+        assert!(!is_origin_allowed(
+            "https://coolercontrol.example.com:8443",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_evil_localhost_subdomain() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed(
+            "https://localhost.evil.com:443",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_evil_with_localhost_path() {
+        let hosts = default_allowed_hosts();
+        // This was vulnerable with contains() matching
+        assert!(!is_origin_allowed(
+            "https://evil.com//localhost:fake",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_lookalike_ip() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed(
+            "https://127.0.0.1.evil.com:443",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_arbitrary_domain() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("https://evil.com:443", &hosts, &[]));
+        assert!(!is_origin_allowed("https://attacker.org", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_rejects_invalid_format() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("not-a-url", &hosts, &[]));
+        assert!(!is_origin_allowed("localhost:11987", &hosts, &[]));
+        assert!(!is_origin_allowed("//localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_rejects_empty() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_multiple_custom_origins() {
+        let hosts = default_allowed_hosts();
+        let exact = vec![
+            "https://coolercontrol.home.lan".to_string(),
+            "http://192.168.1.1:8080".to_string(),
+        ];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.home.lan",
+            &hosts,
+            &exact
+        ));
+        assert!(is_origin_allowed("http://192.168.1.1:8080", &hosts, &exact));
+        assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
+    }
 }
