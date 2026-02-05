@@ -143,6 +143,22 @@ drivetemp_suspend = false
 # tls_cert_path = "/etc/coolercontrol/coolercontrol.crt"
 # tls_key_path = "/etc/coolercontrol/coolercontrol.key"
 
+# Reverse Proxy / CORS Configuration:
+# Custom origins to allow in CORS requests. This is useful when accessing CoolerControl through
+# a reverse proxy with a custom domain, or via port forwarding with a public IP. Add the full
+# origin URL (scheme + host + port if non-standard).
+# origins = ["https://coolercontrol.mydomain.com", "http://192.168.1.1:8080"]
+
+# Header to check for the client's original protocol when behind a reverse proxy. Common values
+# are "X-Forwarded-Proto" (nginx, Apache) or "X-Scheme". When this header indicates "https",
+# the HTTP-to-HTTPS redirect is skipped (the proxy handles TLS termination).
+# protocol_header = "X-Forwarded-Proto"
+
+# Allow unencrypted HTTP connections from non-localhost addresses. By default, non-localhost
+# HTTP requests are redirected to HTTPS when TLS is enabled. Set this to true to allow HTTP.
+# Note: This should only be used as a last resort and is not recommended.
+# allow_unencrypted = false
+
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true

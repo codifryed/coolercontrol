@@ -1019,6 +1019,36 @@ impl Config {
             } else {
                 None
             };
+            let origins = if let Some(value) = settings.get("origins") {
+                value
+                    .as_array()
+                    .with_context(|| "origins should be an array")?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let allow_unencrypted = settings
+                .get("allow_unencrypted")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "allow_unencrypted should be a boolean value")?;
+            let protocol_header = if let Some(value) = settings.get("protocol_header") {
+                let header_str = value
+                    .as_str()
+                    .with_context(|| "protocol_header should be a string")?
+                    .trim()
+                    .to_string();
+                if header_str.is_empty() {
+                    None
+                } else {
+                    Some(header_str)
+                }
+            } else {
+                None
+            };
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1035,6 +1065,9 @@ impl Config {
                 tls_enabled,
                 tls_cert_path,
                 tls_key_path,
+                origins,
+                allow_unencrypted,
+                protocol_header,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1077,6 +1110,20 @@ impl Config {
         if let Some(ref key_path) = cc_settings.tls_key_path {
             base_settings["tls_key_path"] =
                 Item::Value(Value::String(Formatted::new(key_path.clone())));
+        }
+        if cc_settings.origins.is_empty().not() {
+            let origins_array: toml_edit::Array = cc_settings
+                .origins
+                .iter()
+                .map(|s| Value::String(Formatted::new(s.clone())))
+                .collect();
+            base_settings["origins"] = Item::Value(Value::Array(origins_array));
+        }
+        base_settings["allow_unencrypted"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.allow_unencrypted)));
+        if let Some(ref header) = cc_settings.protocol_header {
+            base_settings["protocol_header"] =
+                Item::Value(Value::String(Formatted::new(header.clone())));
         }
     }
 

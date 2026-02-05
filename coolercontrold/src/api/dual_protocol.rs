@@ -272,11 +272,17 @@ where
 
 /// Layer that redirects HTTP requests to HTTPS, with exceptions for:
 /// - Requests from localhost (`127.0.0.1`, `::1`)
-/// - Requests to the /health endpoint
+/// - Requests to the /health or /see endpoints
+/// - When `allow_unencrypted` is true
+/// - When `protocol_header` indicates HTTPS from a proxy
 #[derive(Clone)]
 pub struct HttpsRedirectLayer {
     /// The port to redirect to (usually the same port)
     pub port: u16,
+    /// Allow unencrypted HTTP connections from non-localhost addresses
+    pub allow_unencrypted: bool,
+    /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
+    pub protocol_header: Option<String>,
 }
 
 impl<S> Layer<S> for HttpsRedirectLayer {
@@ -286,6 +292,8 @@ impl<S> Layer<S> for HttpsRedirectLayer {
         HttpsRedirectService {
             inner,
             port: self.port,
+            allow_unencrypted: self.allow_unencrypted,
+            protocol_header: self.protocol_header.clone(),
         }
     }
 }
@@ -295,6 +303,8 @@ impl<S> Layer<S> for HttpsRedirectLayer {
 pub struct HttpsRedirectService<S> {
     inner: S,
     port: u16,
+    allow_unencrypted: bool,
+    protocol_header: Option<String>,
 }
 
 impl<S> Service<Request<Body>> for HttpsRedirectService<S>
@@ -313,6 +323,8 @@ where
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         let mut inner = self.inner.clone();
         let port = self.port;
+        let allow_unencrypted = self.allow_unencrypted;
+        let protocol_header = self.protocol_header.clone();
 
         Box::pin(async move {
             // Check if connection is HTTPS (via Protocol extension)
@@ -337,6 +349,23 @@ where
                 if client_ip.is_loopback() {
                     return inner.call(req).await;
                 }
+            }
+
+            // Check if protocol header indicates HTTPS from a proxy
+            if let Some(ref header_name) = protocol_header {
+                if let Some(proto) = req.headers().get(header_name) {
+                    if proto
+                        .to_str()
+                        .is_ok_and(|p| p.eq_ignore_ascii_case("https"))
+                    {
+                        return inner.call(req).await;
+                    }
+                }
+            }
+
+            // Allow unencrypted HTTP if configured
+            if allow_unencrypted {
+                return inner.call(req).await;
             }
 
             // Redirect to HTTPS

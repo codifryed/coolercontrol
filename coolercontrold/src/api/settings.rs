@@ -115,6 +115,12 @@ pub struct CoolerControlSettingsDto {
     compress: Option<bool>,
     poll_rate: Option<f64>,
     drivetemp_suspend: Option<bool>,
+    /// Custom origins to allow in CORS (for reverse proxy setups)
+    origins: Option<Vec<String>>,
+    /// Allow unencrypted HTTP connections from non-localhost addresses
+    allow_unencrypted: Option<bool>,
+    /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
+    protocol_header: Option<String>,
 }
 
 impl CoolerControlSettingsDto {
@@ -165,6 +171,25 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.drivetemp_suspend
         };
+        let origins = if let Some(ref origins) = self.origins {
+            origins.clone()
+        } else {
+            current_settings.origins
+        };
+        let allow_unencrypted = if let Some(allow) = self.allow_unencrypted {
+            allow
+        } else {
+            current_settings.allow_unencrypted
+        };
+        let protocol_header = if let Some(ref header) = self.protocol_header {
+            if header.is_empty() {
+                None
+            } else {
+                Some(header.clone())
+            }
+        } else {
+            current_settings.protocol_header
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -181,6 +206,9 @@ impl CoolerControlSettingsDto {
             tls_enabled: current_settings.tls_enabled,
             tls_cert_path: current_settings.tls_cert_path,
             tls_key_path: current_settings.tls_key_path,
+            origins,
+            allow_unencrypted,
+            protocol_header,
         }
     }
 }
@@ -198,6 +226,9 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             compress: Some(settings.compress),
             poll_rate: Some(settings.poll_rate),
             drivetemp_suspend: Some(settings.drivetemp_suspend),
+            origins: Some(settings.origins),
+            allow_unencrypted: Some(settings.allow_unencrypted),
+            protocol_header: settings.protocol_header,
         }
     }
 }

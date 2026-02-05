@@ -56,6 +56,8 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Request};
+use axum::http::header::HeaderValue;
+use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
@@ -188,6 +190,11 @@ pub async fn start_server<'s>(
         ));
     }
 
+    // Extract proxy/cors settings for the API servers
+    let cors_origins = settings.origins.clone();
+    let allow_unencrypted = settings.allow_unencrypted;
+    let protocol_header = settings.protocol_header.clone();
+
     // Spawn all API servers on a dedicated thread
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -210,6 +217,9 @@ pub async fn start_server<'s>(
             compression_layers,
             tls_config,
             cancel_token,
+            cors_origins,
+            allow_unencrypted,
+            protocol_header,
         )));
     });
     Ok(())
@@ -225,30 +235,43 @@ async fn run_all_api_servers(
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
+    cors_origins: Vec<String>,
+    allow_unencrypted: bool,
+    protocol_header: Option<String>,
 ) {
     let mut handles = Vec::new();
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
 
     // REST API servers
-    if let Some(ipv4) = ipv4 {
+    if let Some(addr) = ipv4 {
         handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(ipv4),
+            SocketAddr::from(addr),
+            ipv4,
+            ipv6,
             app_state.clone(),
             session_layer.clone(),
             compression_layers.clone(),
             tls_config.clone(),
             cancel_token.clone(),
+            cors_origins.clone(),
+            allow_unencrypted,
+            protocol_header.clone(),
         )));
     }
-    if let Some(ipv6) = ipv6 {
+    if let Some(addr) = ipv6 {
         handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(ipv6),
+            SocketAddr::from(addr),
+            ipv4,
+            ipv6,
             app_state,
             session_layer,
             compression_layers,
             tls_config,
             cancel_token.clone(),
+            cors_origins,
+            allow_unencrypted,
+            protocol_header,
         )));
     }
 
@@ -280,11 +303,16 @@ async fn run_all_api_servers(
 
 async fn create_api_server(
     addr: SocketAddr,
+    ipv4: Option<SocketAddrV4>,
+    ipv6: Option<SocketAddrV6>,
     app_state: AppState,
     session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
+    cors_origins: Vec<String>,
+    allow_unencrypted: bool,
+    protocol_header: Option<String>,
 ) -> Result<()> {
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
@@ -303,7 +331,7 @@ async fn create_api_server(
         // 2MB is the default payload limit:
         .route_layer(DefaultBodyLimit::disable())
         .route_layer(session_layer)
-        .layer(cors_layer())
+        .layer(cors_layer(ipv4, ipv6, cors_origins))
         .layer((
             TraceLayer::new_for_http(),
             TimeoutLayer::with_status_code(
@@ -327,7 +355,11 @@ async fn create_api_server(
         info!("Serving HTTP and HTTPS API on {addr}");
 
         // Add HTTPS redirect layer for non-localhost HTTP requests
-        let redirect_layer = dual_protocol::HttpsRedirectLayer { port: addr.port() };
+        let redirect_layer = dual_protocol::HttpsRedirectLayer {
+            port: addr.port(),
+            allow_unencrypted,
+            protocol_header,
+        };
         let router_with_redirect = base_router.layer(redirect_layer);
         let normalized_router =
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
@@ -531,41 +563,40 @@ fn optional_layers(
     }
 }
 
-fn cors_layer() -> cors::CorsLayer {
+fn cors_layer(
+    ipv4: Option<SocketAddrV4>,
+    ipv6: Option<SocketAddrV6>,
+    custom_origins: Vec<String>,
+) -> cors::CorsLayer {
+    // Build allowlist combining host patterns and custom origins
+    // Host patterns use "//host:" format to match any scheme (http/https)
+    // Custom origins are matched exactly as specified
+    let mut allowed_origins = vec![
+        "//localhost:".to_string(),
+        "//127.0.0.1:".to_string(),
+        "//[::1]:".to_string(),
+    ];
+    if let Some(addr) = ipv4 {
+        allowed_origins.push(format!("//{}:", addr.ip()));
+    }
+    if let Some(addr) = ipv6 {
+        allowed_origins.push(format!("//[{}]:", addr.ip()));
+    }
+    // Add custom origins from settings (for reverse proxy setups)
+    allowed_origins.extend(custom_origins.into_iter().filter(|o| !o.is_empty()));
+
     cors::CorsLayer::new()
         .allow_credentials(true)
         .allow_headers(cors::AllowHeaders::mirror_request())
         .allow_methods(cors::AllowMethods::mirror_request())
-        // We don't really care about Origin security, as it runs on each person's server
-        // and may also limit access through a proxy. Alternative impl below.
-        // Note: We can't use wildcard any with credentials.
-        .allow_origin(cors::AllowOrigin::mirror_request())
+        .allow_origin(cors::AllowOrigin::predicate(
+            move |origin: &HeaderValue, _req: &Parts| {
+                origin
+                    .to_str()
+                    .is_ok_and(|s| allowed_origins.iter().any(|pattern| s.contains(pattern)))
+            },
+        ))
         .max_age(Duration::from_secs(60) * 5)
-
-    // Alternative:
-    //     let mut allowed_addresses = vec![
-    //         // always allowed standard addresses:
-    //         "//localhost:".to_string(),
-    //         "//127.0.0.1:".to_string(),
-    //         "//[::1]:".to_string(),
-    //     ];
-    //     if let Some(ipv4) = ipv4 {
-    //         allowed_addresses.push(format!("//{}:", ipv4.ip()));
-    //     }
-    //     if let Some(ipv6) = ipv6 {
-    //         allowed_addresses.push(format!("//[{}]:", ipv6.ip()));
-    //     }
-    //     Cors::default()
-    //         .allow_any_method()
-    //         .allow_any_header()
-    //         .supports_credentials()
-    //         .allowed_origin_fn(move |origin: &HeaderValue, _req_head: &RequestHead| {
-    //             if let Ok(str) = origin.to_str() {
-    //                 allowed_addresses.iter().any(|addr| str.contains(addr))
-    //             } else {
-    //                 false
-    //             }
-    //         })
 }
 
 /// TLS Configuration

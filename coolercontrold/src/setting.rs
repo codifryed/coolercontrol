@@ -168,6 +168,12 @@ pub struct CoolerControlSettings {
     pub tls_enabled: bool,
     pub tls_cert_path: Option<String>,
     pub tls_key_path: Option<String>,
+    /// Custom origins to allow in CORS (for reverse proxy setups)
+    pub origins: Vec<String>,
+    /// Allow unencrypted HTTP connections from non-localhost addresses
+    pub allow_unencrypted: bool,
+    /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
+    pub protocol_header: Option<String>,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.
