@@ -88,6 +88,7 @@ export const useDeviceStore = defineStore('device', () => {
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
     const loggedIn: Ref<boolean> = ref(false)
+    const accessDenied: Ref<boolean> = ref(false)
     const logs: Ref<string> = ref('')
 
     // Getters ---------------------------------------------------------------------------------------------------------
@@ -351,13 +352,8 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
-    async function requestPasswd(retryCount: number = 1): Promise<void> {
-        setTimeout(async () => {
-            // wait until the Onboarding dialog isn't open without blocking:
-            const settingsStore = useSettingsStore()
-            while (settingsStore.showOnboarding) {
-                await sleep(1000)
-            }
+    async function requestPasswd(retryCount: number = 1): Promise<boolean> {
+        return new Promise((resolve) => {
             dialog.open(passwordDialog, {
                 props: {
                     header: t('auth.enterPassword'),
@@ -368,31 +364,36 @@ export const useDeviceStore = defineStore('device', () => {
                 data: {
                     setPasswd: false,
                 },
-                onClose: async (options: any) => {
-                    if (options.data && options.data.passwd) {
-                        const passwdSuccess = await daemonClient.login(options.data.passwd)
-                        if (passwdSuccess) {
+                onClose: (options: any) => {
+                    // Defer async work to allow dialog to fully close and clean up modal mask
+                    setTimeout(async () => {
+                        if (options.data && options.data.passwd) {
+                            const passwdSuccess = await daemonClient.login(options.data.passwd)
+                            if (passwdSuccess) {
+                                loggedIn.value = true
+                                console.info('Login successful')
+                                resolve(true)
+                                return
+                            }
                             toast.add({
-                                severity: 'success',
-                                summary: t('device_store.login.success.summary'),
-                                detail: t('device_store.login.success.detail'),
+                                severity: 'error',
+                                summary: t('device_store.login.failed.summary'),
+                                detail: t('device_store.login.failed.detail'),
                                 life: 3000,
                             })
-                            loggedIn.value = true
-                            console.info('Login successful')
+                            if (retryCount > 2) {
+                                console.info('Login failed')
+                                accessDenied.value = true
+                                resolve(false)
+                                return
+                            }
+                            resolve(await requestPasswd(++retryCount))
                             return
                         }
-                        toast.add({
-                            severity: 'error',
-                            summary: t('device_store.login.failed.summary'),
-                            detail: t('device_store.login.failed.detail'),
-                            life: 3000,
-                        })
-                        if (retryCount > 2) {
-                            return
-                        }
-                        await requestPasswd(++retryCount)
-                    }
+                        // Dialog closed without entering password
+                        accessDenied.value = true
+                        resolve(false)
+                    }, 0)
                 },
             })
         })
@@ -458,7 +459,7 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     // Actions -----------------------------------------------------------------------
-    async function login(): Promise<void> {
+    async function login(): Promise<boolean> {
         const sessionIsValid = await daemonClient.sessionIsValid()
         if (sessionIsValid) {
             loggedIn.value = true
@@ -472,7 +473,7 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
-            return
+            return true
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
@@ -487,9 +488,9 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
-        } else {
-            await requestPasswd()
+            return true
         }
+        return await requestPasswd()
     }
 
     async function setPasswd(): Promise<void> {
@@ -550,12 +551,13 @@ export const useDeviceStore = defineStore('device', () => {
         return await daemonClient.acknowledgeIssues()
     }
 
+    async function handshake(): Promise<boolean> {
+        console.info('Performing Handshake')
+        return await daemonClient.handshake()
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
-        const handshakeSuccessful = await daemonClient.handshake()
-        if (!handshakeSuccessful) {
-            return false
-        }
         const dto = await daemonClient.requestDevices()
         if (dto.devices.length === 0) {
             console.warn('There are no available devices!')
@@ -992,6 +994,7 @@ export const useDeviceStore = defineStore('device', () => {
         getDaemonSslEnabled,
         setDaemonSslEnabled,
         clearDaemonSslEnabled,
+        handshake,
         login,
         logout,
         health,
@@ -1001,6 +1004,7 @@ export const useDeviceStore = defineStore('device', () => {
         setPasswd,
         initializeDevices,
         loggedIn,
+        accessDenied,
         updateStatus,
         updateStatusFromSSE,
         updateLogsFromSSE,

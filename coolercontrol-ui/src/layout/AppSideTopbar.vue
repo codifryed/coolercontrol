@@ -261,6 +261,7 @@ const accessItems = computed(() => [
         command: async () => {
             accessMenuRef.value?.handleClose()
             await deviceStore.logout()
+            deviceStore.reloadUI()
         },
         visible: deviceStore.loggedIn,
     },

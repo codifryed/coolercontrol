@@ -62,13 +62,6 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
-const loading = ElLoading.service({
-    lock: true,
-    text: t('common.loading'),
-    background: svgLoaderBackground,
-    svg: svgLoader,
-    svgViewBox: svgLoaderViewBox,
-})
 const applyCustomTheme = (): void => {
     if (settingsStore.themeMode !== ThemeMode.CUSTOM) return
     if (settingsStore.customTheme.accent) {
@@ -408,8 +401,27 @@ onMounted(async () => {
     }
     document.querySelector('html')?.setAttribute('lang', locale.value)
 
-    initSuccessful.value = await deviceStore.initializeDevices()
-    if (!initSuccessful.value) {
+    // Handshake and login must happen before anything else
+    const handshakeSuccessful = await deviceStore.handshake()
+    if (!handshakeSuccessful) {
+        initSuccessful.value = false
+        return
+    }
+    const loginSuccessful = await deviceStore.login()
+    if (!loginSuccessful) {
+        return
+    }
+    const loading = ElLoading.service({
+        lock: true,
+        text: t('common.loading'),
+        background: svgLoaderBackground,
+        svg: svgLoader,
+        svgViewBox: svgLoaderViewBox,
+    })
+
+    const deviceInitSuccessful = await deviceStore.initializeDevices()
+    if (!deviceInitSuccessful) {
+        initSuccessful.value = false
         loading.close()
         return
     }
@@ -418,7 +430,6 @@ onMounted(async () => {
     await daemonState.init()
     loaded.value = true
     loading.close()
-    await deviceStore.login()
     await deviceStore.loadLogs()
     // Some other dialogs, like the password dialog, will wait until Onboarding has closed
     if (settingsStore.showOnboarding) start()
@@ -593,6 +604,27 @@ onMounted(async () => {
                 :label="t('common.retry')"
                 icon="pi pi-refresh"
                 @click="deviceStore.reloadUI()"
+            />
+        </template>
+    </Dialog>
+    <Dialog
+        class="leading-loose"
+        :visible="deviceStore.accessDenied"
+        :header="t('views.error.accessDenied')"
+        :style="{ width: '30vw' }"
+        :closable="false"
+    >
+        <p>
+            {{ t('views.error.accessDeniedMessage') }}
+        </p>
+        <template #footer>
+            <Button
+                class="outline-none"
+                :label="t('common.retry')"
+                icon="pi pi-refresh"
+                @click="deviceStore.reloadUI()"
+                @keydown.enter="deviceStore.reloadUI()"
+                autofocus
             />
         </template>
     </Dialog>
