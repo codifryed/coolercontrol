@@ -760,6 +760,7 @@ export const useDeviceStore = defineStore('device', () => {
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
             await fetchEventSource(`${daemonClient.daemonHttpURL}sse/status`, {
+                credentials: 'include',
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
@@ -803,6 +804,7 @@ export const useDeviceStore = defineStore('device', () => {
         const daemonState = useDaemonState()
         async function startLogSSE(): Promise<void> {
             await fetchEventSource(`${daemonClient.daemonHttpURL}sse/logs`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const newLog = event.data
@@ -839,6 +841,7 @@ export const useDeviceStore = defineStore('device', () => {
         const settingsStore = useSettingsStore()
         async function startModeSSE(): Promise<void> {
             await fetchEventSource(`${daemonClient.daemonHttpURL}sse/modes`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const modeMessage = plainToInstance(
@@ -874,6 +877,7 @@ export const useDeviceStore = defineStore('device', () => {
         const settingsStore = useSettingsStore()
         async function startAlertSSE(): Promise<void> {
             await fetchEventSource(`${daemonClient.daemonHttpURL}sse/alerts`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const alertMessage = plainToInstance(AlertLog, JSON.parse(event.data) as object)
