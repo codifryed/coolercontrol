@@ -551,6 +551,10 @@ export default {
             selectedPointOffset: '선택된 지점 오프셋 점유',
             profileOutputDuty: '프로파일 출력 점유',
             offsetDuty: '오프셋 점유',
+            points: '포인트',
+            moveTable: '다른 모서리로 이동',
+            addPointAfter: '이후에 포인트 추가',
+            removePoint: '포인트 제거',
         },
         controls: {
             viewType: '보기 유형',

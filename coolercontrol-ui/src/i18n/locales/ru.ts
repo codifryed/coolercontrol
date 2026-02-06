@@ -561,6 +561,10 @@ export default {
             selectedPointOffset: 'Смещение скорости в выбранной точке',
             profileOutputDuty: 'Выходная скорость профиля',
             offsetDuty: 'Скорость смещения',
+            points: 'Точки',
+            moveTable: 'Переместить в другой угол',
+            addPointAfter: 'Добавить точку после',
+            removePoint: 'Удалить точку',
         },
         controls: {
             viewType: 'Тип отображения',

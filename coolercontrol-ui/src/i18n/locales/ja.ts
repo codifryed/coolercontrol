@@ -600,6 +600,10 @@ export default {
             selectedPointOffset: '選択ポイントのオフセットデューティ',
             profileOutputDuty: 'プロファイル出力デューティ',
             offsetDuty: 'オフセットデューティ',
+            points: 'ポイント',
+            moveTable: '他のコーナーに移動',
+            addPointAfter: '後にポイントを追加',
+            removePoint: 'ポイントを削除',
         },
         controls: {
             viewType: 'ビュータイプ',

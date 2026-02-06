@@ -557,6 +557,10 @@ export default {
             selectedPointOffset: 'Selected Point Offset Duty',
             profileOutputDuty: 'Profile Output Duty',
             offsetDuty: 'Offset Duty',
+            points: 'Points',
+            moveTable: 'Move to other corner',
+            addPointAfter: 'Add point after',
+            removePoint: 'Remove point',
         },
         controls: {
             viewType: 'View Type',

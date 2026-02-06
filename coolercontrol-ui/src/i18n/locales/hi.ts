@@ -499,6 +499,10 @@ export default {
             selectedPointOffset: 'चयनित बिंदु ऑफ़सेट कार्यभार',
             profileOutputDuty: 'प्रोफ़ाइल आउटपुट कार्यभार',
             offsetDuty: 'ऑफ़सेट कार्यभार',
+            points: 'बिंदु',
+            moveTable: 'दूसरे कोने में ले जाएं',
+            addPointAfter: 'बाद में बिंदु जोड़ें',
+            removePoint: 'बिंदु हटाएं',
         },
         devices: {
             detectionIssues: 'पहचान समस्याएं? देखें',

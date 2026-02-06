@@ -552,6 +552,10 @@ export default {
             selectedPointOffset: 'قوة إزاحة النقطة المحددة',
             profileOutputDuty: 'قوة خرج ملف التعريف',
             offsetDuty: 'قوة الإزاحة',
+            points: 'النقاط',
+            moveTable: 'نقل إلى الزاوية الأخرى',
+            addPointAfter: 'إضافة نقطة بعد',
+            removePoint: 'إزالة النقطة',
         },
         controls: {
             viewType: 'نوع العرض',

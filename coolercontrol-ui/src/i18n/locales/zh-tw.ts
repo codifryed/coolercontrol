@@ -464,6 +464,10 @@ export default {
             selectedPointOffset: '選取點的偏移轉速',
             profileOutputDuty: '設定檔輸出轉速',
             offsetDuty: '偏移轉速',
+            points: '點',
+            moveTable: '移動到其他角落',
+            addPointAfter: '在後面添加點',
+            removePoint: '刪除點',
         },
         customSensors: {
             newSensor: '新傳感器',
