@@ -88,6 +88,7 @@ export const useDeviceStore = defineStore('device', () => {
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
     const loggedIn: Ref<boolean> = ref(false)
+    const isDefaultPasswd: Ref<boolean> = ref(true)
     const accessDenied: Ref<boolean> = ref(false)
     const logs: Ref<string> = ref('')
 
@@ -378,6 +379,8 @@ export const useDeviceStore = defineStore('device', () => {
                             const passwdSuccess = await daemonClient.login(options.data.passwd)
                             if (passwdSuccess) {
                                 loggedIn.value = true
+                                isDefaultPasswd.value = false
+                                localStorage.setItem('isDefaultPasswd', 'false')
                                 console.info('Login successful')
                                 resolve(true)
                                 return
@@ -470,6 +473,7 @@ export const useDeviceStore = defineStore('device', () => {
         const sessionIsValid = await daemonClient.sessionIsValid()
         if (sessionIsValid) {
             loggedIn.value = true
+            isDefaultPasswd.value = localStorage.getItem('isDefaultPasswd') !== 'false'
             console.info('Login Session still valid')
             // Do not show this message on startup:
             if (appAgeMilli() > showLoginMessageThreshold) {
@@ -485,6 +489,8 @@ export const useDeviceStore = defineStore('device', () => {
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {
             loggedIn.value = true
+            isDefaultPasswd.value = true
+            localStorage.setItem('isDefaultPasswd', 'true')
             console.info('Login successful')
             // Do not show this message on startup:
             if (appAgeMilli() > showLoginMessageThreshold) {
@@ -522,6 +528,8 @@ export const useDeviceStore = defineStore('device', () => {
                             life: 3000,
                         })
                     } else {
+                        isDefaultPasswd.value = false
+                        localStorage.setItem('isDefaultPasswd', 'false')
                         toast.add({
                             severity: 'success',
                             summary: t('device_store.password.set_success.summary'),
@@ -1015,6 +1023,7 @@ export const useDeviceStore = defineStore('device', () => {
         setPasswd,
         initializeDevices,
         loggedIn,
+        isDefaultPasswd,
         accessDenied,
         updateStatus,
         updateStatusFromSSE,
