@@ -130,6 +130,7 @@ export const useSettingsStore = defineStore('settings', () => {
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     })
     const entityColors: Ref<Array<[string, string]>> = ref([])
+    const eyeCandy: Ref<boolean> = ref(false)
     const showOnboarding: Ref<boolean> = ref(true)
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
@@ -228,6 +229,7 @@ export const useSettingsStore = defineStore('settings', () => {
         customTheme.textColor = uiSettings.customTheme.textColor
         customTheme.textColorSecondary = uiSettings.customTheme.textColorSecondary
         entityColors.value = uiSettings.entityColors
+        eyeCandy.value = uiSettings.eyeCandy
         showOnboarding.value = uiSettings.showOnboarding
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
@@ -896,6 +898,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 frequencyPrecision,
                 customTheme,
                 entityColors.value,
+                eyeCandy,
                 showOnboarding,
             ],
             _.debounce(
@@ -949,6 +952,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.customTheme.textColor = customTheme.textColor
                     uiSettings.customTheme.textColorSecondary = customTheme.textColorSecondary
                     uiSettings.entityColors = entityColors.value
+                    uiSettings.eyeCandy = eyeCandy.value
                     uiSettings.showOnboarding = showOnboarding.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
@@ -1185,6 +1189,7 @@ export const useSettingsStore = defineStore('settings', () => {
         frequencyPrecision,
         customTheme,
         entityColors,
+        eyeCandy,
         showOnboarding,
         allDaemonDeviceSettings,
         ccSettings,

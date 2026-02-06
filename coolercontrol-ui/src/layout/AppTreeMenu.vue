@@ -1305,6 +1305,12 @@ onUnmounted(() => {
                                 :class="{
                                     'text-accent': childItem.isActive,
                                     'text-error': childItem.alertIsActive,
+                                    'animate-spin-slow':
+                                        settingsStore.eyeCandy &&
+                                        childItem.icon === mdiFan &&
+                                        (childItem.rpm != null
+                                            ? childItem.rpm > 0
+                                            : (childItem.duty ?? 0) > 0),
                                 }"
                                 type="mdi"
                                 :path="childItem.icon ?? ''"
@@ -1910,6 +1916,12 @@ onUnmounted(() => {
                                     :class="{
                                         'text-accent': childItem.isActive,
                                         'text-error': childItem.alertIsActive,
+                                        'animate-spin-slow':
+                                            settingsStore.eyeCandy &&
+                                            childItem.icon === mdiFan &&
+                                            (childItem.rpm != null
+                                                ? childItem.rpm > 0
+                                                : (childItem.duty ?? 0) > 0),
                                     }"
                                     type="mdi"
                                     :path="childItem.icon ?? ''"

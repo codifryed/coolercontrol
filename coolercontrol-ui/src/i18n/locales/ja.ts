@@ -175,6 +175,7 @@ export default {
             fullScreen: '全画面表示',
             menuBarAlwaysVisible: 'メニューバーを常に表示',
             hideMenuCollapseIcon: 'メニュー折りたたみアイコンを非表示',
+            eyeCandy: '視覚効果',
             showOnboarding: '起動時にオンボーディングツアーを表示',
             introduction: '紹介',
             startTour: 'ツアーを開始',
@@ -236,6 +237,8 @@ export default {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',
                 frequencyPrecision: '表示される周波数値の精度を調整します。',
+                eyeCandy:
+                    '回転するファンアイコンなどのビジュアルアニメーションを有効にします。\nこれにより追加のGPUリソースが使用されます。',
                 sidebarCollapse:
                     'サイドバーにメニュー折りたたみアイコンを表示するか、\n空のサイドバー領域を使用してメインメニューを展開または折りたたむかどうか。',
                 entitiesBelowSensors:

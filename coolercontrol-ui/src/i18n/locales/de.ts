@@ -179,6 +179,7 @@ export default {
             fullScreen: 'Vollbild',
             menuBarAlwaysVisible: 'Menüleiste immer sichtbar',
             hideMenuCollapseIcon: 'Menü-Einklapp-Symbol ausblenden',
+            eyeCandy: 'Augenschmaus',
             showOnboarding: 'Einführungstour beim Start anzeigen',
             introduction: 'Einführung',
             startTour: 'Tour starten',
@@ -229,6 +230,8 @@ export default {
                 timeFormat: 'Zeitformat: 12-Stunden (AM/PM) oder 24-Stunden',
                 frequencyPrecision:
                     'Stellen Sie die Genauigkeit der angezeigten Frequenzwerte ein.',
+                eyeCandy:
+                    'Visuelle Animationen wie drehende Lüftersymbole aktivieren.\nDies beansprucht zusätzliche GPU-Ressourcen.',
                 sidebarCollapse:
                     'Ob ein Menü-Einklapp-Symbol in der Seitenleiste angezeigt werden soll,\noder der leere Bereich der Seitenleiste genutzt wird, um das Hauptmenü zu erweitern oder einzuklappen.',
                 entitiesBelowSensors:

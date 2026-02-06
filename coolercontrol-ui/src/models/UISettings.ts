@@ -55,6 +55,7 @@ export class UISettingsDTO {
         textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
     entityColors: Array<[string, string]> = []
+    eyeCandy: boolean = false
     showOnboarding: boolean = true
 }
 

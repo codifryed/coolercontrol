@@ -571,6 +571,18 @@ onUnmounted(() => {
                                         />
                                     </td>
                                 </tr>
+                                <tr v-tooltip.right="t('layout.settings.tooltips.eyeCandy')">
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        {{ t('layout.settings.eyeCandy') }}
+                                    </td>
+                                    <td
+                                        class="py-4 px-2 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch v-model="settingsStore.eyeCandy" size="large" />
+                                    </td>
+                                </tr>
                                 <tr v-tooltip.right="t('layout.settings.tooltips.fullScreen')">
                                     <td
                                         class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"

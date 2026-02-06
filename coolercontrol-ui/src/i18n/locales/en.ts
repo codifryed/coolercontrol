@@ -175,6 +175,7 @@ export default {
             fullScreen: 'Full Screen',
             menuBarAlwaysVisible: 'Menu Bar Always Visible',
             hideMenuCollapseIcon: 'Hide Menu Collapse Icon',
+            eyeCandy: 'Eye Candy',
             showOnboarding: 'Show Onboarding Tour on Startup',
             introduction: 'Introduction',
             startTour: 'Start Tour',
@@ -224,6 +225,8 @@ export default {
                 introduction: 'Start the application introduction tour.',
                 timeFormat: 'Time format: 12-hour (AM/PM) or 24-hour',
                 frequencyPrecision: 'Adjust the precision of displayed frequency values.',
+                eyeCandy:
+                    'Enable visual animations like spinning fan icons.\nThis will use some additional GPU resources.',
                 sidebarCollapse:
                     'Whether to display a Menu Collapse Icon in the Sidebar,\nor use the empty sidebar area to expand or collapse the main menu.',
                 entitiesBelowSensors:

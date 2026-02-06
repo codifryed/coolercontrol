@@ -173,6 +173,7 @@ export default {
             fullScreen: '全屏',
             menuBarAlwaysVisible: '選單欄始終可見',
             hideMenuCollapseIcon: '隱藏選單折疊圖標',
+            eyeCandy: '視覺效果',
             showOnboarding: '啟動時顯示引導教程',
             introduction: '引導教程',
             startTour: '開始教程',
@@ -222,6 +223,7 @@ export default {
                 introduction: '開始應用程式介紹導覽。',
                 timeFormat: '時間格式：12小時（AM/PM）或24小時',
                 frequencyPrecision: '調整顯示頻率值的精確度。',
+                eyeCandy: '啟用視覺動畫，例如旋轉的風扇圖示。\n這將使用一些額外的 GPU 資源。',
                 sidebarCollapse:
                     '是否在側邊欄顯示選單摺疊圖示，\n或使用空白側邊欄區域來展開或摺疊主選單。',
                 entitiesBelowSensors: '是否在主選單中顯示裝置感測器下的實體。',
