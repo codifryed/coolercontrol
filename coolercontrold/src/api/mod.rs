@@ -1169,4 +1169,74 @@ mod tests {
         assert!(is_origin_allowed("http://192.168.1.1:8080", &hosts, &exact));
         assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
     }
+
+    // validate_name_string tests
+    #[test]
+    fn test_validate_name_valid() {
+        assert!(validate_name_string("My Profile").is_ok());
+        assert!(validate_name_string("profile-1").is_ok());
+        assert!(validate_name_string("Test_Name_123").is_ok());
+        assert!(validate_name_string("a").is_ok());
+        assert!(validate_name_string(&"a".repeat(50)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_empty() {
+        let result = validate_name_string("");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(CCError::UserError { .. })));
+    }
+
+    #[test]
+    fn test_validate_name_too_long() {
+        let result = validate_name_string(&"a".repeat(51));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_tab() {
+        assert!(validate_name_string("name\twith\ttabs").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_newline() {
+        assert!(validate_name_string("name\nwith\nnewlines").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_carriage_return() {
+        assert!(validate_name_string("name\rwith\rreturns").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_null() {
+        assert!(validate_name_string("name\0with\0nulls").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_vertical_tab() {
+        assert!(validate_name_string("name\x0Bwith\x0Bvtabs").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_form_feed() {
+        assert!(validate_name_string("name\x0Cwith\x0Cfeeds").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_escape() {
+        assert!(validate_name_string("name\x1Bwith\x1Besc").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_delete() {
+        assert!(validate_name_string("name\x7Fwith\x7Fdel").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_allows_unicode() {
+        assert!(validate_name_string("Ünïcödé Nàmé").is_ok());
+        assert!(validate_name_string("日本語").is_ok());
+        assert!(validate_name_string("émojis 🎉").is_ok());
+    }
 }
