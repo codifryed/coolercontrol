@@ -353,6 +353,13 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     async function requestPasswd(retryCount: number = 1): Promise<boolean> {
+        const thisStore = useDeviceStore()
+        if (thisStore.isQtApp()) {
+            // The desktop app window should be shown if login fails
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
+        }
         return new Promise((resolve) => {
             dialog.open(passwordDialog, {
                 props: {
