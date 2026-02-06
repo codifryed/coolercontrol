@@ -395,13 +395,13 @@ void MainWindow::handleStartInTray() {
         Qt::SingleShotConnection);
   } else {
     show();
-      connect(
-          m_ipc, &IPC::webLoadFinished, this,
-          [this]() {
-            m_webLoadFinished = true;
-            qInfo() << "Initialized open window.";
-          },
-          Qt::SingleShotConnection);
+    connect(
+        m_ipc, &IPC::webLoadFinished, this,
+        [this]() {
+          m_webLoadFinished = true;
+          qInfo() << "Initialized open window.";
+        },
+        Qt::SingleShotConnection);
   }
 }
 
@@ -735,10 +735,10 @@ void MainWindow::tryDaemonConnection() {
     if (status == 401) {
       qDebug() << "Daemon connection returned 401 - waiting for authentication...";
       setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
-        if (!m_loginWindowShown) {
-            showNormal();  // show window once, if we have login credentials error
-            m_loginWindowShown = true;
-        }
+      if (!m_loginWindowShown) {
+        showNormal();  // show window once, if we have login credentials error
+        m_loginWindowShown = true;
+      }
       healthReply->deleteLater();
       return;
     }
