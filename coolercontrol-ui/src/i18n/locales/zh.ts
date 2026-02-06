@@ -173,6 +173,7 @@ export default {
             fullScreen: '全屏',
             menuBarAlwaysVisible: '菜单栏始终可见',
             hideMenuCollapseIcon: '隐藏菜单折叠图标',
+            eyeCandy: '视觉效果',
             showOnboarding: '启动时显示引导教程',
             introduction: '引导教程',
             startTour: '开始教程',
@@ -222,6 +223,7 @@ export default {
                 introduction: '启动应用程序引导教程。',
                 timeFormat: '时间格式：12小时制（上午/下午）或24小时制',
                 frequencyPrecision: '调整显示的频率值精度。',
+                eyeCandy: '启用视觉动画，例如旋转的风扇图标。\n这将使用一些额外的 GPU 资源。',
                 sidebarCollapse:
                     '是否在侧边栏中显示菜单折叠图标，\n或使用空侧边栏区域展开或折叠主菜单。',
                 entitiesBelowSensors: '是否在主菜单中的设备传感器下方显示实体。',

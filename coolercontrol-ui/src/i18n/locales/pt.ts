@@ -177,6 +177,7 @@ export default {
             fullScreen: 'Tela cheia',
             menuBarAlwaysVisible: 'Barra de menu sempre visível',
             hideMenuCollapseIcon: 'Ocultar ícone de recolher menu',
+            eyeCandy: 'Efeitos visuais',
             showOnboarding: 'Mostrar tour de introdução ao iniciar',
             introduction: 'Introdução',
             startTour: 'Iniciar tour',
@@ -290,6 +291,8 @@ export default {
         introduction: 'Iniciar o tour de introdução do aplicativo.',
         timeFormat: 'Formato de hora: 12 horas (AM/PM) ou 24 horas',
         frequencyPrecision: 'Ajustar a precisão dos valores de frequência exibidos.',
+        eyeCandy:
+            'Ativar animações visuais como ícones de ventoinhas girando.\nIsto utilizará alguns recursos adicionais da GPU.',
         sidebarCollapse:
             'Se deve exibir um ícone de colapso do menu na barra lateral,\nou usar a área vazia da barra lateral para expandir ou colapsar o menu principal.',
         entitiesBelowSensors:

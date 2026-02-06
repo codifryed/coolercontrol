@@ -178,6 +178,7 @@ export default {
             fullScreen: 'Plein écran',
             menuBarAlwaysVisible: 'Barre de menu toujours visible',
             hideMenuCollapseIcon: "Masquer l'icône de réduction du menu",
+            eyeCandy: 'Effets visuels',
             showOnboarding: 'Afficher le guide au démarrage',
             introduction: 'Introduction',
             startTour: 'Démarrer la visite',
@@ -232,6 +233,8 @@ export default {
                 introduction: "Commencer le tour d'introduction de l'application.",
                 timeFormat: "Format de l'heure : 12 heures (AM/PM) ou 24 heures",
                 frequencyPrecision: 'Ajuster la précision des valeurs de fréquence affichées.',
+                eyeCandy:
+                    'Activer les animations visuelles comme les icônes de ventilateurs en rotation.\nCela utilisera des ressources GPU supplémentaires.',
                 sidebarCollapse:
                     'Afficher ou non une icône de réduction du menu dans la barre latérale,\nou utiliser la zone vide de la barre latérale pour étendre ou réduire le menu principal.',
                 entitiesBelowSensors:

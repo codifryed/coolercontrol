@@ -1305,6 +1305,22 @@ onUnmounted(() => {
                                 :class="{
                                     'text-accent': childItem.isActive,
                                     'text-error': childItem.alertIsActive,
+                                    'animate-spin-slow':
+                                        settingsStore.eyeCandy &&
+                                        childItem.icon === mdiFan &&
+                                        (childItem.rpm != null
+                                            ? Number(
+                                                  deviceChannelValues(
+                                                      childItem.deviceUID,
+                                                      childItem.name,
+                                                  )?.rpm ?? 0,
+                                              ) > 0
+                                            : Number(
+                                                  deviceChannelValues(
+                                                      childItem.deviceUID,
+                                                      childItem.name,
+                                                  )?.duty ?? 0,
+                                              ) > 0),
                                 }"
                                 type="mdi"
                                 :path="childItem.icon ?? ''"
@@ -1910,6 +1926,22 @@ onUnmounted(() => {
                                     :class="{
                                         'text-accent': childItem.isActive,
                                         'text-error': childItem.alertIsActive,
+                                        'animate-spin-slow':
+                                            settingsStore.eyeCandy &&
+                                            childItem.icon === mdiFan &&
+                                            (childItem.rpm != null
+                                                ? Number(
+                                                      deviceChannelValues(
+                                                          childItem.deviceUID,
+                                                          childItem.name,
+                                                      )?.rpm ?? 0,
+                                                  ) > 0
+                                                : Number(
+                                                      deviceChannelValues(
+                                                          childItem.deviceUID,
+                                                          childItem.name,
+                                                      )?.duty ?? 0,
+                                                  ) > 0),
                                     }"
                                     type="mdi"
                                     :path="childItem.icon ?? ''"

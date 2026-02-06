@@ -176,6 +176,7 @@ export default {
             fullScreen: '전체 화면',
             menuBarAlwaysVisible: '메뉴 표시줄 항상 보이기',
             hideMenuCollapseIcon: '메뉴 접기 아이콘 숨기기',
+            eyeCandy: '시각 효과',
             showOnboarding: '시작 시 온보딩 투어 표시',
             introduction: '소개',
             startTour: '투어 시작',
@@ -225,6 +226,8 @@ export default {
                 introduction: '애플리케이션 소개 투어를 시작합니다.',
                 timeFormat: '시간 형식: 12시간 (AM/PM) 또는 24시간',
                 frequencyPrecision: '표시되는 주파수 값의 정밀도를 조정하세요.',
+                eyeCandy:
+                    '회전하는 팬 아이콘과 같은 시각적 애니메이션을 활성화합니다.\n이 기능은 추가적인 GPU 리소스를 사용합니다.',
                 sidebarCollapse:
                     '사이드바에 메뉴 접기 아이콘을 표시할지,\n또는 빈 사이드바 영역을 활용하여 메인 메뉴를 펼치거나 접을지 결정합니다.',
                 entitiesBelowSensors: '메인 메뉴에서 장치 센서 아래에 개체를 표시할지 여부.',
