@@ -676,7 +676,7 @@ void MainWindow::watchConnectionAndLogs() const {
   QNetworkRequest sseLogsRequest;
   sseLogsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                               QNetworkRequest::AlwaysNetwork);
-  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data(), true));
+  sseLogsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_LOGS.data(), false));
   const auto sseLogsReply = m_manager->get(sseLogsRequest);
   connect(sseLogsReply, &QNetworkReply::sslErrors, sseLogsReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));
@@ -784,7 +784,7 @@ void MainWindow::watchModeActivation() const {
   QNetworkRequest sseModesRequest;
   sseModesRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                                QNetworkRequest::AlwaysNetwork);
-  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data(), true));
+  sseModesRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_MODES.data(), false));
   const auto sseModesReply = m_manager->get(sseModesRequest);
   connect(sseModesReply, &QNetworkReply::sslErrors, sseModesReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));
@@ -825,7 +825,7 @@ void MainWindow::watchAlerts() const {
   QNetworkRequest alertsRequest;
   alertsRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                              QNetworkRequest::AlwaysNetwork);
-  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data(), true));
+  alertsRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_ALERTS.data(), false));
   const auto alertsReply = m_manager->get(alertsRequest);
   connect(alertsReply, &QNetworkReply::sslErrors, alertsReply,
           qOverload<>(&QNetworkReply::ignoreSslErrors));
