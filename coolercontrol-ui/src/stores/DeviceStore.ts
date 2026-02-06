@@ -776,6 +776,13 @@ export const useDeviceStore = defineStore('device', () => {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
             await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
                 credentials: 'include',
+                async onopen(response) {
+                    if (response.ok) return
+                    if (response.status === 401) {
+                        throw new Error('Unauthorized')
+                    }
+                    throw new Error(`SSE status error: ${response.status}`)
+                },
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
@@ -804,6 +811,12 @@ export const useDeviceStore = defineStore('device', () => {
                         console.warn('Chrome Network error. Retrying...')
                         chromeNetworkErrorCount++
                         return
+                    }
+                    if (err.message === 'Unauthorized') {
+                        console.warn('SSE status returned 401 - reloading for re-authentication.')
+                        thisStore.loggedIn = false
+                        daemonState.setConnected(true) // triggers UI reload for login
+                        throw err // stop retries
                     }
                     daemonState.setConnected(false)
                     thisStore.loggedIn = false
