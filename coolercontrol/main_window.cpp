@@ -275,13 +275,14 @@ void MainWindow::initWebUI() {
 }
 
 void MainWindow::forceQuit() {
+  qDebug() << "Force Quit Triggered";
   m_forceQuit = true;
   // Triggers the close event but with the forceQuit flag set
   close();
 }
 
 void MainWindow::forceRefresh() const {
-  qInfo() << "Forced UI refresh.";
+  qInfo() << "Forced UI refresh";
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
   connect(
       m_profile, &QWebEngineProfile::clearHttpCacheCompleted, this,
@@ -300,7 +301,7 @@ void MainWindow::forceRefresh() const {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-  if (m_startup && !m_uiLoadingStopped) {
+  if (!m_forceQuit && m_startup && !m_uiLoadingStopped && !m_webLoadFinished) {
     // Killing the app during initialization can cause a crash
     event->ignore();
     return;
@@ -325,7 +326,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 }
 
 void MainWindow::hideEvent(QHideEvent* event) {
-  if (m_startup) {
+  if (m_startup && !m_webLoadFinished) {
     // opening/closing the window during initialization can cause issues.
     event->ignore();
     return;
@@ -386,6 +387,7 @@ void MainWindow::handleStartInTray() {
         m_ipc, &IPC::webLoadFinished, this,
         [this]() {
           delay(300);  // small pause to let web engine breath before suspending.
+          m_webLoadFinished = true;
           hide();
           setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
           qInfo() << "Initialized closed to system tray.";
@@ -393,6 +395,13 @@ void MainWindow::handleStartInTray() {
         Qt::SingleShotConnection);
   } else {
     show();
+      connect(
+          m_ipc, &IPC::webLoadFinished, this,
+          [this]() {
+            m_webLoadFinished = true;
+            qInfo() << "Initialized open window.";
+          },
+          Qt::SingleShotConnection);
   }
 }
 
@@ -495,6 +504,11 @@ void MainWindow::requestDaemonErrors() const {
           qOverload<>(&QNetworkReply::ignoreSslErrors));
   connect(healthReply, &QNetworkReply::readyRead, [healthReply, this]() {
     const auto status = healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status == 401) {
+      qDebug() << "Health endpoint returned 401 - not yet authenticated.";
+      healthReply->deleteLater();
+      return;
+    }
     const QString replyText = healthReply->readAll();
     qDebug() << "Health Endpoint Response Status: " << status << "; Body: " << replyText;
     const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
@@ -684,6 +698,11 @@ void MainWindow::watchConnectionAndLogs() const {
   connect(sseLogsReply, &QNetworkReply::finished, [this, sseLogsReply]() {
     const auto status = sseLogsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Log Watch SSE closed with status: " << status;
+    if (status == 401) {
+      qDebug() << "Log Watch SSE returned 401 - will retry after re-authentication.";
+      sseLogsReply->deleteLater();
+      return;
+    }
     // on error or dropped connection will be re-connected once connection is re-established.
     if (!m_forceQuit && !m_changeAddress) {
       notifyDaemonDisconnected();
@@ -703,7 +722,7 @@ void MainWindow::reestablishDaemonConnection() const {
   m_retryTimer->start();
 }
 
-void MainWindow::tryDaemonConnection() const {
+void MainWindow::tryDaemonConnection() {
   QNetworkRequest healthRequest;
   healthRequest.setTransferTimeout(DEFAULT_CONNECTION_TIMEOUT_MS);
   healthRequest.setUrl(getEndpointUrl(ENDPOINT_HEALTH.data()));
@@ -712,6 +731,17 @@ void MainWindow::tryDaemonConnection() const {
           qOverload<>(&QNetworkReply::ignoreSslErrors));
   qDebug() << "Attempting to establish connection to the daemon...";
   connect(healthReply, &QNetworkReply::readyRead, [this, healthReply]() {
+    const auto status = healthReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status == 401) {
+      qDebug() << "Daemon connection returned 401 - waiting for authentication...";
+      setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
+        if (!m_loginWindowShown) {
+            showNormal();  // show window once, if we have login credentials error
+            m_loginWindowShown = true;
+        }
+      healthReply->deleteLater();
+      return;
+    }
     m_retryTimer->stop();
     if (m_startup) {
       requestDaemonErrors();

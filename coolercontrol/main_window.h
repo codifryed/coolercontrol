@@ -53,7 +53,7 @@ class MainWindow final : public QMainWindow {
 
   void reestablishDaemonConnection() const;
 
-  void tryDaemonConnection() const;
+  void tryDaemonConnection();
 
   void startWatchingSSE() const;
 
@@ -106,6 +106,8 @@ class MainWindow final : public QMainWindow {
   QTimer* m_retryTimer;
   mutable bool m_forceQuit{false};
   mutable bool m_startup{true};
+  mutable bool m_webLoadFinished{false};
+  mutable bool m_loginWindowShown{false};
   mutable bool m_uiLoadingStopped{false};
   mutable bool m_changeAddress{false};
   mutable bool m_daemonHasErrors{false};
