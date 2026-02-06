@@ -766,7 +766,7 @@ export const useDeviceStore = defineStore('device', () => {
         const daemonState = useDaemonState()
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/status`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
                 credentials: 'include',
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
@@ -810,7 +810,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateLogsFromSSE(): Promise<void> {
         const daemonState = useDaemonState()
         async function startLogSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/logs`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
                 credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
@@ -847,7 +847,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateActiveModeFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startModeSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/modes`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
                 credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
@@ -883,7 +883,7 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateAlertsFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startAlertSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/alerts`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/alerts`, {
                 credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
