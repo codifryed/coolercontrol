@@ -132,6 +132,8 @@ psutil = { version = "5.4.0", default-features = false, features = [
 nu-glob = "=0.107"
 nvml-wrapper = "0.11.0"
 sha2 = "0.10.9"
+argon2 = "0.5"
+subtle = "2.6"
 toml_edit = "0.23.7"
 nix = { version = "0.30.1", default-features = false, features = [
   "user",
