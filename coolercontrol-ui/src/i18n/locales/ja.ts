@@ -1013,6 +1013,9 @@ export default {
                 summary: 'ログイン失敗',
                 detail: '無効なパスワード',
             },
+            rate_limited: {
+                summary: 'ログインが一時的にブロックされています',
+            },
         },
         logout: {
             summary: 'ログアウト',

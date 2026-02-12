@@ -366,7 +366,7 @@ export const useDeviceStore = defineStore('device', () => {
                 props: {
                     header: t('auth.enterPassword'),
                     position: 'center',
-                    modal: true,
+                    modal: false,
                     dismissableMask: false,
                 },
                 data: {
@@ -376,13 +376,24 @@ export const useDeviceStore = defineStore('device', () => {
                     // Defer async work to allow dialog to fully close and clean up modal mask
                     setTimeout(async () => {
                         if (options.data && options.data.passwd) {
-                            const passwdSuccess = await daemonClient.login(options.data.passwd)
-                            if (passwdSuccess) {
+                            const loginResult = await daemonClient.login(options.data.passwd)
+                            if (loginResult === true) {
                                 loggedIn.value = true
                                 isDefaultPasswd.value = false
                                 localStorage.setItem('isDefaultPasswd', 'false')
                                 console.info('Login successful')
                                 resolve(true)
+                                return
+                            }
+                            if (loginResult.status === 429) {
+                                toast.add({
+                                    severity: 'warn',
+                                    summary: t('device_store.login.rate_limited.summary'),
+                                    detail: loginResult.error,
+                                    life: 30000,
+                                })
+                                accessDenied.value = true
+                                resolve(false)
                                 return
                             }
                             toast.add({
@@ -486,8 +497,8 @@ export const useDeviceStore = defineStore('device', () => {
             }
             return true
         }
-        const defaultLoginSuccessful = await daemonClient.login()
-        if (defaultLoginSuccessful) {
+        const defaultLoginResult = await daemonClient.login()
+        if (defaultLoginResult === true) {
             loggedIn.value = true
             isDefaultPasswd.value = true
             localStorage.setItem('isDefaultPasswd', 'true')
@@ -502,6 +513,16 @@ export const useDeviceStore = defineStore('device', () => {
                 })
             }
             return true
+        }
+        if (defaultLoginResult.status === 429) {
+            toast.add({
+                severity: 'warn',
+                summary: t('device_store.login.rate_limited.summary'),
+                detail: defaultLoginResult.error,
+                life: 8000,
+            })
+            accessDenied.value = true
+            return false
         }
         return await requestPasswd()
     }

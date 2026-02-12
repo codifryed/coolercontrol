@@ -842,6 +842,9 @@ pub enum CCError {
 
     #[display("{msg}")]
     InsufficientScope { msg: String },
+
+    #[display("{msg}")]
+    TooManyAttempts { msg: String },
 }
 
 impl IntoResponse for CCError {
@@ -878,6 +881,11 @@ impl IntoResponse for CCError {
                 let err_msg = self.to_string();
                 warn!("{err_msg}");
                 (StatusCode::FORBIDDEN, err_msg)
+            }
+            CCError::TooManyAttempts { .. } => {
+                let err_msg = self.to_string();
+                debug!("{err_msg}");
+                (StatusCode::TOO_MANY_REQUESTS, err_msg)
             }
         };
 
@@ -970,6 +978,14 @@ impl OperationOutput for CCError {
                     Some(500),
                     aide::openapi::Response {
                         description: "An internal error has occurred.".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(429),
+                    aide::openapi::Response {
+                        description: "Too Many Requests. Login attempts have been rate limited."
+                            .to_owned(),
                         ..res.clone()
                     },
                 ),

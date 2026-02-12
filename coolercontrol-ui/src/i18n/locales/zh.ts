@@ -983,6 +983,9 @@ export default {
                 summary: '登录失败',
                 detail: '密码无效',
             },
+            rate_limited: {
+                summary: '登录暂时被阻止',
+            },
         },
         logout: {
             summary: '退出登录',

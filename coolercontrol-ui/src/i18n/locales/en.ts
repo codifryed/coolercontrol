@@ -1007,6 +1007,9 @@ export default {
                 summary: 'Login Failed',
                 detail: 'Invalid Password',
             },
+            rate_limited: {
+                summary: 'Login Temporarily Blocked',
+            },
         },
         logout: {
             summary: 'Logout',

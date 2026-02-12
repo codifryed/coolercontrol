@@ -1029,6 +1029,9 @@ export default {
                 summary: 'Anmeldung fehlgeschlagen',
                 detail: 'Ungültiges Passwort',
             },
+            rate_limited: {
+                summary: 'Anmeldung vorübergehend gesperrt',
+            },
         },
         logout: {
             summary: 'Abmeldung',

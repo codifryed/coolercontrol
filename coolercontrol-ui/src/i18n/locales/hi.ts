@@ -1009,6 +1009,9 @@ export default {
                 summary: 'लॉगिन विफल',
                 detail: 'अमान्य पासवर्ड',
             },
+            rate_limited: {
+                summary: 'लॉगिन अस्थायी रूप से अवरुद्ध',
+            },
         },
         logout: {
             summary: 'लॉगआउट',

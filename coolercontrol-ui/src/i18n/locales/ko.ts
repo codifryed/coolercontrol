@@ -999,6 +999,9 @@ export default {
                 summary: '로그인 실패함',
                 detail: '잘못된 비밀번호',
             },
+            rate_limited: {
+                summary: '로그인 일시적으로 차단됨',
+            },
         },
         logout: {
             summary: '로그아웃',

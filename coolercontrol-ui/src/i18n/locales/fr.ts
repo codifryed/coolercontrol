@@ -1033,6 +1033,9 @@ export default {
                 summary: 'Échec de Connexion',
                 detail: 'Mot de Passe Invalide',
             },
+            rate_limited: {
+                summary: 'Connexion Temporairement Bloquée',
+            },
         },
         logout: {
             summary: 'Déconnexion',

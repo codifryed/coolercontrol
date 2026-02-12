@@ -17,5 +17,7 @@
  */
 
 export class ErrorResponse {
+    status?: number
+
     constructor(readonly error: string) {}
 }

@@ -212,7 +212,7 @@ export default class DaemonClient {
         }
     }
 
-    async login(passwd: string | undefined = undefined): Promise<boolean> {
+    async login(passwd: string | undefined = undefined): Promise<true | ErrorResponse> {
         if (passwd == null || passwd.length === 0) {
             passwd = this.defaultPasswd
         }
@@ -236,7 +236,12 @@ export default class DaemonClient {
             return true
         } catch (err: any) {
             this.logError(err)
-            return false
+            if (err.response) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
         }
     }
 

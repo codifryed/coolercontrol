@@ -1018,6 +1018,9 @@ export default {
                 summary: 'Inicio de Sesión Fallido',
                 detail: 'Contraseña Inválida',
             },
+            rate_limited: {
+                summary: 'Inicio de Sesión Temporalmente Bloqueado',
+            },
         },
         logout: {
             summary: 'Cierre de Sesión',

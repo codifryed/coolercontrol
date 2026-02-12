@@ -1010,6 +1010,9 @@ export default {
                 summary: 'Ошибка входа',
                 detail: 'Неверный пароль',
             },
+            rate_limited: {
+                summary: 'Вход временно заблокирован',
+            },
         },
         logout: {
             summary: 'Выход',

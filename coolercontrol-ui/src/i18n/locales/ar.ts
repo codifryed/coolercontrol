@@ -992,6 +992,9 @@ export default {
                 summary: 'فشل تسجيل الدخول',
                 detail: 'كلمة مرور غير صالحة',
             },
+            rate_limited: {
+                summary: 'تسجيل الدخول محظور مؤقتًا',
+            },
         },
         logout: {
             summary: 'تسجيل الخروج',

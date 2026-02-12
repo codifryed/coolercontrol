@@ -1049,6 +1049,9 @@ export default {
                 summary: 'Falha no Login',
                 detail: 'Senha Inválida',
             },
+            rate_limited: {
+                summary: 'Login Temporariamente Bloqueado',
+            },
         },
         logout: {
             summary: 'Logout',

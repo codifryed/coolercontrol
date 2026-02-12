@@ -981,6 +981,9 @@ export default {
                 summary: '登錄失敗',
                 detail: '密碼無效',
             },
+            rate_limited: {
+                summary: '登錄暫時被阻止',
+            },
         },
         logout: {
             summary: '退出登錄',
