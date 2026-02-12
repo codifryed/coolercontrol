@@ -16,7 +16,7 @@
         "@jamescoyle/vue-icon": "^0.1.2",
         "@mdi/js": "^7.4.47",
         "@microsoft/fetch-event-source": "^2.0.1",
-        "axios": "^1.13.2",
+        "axios": "^1.13.5",
         "axios-retry": "^4.5.0",
         "class-transformer": "^0.5.1",
         "d3-scale": "^4.0.2",
