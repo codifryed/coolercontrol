@@ -26,7 +26,7 @@ use aide::axum::ApiRouter;
 // Note: using `#[debug_handler]` on the handler functions themselves is sometimes very helpful.
 
 pub fn init(app_state: AppState) -> ApiRouter {
-    base_routes()
+    let router = base_routes()
         .merge(auth_routes())
         .merge(device_routes())
         .merge(status_routes())
@@ -37,8 +37,12 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(settings_routes())
         .merge(plugins_routes())
         .merge(alert_routes())
-        .merge(sse_routes())
-        .route("/api.json", get(base::serve_api_doc))
+        .merge(sse_routes());
+    // Only add API doc route for debug builds (safer for production)
+    #[cfg(debug_assertions)]
+    let router = router.route("/api.json", get(base::serve_api_doc));
+
+    router
         .fallback_service(base::web_app_service())
         .with_state(app_state)
 }
