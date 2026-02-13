@@ -257,8 +257,7 @@ impl LcdCommander {
                     status
                         .temps
                         .iter()
-                        .filter(|temp_status| temp_status.name == setting_temp_source.temp_name)
-                        .next_back()
+                        .rfind(|temp_status| temp_status.name == setting_temp_source.temp_name)
                 })
                 .map(|temp_status|
                     // rounded to nearest 10th degree to avoid updating on minuscule degree changes
@@ -350,7 +349,7 @@ impl LcdCommander {
             metadata.image_template = image_template;
             metadata.is_first_application = false;
         }
-        let device_type = self.all_devices[&device_uid].borrow().d_type.clone();
+        let device_type = self.all_devices[&device_uid].borrow().d_type;
         trace!("Time to generate LCD image: {:?}", start.elapsed());
         debug!("Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}");
         if let Some(repo) = self.repos.get(&device_type) {
@@ -705,7 +704,7 @@ impl LcdCommander {
                     colors: Vec::new(),
                     temp_source: None,
                 };
-                let device_type = self.all_devices[device_uid].borrow().d_type.clone();
+                let device_type = self.all_devices[device_uid].borrow().d_type;
                 debug!("Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}");
                 let device_uid = device_uid.to_owned();
                 let channel_name = channel_name.to_owned();

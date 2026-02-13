@@ -243,7 +243,7 @@ impl GraphProfileCommander {
         let (device_type, device_name) = {
             // this will block if reference is held, thus clone()
             let device_lock = self.all_devices[device_uid].borrow();
-            (device_lock.d_type.clone(), device_lock.name.clone())
+            (device_lock.d_type, device_lock.name.clone())
         };
         debug!(
             "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \

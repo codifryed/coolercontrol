@@ -300,12 +300,10 @@ impl From<ChannelStatus> for models::v1::Status {
                 duty: value.duty,
                 rpm: value.rpm,
             }))
-        } else if value.watts.is_some() {
-            Some(models::v1::status::Metric::Watts(value.watts.unwrap()))
-        } else if value.freq.is_some() {
-            Some(models::v1::status::Metric::Mhz(value.freq.unwrap()))
+        } else if let Some(watts) = value.watts {
+            Some(models::v1::status::Metric::Watts(watts))
         } else {
-            None
+            value.freq.map(models::v1::status::Metric::Mhz)
         };
         Self {
             id: value.name,
