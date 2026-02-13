@@ -21,10 +21,13 @@ use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::{anyhow, Context, Result};
 use log::info;
 use rcgen::{CertificateParams, CertifiedKey, DistinguishedName, DnType, KeyPair};
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 const DEFAULT_CERT_FILE: &str = "coolercontrol.crt";
 const DEFAULT_KEY_FILE: &str = "coolercontrol.key";
+const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 pub fn default_cert_path() -> String {
     format!("{DEFAULT_CONFIG_DIR}/{DEFAULT_CERT_FILE}")
@@ -62,6 +65,14 @@ pub async fn ensure_certificates(
     cc_fs::write_string(&key_path, signing_key.serialize_pem())
         .await
         .with_context(|| format!("Writing TLS private key to {}", key_path.display()))?;
+    cc_fs::set_permissions(&key_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).with_context(
+        || {
+            format!(
+                "Setting permissions on TLS private key {}",
+                key_path.display()
+            )
+        },
+    )?;
 
     info!(
         "Generated self-signed TLS certificate: {}",
@@ -124,5 +135,8 @@ mod tests {
 
         assert!(cert_content.contains("BEGIN CERTIFICATE"));
         assert!(key_content.contains("BEGIN PRIVATE KEY"));
+
+        let key_permissions = std::fs::metadata(&result_key).unwrap().permissions();
+        assert_eq!(key_permissions.mode() & 0o777, DEFAULT_PERMISSIONS);
     }
 }
