@@ -38,6 +38,7 @@ use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
     ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
+use crate::api::dual_protocol::Protocol;
 use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
@@ -56,9 +57,10 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Request};
-use axum::http::header::HeaderValue;
+use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
@@ -301,6 +303,38 @@ async fn run_all_api_servers(
     }
 }
 
+async fn security_headers_middleware(req: Request, next: middleware::Next) -> Response {
+    let is_https = req
+        .extensions()
+        .get::<Protocol>()
+        .is_some_and(|p| *p == Protocol::Https);
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        axum::http::header::X_FRAME_OPTIONS,
+        HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    if is_https {
+        headers.insert(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
+    }
+    response
+}
+
 async fn create_api_server(
     addr: SocketAddr,
     ipv4: Option<SocketAddrV4>,
@@ -332,6 +366,7 @@ async fn create_api_server(
         .route_layer(DefaultBodyLimit::disable())
         .route_layer(session_layer)
         .layer(cors_layer(ipv4, ipv6, cors_origins))
+        .layer(middleware::from_fn(security_headers_middleware))
         .layer((
             TraceLayer::new_for_http(),
             TimeoutLayer::with_status_code(
@@ -1023,6 +1058,7 @@ pub struct AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower::ServiceExt as _;
 
     fn default_allowed_hosts() -> Vec<String> {
         vec![
@@ -1247,6 +1283,99 @@ mod tests {
     #[test]
     fn test_validate_name_rejects_delete() {
         assert!(validate_name_string("name\x7Fwith\x7Fdel").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_security_headers_present() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("x-content-type-options").unwrap(),
+            "nosniff"
+        );
+        assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(
+            response.headers().get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        assert_eq!(
+            response.headers().get("permissions-policy").unwrap(),
+            "camera=(), microphone=(), geolocation=()"
+        );
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_hsts_header_set_for_https() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware))
+            .layer(Extension(Protocol::Https));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("strict-transport-security").unwrap(),
+            "max-age=31536000; includeSubDomains"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hsts_header_absent_for_http() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware))
+            .layer(Extension(Protocol::Http));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
     }
 
     #[test]

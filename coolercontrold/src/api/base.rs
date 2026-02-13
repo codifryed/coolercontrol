@@ -47,19 +47,33 @@ pub fn web_app_service() -> axum::routing::MethodRouter {
         .layer(middleware::from_fn(cache_control_middleware))
 }
 
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; \
+    script-src 'self' qrc:; \
+    style-src 'self' 'unsafe-inline'; \
+    img-src 'self' blob: data:; \
+    font-src 'self' data:; \
+    connect-src 'self'; \
+    frame-ancestors 'none'; \
+    object-src 'none'; \
+    base-uri 'self'; \
+    form-action 'self'";
+
 async fn cache_control_middleware(request: Request, next: Next) -> axum::response::Response {
     let path = request.uri().path();
     // index.html should not be cached, all other assets have hashes and can be heavily cached.
     let is_index = path == "/" || path == "/index.html";
     let mut response = next.run(request).await;
+    let headers = response.headers_mut();
     let cache_value = if is_index {
+        headers.insert(
+            axum::http::HeaderName::from_static("content-security-policy"),
+            axum::http::HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
         axum::http::HeaderValue::from_static("no-cache")
     } else {
         axum::http::HeaderValue::from_static("public, max-age=31536000, immutable")
     };
-    response
-        .headers_mut()
-        .insert(axum::http::header::CACHE_CONTROL, cache_value);
+    headers.insert(axum::http::header::CACHE_CONTROL, cache_value);
     response
 }
 
@@ -125,4 +139,79 @@ pub struct HealthDetails {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SystemDetails {
     pub(crate) name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http;
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_csp_header_set_on_index() {
+        let app = Router::new()
+            .route("/", get(|| async { "index" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let csp = response
+            .headers()
+            .get("content-security-policy")
+            .expect("CSP header should be set on index");
+        let csp_str = csp.to_str().unwrap();
+        assert!(csp_str.contains("default-src 'self'"));
+        assert!(csp_str.contains("script-src 'self' qrc:"));
+        assert!(csp_str.contains("frame-ancestors 'none'"));
+    }
+
+    #[tokio::test]
+    async fn test_csp_header_absent_on_assets() {
+        let app = Router::new()
+            .route("/assets/app.js", get(|| async { "js" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response.headers().get("content-security-policy").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_csp_header_set_on_index_html() {
+        let app = Router::new()
+            .route("/index.html", get(|| async { "index" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/index.html")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response.headers().get("content-security-policy").is_some());
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-cache");
+    }
 }
