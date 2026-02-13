@@ -180,4 +180,42 @@ mod tests {
         let expected = "b109f3bbbc244eb82441917ed06d618b9008dd09b3befd1b5e07394c706a8bb980b1d7785e5976ec049b46df5f1326af5a2ea6d103fd07c95385ffab0cacbc86";
         assert_eq!(result, expected);
     }
+
+    #[test]
+    fn test_argon2_hash_and_verify_roundtrip() {
+        let password = "mySecurePass123!";
+        let hash = hash_password_argon2(password).unwrap();
+        let parsed = PasswordHash::new(&hash).unwrap();
+        assert!(Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok());
+        assert!(Argon2::default()
+            .verify_password(b"wrongPassword", &parsed)
+            .is_err());
+    }
+
+    #[test]
+    fn test_argon2_verify_after_rehash() {
+        let original = "originalPass";
+        let new_pass = "newPass456!";
+        let original_hash = hash_password_argon2(original).unwrap();
+        let new_hash = hash_password_argon2(new_pass).unwrap();
+
+        // Original password should not match new hash
+        let parsed_new = PasswordHash::new(&new_hash).unwrap();
+        assert!(Argon2::default()
+            .verify_password(original.as_bytes(), &parsed_new)
+            .is_err());
+
+        // New password should match new hash
+        assert!(Argon2::default()
+            .verify_password(new_pass.as_bytes(), &parsed_new)
+            .is_ok());
+
+        // New password should not match original hash
+        let parsed_original = PasswordHash::new(&original_hash).unwrap();
+        assert!(Argon2::default()
+            .verify_password(new_pass.as_bytes(), &parsed_original)
+            .is_err());
+    }
 }

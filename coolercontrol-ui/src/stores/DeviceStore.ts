@@ -540,7 +540,10 @@ export const useDeviceStore = defineStore('device', () => {
             },
             onClose: async (options: any) => {
                 if (options.data && options.data.passwd) {
-                    const response = await daemonClient.setPasswd(options.data.passwd)
+                    const response = await daemonClient.setPasswd(
+                        options.data.currentPasswd,
+                        options.data.passwd,
+                    )
                     if (response instanceof ErrorResponse) {
                         toast.add({
                             severity: 'error',

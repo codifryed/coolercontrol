@@ -264,18 +264,18 @@ export default class DaemonClient {
         }
     }
 
-    async setPasswd(passwd: string): Promise<undefined | ErrorResponse> {
-        if (passwd.length === 0) {
+    async setPasswd(currentPasswd: string, newPasswd: string): Promise<undefined | ErrorResponse> {
+        if (newPasswd.length === 0) {
             return new ErrorResponse('Password cannot be empty')
         }
         try {
             const response = await this.getClient().post(
                 '/set-passwd',
-                {},
+                { current_password: currentPasswd },
                 {
                     auth: {
                         username: this.userId,
-                        password: passwd,
+                        password: newPasswd,
                     },
                     'axios-retry': {
                         retries: 0,

@@ -21,12 +21,13 @@ use aide::NoApi;
 use anyhow::Result;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
+use axum::Json;
 use axum_extra::TypedHeader;
 use derive_more::Display;
 use headers::authorization::Basic;
 use headers::Authorization;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::ops::Not;
 use strum::EnumString;
 use tower_sessions::Session;
 
@@ -85,20 +86,30 @@ pub async fn verify_session() -> Result<(), CCError> {
     Ok(())
 }
 
+#[derive(Deserialize, JsonSchema)]
+pub struct SetPasswdRequest {
+    current_password: String,
+}
+
 pub async fn set_passwd(
     NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
     State(AppState { auth_handle, .. }): State<AppState>,
+    Json(body): Json<SetPasswdRequest>,
 ) -> Result<(), CCError> {
-    if auth_header.username() == SESSION_USER_ID && auth_header.password().is_empty().not() {
-        auth_handle
-            .save_passwd(auth_header.password().to_string())
-            .await?;
-        Ok(())
-    } else {
-        Err(CCError::InvalidCredentials {
+    if auth_header.username() != SESSION_USER_ID || auth_header.password().is_empty() {
+        return Err(CCError::InvalidCredentials {
             msg: INVALID_MESSAGE.to_string(),
-        })
+        });
     }
+    if !auth_handle.match_passwd(body.current_password).await? {
+        return Err(CCError::InvalidCredentials {
+            msg: "Current password is incorrect.".to_string(),
+        });
+    }
+    auth_handle
+        .save_passwd(auth_header.password().to_string())
+        .await?;
+    Ok(())
 }
 
 pub async fn logout(NoApi(session): NoApi<Session>) -> impl IntoApiResponse {
