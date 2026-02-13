@@ -17,13 +17,16 @@
  */
 use crate::api::{handle_error, AppState, CCError};
 use aide::axum::IntoApiResponse;
+#[cfg(debug_assertions)]
 use aide::openapi::OpenApi;
 use anyhow::Result;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
-use axum::{Extension, Json};
+#[cfg(debug_assertions)]
+use axum::Extension;
+use axum::Json;
 use chrono::{DateTime, Local};
 use include_dir::{include_dir, Dir};
 use nix::sys::signal;
@@ -33,6 +36,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+#[cfg(debug_assertions)]
 use std::sync::Arc;
 use tower_serve_static::ServeDir;
 
@@ -77,6 +81,7 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
     response
 }
 
+#[cfg(debug_assertions)]
 pub async fn serve_api_doc(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
     Json(api).into_response()
 }

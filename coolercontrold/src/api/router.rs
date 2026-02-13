@@ -20,7 +20,9 @@ use crate::api::{
     alerts, auth, base, custom_sensors, functions, modes, plugins, profiles, settings, sse, status,
 };
 use crate::api::{devices, AppState};
-use aide::axum::routing::{delete_with, get, get_with, patch_with, post_with, put_with};
+#[cfg(debug_assertions)]
+use aide::axum::routing::get;
+use aide::axum::routing::{delete_with, get_with, patch_with, post_with, put_with};
 use aide::axum::ApiRouter;
 
 // Note: using `#[debug_handler]` on the handler functions themselves is sometimes very helpful.
