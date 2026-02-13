@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::admin;
 use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
@@ -104,6 +105,11 @@ pub async fn set_passwd(
     if !auth_handle.match_passwd(body.current_password).await? {
         return Err(CCError::InvalidCredentials {
             msg: "Current password is incorrect.".to_string(),
+        });
+    }
+    if auth_header.password() == admin::DEFAULT_PASS {
+        return Err(CCError::UserError {
+            msg: "The default password cannot be used as a new password.".to_string(),
         });
     }
     auth_handle

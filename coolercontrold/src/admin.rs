@@ -33,7 +33,7 @@ use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
 
 const PASSWD_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.passwd");
-const DEFAULT_PASS: &str = "coolAdmin";
+pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 pub async fn match_passwd(passwd: &str) -> bool {
@@ -217,5 +217,10 @@ mod tests {
         assert!(Argon2::default()
             .verify_password(new_pass.as_bytes(), &parsed_original)
             .is_err());
+    }
+
+    #[test]
+    fn test_default_password_is_not_empty() {
+        assert!(!DEFAULT_PASS.is_empty());
     }
 }
