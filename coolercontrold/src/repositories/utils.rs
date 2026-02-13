@@ -85,30 +85,64 @@ impl ShellCommand {
             Ok(mut child) => {
                 while Instant::now() < timeout_time {
                     sleep(Duration::from_millis(50)).await;
-                    if child.try_wait().unwrap().is_some() {
-                        break;
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {} // loop
+                        Err(err) => {
+                            error!(
+                                "Error checking process status for command: {}, {}",
+                                &self.command, err
+                            );
+                            break;
+                        }
                     }
                 }
-                successful = match child.try_wait().unwrap() {
-                    None => {
+                successful = match child.try_wait() {
+                    Ok(None) => {
                         warn!(
                             "Shell command did not complete within the specified timeout: {:?} \
                                 Killing process for: {}",
                             self.timeout, self.command
                         );
                         child.kill().await.ok();
-                        child.wait().await.ok().unwrap().success()
+                        match child.wait().await {
+                            Ok(status) => status.success(),
+                            Err(err) => {
+                                error!(
+                                    "Error waiting for killed process: {}, {}",
+                                    &self.command, err
+                                );
+                                false
+                            }
+                        }
                     }
-                    Some(status) => status.success(),
+                    Ok(Some(status)) => status.success(),
+                    Err(err) => {
+                        error!(
+                            "Error checking process status for command: {}, {}",
+                            &self.command, err
+                        );
+                        false
+                    }
                 };
                 if let Some(mut child_err) = child.stderr.take() {
-                    child_err.read_to_string(&mut stderr).await.unwrap();
+                    if let Err(err) = child_err.read_to_string(&mut stderr).await {
+                        error!(
+                            "Error reading stderr for command: {}, {}",
+                            &self.command, err
+                        );
+                    }
                     limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_string();
                 }
                 if let Some(mut child_out) = child.stdout.take() {
-                    child_out.read_to_string(&mut stdout).await.unwrap();
-                    limit_output_length(&mut stderr);
+                    if let Err(err) = child_out.read_to_string(&mut stdout).await {
+                        error!(
+                            "Error reading stdout for command: {}, {}",
+                            &self.command, err
+                        );
+                    }
+                    limit_output_length(&mut stdout);
                     stdout = stdout.trim().to_string();
                 }
             }
