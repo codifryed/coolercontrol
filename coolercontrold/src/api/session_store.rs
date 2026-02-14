@@ -32,7 +32,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration as StdDuration, Instant as StdInstant};
 
-use crate::cc_fs;
+use crate::{admin, cc_fs};
 use async_trait::async_trait;
 use moka::future::Cache;
 use moka::policy::EvictionPolicy;
@@ -152,11 +152,7 @@ impl FileSessionStore {
 
     /// Deletes all session files from the sessions directory.
     async fn delete_all_files(&self) {
-        if let Ok(entries) = cc_fs::read_dir(&self.folder) {
-            for entry in entries.flatten() {
-                let _ = cc_fs::remove_file(entry.path()).await;
-            }
-        }
+        admin::clear_session_files(&self.folder).await;
     }
 }
 

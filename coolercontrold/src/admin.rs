@@ -37,6 +37,7 @@ use tower_sessions::cookie::Key;
 
 const PASSWD_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.passwd");
 const SESSION_KEY_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.session_key");
+const SESSIONS_DIR_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/sessions");
 pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
@@ -102,7 +103,23 @@ pub async fn reset_passwd() -> Result<()> {
     let _ = cc_fs::remove_file(passwd_path).await;
     cc_fs::write_string(passwd_path, passwd).await?;
     cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    clear_sessions().await;
     Ok(())
+}
+
+/// Clears all persisted session files so that old sessions authenticated with
+/// the previous password are invalidated.
+async fn clear_sessions() {
+    clear_session_files(Path::new(SESSIONS_DIR_PATH)).await;
+}
+
+pub async fn clear_session_files(sessions_dir: &Path) {
+    if let Ok(entries) = cc_fs::read_dir(sessions_dir) {
+        for entry in entries.flatten() {
+            let _ = cc_fs::remove_file(entry.path()).await;
+        }
+    }
+    debug!("Cleared all persisted sessions");
 }
 
 /// Loads or generates a persistent session encryption key.
@@ -266,6 +283,36 @@ mod tests {
         let decoded = BASE64.decode(encoded.trim()).unwrap();
         let restored = Key::from(&decoded);
         assert_eq!(key.master(), restored.master());
+    }
+
+    #[test]
+    #[serial]
+    fn test_clear_session_files_removes_all() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let sessions_dir = dir.path().join("sessions");
+            std::fs::create_dir_all(&sessions_dir).unwrap();
+
+            // Create some fake session files
+            std::fs::write(sessions_dir.join("session1"), "data1").unwrap();
+            std::fs::write(sessions_dir.join("session2"), "data2").unwrap();
+            assert_eq!(std::fs::read_dir(&sessions_dir).unwrap().count(), 2);
+
+            clear_session_files(&sessions_dir).await;
+
+            assert_eq!(std::fs::read_dir(&sessions_dir).unwrap().count(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_clear_session_files_handles_missing_dir() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let sessions_dir = dir.path().join("nonexistent");
+            // Should not panic when directory doesn't exist
+            clear_session_files(&sessions_dir).await;
+        });
     }
 
     #[test]
