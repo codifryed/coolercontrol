@@ -26,10 +26,13 @@
  * https://github.com/nyabinary/tower-sessions-file-store
  */
 
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration as StdDuration, Instant as StdInstant};
 
+use crate::cc_fs;
 use async_trait::async_trait;
 use moka::future::Cache;
 use moka::policy::EvictionPolicy;
@@ -39,7 +42,8 @@ use tower_sessions::session::{Id, Record};
 use tower_sessions::session_store;
 use tower_sessions::{ExpiredDeletion, SessionStore};
 
-use crate::cc_fs;
+const SESSION_DIR_PERMISSIONS: u32 = 0o700;
+const SESSION_FILE_PERMISSIONS: u32 = 0o600;
 
 /// A custom session store wrapping moka's async cache.
 ///
@@ -161,21 +165,33 @@ impl SessionStore for FileSessionStore {
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
         cc_fs::create_dir_all(&self.folder)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        let data = serde_json::to_vec(&record)
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        cc_fs::write(self.folder.join(record.id.to_string()), data)
+            .map_err(from_anyhow_to_backend)?;
+        cc_fs::set_permissions(
+            &self.folder,
+            Permissions::from_mode(SESSION_DIR_PERMISSIONS),
+        )
+        .await
+        .map_err(from_anyhow_to_backend)?;
+        let data = serde_json::to_vec(&record).map_err(from_serde_to_backend)?;
+        let file_path = self.folder.join(record.id.to_string());
+        cc_fs::write(&file_path, data)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(from_anyhow_to_backend)?;
+        cc_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
+            .await
+            .map_err(from_anyhow_to_backend)?;
         Ok(())
     }
 
     async fn save(&self, record: &Record) -> session_store::Result<()> {
-        let data =
-            serde_json::to_vec(record).map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        cc_fs::write(self.folder.join(record.id.to_string()), data)
+        let data = serde_json::to_vec(record).map_err(from_serde_to_backend)?;
+        let file_path = self.folder.join(record.id.to_string());
+        cc_fs::write(&file_path, data)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+            .map_err(from_anyhow_to_backend)?;
+        cc_fs::set_permissions(&file_path, Permissions::from_mode(SESSION_FILE_PERMISSIONS))
+            .await
+            .map_err(from_anyhow_to_backend)?;
         Ok(())
     }
 
@@ -183,8 +199,7 @@ impl SessionStore for FileSessionStore {
         let path = self.folder.join(session_id.to_string());
         match cc_fs::read_txt(&path).await {
             Ok(data) => {
-                let record = serde_json::from_str(&data)
-                    .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+                let record = serde_json::from_str(&data).map_err(from_serde_to_backend)?;
                 Ok(record)
             }
             Err(e)
@@ -193,7 +208,7 @@ impl SessionStore for FileSessionStore {
             {
                 Ok(None)
             }
-            Err(e) => Err(session_store::Error::Backend(e.to_string())),
+            Err(e) => Err(from_anyhow_to_backend(e)),
         }
     }
 
@@ -211,12 +226,8 @@ impl ExpiredDeletion for FileSessionStore {
     async fn delete_expired(&self) -> session_store::Result<()> {
         let mut entries = tokio::fs::read_dir(&self.folder)
             .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?
-        {
+            .map_err(from_std_to_backend)?;
+        while let Some(entry) = entries.next_entry().await.map_err(from_std_to_backend)? {
             let Some(session_id) = entry
                 .file_name()
                 .to_str()
@@ -233,6 +244,21 @@ impl ExpiredDeletion for FileSessionStore {
         }
         Ok(())
     }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn from_std_to_backend(err: std::io::Error) -> session_store::Error {
+    session_store::Error::Backend(err.to_string())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn from_serde_to_backend(err: serde_json::Error) -> session_store::Error {
+    session_store::Error::Backend(err.to_string())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn from_anyhow_to_backend(err: anyhow::Error) -> session_store::Error {
+    session_store::Error::Backend(err.to_string())
 }
 
 #[cfg(test)]
@@ -401,5 +427,41 @@ mod tests {
             "Expired session should be removed"
         );
         assert!(loaded_valid.is_some(), "Valid session should remain");
+    }
+
+    #[tokio::test]
+    async fn test_file_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_dir = dir.path().join("sessions");
+        let store = FileSessionStore::new(session_dir.clone());
+
+        let mut record = create_test_record(Id::default());
+        store.create(&mut record).await.unwrap();
+
+        // Directory should have 700 permissions
+        let dir_perms = std::fs::metadata(&session_dir).unwrap().permissions();
+        assert_eq!(
+            dir_perms.mode() & 0o777,
+            SESSION_DIR_PERMISSIONS,
+            "Session directory should have 700 permissions"
+        );
+
+        // File should have 600 permissions
+        let file_path = session_dir.join(record.id.to_string());
+        let file_perms = std::fs::metadata(&file_path).unwrap().permissions();
+        assert_eq!(
+            file_perms.mode() & 0o777,
+            SESSION_FILE_PERMISSIONS,
+            "Session file should have 600 permissions"
+        );
+
+        // Permissions should be maintained after save
+        store.save(&record).await.unwrap();
+        let file_perms = std::fs::metadata(&file_path).unwrap().permissions();
+        assert_eq!(
+            file_perms.mode() & 0o777,
+            SESSION_FILE_PERMISSIONS,
+            "Session file should retain 600 permissions after save"
+        );
     }
 }
