@@ -176,7 +176,7 @@ pub async fn start_server<'s>(
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
-        .with_expiry(Expiry::OnInactivity(time::Duration::days(7)));
+        .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively
