@@ -94,6 +94,7 @@ pub struct SetPasswdRequest {
 
 pub async fn set_passwd(
     NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
+    NoApi(session): NoApi<Session>,
     State(AppState { auth_handle, .. }): State<AppState>,
     Json(body): Json<SetPasswdRequest>,
 ) -> Result<(), CCError> {
@@ -115,6 +116,11 @@ pub async fn set_passwd(
     auth_handle
         .save_passwd(auth_header.password().to_string())
         .await?;
+
+    // Delete current session — flows through CachingSessionStore::delete() which
+    // calls both MokaSessionStore::delete() (invalidate_all) and
+    // FileSessionStore::delete() (delete all files).
+    let _ = session.delete().await;
     Ok(())
 }
 

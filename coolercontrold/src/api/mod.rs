@@ -28,18 +28,22 @@ pub mod modes;
 mod plugins;
 mod profiles;
 mod router;
+mod session_store;
 mod settings;
 mod sse;
 pub mod status;
 mod tls;
 
+use crate::admin;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
     ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
 };
 use crate::api::dual_protocol::Protocol;
+use crate::api::session_store::{FileSessionStore, MokaSessionStore};
 use crate::config::Config;
+use crate::config::DEFAULT_CONFIG_DIR;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
@@ -87,9 +91,9 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
-use tower_sessions::cookie::{Key, SameSite};
+use tower_sessions::cookie::SameSite;
 use tower_sessions::service::PrivateCookie;
-use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+use tower_sessions::{CachingSessionStore, ExpiredDeletion, Expiry, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
@@ -98,6 +102,7 @@ const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 type Port = u16;
+type SessionStoreType = CachingSessionStore<MokaSessionStore, FileSessionStore>;
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_server<'s>(
@@ -157,11 +162,15 @@ pub async fn start_server<'s>(
         main_scope,
     );
     let tls_config = tls_config(&settings).await;
-    // Note: to persist user login session across daemon restarts would require a
-    //  persisted master key and local db backend for the session data.
-    let session_layer = SessionManagerLayer::new(MemoryStore::default())
+    let session_key = admin::load_or_generate_session_key().await?;
+    let sessions_dir = std::path::PathBuf::from(DEFAULT_CONFIG_DIR).join("sessions");
+    let file_store = FileSessionStore::new(sessions_dir);
+    let moka_store = MokaSessionStore::new(Some(10));
+    let expired_deletion_store = file_store.clone();
+    let caching_store = CachingSessionStore::new(moka_store, file_store);
+    let session_layer = SessionManagerLayer::new(caching_store)
         .with_name(SESSION_COOKIE_NAME)
-        .with_private(Key::generate())
+        .with_private(session_key)
         // unsecure is used for local connections:
         .with_secure(false)
         .with_http_only(true)
@@ -216,6 +225,7 @@ pub async fn start_server<'s>(
             grpc_ipv6.ok(),
             app_state,
             session_layer,
+            expired_deletion_store,
             compression_layers,
             tls_config,
             cancel_token,
@@ -233,7 +243,8 @@ async fn run_all_api_servers(
     grpc_ipv4: Option<SocketAddrV4>,
     grpc_ipv6: Option<SocketAddrV6>,
     app_state: AppState,
-    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
+    expired_deletion_store: FileSessionStore,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
@@ -244,6 +255,11 @@ async fn run_all_api_servers(
     let mut handles = Vec::new();
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
+
+    // Periodically clean up expired session files
+    tokio::task::spawn_local(
+        expired_deletion_store.continuously_delete_expired(tokio::time::Duration::from_secs(3600)),
+    );
 
     // REST API servers
     if let Some(addr) = ipv4 {
@@ -340,7 +356,7 @@ async fn create_api_server(
     ipv4: Option<SocketAddrV4>,
     ipv6: Option<SocketAddrV6>,
     app_state: AppState,
-    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,

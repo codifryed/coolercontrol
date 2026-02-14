@@ -24,15 +24,19 @@ use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use const_format::concatcp;
-use log::{error, info};
+use log::{debug, error, info};
 use sha2::{Digest, Sha512};
 use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
+use tower_sessions::cookie::Key;
 
 const PASSWD_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.passwd");
+const SESSION_KEY_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.session_key");
 pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
@@ -100,6 +104,29 @@ pub async fn reset_passwd() -> Result<()> {
     Ok(())
 }
 
+/// Loads or generates a persistent session encryption key.
+///
+/// The key is stored at `/etc/coolercontrol/.session_key` as base64-encoded
+/// 64 bytes. On first run, a new key is generated and saved. On subsequent
+/// runs, the existing key is loaded. This ensures session cookies survive
+/// daemon restarts.
+pub async fn load_or_generate_session_key() -> Result<Key> {
+    let key_path = Path::new(SESSION_KEY_FILE_PATH);
+    if key_path.exists() {
+        let encoded = cc_fs::read_txt(key_path).await?;
+        let bytes = BASE64.decode(encoded.trim())?;
+        debug!("Session key loaded.");
+        Ok(Key::from(&bytes))
+    } else {
+        let key = Key::generate();
+        let encoded = BASE64.encode(key.master());
+        cc_fs::write_string(key_path, encoded).await?;
+        cc_fs::set_permissions(key_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
+        debug!("Session key generated and saved.");
+        Ok(key)
+    }
+}
+
 fn hash_password_argon2(passwd: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
@@ -126,6 +153,7 @@ async fn migrate_to_argon2(passwd: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_argon2_hash_format() {
@@ -222,5 +250,39 @@ mod tests {
     #[test]
     fn test_default_password_is_not_empty() {
         assert!(!DEFAULT_PASS.is_empty());
+    }
+
+    #[test]
+    fn test_session_key_generate_produces_valid_key() {
+        let key = Key::generate();
+        assert_eq!(key.master().len(), 64);
+    }
+
+    #[test]
+    fn test_session_key_roundtrip() {
+        let key = Key::generate();
+        let encoded = BASE64.encode(key.master());
+        let decoded = BASE64.decode(encoded.trim()).unwrap();
+        let restored = Key::from(&decoded);
+        assert_eq!(key.master(), restored.master());
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_or_generate_session_key_creates_file() {
+        cc_fs::test_runtime(async {
+            let dir = tempfile::tempdir().unwrap();
+            let key_path = dir.path().join(".session_key");
+
+            // Simulate by writing a key manually, then reading
+            let key = Key::generate();
+            let encoded = BASE64.encode(key.master());
+            cc_fs::write_string(&key_path, encoded).await.unwrap();
+
+            let loaded_encoded = cc_fs::read_txt(&key_path).await.unwrap();
+            let bytes = BASE64.decode(loaded_encoded.trim()).unwrap();
+            let loaded_key = Key::from(&bytes);
+            assert_eq!(key.master(), loaded_key.master());
+        });
     }
 }

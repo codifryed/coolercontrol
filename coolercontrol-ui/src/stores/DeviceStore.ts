@@ -554,6 +554,8 @@ export const useDeviceStore = defineStore('device', () => {
                     } else {
                         isDefaultPasswd.value = false
                         localStorage.setItem('isDefaultPasswd', 'false')
+                        // Re-login with new password to refresh the session cookie
+                        await daemonClient.login(options.data.passwd)
                         toast.add({
                             severity: 'success',
                             summary: t('device_store.password.set_success.summary'),
