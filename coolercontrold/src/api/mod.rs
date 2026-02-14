@@ -80,6 +80,7 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
+use time;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -175,7 +176,7 @@ pub async fn start_server<'s>(
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
-        .with_expiry(Expiry::OnSessionEnd);
+        .with_expiry(Expiry::OnInactivity(time::Duration::days(7)));
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively

@@ -64,7 +64,7 @@ MainWindow::MainWindow(QWidget* parent)
   // local storage: ~/.local/share/{APP_NAME}
   m_profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
   m_profile->setPersistentCookiesPolicy(
-      QWebEngineProfile::PersistentCookiesPolicy::NoPersistentCookies);
+      QWebEngineProfile::PersistentCookiesPolicy::ForcePersistentCookies);
   connect(m_profile, &QWebEngineProfile::downloadRequested,
           [this](QWebEngineDownloadRequest* download) {
             Q_ASSERT(download && download->state() == QWebEngineDownloadRequest::DownloadRequested);
