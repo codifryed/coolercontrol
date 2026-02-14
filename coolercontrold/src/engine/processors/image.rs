@@ -164,7 +164,7 @@ pub async fn process_carousel_images(
 ) -> Result<Vec<String>> {
     let images_path = verify_images_path(images_path_str)?;
     let verified_image_paths = verify_images(&images_path)?;
-    create_carousel_processed_image_directory()?;
+    create_carousel_processed_image_directory().await?;
     let mut processed_image_paths = Vec::new();
     for path in verified_image_paths {
         let image_hash = image_digest(&path)
@@ -302,10 +302,11 @@ fn verify_images(images_path: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Creates the directory for storing processed carousel images if it doesn't already exist.
-fn create_carousel_processed_image_directory() -> Result<()> {
+async fn create_carousel_processed_image_directory() -> Result<()> {
     let carousel_processed_image_dir = Path::new(DEFAULT_CONFIG_DIR).join(CAROUSEL_IMAGE_DIRECTORY);
     if carousel_processed_image_dir.exists().not() {
         cc_fs::create_dir_all(&carousel_processed_image_dir)
+            .await
             .inspect_err(|_| warn!("Error creating carousel processed image directory"))?;
     }
     Ok(())

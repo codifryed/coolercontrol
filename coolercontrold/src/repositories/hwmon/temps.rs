@@ -253,7 +253,7 @@ mod tests {
         cc_fs::test_runtime(async {
             // given:
             let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
-            cc_fs::create_dir_all(&test_base_path).unwrap();
+            cc_fs::create_dir_all(&test_base_path).await.unwrap();
             cc_fs::write(
                 test_base_path.join("temp1_input"),
                 b"30000".to_vec(), // temp
@@ -273,7 +273,9 @@ mod tests {
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            cc_fs::remove_dir_all(test_base_path.parent().unwrap()).unwrap();
+            cc_fs::remove_dir_all(test_base_path.parent().unwrap())
+                .await
+                .unwrap();
             assert!(temps_result.is_ok());
             let temps = temps_result.unwrap();
             assert_eq!(temps.len(), 1);

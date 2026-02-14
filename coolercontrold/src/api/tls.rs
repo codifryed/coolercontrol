@@ -65,14 +65,14 @@ pub async fn ensure_certificates(
     cc_fs::write_string(&key_path, signing_key.serialize_pem())
         .await
         .with_context(|| format!("Writing TLS private key to {}", key_path.display()))?;
-    cc_fs::set_permissions(&key_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).with_context(
-        || {
+    cc_fs::set_permissions(&key_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
+        .await
+        .with_context(|| {
             format!(
                 "Setting permissions on TLS private key {}",
                 key_path.display()
             )
-        },
-    )?;
+        })?;
 
     info!(
         "Generated self-signed TLS certificate: {}",

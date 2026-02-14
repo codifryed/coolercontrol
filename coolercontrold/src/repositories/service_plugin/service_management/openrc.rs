@@ -68,7 +68,7 @@ impl OpenRcManager {
 impl ServiceManager for OpenRcManager {
     async fn add(&self, service_definition: ServiceDefinition) -> Result<()> {
         let dir_path = service_dir_path();
-        cc_fs::create_dir_all(&dir_path)?;
+        cc_fs::create_dir_all(&dir_path).await?;
         let service_name = service_definition.service_id.to_service_name();
         let service_description = service_definition.service_id.to_description();
         let service_path = dir_path.join(&service_name);
@@ -79,12 +79,13 @@ impl ServiceManager for OpenRcManager {
             &service_path,
             Permissions::from_mode(SERVICE_FILE_PERMISSIONS),
         )
+        .await
     }
 
     async fn remove(&self, service_id: &ServiceId) -> Result<()> {
         let _ = self.stop(service_id).await;
         let service_path = service_dir_path().join(service_id.to_service_name());
-        cc_fs::remove_file(service_path)
+        cc_fs::remove_file(service_path).await
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {

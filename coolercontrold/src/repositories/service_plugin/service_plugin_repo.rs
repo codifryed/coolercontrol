@@ -114,7 +114,7 @@ impl ServicePluginRepo {
         let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
             debug!("Error reading plugins directory: {DEFAULT_PLUGINS_PATH}");
-            if let Err(err) = cc_fs::create_dir_all(plugins_dir) {
+            if let Err(err) = cc_fs::create_dir_all(plugins_dir).await {
                 error!("Error creating plugins directory: {DEFAULT_PLUGINS_PATH} Reason: {err}");
             }
             return services;

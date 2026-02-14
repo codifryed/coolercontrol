@@ -48,8 +48,8 @@ pub fn exists(path: impl AsRef<Path>) -> bool {
 
 /// Sets the permissions for the given path.
 ///
-/// This function is equivalent to `std::fs::set_permissions` and will return an error if the
-/// path does not exist or if there is an error resolving the path.
-pub fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> Result<()> {
-    Ok(std::fs::set_permissions(path, perm)?)
+/// This function will return an error if the path does not exist or if there
+/// is an error resolving the path.
+pub async fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> Result<()> {
+    Ok(tokio::fs::set_permissions(path, perm).await?)
 }

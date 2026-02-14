@@ -419,14 +419,14 @@ mod tests {
         glob_paths: GlobPaths,
     }
 
-    fn setup() -> HwmonDeviceContext {
+    async fn setup() -> HwmonDeviceContext {
         let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
         let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
         let base_path_centos_str = test_dir.clone() + "/hwmon/hwmon2/device/";
         let hwmon_path = Path::new(&base_path_str).to_path_buf();
         let hwmon_path_centos = Path::new(&base_path_centos_str).to_path_buf();
-        cc_fs::create_dir_all(&hwmon_path).unwrap();
-        cc_fs::create_dir_all(&hwmon_path_centos).unwrap();
+        cc_fs::create_dir_all(&hwmon_path).await.unwrap();
+        cc_fs::create_dir_all(&hwmon_path_centos).await.unwrap();
         let glob_pwm = hwmon_path
             .to_str()
             .unwrap()
@@ -478,20 +478,20 @@ mod tests {
         }
     }
 
-    fn teardown(ctx: &HwmonDeviceContext) {
-        cc_fs::remove_dir_all(&ctx.test_dir).unwrap();
+    async fn teardown(ctx: &HwmonDeviceContext) {
+        cc_fs::remove_dir_all(&ctx.test_dir).await.unwrap();
     }
 
     #[test]
     #[serial]
     fn find_device_empty() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // when:
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(hwmon_paths.is_empty());
         });
     }
@@ -499,8 +499,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_pwm_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -513,7 +513,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -522,8 +522,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_pwm_device_centos() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("pwm1"),
@@ -536,7 +536,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -545,8 +545,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_temp_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 &ctx.hwmon_path.join("temp1_input"),
@@ -559,7 +559,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -568,8 +568,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_temp_device_centos() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("temp1_input"),
@@ -582,7 +582,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -591,8 +591,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 &ctx.hwmon_path.join("fan1_input"),
@@ -605,7 +605,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -614,8 +614,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_device_centos() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("fan1_input"),
@@ -628,7 +628,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 1);
         });
@@ -637,8 +637,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_pwm_centos_and_temp_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("pwm1"),
@@ -657,7 +657,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -666,8 +666,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_fan_centos_and_temp_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path_centos.join("fan1_input"),
@@ -686,7 +686,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -695,8 +695,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_pwm_and_temp_centos_device() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -715,7 +715,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -724,8 +724,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_pwm_device_norm_and_centos() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(
                 ctx.hwmon_path.join("pwm1"),
@@ -745,7 +745,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });
@@ -754,8 +754,8 @@ mod tests {
     #[test]
     #[serial]
     fn find_temp_device_norm_and_centos() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             cc_fs::write(ctx.hwmon_path.join("temp1_input"), b"70000".to_vec())
                 .await
@@ -769,7 +769,7 @@ mod tests {
             let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!hwmon_paths.is_empty());
             assert_eq!(hwmon_paths.len(), 2);
         });

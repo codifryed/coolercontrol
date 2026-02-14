@@ -26,7 +26,6 @@
  * https://github.com/nyabinary/tower-sessions-file-store
  */
 
-use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration as StdDuration, Instant as StdInstant};
@@ -39,6 +38,8 @@ use time::OffsetDateTime;
 use tower_sessions::session::{Id, Record};
 use tower_sessions::session_store;
 use tower_sessions::{ExpiredDeletion, SessionStore};
+
+use crate::cc_fs;
 
 /// A custom session store wrapping moka's async cache.
 ///
@@ -146,10 +147,10 @@ impl FileSessionStore {
     }
 
     /// Deletes all session files from the sessions directory.
-    fn delete_all_files(&self) {
-        if let Ok(entries) = std::fs::read_dir(&self.folder) {
+    async fn delete_all_files(&self) {
+        if let Ok(entries) = cc_fs::read_dir(&self.folder) {
             for entry in entries.flatten() {
-                let _ = std::fs::remove_file(entry.path());
+                let _ = cc_fs::remove_file(entry.path()).await;
             }
         }
     }
@@ -158,49 +159,49 @@ impl FileSessionStore {
 #[async_trait]
 impl SessionStore for FileSessionStore {
     async fn create(&self, record: &mut Record) -> session_store::Result<()> {
-        tokio::fs::create_dir_all(&self.folder)
+        cc_fs::create_dir_all(&self.folder)
             .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        let file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(self.folder.join(record.id.to_string()))
+        let data = serde_json::to_vec(&record)
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        serde_json::to_writer(file, &record)
+        cc_fs::write(self.folder.join(record.id.to_string()), data)
+            .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
         Ok(())
     }
 
     async fn save(&self, record: &Record) -> session_store::Result<()> {
-        let file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(self.folder.join(record.id.to_string()))
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        serde_json::to_writer(file, &record)
+        let data =
+            serde_json::to_vec(record).map_err(|e| session_store::Error::Backend(e.to_string()))?;
+        cc_fs::write(self.folder.join(record.id.to_string()), data)
+            .await
             .map_err(|e| session_store::Error::Backend(e.to_string()))?;
         Ok(())
     }
 
     async fn load(&self, session_id: &Id) -> session_store::Result<Option<Record>> {
         let path = self.folder.join(session_id.to_string());
-        if !path.is_file() {
-            return Ok(None);
+        match cc_fs::read_txt(&path).await {
+            Ok(data) => {
+                let record = serde_json::from_str(&data)
+                    .map_err(|e| session_store::Error::Backend(e.to_string()))?;
+                Ok(record)
+            }
+            Err(e)
+                if e.downcast_ref::<std::io::Error>()
+                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(session_store::Error::Backend(e.to_string())),
         }
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path)
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        let record = serde_json::from_reader(file)
-            .map_err(|e| session_store::Error::Backend(e.to_string()))?;
-        Ok(record)
     }
 
     async fn delete(&self, _session_id: &Id) -> session_store::Result<()> {
         // Since CoolerControl has only a single user, deleting any session
         // removes all persisted session files. This ensures that on password
         // change, all sessions are cleared from the file-store layer.
-        self.delete_all_files();
+        self.delete_all_files().await;
         Ok(())
     }
 }
@@ -227,7 +228,7 @@ impl ExpiredDeletion for FileSessionStore {
                 continue;
             };
             if OffsetDateTime::now_utc() > record.expiry_date {
-                let _ = tokio::fs::remove_file(entry.path()).await;
+                let _ = cc_fs::remove_file(entry.path()).await;
             }
         }
         Ok(())

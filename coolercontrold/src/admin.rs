@@ -78,7 +78,8 @@ pub async fn load_passwd() -> Result<String> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     if passwd_path.exists() {
         if let Ok(contents) = cc_fs::read_txt(passwd_path).await {
-            cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
+            cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
+                .await?;
             return Ok(contents.trim().to_owned());
         }
     }
@@ -89,18 +90,18 @@ pub async fn load_passwd() -> Result<String> {
 pub async fn save_passwd(password: &str) -> Result<()> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     let passwd = hash_password_argon2(password)?;
-    let _ = cc_fs::remove_file(passwd_path);
+    let _ = cc_fs::remove_file(passwd_path).await;
     cc_fs::write_string(passwd_path, passwd).await?;
-    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
+    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
     Ok(())
 }
 
 pub async fn reset_passwd() -> Result<()> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     let passwd = hash_password_argon2(DEFAULT_PASS)?;
-    let _ = cc_fs::remove_file(passwd_path);
+    let _ = cc_fs::remove_file(passwd_path).await;
     cc_fs::write_string(passwd_path, passwd).await?;
-    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
+    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
     Ok(())
 }
 
@@ -121,7 +122,7 @@ pub async fn load_or_generate_session_key() -> Result<Key> {
         let key = Key::generate();
         let encoded = BASE64.encode(key.master());
         cc_fs::write_string(key_path, encoded).await?;
-        cc_fs::set_permissions(key_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
+        cc_fs::set_permissions(key_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
         debug!("Session key generated and saved.");
         Ok(key)
     }

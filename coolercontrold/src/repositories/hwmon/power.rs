@@ -190,16 +190,16 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    fn setup() -> HwmonFileContext {
+    async fn setup() -> HwmonFileContext {
         let test_base_path =
             Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
                 .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
         HwmonFileContext { test_base_path }
     }
 
-    fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     #[test]
@@ -224,7 +224,7 @@ mod tests {
     #[serial]
     fn init_power_average() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -241,7 +241,7 @@ mod tests {
             let power_result = init_power(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -256,7 +256,7 @@ mod tests {
     #[serial]
     fn init_power_input() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
@@ -273,7 +273,7 @@ mod tests {
             let power_result = init_power(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -288,7 +288,7 @@ mod tests {
     #[serial]
     fn init_power_not_usable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"ABC".to_vec()) // wrong format
@@ -302,7 +302,7 @@ mod tests {
             let power_result = init_power(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(power_result.is_ok());
             println!("{power_result:?}");
             assert!(power_result.unwrap().is_empty());
@@ -314,7 +314,7 @@ mod tests {
     fn init_only_power_average() {
         // test that given both powerN_average and powerN_input, that we prefer & use only _average
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -334,7 +334,7 @@ mod tests {
             let power_result = init_power(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(1, powers.len());
@@ -349,7 +349,7 @@ mod tests {
     #[serial]
     fn init_multiple_powers() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("power1_average"), b"1000000".to_vec())
@@ -376,7 +376,7 @@ mod tests {
             let power_result = init_power(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(power_result.is_ok());
             let powers = power_result.unwrap();
             assert_eq!(3, powers.len());
@@ -399,7 +399,7 @@ mod tests {
     #[serial]
     fn extract_power_average_status() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -422,7 +422,7 @@ mod tests {
             let power_result = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(1, power_result.len());
             assert_eq!(Some(36.), power_result[0].watts);
         });
@@ -432,7 +432,7 @@ mod tests {
     #[serial]
     fn extract_power_input_status() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -455,7 +455,7 @@ mod tests {
             let power_result = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(1, power_result.len());
             assert_eq!(Some(6.123_456), power_result[0].watts);
         });
@@ -465,7 +465,7 @@ mod tests {
     #[serial]
     fn extract_no_power_channels() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -477,7 +477,7 @@ mod tests {
             let power_result = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(0, power_result.len());
         });
     }
@@ -486,7 +486,7 @@ mod tests {
     #[serial]
     fn extract_status_reading_problem_returns_zero() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let driver_info = HwmonDriverInfo {
@@ -503,7 +503,7 @@ mod tests {
             let power_result = extract_power_status(&driver_info).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(1, power_result.len());
             assert_eq!(Some(0.), power_result[0].watts);
         });

@@ -62,7 +62,7 @@ impl Config {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
             info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
-            cc_fs::create_dir_all(config_dir)?;
+            cc_fs::create_dir_all(config_dir).await?;
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
@@ -2307,7 +2307,7 @@ mod tests {
             assert!(config.get_custom_sensors().is_ok(), "Get Custom sensors");
 
             // teardown:
-            cc_fs::remove_file(path).unwrap();
+            cc_fs::remove_file(path).await.unwrap();
         });
     }
 }

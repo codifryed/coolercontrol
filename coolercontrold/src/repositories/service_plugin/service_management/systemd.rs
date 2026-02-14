@@ -145,7 +145,7 @@ impl SystemdManager {
 impl ServiceManager for SystemdManager {
     async fn add(&self, service_definition: ServiceDefinition) -> Result<()> {
         let dir_path = systemd_global_dir_path();
-        cc_fs::create_dir_all(&dir_path)?;
+        cc_fs::create_dir_all(&dir_path).await?;
         let service_name = service_definition.service_id.to_service_name();
         let service_path = dir_path.join(format!("{service_name}.service"));
         let service_description = service_definition.service_id.to_description();
@@ -160,6 +160,7 @@ impl ServiceManager for SystemdManager {
             &service_path,
             Permissions::from_mode(SERVICE_FILE_PERMISSIONS),
         )
+        .await
     }
 
     async fn remove(&self, service_id: &ServiceId) -> Result<()> {
@@ -167,7 +168,7 @@ impl ServiceManager for SystemdManager {
         let service_name = service_id.to_service_name();
         let service_path = dir_path.join(format!("{service_name}.service"));
         let _ = self.stop(service_id).await;
-        cc_fs::remove_file(service_path)
+        cc_fs::remove_file(service_path).await
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {

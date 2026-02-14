@@ -529,16 +529,16 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    fn setup() -> HwmonFileContext {
+    async fn setup() -> HwmonFileContext {
         let test_base_path =
             Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
                 .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
         HwmonFileContext { test_base_path }
     }
 
-    fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     #[test]
@@ -763,7 +763,7 @@ mod tests {
     #[serial]
     fn test_detect_apple_smc_fans_no_output_file() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let mut fan_caps = HashMap::new();
@@ -774,7 +774,7 @@ mod tests {
                     .await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(fan_caps.is_empty());
         });
@@ -784,7 +784,7 @@ mod tests {
     #[serial]
     fn test_detect_apple_smc_fans_complete() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
@@ -810,7 +810,7 @@ mod tests {
                     .await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_caps.len(), 1);
             let caps = fan_caps.get(&1).unwrap();
@@ -824,7 +824,7 @@ mod tests {
     #[serial]
     fn test_detect_apple_smc_fans_missing_manual() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
@@ -847,7 +847,7 @@ mod tests {
                     .await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(fan_caps.is_empty());
         });
@@ -857,7 +857,7 @@ mod tests {
     #[serial]
     fn test_init_apple_fans() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
@@ -895,7 +895,7 @@ mod tests {
             let result = AppleMacSMC::init_apple_fans(test_base_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             let fans = result.unwrap();
             assert_eq!(fans.len(), 2);
@@ -910,7 +910,7 @@ mod tests {
     #[serial]
     fn test_init_fans_with_disabled_channels() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
@@ -935,7 +935,7 @@ mod tests {
             AppleMacSMC::init_fans(test_base_path, &mut channels, &disabled_channels).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(channels.is_empty());
         });
     }
@@ -944,7 +944,7 @@ mod tests {
     #[serial]
     fn test_get_fan_min() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
@@ -955,7 +955,7 @@ mod tests {
             let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(result, Some(600));
         });
     }
@@ -964,7 +964,7 @@ mod tests {
     #[serial]
     fn test_get_fan_min_edge_case_max_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -978,7 +978,7 @@ mod tests {
             let result = AppleMacSMC::get_fan_min(test_base_path, 1, false).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(result, Some(0));
         });
     }
@@ -987,7 +987,7 @@ mod tests {
     #[serial]
     fn test_get_fan_max() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_max"), b"6500".to_vec())
@@ -998,7 +998,7 @@ mod tests {
             let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(result, Some(6500));
         });
     }
@@ -1007,7 +1007,7 @@ mod tests {
     #[serial]
     fn test_get_fan_max_edge_case_max_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -1021,7 +1021,7 @@ mod tests {
             let result = AppleMacSMC::get_fan_max(test_base_path, 1, false).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(result, Some(0));
         });
     }
@@ -1030,7 +1030,7 @@ mod tests {
     #[serial]
     fn test_set_to_auto_control() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"0".to_vec())
@@ -1064,7 +1064,7 @@ mod tests {
             let fan_manual = cc_fs::read_sysfs(test_base_path.join("fan1_manual"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_min.trim(), "600");
             assert_eq!(fan_manual.trim(), "0");
@@ -1075,7 +1075,7 @@ mod tests {
     #[serial]
     fn test_set_to_manual_control() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
@@ -1109,7 +1109,7 @@ mod tests {
             let fan_manual = cc_fs::read_sysfs(test_base_path.join("fan1_manual"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_min.trim(), "0");
             assert_eq!(fan_manual.trim(), "1");
@@ -1120,7 +1120,7 @@ mod tests {
     #[serial]
     fn test_set_fan_duty() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"0".to_vec())
@@ -1148,7 +1148,7 @@ mod tests {
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_output.trim(), "2500");
         });
@@ -1158,7 +1158,7 @@ mod tests {
     #[serial]
     fn test_get_fan_duty() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
@@ -1183,7 +1183,7 @@ mod tests {
             let result = apple_smc.get_fan_duty(1, None).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(result, Some(50.0));
         });
     }
@@ -1192,7 +1192,7 @@ mod tests {
     #[serial]
     fn test_extract_fan_statuses() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
@@ -1266,7 +1266,7 @@ mod tests {
             let statuses = apple_smc.extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(statuses.len(), 2);
             assert_eq!(statuses[0].name, "fan1");
             assert_eq!(statuses[0].rpm, Some(2500));
@@ -1281,7 +1281,7 @@ mod tests {
     #[serial]
     fn test_new_apple_smc() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
@@ -1309,7 +1309,7 @@ mod tests {
             let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(apple_smc.detected);
             assert_eq!(apple_smc.fans.len(), 1);
             let fan_info = apple_smc.fans.get(&1).unwrap();
@@ -1322,7 +1322,7 @@ mod tests {
     #[serial]
     fn test_new_apple_smc_with_defaults() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let channels = vec![HwmonChannelInfo {
@@ -1344,7 +1344,7 @@ mod tests {
             let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(apple_smc.detected);
             assert_eq!(apple_smc.fans.len(), 1);
             let fan_info = apple_smc.fans.get(&1).unwrap();
@@ -1368,7 +1368,7 @@ mod tests {
     #[serial]
     fn test_fan_output_is_writable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"2500".to_vec())
@@ -1379,7 +1379,7 @@ mod tests {
             let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -1388,7 +1388,7 @@ mod tests {
     #[serial]
     fn test_fan_output_is_writable_not_exists() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
 
@@ -1396,7 +1396,7 @@ mod tests {
             let result = AppleMacSMC::fan_output_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!result);
         });
     }
@@ -1405,7 +1405,7 @@ mod tests {
     #[serial]
     fn test_fan_target_is_writable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_target"), b"2500".to_vec())
@@ -1416,7 +1416,7 @@ mod tests {
             let result = AppleMacSMC::fan_target_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -1425,7 +1425,7 @@ mod tests {
     #[serial]
     fn test_fan_target_is_writable_not_exists() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
 
@@ -1433,7 +1433,7 @@ mod tests {
             let result = AppleMacSMC::fan_target_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!result);
         });
     }
@@ -1442,7 +1442,7 @@ mod tests {
     #[serial]
     fn test_fan_manual_is_writable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_manual"), b"0".to_vec())
@@ -1453,7 +1453,7 @@ mod tests {
             let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -1462,7 +1462,7 @@ mod tests {
     #[serial]
     fn test_fan_manual_is_writable_not_exists() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
 
@@ -1470,7 +1470,7 @@ mod tests {
             let result = AppleMacSMC::fan_manual_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!result);
         });
     }
@@ -1479,7 +1479,7 @@ mod tests {
     #[serial]
     fn test_fan_min_is_writable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
@@ -1490,7 +1490,7 @@ mod tests {
             let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -1499,7 +1499,7 @@ mod tests {
     #[serial]
     fn test_fan_min_is_writable_not_exists() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
 
@@ -1507,7 +1507,7 @@ mod tests {
             let result = AppleMacSMC::fan_min_is_writable(test_base_path, 1);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(!result);
         });
     }
@@ -1516,7 +1516,7 @@ mod tests {
     #[serial]
     fn test_set_fan_output() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_output"), b"0".to_vec())
@@ -1530,7 +1530,7 @@ mod tests {
             let fan_output = cc_fs::read_sysfs(test_base_path.join("fan1_output"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_output.trim(), "3000");
         });
@@ -1540,7 +1540,7 @@ mod tests {
     #[serial]
     fn test_set_fan_target() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_target"), b"0".to_vec())
@@ -1554,7 +1554,7 @@ mod tests {
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_target.trim(), "3500");
         });
@@ -1564,7 +1564,7 @@ mod tests {
     #[serial]
     fn test_set_fan_duty_mac_smc() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_target"), b"0".to_vec())
@@ -1592,7 +1592,7 @@ mod tests {
             let fan_target = cc_fs::read_sysfs(test_base_path.join("fan1_target"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_target.trim(), "2500");
         });
@@ -1602,7 +1602,7 @@ mod tests {
     #[serial]
     fn test_detect_apple_smc_fans_with_target_file() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_target"), b"2500".to_vec())
@@ -1628,7 +1628,7 @@ mod tests {
                     .await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(fan_caps.len(), 1);
             let caps = fan_caps.get(&1).unwrap();
@@ -1642,7 +1642,7 @@ mod tests {
     #[serial]
     fn test_caps_to_hwmon_fans() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let mut fan_caps = HashMap::new();
@@ -1658,7 +1658,7 @@ mod tests {
             let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             let fans = result.unwrap();
             assert_eq!(fans.len(), 2);
@@ -1669,7 +1669,7 @@ mod tests {
     #[serial]
     fn test_caps_to_hwmon_fans_with_label() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_label"), b"Left Fan".to_vec())
@@ -1687,7 +1687,7 @@ mod tests {
             let result = AppleMacSMC::caps_to_hwmon_fans(test_base_path, fan_caps).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             let fans = result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -1699,7 +1699,7 @@ mod tests {
     #[serial]
     fn test_new_mac_smc_device() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_min"), b"600".to_vec())
@@ -1727,7 +1727,7 @@ mod tests {
             let apple_smc = AppleMacSMC::new(test_base_path, &channels, DEVICE_NAME_MAC_SMC).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(apple_smc.detected);
             assert!(apple_smc.is_mac_smc);
             assert_eq!(apple_smc.fans.len(), 1);
@@ -1738,7 +1738,7 @@ mod tests {
     #[serial]
     fn test_new_skips_non_apple_smc_channels() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let channels = vec![
@@ -1772,7 +1772,7 @@ mod tests {
             let apple_smc = AppleMacSMC::new(test_base_path, &channels, "applesmc").await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(apple_smc.detected);
             assert!(apple_smc.fans.is_empty());
         });
@@ -1782,7 +1782,7 @@ mod tests {
     #[serial]
     fn test_extract_fan_statuses_skips_non_fan_channels() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
@@ -1844,7 +1844,7 @@ mod tests {
             let statuses = apple_smc.extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(statuses.len(), 1);
             assert_eq!(statuses[0].name, "fan1");
         });
@@ -1854,7 +1854,7 @@ mod tests {
     #[serial]
     fn test_extract_fan_statuses_rpm_only_fan() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("fan1_input"), b"2500".to_vec())
@@ -1892,7 +1892,7 @@ mod tests {
             let statuses = apple_smc.extract_fan_statuses(&driver).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(statuses.len(), 1);
             assert_eq!(statuses[0].name, "fan1");
             assert_eq!(statuses[0].rpm, Some(2500));

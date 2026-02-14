@@ -169,7 +169,7 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let thinkpad_acpi_conf_file_path =
         PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
     let content = format!("options thinkpad_acpi fan_control={fan_control_option} ");
-    cc_fs::create_dir_all(THINKPAD_ACPI_CONF_PATH)?;
+    cc_fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
     cc_fs::write_string(thinkpad_acpi_conf_file_path, content).await?;
     let command_result =
         ShellCommand::new(RELOAD_THINKPAD_ACPI_MODULE_COMMAND, Duration::from_secs(1))

@@ -103,23 +103,23 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    fn setup() -> HwmonFileContext {
+    async fn setup() -> HwmonFileContext {
         let test_base_path =
             Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
                 .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
         HwmonFileContext { test_base_path }
     }
 
-    fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     #[test]
     #[serial]
     fn thinkpad_apply_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -167,7 +167,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string());
             assert_eq!(current_duty, 50.);
@@ -178,7 +178,7 @@ mod tests {
     #[serial]
     fn thinkpad_apply_speed_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -226,7 +226,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(
                 current_pwm_enable,
@@ -240,7 +240,7 @@ mod tests {
     #[serial]
     fn thinkpad_apply_speed_after_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -288,7 +288,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string(),);
             assert_eq!(current_duty, 50.);
@@ -299,7 +299,7 @@ mod tests {
     #[serial]
     fn thinkpad_set_full_speed() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -336,7 +336,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(
                 current_pwm_enable,

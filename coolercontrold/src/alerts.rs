@@ -264,7 +264,7 @@ impl AlertController {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
             info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
-            cc_fs::create_dir_all(config_dir)?;
+            cc_fs::create_dir_all(config_dir).await?;
         }
         let path = Path::new(DEFAULT_ALERT_CONFIG_FILE_PATH).to_path_buf();
         let config_contents = if let Ok(contents) = cc_fs::read_txt(&path).await {
