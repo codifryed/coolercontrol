@@ -772,7 +772,7 @@ export default {
             newPasswordTitle: '输入新密码',
             invalidPassword: '密码无效',
             passwordHelp:
-                '安装后，守护程序使用默认密码保护设备控制端点。\n您可以选择创建一个强密码以提高保护。\n如果您看到此对话框但尚未设置密码，请尝试刷新UI\n或从访问保护菜单点击登录。详情请参阅项目维基。',
+                '忘记密码？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然后刷新UI以设置新密码。',
         },
         notFound: {
             message: '就像完美的Linux系统一样，\n这个页面并不存在。',
@@ -961,6 +961,7 @@ export default {
     auth: {
         enterPassword: '请输入您的密码',
         setNewPassword: '请输入新密码',
+        changeDefaultPassword: 'CoolerControl 正在使用默认密码。\n请在继续之前设置一个安全密码。',
         loginFailed: '登录失败',
         invalidPassword: '密码无效',
         passwordSetFailed: '设置密码失败',

@@ -368,6 +368,7 @@ export const useDeviceStore = defineStore('device', () => {
                     position: 'center',
                     modal: false,
                     dismissableMask: false,
+                    closable: false,
                 },
                 data: {
                     setPasswd: false,
@@ -495,6 +496,9 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
+            if (isDefaultPasswd.value) {
+                await promptDefaultPasswdChange()
+            }
             return true
         }
         const defaultLoginResult = await daemonClient.login()
@@ -512,6 +516,7 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
+            await promptDefaultPasswdChange()
             return true
         }
         if (defaultLoginResult.status === 429) {
@@ -549,7 +554,7 @@ export const useDeviceStore = defineStore('device', () => {
                             severity: 'error',
                             summary: t('device_store.password.set_failed.summary'),
                             detail: response.error,
-                            life: 3000,
+                            life: 5000,
                         })
                     } else {
                         isDefaultPasswd.value = false
@@ -565,6 +570,59 @@ export const useDeviceStore = defineStore('device', () => {
                     }
                 }
             },
+        })
+    }
+
+    async function promptDefaultPasswdChange(): Promise<void> {
+        return new Promise((resolve) => {
+            dialog.open(passwordDialog, {
+                props: {
+                    header: t('auth.setNewPassword'),
+                    position: 'center',
+                    modal: false,
+                    dismissableMask: false,
+                    closable: false,
+                },
+                data: {
+                    setPasswd: true,
+                    currentPasswd: daemonClient.defaultPasswd,
+                    promptMessage: t('auth.changeDefaultPassword'),
+                },
+                onClose: (options: any) => {
+                    setTimeout(async () => {
+                        if (options?.data && options.data.passwd) {
+                            const response = await daemonClient.setPasswd(
+                                options.data.currentPasswd,
+                                options.data.passwd,
+                            )
+                            if (response instanceof ErrorResponse) {
+                                toast.add({
+                                    severity: 'error',
+                                    summary: t('device_store.password.set_failed.summary'),
+                                    detail: response.error,
+                                    life: 5000,
+                                })
+                                await promptDefaultPasswdChange()
+                                resolve()
+                            } else {
+                                isDefaultPasswd.value = false
+                                localStorage.setItem('isDefaultPasswd', 'false')
+                                await daemonClient.login(options.data.passwd)
+                                toast.add({
+                                    severity: 'success',
+                                    summary: t('device_store.password.set_success.summary'),
+                                    detail: t('device_store.password.set_success.detail'),
+                                    life: 3000,
+                                })
+                                resolve()
+                            }
+                        } else {
+                            await promptDefaultPasswdChange()
+                            resolve()
+                        }
+                    }, 0)
+                },
+            })
         })
     }
 

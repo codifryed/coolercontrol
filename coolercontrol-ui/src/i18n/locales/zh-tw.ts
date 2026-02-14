@@ -772,7 +772,7 @@ export default {
             newPasswordTitle: '輸入新密碼',
             invalidPassword: '密碼無效',
             passwordHelp:
-                '安裝後，守護程序使用默認密碼保護設備控制端點。\n您可以選擇創建一個強密碼以提高保護。\n如果您看到此對話框但尚未設置密碼，請嘗試刷新UI\n或從訪問保護菜單點擊登錄。詳情請參閱項目維基。',
+                '忘記密碼？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然後刷新UI以設置新密碼。',
         },
         notFound: {
             message: '就像完美的Linux系統一樣，\n這個頁面並不存在。',
@@ -959,6 +959,7 @@ export default {
     auth: {
         enterPassword: '請輸入您的密碼',
         setNewPassword: '請輸入新密碼',
+        changeDefaultPassword: 'CoolerControl 正在使用預設密碼。\n請在繼續之前設置一個安全密碼。',
         loginFailed: '登入失敗',
         invalidPassword: '無效密碼',
         passwordSetFailed: '設置密碼失敗',

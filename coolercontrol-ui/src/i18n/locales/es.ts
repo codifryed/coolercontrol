@@ -798,7 +798,7 @@ export default {
             newPasswordTitle: 'Introduzca Una Nueva Contraseña',
             invalidPassword: 'Contraseña Inválida',
             passwordHelp:
-                'Durante la instalación, el daemon utiliza una contraseña predeterminada para proteger los puntos de control del dispositivo. \nOpcionalmente, puede crear una contraseña fuerte para una mejor protección. \nSi ve este diálogo y aún no ha establecido una contraseña, intente actualizar la UI \n o haga clic en Iniciar Sesión desde el menú de Protección de Acceso. Consulte el wiki del proyecto para más información.',
+                '¿Olvidó su contraseña? Restablézcala con:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Luego actualice la UI para establecer una nueva contraseña.',
         },
         notFound: {
             message: 'Al igual que la distribución perfecta de Linux 🐧,\nesta página no existe.',
@@ -996,6 +996,8 @@ export default {
     auth: {
         enterPassword: 'Introduzca Su Contraseña',
         setNewPassword: 'Introduzca Una Nueva Contraseña',
+        changeDefaultPassword:
+            'CoolerControl está usando la contraseña predeterminada.\nPor favor, establezca una contraseña segura antes de continuar.',
         loginFailed: 'Inicio de Sesión Fallido',
         invalidPassword: 'Contraseña Inválida',
         passwordSetFailed: 'Establecer Contraseña Falló',

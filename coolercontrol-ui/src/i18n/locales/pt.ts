@@ -812,7 +812,7 @@ export default {
             newPasswordTitle: 'Insira Uma Nova Senha',
             invalidPassword: 'Senha Inválida',
             passwordHelp:
-                'Durante a instalação, o daemon usa uma senha padrão para proteger os pontos de controle do dispositivo. \nOpcionalmente, você pode criar uma senha forte para melhor proteção. \nSe você vê este diálogo e ainda não definiu uma senha, tente atualizar a IU \n ou clique em Login no menu Proteção de Acesso. Consulte o wiki do projeto para mais informações.',
+                'Esqueceu sua senha? Redefina-a com:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Em seguida, atualize a UI para definir uma nova senha.',
         },
         notFound: {
             message: 'Assim como a distribuição Linux perfeita 🐧,\nesta página não existe.',
@@ -1034,6 +1034,8 @@ export default {
     auth: {
         enterPassword: 'Insira Sua Senha',
         setNewPassword: 'Insira Uma Nova Senha',
+        changeDefaultPassword:
+            'CoolerControl está usando a senha padrão.\nPor favor, defina uma senha segura antes de continuar.',
         loginFailed: 'Falha no Login',
         invalidPassword: 'Senha Inválida',
         passwordSetFailed: 'Falha ao Definir Senha',

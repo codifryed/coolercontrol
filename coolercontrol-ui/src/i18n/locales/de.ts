@@ -813,7 +813,7 @@ export default {
             newPasswordTitle: 'Geben Sie ein neues Passwort ein',
             invalidPassword: 'Ungültiges Passwort',
             passwordHelp:
-                'Bei der Installation verwendet der Daemon ein Standardpasswort zum Schutz der Gerätesteuerungsendpunkte. \nOptional können Sie ein starkes Passwort für verbesserten Schutz erstellen. \nWenn Sie diesen Dialog sehen und noch kein Passwort festgelegt haben, versuchen Sie, die UI zu aktualisieren \n oder auf Anmelden im Zugriffsschutzmenu zu klicken. Weitere Informationen finden Sie im Projekt-Wiki.',
+                'Passwort vergessen? Setzen Sie es zurück mit:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Aktualisieren Sie dann die UI, um ein neues Passwort festzulegen.',
         },
         notFound: {
             message: 'Genau wie die perfekte Linux 🐧 Distribution\nexistiert diese Seite nicht.',
@@ -1014,6 +1014,8 @@ export default {
     auth: {
         enterPassword: 'Geben Sie Ihr Passwort ein',
         setNewPassword: 'Geben Sie ein neues Passwort ein',
+        changeDefaultPassword:
+            'CoolerControl verwendet das Standardpasswort.\nBitte legen Sie ein sicheres Passwort fest, bevor Sie fortfahren.',
         loginFailed: 'Anmeldung fehlgeschlagen',
         invalidPassword: 'Ungültiges Passwort',
         passwordSetFailed: 'Passwort setzen fehlgeschlagen',

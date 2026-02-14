@@ -782,7 +782,7 @@ export default {
             newPasswordTitle: '새 비밀번호 입력',
             invalidPassword: '잘못된 비밀번호',
             passwordHelp:
-                '설치 시 데몬은 기본 암호를 사용하여 장치 제어 엔드포인트를 보호합니다. \n선택적으로 보안 강화를 위해 강력한 암호를 생성할 수 있습니다. \n이 대화 상자가 표시되고 아직 암호를 설정하지 않은 경우 UI를 새로 고치거나 \n 접속 보호 메뉴에서 로그인을 클릭해 보세요. 자세한 내용은 프로젝트 위키를 참조하세요.',
+                '비밀번호를 잊으셨나요? 다음 명령어로 재설정하세요:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>그런 다음 UI를 새로고침하여 새 비밀번호를 설정하세요.',
         },
         notFound: {
             message: '완벽한 리눅스 🐧 배포판처럼,\n이 페이지는 존재하지 않습니다.',
@@ -977,6 +977,8 @@ export default {
     auth: {
         enterPassword: '비밀번호 입력',
         setNewPassword: '새 비밀번호 입력',
+        changeDefaultPassword:
+            'CoolerControl이 기본 비밀번호를 사용하고 있습니다.\n계속하기 전에 안전한 비밀번호를 설정해 주세요.',
         loginFailed: '로그인 실패함',
         invalidPassword: '잘못된 비밀번호',
         passwordSetFailed: '비밀번호 설정 실패',

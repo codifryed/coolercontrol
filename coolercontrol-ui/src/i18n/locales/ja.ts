@@ -803,7 +803,7 @@ export default {
             newPasswordTitle: '新しいパスワードを入力してください',
             invalidPassword: '無効なパスワード',
             passwordHelp:
-                'インストール時、デーモンはデバイス制御エンドポイントを保護するためにデフォルトのパスワードを使用します。\nオプションで、保護を強化するために強力なパスワードを作成できます。\nこのダイアログが表示され、まだパスワードを設定していない場合は、UIを更新するか、\nアクセス保護メニューからログインをクリックしてみてください。詳細については、プロジェクトのwikiを参照してください。',
+                'パスワードをお忘れですか？以下のコマンドでリセットしてください：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>その後、UIを更新して新しいパスワードを設定してください。',
         },
         notFound: {
             message: '完璧なLinux 🐧 ディストリビューションのように、\nこのページは存在しません。',
@@ -998,6 +998,8 @@ export default {
     auth: {
         enterPassword: 'パスワードを入力してください',
         setNewPassword: '新しいパスワードを入力してください',
+        changeDefaultPassword:
+            'CoolerControlはデフォルトパスワードを使用しています。\n続行する前に安全なパスワードを設定してください。',
         loginFailed: 'ログイン失敗',
         invalidPassword: '無効なパスワード',
         passwordSetFailed: 'パスワード設定に失敗しました',

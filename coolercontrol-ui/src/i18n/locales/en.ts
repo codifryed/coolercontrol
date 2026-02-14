@@ -790,7 +790,7 @@ export default {
             newPasswordTitle: 'Enter A New Password',
             invalidPassword: 'Invalid Password',
             passwordHelp:
-                'Upon installation the daemon uses a default password to protect device control endpoints. \nOptionally you can create a strong password for improved protection. \nIf you see this dialog and have not yet set a password, try refreshing the UI \n or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
+                'Forgot your password? Reset it with:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Then refresh the UI to set a new password.',
         },
         notFound: {
             message: 'Just like the perfect Linux 🐧 distro,\nthis page does not exist.',
@@ -985,6 +985,8 @@ export default {
     auth: {
         enterPassword: 'Enter Your Password',
         setNewPassword: 'Enter A New Password',
+        changeDefaultPassword:
+            'CoolerControl is using the default password.\nPlease set a secure password before continuing.',
         loginFailed: 'Login Failed',
         invalidPassword: 'Invalid Password',
         passwordSetFailed: 'Set Password Failed',

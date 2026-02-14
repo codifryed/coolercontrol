@@ -811,7 +811,7 @@ export default {
             newPasswordTitle: 'Entrez Un Nouveau Mot de Passe',
             invalidPassword: 'Mot de Passe Invalide',
             passwordHelp:
-                "Lors de l'installation, le daemon utilise un mot de passe par défaut pour protéger les points de contrôle des appareils. \nVous pouvez éventuellement créer un mot de passe fort pour une meilleure protection. \nSi vous voyez cette boîte de dialogue et que vous n'avez pas encore défini de mot de passe, essayez d'actualiser l'interface utilisateur \n ou cliquez sur Connexion dans le menu Protection d'Accès. Consultez le wiki du projet pour plus d'informations.",
+                "Mot de passe oublié ? Réinitialisez-le avec :<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Puis actualisez l'UI pour définir un nouveau mot de passe.",
         },
         notFound: {
             message: "Tout comme la distribution Linux 🐧 parfaite,\ncette page n'existe pas.",
@@ -1011,6 +1011,8 @@ export default {
     auth: {
         enterPassword: 'Entrez Votre Mot de Passe',
         setNewPassword: 'Entrez Un Nouveau Mot de Passe',
+        changeDefaultPassword:
+            'CoolerControl utilise le mot de passe par défaut.\nVeuillez définir un mot de passe sécurisé avant de continuer.',
         loginFailed: 'Échec de Connexion',
         invalidPassword: 'Mot de Passe Invalide',
         passwordSetFailed: 'Échec de Définition du Mot de Passe',

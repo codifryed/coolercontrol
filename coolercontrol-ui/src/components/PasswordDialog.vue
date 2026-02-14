@@ -33,7 +33,8 @@ const deviceStore = useDeviceStore()
 const { t } = useI18n()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
-const currentPasswdInput: Ref<string> = ref('')
+const promptMessage: string | undefined = dialogRef.value.data.promptMessage
+const currentPasswdInput: Ref<string> = ref(dialogRef.value.data.currentPasswd || '')
 const passwdInput: Ref<string> = ref('')
 
 const closeAndProcess = (): void => {
@@ -62,8 +63,10 @@ const passwdInputArea = ref()
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 300))
     await delay()
-    if (setPasswd) {
+    if (setPasswd && !dialogRef.value.data.currentPasswd) {
         currentPasswdInputArea.value.$el.children[0].focus()
+    } else if (setPasswd && dialogRef.value.data.currentPasswd) {
+        passwdInputArea.value.$el.children[0].focus()
     } else {
         passwdInputArea.value.$el.children[0].focus()
     }
@@ -71,6 +74,9 @@ nextTick(async () => {
 </script>
 
 <template>
+    <p v-if="promptMessage" class="mb-12 text-text-color whitespace-pre-line">
+        {{ promptMessage }}
+    </p>
     <FloatLabel v-if="setPasswd" class="mt-6">
         <Password
             ref="currentPasswdInputArea"
@@ -114,6 +120,8 @@ nextTick(async () => {
             v-tooltip.bottom="{
                 value: t('components.password.passwordHelp'),
                 autoHide: false,
+                escape: false,
+                hideDelay: 500,
             }"
         >
             <svg-icon

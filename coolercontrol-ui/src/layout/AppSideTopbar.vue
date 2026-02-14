@@ -34,7 +34,7 @@ import {
     mdiCogOutline,
     mdiFlaskPlusOutline,
     mdiHomeAnalytics,
-    mdiLockOpenOutline,
+    mdiLockOffOutline,
     mdiLockOutline,
     mdiMenuClose,
     mdiMenuOpen,
@@ -709,14 +709,11 @@ const addItems = computed(() => [
                 aria-controls="access-overlay-menu"
             >
                 <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
-                    <svg-icon type="mdi" :path="mdiLockOpenOutline" :size="getREMSize(1.75)" />
+                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
                 </OverlayBadge>
-                <svg-icon
-                    v-else-if="deviceStore.isDefaultPasswd"
-                    type="mdi"
-                    :path="mdiLockOpenOutline"
-                    :size="getREMSize(1.75)"
-                />
+                <OverlayBadge v-else-if="deviceStore.isDefaultPasswd" :severity="'warn'">
+                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
+                </OverlayBadge>
                 <svg-icon v-else type="mdi" :path="mdiLockOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
