@@ -23,7 +23,8 @@
 #include "dbus_listener.h"
 #include "main_window.h"
 
-void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu) {
+void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu,
+                      const QString& extraFlags) {
   QByteArray chromiumFlags;
   if (debugOrFullDebug) {
     chromiumFlags = disableGpu ? "--enable-logging --log-level=0 --disable-gpu"
@@ -31,6 +32,10 @@ void setChromiumFlags(const bool debugOrFullDebug, const bool disableGpu) {
   } else {
     chromiumFlags = disableGpu ? "--enable-logging --log-level=3 --disable-gpu"
                                : "--enable-logging --log-level=3";
+  }
+  if (!extraFlags.isEmpty()) {
+    chromiumFlags.append(' ');
+    chromiumFlags.append(extraFlags.toUtf8());
   }
   qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags);
 }
@@ -60,8 +65,9 @@ void setLogFilters(const bool debug, const bool fullDebug) {
   }
 }
 
-void handleCmdOptions(const bool debug, const bool fullDebug, const bool disableGpu) {
-  setChromiumFlags(debug || fullDebug, disableGpu);
+void handleCmdOptions(const bool debug, const bool fullDebug, const bool disableGpu,
+                      const QString& extraChromiumFlags) {
+  setChromiumFlags(debug || fullDebug, disableGpu, extraChromiumFlags);
   setEnvVars(debug || fullDebug, disableGpu);
   setLogFilters(debug, fullDebug);
 }
@@ -81,9 +87,14 @@ void parseCLIOptions(const QApplication& a) {
   const QCommandLineOption gpuOption(QStringList() << "disable-gpu",
                                      "Disable GPU hardware acceleration.");
   parser.addOption(gpuOption);
+  const QCommandLineOption chromiumFlagsOption(
+      "chromium-flags",
+      "Additional Chromium flags to pass to the WebEngine (e.g. \"--ozone-platform=wayland\").",
+      "flags");
+  parser.addOption(chromiumFlagsOption);
   parser.process(a);
   handleCmdOptions(parser.isSet(debugOption), parser.isSet(fullDebugOption),
-                   parser.isSet(gpuOption));
+                   parser.isSet(gpuOption), parser.value(chromiumFlagsOption));
 }
 
 /// Entrypoint for the application
