@@ -26,8 +26,8 @@ import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/Da
 import { LightingMode, LightingModeType } from '@/models/LightingMode'
 import { computed, inject, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
-import { ElColorPicker, ElSwitch } from 'element-plus'
-import 'element-plus/es/components/color-picker/style/css'
+import { ElSwitch } from 'element-plus'
+import CCColorPicker from '@/components/CCColorPicker.vue'
 import Button from 'primevue/button'
 import { mdiContentSaveOutline } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
@@ -124,24 +124,15 @@ const colorsToShow = computed(() => {
     return colorsUI.slice(0, selectedNumberOfColors.value)
 })
 
-const setNewColor = (colorIndex: number, newColor: string | null) => {
-    if (newColor == null) {
-        if (
-            startingDeviceSetting?.lighting != null &&
-            startingDeviceSetting.lighting.colors.length > colorIndex
-        ) {
-            const rgbTuple = startingDeviceSetting.lighting.colors[colorIndex]
-            colorsUI[colorIndex].value = `rgb(${rgbTuple[0]}, ${rgbTuple[1]}, ${rgbTuple[2]})`
-        } else {
-            colorsUI[colorIndex].value = 'rgb(255, 255, 255)'
-        }
-    } else {
-        if (startingDeviceSetting?.lighting == null) {
-            return
-        }
-        const newRgbTuple = parseRgbString(newColor)
-        colorsUI[colorIndex].value = `rgb(${newRgbTuple[0]}, ${newRgbTuple[1]}, ${newRgbTuple[2]})`
+const getDefaultColor = (colorIndex: number): string => {
+    if (
+        startingDeviceSetting?.lighting != null &&
+        startingDeviceSetting.lighting.colors.length > colorIndex
+    ) {
+        const rgbTuple = startingDeviceSetting.lighting.colors[colorIndex]
+        return `rgb(${rgbTuple[0]}, ${rgbTuple[1]}, ${rgbTuple[2]})`
     }
+    return 'rgb(255, 255, 255)'
 }
 
 const parseRgbString = (rgbColor: string): [number, number, number] => {
@@ -402,15 +393,14 @@ onMounted(() => {
                 >
                     <div class="content-center flex justify-center">
                         <div class="color-wrapper mt-1">
-                            <el-color-picker
+                            <c-c-color-picker
                                 v-for="(color, index) in colorsToShow"
                                 class="m-2"
                                 :key="index"
                                 v-model="color.value"
                                 color-format="rgb"
-                                :predefine="settingsStore.predefinedColorOptions"
-                                :validate-event="false"
-                                @change="(newColor: string | null) => setNewColor(index, newColor)"
+                                :default-color="getDefaultColor(index)"
+                                :size="10"
                             />
                         </div>
                     </div>
@@ -445,61 +435,4 @@ onMounted(() => {
     line-height: normal;
     min-width: 10rem;
 }
-
-.color-wrapper :deep(.el-color-picker__trigger) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 4rem !important;
-    width: 4rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__mask) {
-    border: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: 4rem !important;
-    width: 4rem !important;
-    border-radius: 0.5rem !important;
-    background-color: rgba(0, 0, 0, 0);
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color) {
-    border: 0 !important;
-    border-radius: 0.5rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__trigger) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker.is-disabled) {
-    cursor: default;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner) {
-    border-radius: 0.5rem !important;
-    opacity: 1;
-    width: 4rem !important;
-    height: 4rem !important;
-}
-
-.color-wrapper :deep(.el-color-picker__color-inner):hover {
-    opacity: 1;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
-    display: none;
-    height: 0;
-    width: 0;
-}
-
-.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
-    display: none;
-    height: 0;
-    width: 0;
-}
 </style>
-
-<style></style>

@@ -38,6 +38,7 @@ const colorModel = defineModel<Color>({ required: true })
 const props = defineProps<{
     colorFormat?: string
     defaultColor?: Color
+    size?: number // trigger size in rem
 }>()
 const emit = defineEmits<{
     (e: 'open', value: boolean): void
@@ -62,6 +63,11 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
 const { t } = useI18n()
+
+const triggerStyle = computed(() =>
+    props.size ? { width: `${props.size}rem`, height: `${props.size}rem` } : undefined,
+)
+const iconSize = computed(() => deviceStore.getREMSize(props.size ? props.size * 0.9 : 4.25))
 
 // We store all colors as hex internally (text input, etc)
 const currentColor: Ref<Color> = ref(colorStore.rgbToHex(colorModel.value))
@@ -116,14 +122,16 @@ const handleRedIssue = (newColor: Color): void => {
 <template>
     <div v-tooltip.top="{ value: t('layout.menu.tooltips.chooseColor') }">
         <div
-            class="rounded-lg w-10 h-10 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover cursor-pointer"
+            class="rounded-lg border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover cursor-pointer"
+            :class="{ 'w-10 h-10': !size }"
+            :style="triggerStyle"
             @click.stop.prevent="(event) => popRef.toggle(event)"
         >
             <svg-icon
                 class="outline-0"
                 type="mdi"
                 :path="mdiPalette"
-                :size="deviceStore.getREMSize(2.25)"
+                :size="iconSize"
                 :style="{ color: currentColor }"
             />
         </div>
