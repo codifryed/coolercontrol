@@ -33,12 +33,13 @@ mod settings;
 mod sse;
 pub mod status;
 mod tls;
+mod tokens;
 
 use crate::admin;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
-    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
+    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle, TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MokaSessionStore};
@@ -80,7 +81,6 @@ use std::ops::Not;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use time;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -161,7 +161,8 @@ pub async fn start_server<'s>(
         status_handle,
         &cancel_token,
         main_scope,
-    );
+    )
+    .await;
     let tls_config = tls_config(&settings).await;
     let session_key = admin::load_or_generate_session_key().await?;
     let sessions_dir = std::path::PathBuf::from(DEFAULT_CONFIG_DIR).join("sessions");
@@ -259,7 +260,7 @@ async fn run_all_api_servers(
 
     // Periodically clean up expired session files
     tokio::task::spawn_local(
-        expired_deletion_store.continuously_delete_expired(tokio::time::Duration::from_secs(3600)),
+        expired_deletion_store.continuously_delete_expired(Duration::from_secs(3600)),
     );
 
     // REST API servers
@@ -438,7 +439,7 @@ async fn create_api_server(
     Ok(())
 }
 
-#[allow(clippy::default_trait_access)]
+#[allow(clippy::default_trait_access, clippy::too_many_lines)]
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
     api.title("CoolerControl Daemon API")
         .summary("CoolerControl Rest Endpoints")
@@ -473,6 +474,17 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
                 description: Some(
                     "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
                         .to_string(),
+                ),
+                extensions: Default::default(),
+            },
+        )
+        .security_scheme(
+            "BearerAuth",
+            SecurityScheme::Http {
+                scheme: "bearer".to_string(),
+                bearer_format: Some("cc_<uuid>".to_string()),
+                description: Some(
+                    "Bearer token authentication for external services.".to_string(),
                 ),
                 extensions: Default::default(),
             },
@@ -539,7 +551,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         })
 }
 
-fn create_app_state<'s>(
+async fn create_app_state<'s>(
     all_devices: AllDevices,
     repos: Repos,
     engine: &Rc<Engine>,
@@ -555,6 +567,7 @@ fn create_app_state<'s>(
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
     let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
+    let token_handle = TokenHandle::new(cancel_token.clone()).await;
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
@@ -591,6 +604,7 @@ fn create_app_state<'s>(
     AppState {
         health,
         auth_handle,
+        token_handle,
         device_handle,
         status_handle,
         profile_handle,
@@ -1060,6 +1074,7 @@ impl OperationOutput for CCError {
 pub struct AppState {
     pub health: HealthHandle,
     pub auth_handle: AuthHandle,
+    pub token_handle: TokenHandle,
     pub device_handle: DeviceHandle,
     pub status_handle: StatusHandle,
     pub profile_handle: ProfileHandle,

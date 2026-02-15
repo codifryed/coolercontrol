@@ -51,6 +51,11 @@ import { Alert, AlertsDTO } from '@/models/Alert.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto from '@/models/Plugins.ts'
+import type {
+    AccessTokenInfo,
+    CreateTokenRequest,
+    CreateTokenResponse,
+} from '@/models/AccessToken.ts'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -1308,6 +1313,61 @@ export default class DaemonClient {
         } catch (err: any) {
             this.logError(err)
             return false
+        }
+    }
+
+    /* Access Tokens */
+
+    async listTokens(): Promise<AccessTokenInfo[] | ErrorResponse> {
+        try {
+            const response = await this.getClient().get('/tokens')
+            this.logDaemonResponse(response, 'List Tokens')
+            return response.data.tokens
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async createToken(
+        label: string,
+        expiresAt: string | null,
+    ): Promise<CreateTokenResponse | ErrorResponse> {
+        try {
+            const body: CreateTokenRequest = { label, expires_at: expiresAt }
+            const response = await this.getClient().post('/tokens', body, {
+                'axios-retry': {
+                    retries: 0,
+                },
+            })
+            this.logDaemonResponse(response, 'Create Token')
+            return response.data
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async deleteToken(tokenId: string): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(`/tokens/${tokenId}`)
+            this.logDaemonResponse(response, 'Delete Token')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
         }
     }
 }

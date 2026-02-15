@@ -15,14 +15,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 use crate::admin;
+use crate::api::actor::TokenHandle;
 use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
 use anyhow::Result;
-use axum::extract::{Request, State};
+use axum::extract::Request;
+use axum::http::header;
 use axum::middleware::Next;
-use axum::Json;
+use axum::{Extension, Json};
 use axum_extra::TypedHeader;
 use derive_more::Display;
 use headers::authorization::Basic;
@@ -32,18 +35,58 @@ use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tower_sessions::Session;
 
+use axum::extract::State;
+
 const SESSION_USER_ID: &str = "CCAdmin";
 const SESSION_PERMISSIONS: &str = "permissions";
 const INVALID_MESSAGE: &str = "Invalid username or password.";
 
 /// This middleware function is used to verify if the user is logged in.
-/// If the user is not logged in, then the request is rejected.
-/// It should be used on all routes that require authentication.
+/// It first checks for a Bearer token in the Authorization header,
+/// and if present, validates the token. If no Bearer token is present,
+/// it falls back to session cookie authentication.
 pub async fn auth_middleware(
+    Extension(token_handle): Extension<TokenHandle>,
     session: Session,
     request: Request,
     next: Next,
 ) -> impl IntoApiResponse {
+    // 1. Check for Bearer token
+    if let Some(auth_value) = request.headers().get(header::AUTHORIZATION) {
+        if let Ok(value) = auth_value.to_str() {
+            if let Some(raw_token) = value.strip_prefix("Bearer ") {
+                return match token_handle.validate(raw_token.to_string()).await {
+                    Ok(true) => Ok(next.run(request).await),
+                    Ok(false) => Err(CCError::InvalidCredentials {
+                        msg: "Invalid or expired access token.".to_string(),
+                    }),
+                    Err(_) => Err(CCError::InternalError {
+                        msg: "Token validation error.".to_string(),
+                    }),
+                };
+            }
+        }
+    }
+    // 2. Fall back to session cookie
+    check_session_permission(session, request, next).await
+}
+
+/// Session-only authentication middleware. Used for session-sensitive routes
+/// like token management, password changes, and logout.
+/// Bearer tokens are not accepted on these routes.
+pub async fn session_auth_middleware(
+    session: Session,
+    request: Request,
+    next: Next,
+) -> impl IntoApiResponse {
+    check_session_permission(session, request, next).await
+}
+
+async fn check_session_permission(
+    session: Session,
+    request: Request,
+    next: Next,
+) -> Result<axum::response::Response, CCError> {
     let permission = session
         .get::<Permission>(SESSION_PERMISSIONS)
         .await

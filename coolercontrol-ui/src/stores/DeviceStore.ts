@@ -66,6 +66,9 @@ export const useDeviceStore = defineStore('device', () => {
     daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
+    const accessTokensDialog = defineAsyncComponent(
+        () => import('../components/AccessTokensDialog.vue'),
+    )
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -569,6 +572,18 @@ export const useDeviceStore = defineStore('device', () => {
                         })
                     }
                 }
+            },
+        })
+    }
+
+    async function manageTokens(): Promise<void> {
+        dialog.open(accessTokensDialog, {
+            props: {
+                header: t('auth.accessTokens'),
+                position: 'center',
+                modal: true,
+                dismissableMask: true,
+                style: { width: '50rem' },
             },
         })
     }
@@ -1118,6 +1133,7 @@ export const useDeviceStore = defineStore('device', () => {
         acknowledgeIssues,
         loadLogs,
         setPasswd,
+        manageTokens,
         initializeDevices,
         loggedIn,
         isDefaultPasswd,

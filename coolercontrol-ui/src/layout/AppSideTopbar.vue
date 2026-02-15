@@ -274,6 +274,15 @@ const accessItems = computed(() => [
         },
         visible: deviceStore.loggedIn,
     },
+    {
+        label: t('layout.topbar.accessTokens'),
+        icon: 'pi pi-fw pi-key',
+        command: async () => {
+            accessMenuRef.value?.handleClose()
+            await deviceStore.manageTokens()
+        },
+        visible: deviceStore.loggedIn,
+    },
 ])
 
 const restartItems = computed(() => {

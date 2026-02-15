@@ -40,6 +40,7 @@ mod plugin;
 mod profile;
 mod setting;
 mod status;
+mod token;
 
 pub use self::alert::*;
 pub use self::auth::*;
@@ -52,6 +53,7 @@ pub use self::plugin::*;
 pub use self::profile::*;
 pub use self::setting::*;
 pub use self::status::*;
+pub use self::token::*;
 
 pub trait ApiActor<M> {
     fn name(&self) -> &str;

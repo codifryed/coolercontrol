@@ -20,46 +20,45 @@ export default {
     root: ({ props }) => ({
         class: [
             // Spacing and Shape
-            'rounded-md',
+            'rounded-lg',
             'outline-solid outline-0 outline-l-[6px]',
 
             // Colors
             {
-                'bg-blue-100/70 dark:bg-blue-500/20': props.severity == 'info',
-                'bg-green-100/70 dark:bg-green-500/20': props.severity == 'success',
-                'bg-surface-100/70 dark:bg-surface-500/20': props.severity == 'secondary',
-                'bg-orange-100/70 dark:bg-orange-500/20': props.severity == 'warn',
-                'bg-red-100/70 dark:bg-red-500/20': props.severity == 'error',
-                'bg-surface-950 dark:bg-surface-0': props.severity == 'contrast',
+                'bg-blue/20': props.severity == 'info',
+                'bg-green/20': props.severity == 'success',
+                'bg-bg-two': props.severity == 'secondary',
+                'bg-yellow/20': props.severity == 'warn',
+                'bg-red/20': props.severity == 'error',
+                'bg-bg-one': props.severity == 'contrast',
             },
             {
-                'outline-blue-500 dark:outline-blue-400': props.severity == 'info',
-                'outline-green-500 dark:outline-green-400': props.severity == 'success',
-                'outline-surface-500 dark:outline-surface-400': props.severity == 'secondary',
-                'outline-orange-500 dark:outline-orange-400': props.severity == 'warn',
-                'outline-red-500 dark:outline-red-400': props.severity == 'error',
-                'outline-surface-950 dark:outline-surface-0': props.severity == 'contrast',
+                'outline-blue': props.severity == 'info',
+                'outline-green': props.severity == 'success',
+                'outline-border-one': props.severity == 'secondary',
+                'outline-yellow': props.severity == 'warn',
+                'outline-red': props.severity == 'error',
+                'outline-border-one': props.severity == 'contrast',
             },
             {
-                'text-blue-700 dark:text-blue-300': props.severity == 'info',
-                'text-green-700 dark:text-green-300': props.severity == 'success',
-                'text-surface-700 dark:text-surface-300': props.severity == 'secondary',
-                'text-orange-700 dark:text-orange-300': props.severity == 'warn',
-                'text-red-700 dark:text-red-300': props.severity == 'error',
-                'text-surface-0 dark:text-surface-950': props.severity == 'contrast',
+                'text-blue': props.severity == 'info',
+                'text-green': props.severity == 'success',
+                'text-text-color-secondary': props.severity == 'secondary',
+                'text-yellow': props.severity == 'warn',
+                'text-red': props.severity == 'error',
+                'text-text-color': props.severity == 'contrast',
             },
         ],
     }),
     content: {
         class: [
             // Flexbox
-            // 'flex items-center h-full',
             'flex h-full',
 
             // Spacing
             'py-3 px-5 gap-2',
             // this is from the LCD Image warning about too large a file.
-            'w-96',
+            // 'w-96',
         ],
     },
     icon: {
@@ -97,7 +96,7 @@ export default {
             'transition duration-200 ease-in-out',
 
             // States
-            'hover:bg-surface-0/50 dark:hover:bg-surface-0/10',
+            'hover:bg-surface-hover',
 
             // Misc
             'overflow-hidden',
