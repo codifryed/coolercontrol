@@ -363,6 +363,7 @@ export const useDeviceStore = defineStore('device', () => {
             // @ts-ignore
             const ipc = window.ipc
             await ipc.loadFinished()
+            await ipc.forceShow()
         }
         return new Promise((resolve) => {
             dialog.open(passwordDialog, {
@@ -595,6 +596,7 @@ export const useDeviceStore = defineStore('device', () => {
             // @ts-ignore
             const ipc = window.ipc
             await ipc.loadFinished()
+            await ipc.forceShow()
         }
         return new Promise((resolve) => {
             dialog.open(passwordDialog, {

@@ -156,6 +156,12 @@ MainWindow::MainWindow(QWidget* parent)
           Qt::QueuedConnection);
   m_retryTimer->setInterval(DEFAULT_CONNECTION_RETRY_INTERVAL_MS);
   connect(m_retryTimer, &QTimer::timeout, this, &MainWindow::tryDaemonConnection);
+  connect(m_ipc, &IPC::forceWindowShow, this, [this]() {
+    // This is used so the UI Window will show when password input is required
+    setAttribute(Qt::WidgetAttribute::WA_DontShowOnScreen, false);
+    showNormal();
+    qInfo() << "Force UI Window to show.";
+  });
 
   initWizard();
   initDelay();
