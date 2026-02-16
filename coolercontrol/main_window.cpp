@@ -60,6 +60,7 @@ MainWindow::MainWindow(QWidget* parent)
   m_profile->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, false);
   m_profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, false);
+  m_profile->settings()->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, true);
   m_profile->settings()->setAttribute(QWebEngineSettings::PdfViewerEnabled, false);
   // local storage: ~/.local/share/{APP_NAME}
   m_profile->settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
