@@ -272,6 +272,7 @@ export default {
                 'text-text-color bg-transparent':
                     !context.selected && !context.disabled && !context.date.today,
                 'bg-surface-hover text-accent': context.selected && !context.disabled,
+                'text-text-color-secondary': context.disabled,
             },
 
             // States
