@@ -312,11 +312,20 @@ void MainWindow::initWebUI() {
   m_view->load(getDaemonUrl());
   connect(m_view, &QWebEngineView::loadFinished, [this](const bool pageLoadedSuccessfully) {
     if (!pageLoadedSuccessfully) {
+      if (m_uiLoadRetryCount < MAX_UI_LOAD_RETRIES) {
+        m_uiLoadRetryCount++;
+        qDebug() << "UI load failed, retrying..." << m_uiLoadRetryCount << "/"
+                 << MAX_UI_LOAD_RETRIES;
+        QTimer::singleShot(1500, this, [this]() { m_view->load(getDaemonUrl()); });
+        return;
+      }
       m_uiLoadingStopped = true;
+      m_uiLoadRetryCount = 0;
       displayAddressWizard();
       notifyDaemonConnectionError();
     } else {
       m_uiLoadingStopped = false;
+      m_uiLoadRetryCount = 0;
       qInfo() << "Successfully loaded UI at: " << getDaemonUrl().url();
       if (m_startup) {  // don't do this for Wizard retries
         m_retryTimer->start();
