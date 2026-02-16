@@ -45,6 +45,49 @@
 
 #include "constants.h"
 
+class PersistentCookieJar final : public QNetworkCookieJar {
+ public:
+  explicit PersistentCookieJar(QObject* parent = nullptr) : QNetworkCookieJar(parent) { load(); }
+
+  bool insertCookie(const QNetworkCookie& cookie) override {
+    if (QNetworkCookieJar::insertCookie(cookie)) {
+      save();
+      return true;
+    }
+    return false;
+  }
+
+  bool deleteCookie(const QNetworkCookie& cookie) override {
+    if (QNetworkCookieJar::deleteCookie(cookie)) {
+      save();
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  void save() const {
+    QSettings settings;
+    QByteArray cookieData;
+    for (const auto& cookie : allCookies()) {
+      cookieData.append(cookie.toRawForm());
+      cookieData.append("\n");
+    }
+    settings.setValue("networkCookies", cookieData);
+  }
+
+  void load() {
+    const QSettings settings;
+    const auto cookieData = settings.value("networkCookies").toByteArray();
+    if (cookieData.isEmpty()) return;
+    const auto cookies = QNetworkCookie::parseCookies(cookieData);
+    for (const auto& cookie : cookies) {
+      QNetworkCookieJar::insertCookie(cookie);
+    }
+    qDebug() << "Loaded" << cookies.size() << "persisted cookies for QNetworkAccessManager";
+  }
+};
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
       m_view(new QWebEngineView(parent)),
@@ -99,6 +142,7 @@ MainWindow::MainWindow(QWidget* parent)
             setWindowState(windowState() ^ Qt::WindowFullScreen);
           });
   m_view->setPage(m_page);
+  m_manager->setCookieJar(new PersistentCookieJar(m_manager));
   const auto cookieStore = m_profile->cookieStore();
   connect(cookieStore, &QWebEngineCookieStore::cookieAdded,
           [this](const QNetworkCookie& cookie) { m_manager->cookieJar()->insertCookie(cookie); });
