@@ -127,6 +127,11 @@ pub async fn login(
 
 /// This endpoint is used to verify if the login session is still valid
 pub async fn verify_session() -> Result<(), CCError> {
+    if admin::match_passwd(admin::DEFAULT_PASS).await {
+        return Err(CCError::InvalidCredentials {
+            msg: "The Default password or a reset has invalidated the session.".to_string(),
+        });
+    }
     Ok(())
 }
 
