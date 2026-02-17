@@ -334,7 +334,7 @@ async fn security_headers_middleware(req: Request, next: middleware::Next) -> Re
     );
     headers.insert(
         axum::http::header::X_FRAME_OPTIONS,
-        HeaderValue::from_static("DENY"),
+        HeaderValue::from_static("SAMEORIGIN"),
     );
     headers.insert(
         HeaderName::from_static("referrer-policy"),
@@ -1341,7 +1341,10 @@ mod tests {
             response.headers().get("x-content-type-options").unwrap(),
             "nosniff"
         );
-        assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(
+            response.headers().get("x-frame-options").unwrap(),
+            "SAMEORIGIN"
+        );
         assert_eq!(
             response.headers().get("referrer-policy").unwrap(),
             "strict-origin-when-cross-origin"
