@@ -804,9 +804,8 @@ fn plugins_routes() -> ApiRouter<AppState> {
                 o.summary("CoolerControl Plugin UI Library")
                     .description("Returns the CoolerControl plugin UI library for plugins to use in their UI code.")
                     .tag("plugins")
-                    .security_requirement("CookieAuth")
+                    // Due to the request coming from inside an iframe, this needs to be public
             })
-            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
             "/plugins/{plugin_id}/config",
