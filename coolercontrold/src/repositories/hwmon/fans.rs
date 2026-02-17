@@ -591,16 +591,16 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    fn setup() -> HwmonFileContext {
+    async fn setup() -> HwmonFileContext {
         let test_base_path =
             Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
                 .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
         HwmonFileContext { test_base_path }
     }
 
-    fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     #[test]
@@ -626,7 +626,7 @@ mod tests {
     #[serial]
     fn find_fan() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -648,7 +648,7 @@ mod tests {
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -665,7 +665,7 @@ mod tests {
     #[serial]
     fn find_fan_pwm_only() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -680,7 +680,7 @@ mod tests {
             let fans_result = init_fans(test_base_path, &device_name).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -697,7 +697,7 @@ mod tests {
     #[serial]
     fn find_fan_rpm_only() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -713,7 +713,7 @@ mod tests {
 
             // then:
             // println!("RESULT: {:?}", fans_result);
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(fans_result.is_ok());
             let fans = fans_result.unwrap();
             assert_eq!(fans.len(), 1);
@@ -730,7 +730,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"1".to_vec())
@@ -756,7 +756,7 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "2");
         });
@@ -766,7 +766,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default_doesnt_exist() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let channel_info = HwmonChannelInfo {
@@ -789,7 +789,7 @@ mod tests {
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .is_err();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
         });
@@ -799,7 +799,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_to_default_auto() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             // current value is already auto (2)
@@ -827,7 +827,7 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             // remains on auto (2)
             assert_eq!(current_pwm_enable, "2");
@@ -838,7 +838,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"2".to_vec())
@@ -865,7 +865,7 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "1");
         });
@@ -876,7 +876,7 @@ mod tests {
     fn test_set_pwm_enable_doesnt_exist() {
         // test to make sure we don't return an Err if pwm_enable doesn't exist
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             let channel_info = HwmonChannelInfo {
@@ -900,7 +900,7 @@ mod tests {
             let pwm_enable_doesnt_exist = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .is_err();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert!(pwm_enable_doesnt_exist);
         });
@@ -910,7 +910,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_enable_if_not_already_set() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_enable"), b"0".to_vec())
@@ -941,7 +941,7 @@ mod tests {
             let current_pwm_enable = cc_fs::read_sysfs(&test_base_path.join("pwm1_enable"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_pwm_enable, "1");
         });
@@ -951,7 +951,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -979,7 +979,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(format!("{current_duty:.1}"), "50.0");
         });
@@ -989,7 +989,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty_using_path() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -1017,7 +1017,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(format!("{current_duty:.1}"), "50.0");
         });
@@ -1027,7 +1027,7 @@ mod tests {
     #[serial]
     fn test_set_pwm_duty_no_pwm_enable() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given:
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1"), b"255".to_vec())
@@ -1055,7 +1055,7 @@ mod tests {
                 .and_then(check_parsing_8)
                 .map(pwm_value_to_duty)
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_duty.to_string(), "50");
         });

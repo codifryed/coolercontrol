@@ -52,6 +52,12 @@ export default {
         defaults: '기본',
         rename: '이름 바꾸기',
         password: '비밀번호',
+        currentPassword: '현재 비밀번호',
+        newPassword: '새 비밀번호',
+        passwordPrompt: '비밀번호를 입력하세요',
+        passwordWeak: '약함',
+        passwordMedium: '보통',
+        passwordStrong: '강함',
         savePassword: '비밀번호 저장',
         editName: '이름 편집',
         state: '상태',
@@ -100,6 +106,7 @@ export default {
             login: '로그인',
             logout: '로그아웃',
             changePassword: '비밀번호 변경',
+            accessTokens: '액세스 토큰',
             restartUI: 'UI 재시작',
             restartDaemonAndUI: '데몬 및 UI 재시작',
             restartConfirmMessage: '데몬과 UI를 재시작할까요?',
@@ -176,6 +183,7 @@ export default {
             fullScreen: '전체 화면',
             menuBarAlwaysVisible: '메뉴 표시줄 항상 보이기',
             hideMenuCollapseIcon: '메뉴 접기 아이콘 숨기기',
+            eyeCandy: '시각 효과',
             showOnboarding: '시작 시 온보딩 투어 표시',
             introduction: '소개',
             startTour: '투어 시작',
@@ -225,6 +233,8 @@ export default {
                 introduction: '애플리케이션 소개 투어를 시작합니다.',
                 timeFormat: '시간 형식: 12시간 (AM/PM) 또는 24시간',
                 frequencyPrecision: '표시되는 주파수 값의 정밀도를 조정하세요.',
+                eyeCandy:
+                    '회전하는 팬 아이콘과 같은 시각적 애니메이션을 활성화합니다.\n이 기능은 추가적인 GPU 리소스를 사용합니다.',
                 sidebarCollapse:
                     '사이드바에 메뉴 접기 아이콘을 표시할지,\n또는 빈 사이드바 영역을 활용하여 메인 메뉴를 펼치거나 접을지 결정합니다.',
                 entitiesBelowSensors: '메인 메뉴에서 장치 센서 아래에 개체를 표시할지 여부.',
@@ -644,6 +654,8 @@ export default {
             functionUpdateError: '이 기능을 업데이트하는 동안 오류 발생',
         },
         error: {
+            accessDenied: '접근 거부',
+            accessDeniedMessage: '인증에 실패했습니다. 비밀번호를 확인하고 다시 시도해 주세요.',
             connectionError: 'CoolerControl 연결 오류',
             connectionToast: '데몬에 연결할 수 없음',
             connectionToastDetail:
@@ -771,7 +783,7 @@ export default {
             newPasswordTitle: '새 비밀번호 입력',
             invalidPassword: '잘못된 비밀번호',
             passwordHelp:
-                '설치 시 데몬은 기본 암호를 사용하여 장치 제어 엔드포인트를 보호합니다. \n선택적으로 보안 강화를 위해 강력한 암호를 생성할 수 있습니다. \n이 대화 상자가 표시되고 아직 암호를 설정하지 않은 경우 UI를 새로 고치거나 \n 접속 보호 메뉴에서 로그인을 클릭해 보세요. 자세한 내용은 프로젝트 위키를 참조하세요.',
+                '비밀번호를 잊으셨나요? 다음 명령어로 재설정하세요:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>그런 다음 UI를 새로고침하여 새 비밀번호를 설정하세요.',
         },
         notFound: {
             message: '완벽한 리눅스 🐧 배포판처럼,\n이 페이지는 존재하지 않습니다.',
@@ -966,12 +978,38 @@ export default {
     auth: {
         enterPassword: '비밀번호 입력',
         setNewPassword: '새 비밀번호 입력',
+        changeDefaultPassword:
+            'CoolerControl이 기본 비밀번호를 사용하고 있습니다.\n계속하기 전에 안전한 비밀번호를 설정해 주세요.',
         loginFailed: '로그인 실패함',
         invalidPassword: '잘못된 비밀번호',
         passwordSetFailed: '비밀번호 설정 실패',
         passwordSetSuccessfully: '새 비밀번호가 성공적으로 설정됨',
         logoutSuccessful: '로그아웃에 성공했습니다.',
         unauthorizedAction: '이 작업을 완료하려면 로그인해야 함',
+        accessTokens: '액세스 토큰',
+        tokenLabel: '레이블 (예: cctv)',
+        tokenExpiry: '만료일 (선택 사항)',
+        createToken: '토큰 생성',
+        tokenCreated: '토큰 생성됨',
+        tokenCreatedDetail: '이 토큰을 지금 복사하세요. 다시 표시되지 않습니다.',
+        tokenCopied: '토큰이 클립보드에 복사됨',
+        tokenDeleted: '토큰 삭제됨',
+        tokenCreateError: '토큰 생성 실패',
+        tokenDeleteError: '토큰 삭제 실패',
+        tokenLoadError: '토큰 로드 실패',
+        tokenDeleteConfirm:
+            '이 토큰을 삭제하시겠습니까? 이 토큰을 사용하는 모든 서비스의 접근 권한이 사라집니다.',
+        tokenDeleteHeader: '토큰 삭제',
+        noTokens: '아직 생성된 액세스 토큰이 없습니다.',
+        expires: '만료',
+        expired: '만료됨',
+        active: '활성',
+        never: '없음',
+        lastUsed: '마지막 사용',
+        neverUsed: '사용한 적 없음',
+        created: '생성일',
+        label: '레이블',
+        actions: '작업',
     },
     daemon: {
         status: {
@@ -993,6 +1031,9 @@ export default {
             failed: {
                 summary: '로그인 실패함',
                 detail: '잘못된 비밀번호',
+            },
+            rate_limited: {
+                summary: '로그인 일시적으로 차단됨',
             },
         },
         logout: {

@@ -52,6 +52,12 @@ export default {
         defaults: 'Padrões',
         rename: 'Renomear',
         password: 'Senha',
+        currentPassword: 'Senha atual',
+        newPassword: 'Nova senha',
+        passwordPrompt: 'Digite uma senha',
+        passwordWeak: 'Fraca',
+        passwordMedium: 'Média',
+        passwordStrong: 'Forte',
         savePassword: 'Salvar senha',
         editName: 'Editar nome',
         state: 'Estado',
@@ -101,6 +107,7 @@ export default {
             login: 'Entrar',
             logout: 'Sair',
             changePassword: 'Alterar senha',
+            accessTokens: 'Tokens de acesso',
             restartUI: 'Reiniciar interface',
             restartDaemonAndUI: 'Reiniciar daemon e interface',
             restartConfirmMessage: 'Tem certeza de que deseja reiniciar o daemon e a interface?',
@@ -177,6 +184,7 @@ export default {
             fullScreen: 'Tela cheia',
             menuBarAlwaysVisible: 'Barra de menu sempre visível',
             hideMenuCollapseIcon: 'Ocultar ícone de recolher menu',
+            eyeCandy: 'Efeitos visuais',
             showOnboarding: 'Mostrar tour de introdução ao iniciar',
             introduction: 'Introdução',
             startTour: 'Iniciar tour',
@@ -290,6 +298,8 @@ export default {
         introduction: 'Iniciar o tour de introdução do aplicativo.',
         timeFormat: 'Formato de hora: 12 horas (AM/PM) ou 24 horas',
         frequencyPrecision: 'Ajustar a precisão dos valores de frequência exibidos.',
+        eyeCandy:
+            'Ativar animações visuais como ícones de ventoinhas girando.\nIsto utilizará alguns recursos adicionais da GPU.',
         sidebarCollapse:
             'Se deve exibir um ícone de colapso do menu na barra lateral,\nou usar a área vazia da barra lateral para expandir ou colapsar o menu principal.',
         entitiesBelowSensors:
@@ -602,6 +612,9 @@ export default {
             functionUpdateError: 'Ocorreu um erro ao tentar atualizar esta Função',
         },
         error: {
+            accessDenied: 'Acesso Negado',
+            accessDeniedMessage:
+                'A autenticação falhou. Por favor, verifique sua senha e tente novamente.',
             connectionError: 'Erro de Conexão CoolerControl',
             connectionToast: 'Não foi possível conectar ao daemon',
             connectionToastDetail:
@@ -800,7 +813,7 @@ export default {
             newPasswordTitle: 'Insira Uma Nova Senha',
             invalidPassword: 'Senha Inválida',
             passwordHelp:
-                'Durante a instalação, o daemon usa uma senha padrão para proteger os pontos de controle do dispositivo. \nOpcionalmente, você pode criar uma senha forte para melhor proteção. \nSe você vê este diálogo e ainda não definiu uma senha, tente atualizar a IU \n ou clique em Login no menu Proteção de Acesso. Consulte o wiki do projeto para mais informações.',
+                'Esqueceu sua senha? Redefina-a com:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Em seguida, atualize a UI para definir uma nova senha.',
         },
         notFound: {
             message: 'Assim como a distribuição Linux perfeita 🐧,\nesta página não existe.',
@@ -1022,12 +1035,38 @@ export default {
     auth: {
         enterPassword: 'Insira Sua Senha',
         setNewPassword: 'Insira Uma Nova Senha',
+        changeDefaultPassword:
+            'CoolerControl está usando a senha padrão.\nPor favor, defina uma senha segura antes de continuar.',
         loginFailed: 'Falha no Login',
         invalidPassword: 'Senha Inválida',
         passwordSetFailed: 'Falha ao Definir Senha',
         passwordSetSuccessfully: 'Nova senha definida com sucesso',
         logoutSuccessful: 'Você saiu com sucesso.',
         unauthorizedAction: 'Você precisa fazer login para completar esta ação',
+        accessTokens: 'Tokens de acesso',
+        tokenLabel: 'Rótulo (ex. cctv)',
+        tokenExpiry: 'Data de expiração (opcional)',
+        createToken: 'Criar token',
+        tokenCreated: 'Token criado',
+        tokenCreatedDetail: 'Copie este token agora. Ele não será exibido novamente.',
+        tokenCopied: 'Token copiado para a área de transferência',
+        tokenDeleted: 'Token excluído',
+        tokenCreateError: 'Falha ao criar token',
+        tokenDeleteError: 'Falha ao excluir token',
+        tokenLoadError: 'Falha ao carregar tokens',
+        tokenDeleteConfirm:
+            'Tem certeza de que deseja excluir este token? Os serviços que o utilizam perderão o acesso.',
+        tokenDeleteHeader: 'Excluir token',
+        noTokens: 'Nenhum token de acesso criado ainda.',
+        expires: 'Expira',
+        expired: 'Expirado',
+        active: 'Ativo',
+        never: 'Nunca',
+        lastUsed: 'Último uso',
+        neverUsed: 'Nunca usado',
+        created: 'Criado',
+        label: 'Rótulo',
+        actions: 'Ações',
     },
     device_store: {
         unauthorized: {
@@ -1042,6 +1081,9 @@ export default {
             failed: {
                 summary: 'Falha no Login',
                 detail: 'Senha Inválida',
+            },
+            rate_limited: {
+                summary: 'Login Temporariamente Bloqueado',
             },
         },
         logout: {

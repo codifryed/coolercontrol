@@ -76,6 +76,8 @@ class IPC final : public QObject {
 
   void loadFinished() const { emit webLoadFinished(); }
 
+  void forceShow() const { emit forceWindowShow(); }
+
   /*
       Signals are emitted from the C++ side and are handed to callbacks on the JS client side.
   */
@@ -83,6 +85,8 @@ class IPC final : public QObject {
   void sendText(const QString& text);
 
   void webLoadFinished() const;
+
+  void forceWindowShow() const;
 
   void fullScreenToggled(bool fullScreen) const;
 

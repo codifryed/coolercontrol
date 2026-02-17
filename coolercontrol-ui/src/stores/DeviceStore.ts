@@ -66,6 +66,9 @@ export const useDeviceStore = defineStore('device', () => {
     daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
+    const accessTokensDialog = defineAsyncComponent(
+        () => import('../components/AccessTokensDialog.vue'),
+    )
     const dialog = useDialog()
     const toast = useToast()
     const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
@@ -88,6 +91,8 @@ export const useDeviceStore = defineStore('device', () => {
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
     const loggedIn: Ref<boolean> = ref(false)
+    const isDefaultPasswd: Ref<boolean> = ref(true)
+    const accessDenied: Ref<boolean> = ref(false)
     const logs: Ref<string> = ref('')
 
     // Getters ---------------------------------------------------------------------------------------------------------
@@ -351,48 +356,70 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
-    async function requestPasswd(retryCount: number = 1): Promise<void> {
-        setTimeout(async () => {
-            // wait until the Onboarding dialog isn't open without blocking:
-            const settingsStore = useSettingsStore()
-            while (settingsStore.showOnboarding) {
-                await sleep(1000)
-            }
+    async function requestPasswd(retryCount: number = 1): Promise<boolean> {
+        const thisStore = useDeviceStore()
+        if (thisStore.isQtApp()) {
+            // The desktop app window should be shown if login fails
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
+            await ipc.forceShow()
+        }
+        return new Promise((resolve) => {
             dialog.open(passwordDialog, {
                 props: {
                     header: t('auth.enterPassword'),
                     position: 'center',
-                    modal: true,
+                    modal: false,
                     dismissableMask: false,
+                    closable: false,
                 },
                 data: {
                     setPasswd: false,
                 },
-                onClose: async (options: any) => {
-                    if (options.data && options.data.passwd) {
-                        const passwdSuccess = await daemonClient.login(options.data.passwd)
-                        if (passwdSuccess) {
+                onClose: (options: any) => {
+                    // Defer async work to allow dialog to fully close and clean up modal mask
+                    setTimeout(async () => {
+                        if (options.data && options.data.passwd) {
+                            const loginResult = await daemonClient.login(options.data.passwd)
+                            if (loginResult === true) {
+                                loggedIn.value = true
+                                isDefaultPasswd.value = false
+                                localStorage.setItem('isDefaultPasswd', 'false')
+                                console.info('Login successful')
+                                resolve(true)
+                                return
+                            }
+                            if (loginResult.status === 429) {
+                                toast.add({
+                                    severity: 'warn',
+                                    summary: t('device_store.login.rate_limited.summary'),
+                                    detail: loginResult.error,
+                                    life: 30000,
+                                })
+                                accessDenied.value = true
+                                resolve(false)
+                                return
+                            }
                             toast.add({
-                                severity: 'success',
-                                summary: t('device_store.login.success.summary'),
-                                detail: t('device_store.login.success.detail'),
+                                severity: 'error',
+                                summary: t('device_store.login.failed.summary'),
+                                detail: t('device_store.login.failed.detail'),
                                 life: 3000,
                             })
-                            loggedIn.value = true
-                            console.info('Login successful')
+                            if (retryCount > 2) {
+                                console.info('Login failed')
+                                accessDenied.value = true
+                                resolve(false)
+                                return
+                            }
+                            resolve(await requestPasswd(++retryCount))
                             return
                         }
-                        toast.add({
-                            severity: 'error',
-                            summary: t('device_store.login.failed.summary'),
-                            detail: t('device_store.login.failed.detail'),
-                            life: 3000,
-                        })
-                        if (retryCount > 2) {
-                            return
-                        }
-                        await requestPasswd(++retryCount)
-                    }
+                        // Dialog closed without entering password
+                        accessDenied.value = true
+                        resolve(false)
+                    }, 0)
                 },
             })
         })
@@ -458,10 +485,11 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     // Actions -----------------------------------------------------------------------
-    async function login(): Promise<void> {
+    async function login(): Promise<boolean> {
         const sessionIsValid = await daemonClient.sessionIsValid()
         if (sessionIsValid) {
             loggedIn.value = true
+            isDefaultPasswd.value = localStorage.getItem('isDefaultPasswd') !== 'false'
             console.info('Login Session still valid')
             // Do not show this message on startup:
             if (appAgeMilli() > showLoginMessageThreshold) {
@@ -472,11 +500,16 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
-            return
+            if (isDefaultPasswd.value) {
+                await promptDefaultPasswdChange()
+            }
+            return true
         }
-        const defaultLoginSuccessful = await daemonClient.login()
-        if (defaultLoginSuccessful) {
+        const defaultLoginResult = await daemonClient.login()
+        if (defaultLoginResult === true) {
             loggedIn.value = true
+            isDefaultPasswd.value = true
+            localStorage.setItem('isDefaultPasswd', 'true')
             console.info('Login successful')
             // Do not show this message on startup:
             if (appAgeMilli() > showLoginMessageThreshold) {
@@ -487,9 +520,20 @@ export const useDeviceStore = defineStore('device', () => {
                     life: 1500,
                 })
             }
-        } else {
-            await requestPasswd()
+            await promptDefaultPasswdChange()
+            return true
         }
+        if (defaultLoginResult.status === 429) {
+            toast.add({
+                severity: 'warn',
+                summary: t('device_store.login.rate_limited.summary'),
+                detail: defaultLoginResult.error,
+                life: 8000,
+            })
+            accessDenied.value = true
+            return false
+        }
+        return await requestPasswd()
     }
 
     async function setPasswd(): Promise<void> {
@@ -505,15 +549,22 @@ export const useDeviceStore = defineStore('device', () => {
             },
             onClose: async (options: any) => {
                 if (options.data && options.data.passwd) {
-                    const response = await daemonClient.setPasswd(options.data.passwd)
+                    const response = await daemonClient.setPasswd(
+                        options.data.currentPasswd,
+                        options.data.passwd,
+                    )
                     if (response instanceof ErrorResponse) {
                         toast.add({
                             severity: 'error',
                             summary: t('device_store.password.set_failed.summary'),
                             detail: response.error,
-                            life: 3000,
+                            life: 5000,
                         })
                     } else {
+                        isDefaultPasswd.value = false
+                        localStorage.setItem('isDefaultPasswd', 'false')
+                        // Re-login with new password to refresh the session cookie
+                        await daemonClient.login(options.data.passwd)
                         toast.add({
                             severity: 'success',
                             summary: t('device_store.password.set_success.summary'),
@@ -523,6 +574,79 @@ export const useDeviceStore = defineStore('device', () => {
                     }
                 }
             },
+        })
+    }
+
+    async function manageTokens(): Promise<void> {
+        dialog.open(accessTokensDialog, {
+            props: {
+                header: t('auth.accessTokens'),
+                position: 'center',
+                modal: true,
+                dismissableMask: true,
+                style: { width: '50rem' },
+            },
+        })
+    }
+
+    async function promptDefaultPasswdChange(): Promise<void> {
+        const thisStore = useDeviceStore()
+        if (thisStore.isQtApp()) {
+            // The desktop app window should be shown if user needs to set a new password
+            // @ts-ignore
+            const ipc = window.ipc
+            await ipc.loadFinished()
+            await ipc.forceShow()
+        }
+        return new Promise((resolve) => {
+            dialog.open(passwordDialog, {
+                props: {
+                    header: t('auth.setNewPassword'),
+                    position: 'center',
+                    modal: false,
+                    dismissableMask: false,
+                    closable: false,
+                },
+                data: {
+                    setPasswd: true,
+                    currentPasswd: daemonClient.defaultPasswd,
+                    promptMessage: t('auth.changeDefaultPassword'),
+                },
+                onClose: (options: any) => {
+                    setTimeout(async () => {
+                        if (options?.data && options.data.passwd) {
+                            const response = await daemonClient.setPasswd(
+                                options.data.currentPasswd,
+                                options.data.passwd,
+                            )
+                            if (response instanceof ErrorResponse) {
+                                toast.add({
+                                    severity: 'error',
+                                    summary: t('device_store.password.set_failed.summary'),
+                                    detail: response.error,
+                                    life: 5000,
+                                })
+                                await promptDefaultPasswdChange()
+                                resolve()
+                            } else {
+                                isDefaultPasswd.value = false
+                                localStorage.setItem('isDefaultPasswd', 'false')
+                                await daemonClient.login(options.data.passwd)
+                                toast.add({
+                                    severity: 'success',
+                                    summary: t('device_store.password.set_success.summary'),
+                                    detail: t('device_store.password.set_success.detail'),
+                                    life: 3000,
+                                })
+                                resolve()
+                            }
+                        } else {
+                            await promptDefaultPasswdChange()
+                            resolve()
+                        }
+                    }, 0)
+                },
+            })
         })
     }
 
@@ -550,12 +674,13 @@ export const useDeviceStore = defineStore('device', () => {
         return await daemonClient.acknowledgeIssues()
     }
 
+    async function handshake(): Promise<boolean> {
+        console.info('Performing Handshake')
+        return await daemonClient.handshake()
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
-        const handshakeSuccessful = await daemonClient.handshake()
-        if (!handshakeSuccessful) {
-            return false
-        }
         const dto = await daemonClient.requestDevices()
         if (dto.devices.length === 0) {
             console.warn('There are no available devices!')
@@ -757,7 +882,15 @@ export const useDeviceStore = defineStore('device', () => {
         const daemonState = useDaemonState()
         async function startSSE(): Promise<void> {
             // auto-retry only needed for one of the endpoints (as full refresh will happen on re-connect)
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/status`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/status`, {
+                credentials: 'include',
+                async onopen(response) {
+                    if (response.ok) return
+                    if (response.status === 401) {
+                        throw new Error('Unauthorized')
+                    }
+                    throw new Error(`SSE status error: ${response.status}`)
+                },
                 async onmessage(event) {
                     const dto = plainToInstance(StatusResponseDTO, JSON.parse(event.data) as object)
                     await thisStore.updateStatus(dto)
@@ -787,6 +920,12 @@ export const useDeviceStore = defineStore('device', () => {
                         chromeNetworkErrorCount++
                         return
                     }
+                    if (err.message === 'Unauthorized') {
+                        console.warn('SSE status returned 401 - reloading for re-authentication.')
+                        thisStore.loggedIn = false
+                        daemonState.setConnected(true) // triggers UI reload for login
+                        throw err // stop retries
+                    }
                     daemonState.setConnected(false)
                     thisStore.loggedIn = false
                     // auto-retry every second (return number to specify retry interval)
@@ -800,7 +939,8 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateLogsFromSSE(): Promise<void> {
         const daemonState = useDaemonState()
         async function startLogSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/logs`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/logs`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const newLog = event.data
@@ -836,7 +976,8 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateActiveModeFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startModeSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/modes`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/modes`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const modeMessage = plainToInstance(
@@ -871,7 +1012,8 @@ export const useDeviceStore = defineStore('device', () => {
     async function updateAlertsFromSSE(): Promise<void> {
         const settingsStore = useSettingsStore()
         async function startAlertSSE(): Promise<void> {
-            await fetchEventSource(`${daemonClient.daemonHttpURL}sse/alerts`, {
+            await fetchEventSource(`${daemonClient.daemonURL}sse/alerts`, {
+                credentials: 'include',
                 async onmessage(event) {
                     if (event.data.length === 0) return // keep-alive message
                     const alertMessage = plainToInstance(AlertLog, JSON.parse(event.data) as object)
@@ -992,6 +1134,7 @@ export const useDeviceStore = defineStore('device', () => {
         getDaemonSslEnabled,
         setDaemonSslEnabled,
         clearDaemonSslEnabled,
+        handshake,
         login,
         logout,
         health,
@@ -999,8 +1142,11 @@ export const useDeviceStore = defineStore('device', () => {
         acknowledgeIssues,
         loadLogs,
         setPasswd,
+        manageTokens,
         initializeDevices,
         loggedIn,
+        isDefaultPasswd,
+        accessDenied,
         updateStatus,
         updateStatusFromSSE,
         updateLogsFromSSE,

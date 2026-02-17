@@ -37,6 +37,18 @@ const IMAGE_PNG_ALERT_ERROR: &[u8] = include_bytes!("../resources/alert-error.pn
 const IMAGE_PNG_INFO: &[u8] = include_bytes!("../resources/information.png");
 const IMAGE_PNG_SHUTDOWN: &[u8] = include_bytes!("../resources/shutdown.png");
 
+/// Icon types for desktop notifications.
+/// Each variant maps to a specific icon image displayed in the notification.
+#[derive(Debug, Clone, Copy)]
+pub enum NotificationIcon {
+    Triggered = 1,
+    Resolved = 2,
+    Error = 3,
+    #[allow(unused)]
+    Info = 4,
+    Shutdown = 5,
+}
+
 /// Sends a desktop notification to the current user's dbus session.
 /// This is used by the daemon itself to be able to send notifications to user sessions.
 /// e.g. when an alert fires.

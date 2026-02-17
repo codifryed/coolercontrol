@@ -48,7 +48,7 @@ pub async fn get(
         .and_then(|mode| {
             mode.map(|mode| Json(convert_mode_to_dto(mode)))
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode with UID {} not found", path.mode_uid),
+                    msg: "Mode not found".to_string(),
                 })
         })
 }

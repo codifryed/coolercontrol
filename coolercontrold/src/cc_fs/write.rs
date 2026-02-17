@@ -54,8 +54,6 @@ pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
 /// This function creates all directories in the specified path that do not
 /// already exist. If the directory already exists, this function does nothing.
 ///
-/// This is a wrapper for `std::fs::create_dir_all`.
-///
 /// # Returns
 ///
 /// Returns a `Result` indicating success or failure. If the directory creation
@@ -66,16 +64,14 @@ pub async fn write(path: impl AsRef<Path>, data: Vec<u8>) -> Result<()> {
 /// This function will return an error if the directory or any parent component
 /// cannot be created. Possible reasons include lack of permissions, or if a
 /// non-directory file exists at one of the parent component paths.
-pub fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    Ok(std::fs::create_dir_all(path)?)
+pub async fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
+    Ok(tokio::fs::create_dir_all(path).await?)
 }
 
 /// Removes a file from the filesystem.
 ///
 /// This function removes the specified file from the filesystem. If the
 /// file does not exist, this function does nothing.
-///
-/// This is a wrapper for `std::fs::remove_file`.
 ///
 /// # Returns
 ///
@@ -86,16 +82,14 @@ pub fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
 ///
 /// This function will return an error if the file cannot be removed. Possible
 /// reasons include lack of permissions, or if the file is a directory.
-pub fn remove_file(path: impl AsRef<Path>) -> Result<()> {
-    Ok(std::fs::remove_file(path)?)
+pub async fn remove_file(path: impl AsRef<Path>) -> Result<()> {
+    Ok(tokio::fs::remove_file(path).await?)
 }
 
 /// Recursively removes a directory and all of its contents.
 ///
 /// This function removes the specified directory and all of its contents from
 /// the filesystem. If the directory does not exist, this function does nothing.
-///
-/// This is a wrapper for `std::fs::remove_dir_all`.
 ///
 /// # Returns
 ///
@@ -110,6 +104,6 @@ pub fn remove_file(path: impl AsRef<Path>) -> Result<()> {
 ///
 /// Currently only used in tests, hence the allow `dead_code`.
 #[allow(dead_code)]
-pub fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
-    Ok(std::fs::remove_dir_all(path)?)
+pub async fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
+    Ok(tokio::fs::remove_dir_all(path).await?)
 }

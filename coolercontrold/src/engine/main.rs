@@ -108,35 +108,18 @@ impl Engine {
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
         if let Some(true) = setting.reset_to_default {
             self.set_reset(device_uid, &setting.channel_name).await
-        } else if setting.speed_fixed.is_some() {
-            self.set_fixed_speed(
-                device_uid,
-                &setting.channel_name,
-                setting.speed_fixed.unwrap(),
-            )
-            .await
-        } else if setting.lighting.is_some() {
-            self.set_lighting(
-                device_uid,
-                &setting.channel_name,
-                setting.lighting.as_ref().unwrap(),
-            )
-            .await
-        } else if setting.lcd.is_some() {
-            self.set_lcd(
-                device_uid,
-                &setting.channel_name,
-                setting.lcd.as_ref().unwrap(),
-                true,
-            )
-            .await
-        } else if setting.profile_uid.is_some() {
-            self.set_profile(
-                device_uid,
-                &setting.channel_name,
-                setting.profile_uid.as_ref().unwrap(),
-            )
-            .await
+        } else if let Some(speed_fixed) = setting.speed_fixed {
+            self.set_fixed_speed(device_uid, &setting.channel_name, speed_fixed)
+                .await
+        } else if let Some(lighting) = &setting.lighting {
+            self.set_lighting(device_uid, &setting.channel_name, lighting)
+                .await
+        } else if let Some(lcd) = &setting.lcd {
+            self.set_lcd(device_uid, &setting.channel_name, lcd, true)
+                .await
+        } else if let Some(profile_uid) = &setting.profile_uid {
+            self.set_profile(device_uid, &setting.channel_name, profile_uid)
+                .await
         } else {
             Err(anyhow!("Invalid Setting combination: {setting:?}"))
         }
@@ -144,7 +127,7 @@ impl Engine {
 
     fn get_device_repo(&self, device_uid: &UID) -> Result<(&DeviceLock, &Rc<dyn Repository>)> {
         if let Some(device_lock) = self.all_devices.get(device_uid) {
-            let device_type = device_lock.borrow().d_type.clone();
+            let device_type = device_lock.borrow().d_type;
             if let Some(repo) = self.repos.get(&device_type) {
                 Ok((device_lock, repo))
             } else {

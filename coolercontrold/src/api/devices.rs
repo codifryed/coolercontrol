@@ -262,7 +262,7 @@ impl From<&Device> for DeviceDto {
     fn from(device: &Device) -> Self {
         Self {
             name: device.name.clone(),
-            d_type: device.d_type.clone(),
+            d_type: device.d_type,
             type_index: device.type_index,
             uid: device.uid.clone(),
             lc_info: device.lc_info.clone(),

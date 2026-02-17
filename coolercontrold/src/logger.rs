@@ -152,6 +152,13 @@ impl CCLogger {
         } else {
             LevelFilter::Warn
         };
+        let lib_very_reduced_level = if max_level == LevelFilter::Trace {
+            LevelFilter::Info
+        } else if max_level == LevelFilter::Debug {
+            LevelFilter::Warn
+        } else {
+            LevelFilter::Error
+        };
         let lib_disabled_level = if max_level >= LevelFilter::Debug {
             LevelFilter::Warn
         } else {
@@ -176,6 +183,7 @@ impl CCLogger {
             // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
             .filter_module("hyper", lib_log_level)
             .filter_module("h2", lib_disabled_level) // h2::codec writes every frame
+            .filter_module("tower_sessions_core", lib_very_reduced_level)
             .build();
         let logger: Box<dyn Log> = if connected_to_journal() {
             Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))

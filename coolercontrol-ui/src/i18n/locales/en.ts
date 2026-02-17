@@ -52,6 +52,12 @@ export default {
         defaults: 'Defaults',
         rename: 'Rename',
         password: 'Password',
+        currentPassword: 'Current Password',
+        newPassword: 'New Password',
+        passwordPrompt: 'Enter a password',
+        passwordWeak: 'Weak',
+        passwordMedium: 'Medium',
+        passwordStrong: 'Strong',
         savePassword: 'Save Password',
         editName: 'Edit Name',
         state: 'State',
@@ -100,6 +106,7 @@ export default {
             login: 'Login',
             logout: 'Logout',
             changePassword: 'Change Password',
+            accessTokens: 'Access Tokens',
             restartUI: 'Restart UI',
             restartDaemonAndUI: 'Restart Daemon and UI',
             restartConfirmMessage: 'Are you sure you want to restart the daemon and the UI?',
@@ -175,6 +182,7 @@ export default {
             fullScreen: 'Full Screen',
             menuBarAlwaysVisible: 'Menu Bar Always Visible',
             hideMenuCollapseIcon: 'Hide Menu Collapse Icon',
+            eyeCandy: 'Eye Candy',
             showOnboarding: 'Show Onboarding Tour on Startup',
             introduction: 'Introduction',
             startTour: 'Start Tour',
@@ -224,6 +232,8 @@ export default {
                 introduction: 'Start the application introduction tour.',
                 timeFormat: 'Time format: 12-hour (AM/PM) or 24-hour',
                 frequencyPrecision: 'Adjust the precision of displayed frequency values.',
+                eyeCandy:
+                    'Enable visual animations like spinning fan icons.\nThis will use some additional GPU resources.',
                 sidebarCollapse:
                     'Whether to display a Menu Collapse Icon in the Sidebar,\nor use the empty sidebar area to expand or collapse the main menu.',
                 entitiesBelowSensors:
@@ -651,6 +661,8 @@ export default {
             functionUpdateError: 'There was an error attempting to update this Function',
         },
         error: {
+            accessDenied: 'Access Denied',
+            accessDeniedMessage: 'Authentication failed. Please check your password and try again.',
             connectionError: 'CoolerControl Connection Error',
             connectionToast: 'Unable to connect to daemon',
             connectionToastDetail:
@@ -779,7 +791,7 @@ export default {
             newPasswordTitle: 'Enter A New Password',
             invalidPassword: 'Invalid Password',
             passwordHelp:
-                'Upon installation the daemon uses a default password to protect device control endpoints. \nOptionally you can create a strong password for improved protection. \nIf you see this dialog and have not yet set a password, try refreshing the UI \n or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
+                'Forgot your password? Reset it with:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Then refresh the UI to set a new password.',
         },
         notFound: {
             message: 'Just like the perfect Linux 🐧 distro,\nthis page does not exist.',
@@ -974,12 +986,38 @@ export default {
     auth: {
         enterPassword: 'Enter Your Password',
         setNewPassword: 'Enter A New Password',
+        changeDefaultPassword:
+            'CoolerControl is using the default password.\nPlease set a secure password before continuing.',
         loginFailed: 'Login Failed',
         invalidPassword: 'Invalid Password',
         passwordSetFailed: 'Set Password Failed',
         passwordSetSuccessfully: 'New password set successfully',
         logoutSuccessful: 'You have successfully logged out.',
         unauthorizedAction: 'You need to be logged in to complete this action',
+        accessTokens: 'Access Tokens',
+        tokenLabel: 'Label (e.g. cctv)',
+        tokenExpiry: 'Expiry Date (optional)',
+        createToken: 'Create Token',
+        tokenCreated: 'Token Created',
+        tokenCreatedDetail: 'Copy this token now. It will not be shown again.',
+        tokenCopied: 'Token copied to clipboard',
+        tokenDeleted: 'Token deleted',
+        tokenCreateError: 'Failed to create token',
+        tokenDeleteError: 'Failed to delete token',
+        tokenLoadError: 'Failed to load tokens',
+        tokenDeleteConfirm:
+            'Are you sure you want to delete this token? Any services using it will lose access.',
+        tokenDeleteHeader: 'Delete Token',
+        noTokens: 'No access tokens created yet.',
+        expires: 'Expires',
+        expired: 'Expired',
+        active: 'Active',
+        never: 'Never',
+        lastUsed: 'Last Used',
+        neverUsed: 'Never used',
+        created: 'Created',
+        label: 'Label',
+        actions: 'Actions',
     },
     daemon: {
         status: {
@@ -1001,6 +1039,9 @@ export default {
             failed: {
                 summary: 'Login Failed',
                 detail: 'Invalid Password',
+            },
+            rate_limited: {
+                summary: 'Login Temporarily Blocked',
             },
         },
         logout: {

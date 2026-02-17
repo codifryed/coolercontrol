@@ -49,6 +49,8 @@ pub enum ShellCommandResult {
 }
 
 impl ShellCommand {
+    /// Creates a new `ShellCommand` instance with the specified command and timeout.
+    /// Make sure to sanitize the command input before passing it to this function.
     pub fn new(command: &str, timeout: Duration) -> Self {
         let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
         Self {
@@ -83,30 +85,64 @@ impl ShellCommand {
             Ok(mut child) => {
                 while Instant::now() < timeout_time {
                     sleep(Duration::from_millis(50)).await;
-                    if child.try_wait().unwrap().is_some() {
-                        break;
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {} // loop
+                        Err(err) => {
+                            error!(
+                                "Error checking process status for command: {}, {}",
+                                &self.command, err
+                            );
+                            break;
+                        }
                     }
                 }
-                successful = match child.try_wait().unwrap() {
-                    None => {
+                successful = match child.try_wait() {
+                    Ok(None) => {
                         warn!(
                             "Shell command did not complete within the specified timeout: {:?} \
                                 Killing process for: {}",
                             self.timeout, self.command
                         );
                         child.kill().await.ok();
-                        child.wait().await.ok().unwrap().success()
+                        match child.wait().await {
+                            Ok(status) => status.success(),
+                            Err(err) => {
+                                error!(
+                                    "Error waiting for killed process: {}, {}",
+                                    &self.command, err
+                                );
+                                false
+                            }
+                        }
                     }
-                    Some(status) => status.success(),
+                    Ok(Some(status)) => status.success(),
+                    Err(err) => {
+                        error!(
+                            "Error checking process status for command: {}, {}",
+                            &self.command, err
+                        );
+                        false
+                    }
                 };
                 if let Some(mut child_err) = child.stderr.take() {
-                    child_err.read_to_string(&mut stderr).await.unwrap();
+                    if let Err(err) = child_err.read_to_string(&mut stderr).await {
+                        error!(
+                            "Error reading stderr for command: {}, {}",
+                            &self.command, err
+                        );
+                    }
                     limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_string();
                 }
                 if let Some(mut child_out) = child.stdout.take() {
-                    child_out.read_to_string(&mut stdout).await.unwrap();
-                    limit_output_length(&mut stderr);
+                    if let Err(err) = child_out.read_to_string(&mut stdout).await {
+                        error!(
+                            "Error reading stdout for command: {}, {}",
+                            &self.command, err
+                        );
+                    }
+                    limit_output_length(&mut stdout);
                     stdout = stdout.trim().to_string();
                 }
             }
@@ -133,7 +169,7 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let thinkpad_acpi_conf_file_path =
         PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
     let content = format!("options thinkpad_acpi fan_control={fan_control_option} ");
-    cc_fs::create_dir_all(THINKPAD_ACPI_CONF_PATH)?;
+    cc_fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
     cc_fs::write_string(thinkpad_acpi_conf_file_path, content).await?;
     let command_result =
         ShellCommand::new(RELOAD_THINKPAD_ACPI_MODULE_COMMAND, Duration::from_secs(1))
@@ -162,9 +198,92 @@ fn limit_output_length(output: &mut String) {
     }
 }
 
+/// Sanitizes a string for safe use in shell commands and notification displays.
+/// Removes characters that could enable command injection or XSS attacks.
+pub fn sanitize_for_shell(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            // Allowlist: alphanumeric, spaces, and safe punctuation
+            c.is_alphanumeric()
+                || matches!(c, ' ' | '.' | ',' | ':' | '-' | '_' | '/' | '%' | '°' | '+')
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::repositories::utils::limit_output_length;
+    use crate::repositories::utils::{limit_output_length, sanitize_for_shell};
+
+    #[test]
+    fn sanitize_allows_alphanumeric() {
+        assert_eq!(sanitize_for_shell("Hello123"), "Hello123");
+        assert_eq!(sanitize_for_shell("ABCxyz"), "ABCxyz");
+    }
+
+    #[test]
+    fn sanitize_allows_safe_punctuation() {
+        assert_eq!(sanitize_for_shell("temp: 45.5°C"), "temp: 45.5°C");
+        assert_eq!(sanitize_for_shell("fan_1, fan-2"), "fan_1, fan-2");
+        assert_eq!(sanitize_for_shell("path/to/file"), "path/to/file");
+        assert_eq!(sanitize_for_shell("100% +5"), "100% +5");
+    }
+
+    #[test]
+    fn sanitize_removes_shell_injection_chars() {
+        assert_eq!(sanitize_for_shell("test; rm -rf /"), "test rm -rf /");
+        assert_eq!(sanitize_for_shell("$(whoami)"), "whoami");
+        assert_eq!(sanitize_for_shell("`id`"), "id");
+        assert_eq!(sanitize_for_shell("a && b || c"), "a  b  c");
+        assert_eq!(
+            sanitize_for_shell("cat /etc/passwd | grep root"),
+            "cat /etc/passwd  grep root"
+        );
+    }
+
+    #[test]
+    fn sanitize_removes_quotes() {
+        assert_eq!(sanitize_for_shell("it's a \"test\""), "its a test");
+        assert_eq!(sanitize_for_shell("name='value'"), "namevalue");
+    }
+
+    #[test]
+    fn sanitize_removes_xss_chars() {
+        assert_eq!(
+            sanitize_for_shell("<script>alert(1)</script>"),
+            "scriptalert1/script"
+        );
+        assert_eq!(sanitize_for_shell("a > b < c"), "a  b  c");
+    }
+
+    #[test]
+    fn sanitize_removes_newlines_and_special_whitespace() {
+        assert_eq!(sanitize_for_shell("line1\nline2"), "line1line2");
+        assert_eq!(sanitize_for_shell("tab\there"), "tabhere");
+        assert_eq!(sanitize_for_shell("cr\rhere"), "crhere");
+    }
+
+    #[test]
+    fn sanitize_handles_empty_input() {
+        assert_eq!(sanitize_for_shell(""), "");
+    }
+
+    #[test]
+    fn sanitize_handles_only_dangerous_chars() {
+        assert_eq!(sanitize_for_shell("$;|&`'\"<>()[]{}!#*?\\~^"), "");
+    }
+
+    #[test]
+    fn sanitize_realistic_alert_message() {
+        let input = "CPU Temp: 85.5°C is greater than allowed maximum: 80";
+        assert_eq!(sanitize_for_shell(input), input);
+
+        let malicious = "Alert: $(reboot); test & echo pwned";
+        assert_eq!(
+            sanitize_for_shell(malicious),
+            "Alert: reboot test  echo pwned"
+        );
+    }
 
     // Should truncate the output string if it exceeds the maximum length and is ASCII-encoded
     #[test]

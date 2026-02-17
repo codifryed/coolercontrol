@@ -28,17 +28,23 @@ pub mod modes;
 mod plugins;
 mod profiles;
 mod router;
+mod session_store;
 mod settings;
 mod sse;
 pub mod status;
 mod tls;
+mod tokens;
 
+use crate::admin;
 use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
-    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
+    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle, TokenHandle,
 };
+use crate::api::dual_protocol::Protocol;
+use crate::api::session_store::{FileSessionStore, MokaSessionStore};
 use crate::config::Config;
+use crate::config::DEFAULT_CONFIG_DIR;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
@@ -56,7 +62,10 @@ use aide::OperationOutput;
 use anyhow::{anyhow, Result};
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Request};
+use axum::http::header::{HeaderName, HeaderValue};
+use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
 use axum_extra::typed_header::TypedHeaderRejection;
@@ -83,9 +92,9 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
-use tower_sessions::cookie::{Key, SameSite};
+use tower_sessions::cookie::SameSite;
 use tower_sessions::service::PrivateCookie;
-use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
+use tower_sessions::{CachingSessionStore, ExpiredDeletion, Expiry, SessionManagerLayer};
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const GRPC_SERVER_PORT_DEFAULT: Port = 11988; // Standard API Port +1
@@ -94,6 +103,7 @@ const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 type Port = u16;
+type SessionStoreType = CachingSessionStore<MokaSessionStore, FileSessionStore>;
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_server<'s>(
@@ -151,18 +161,23 @@ pub async fn start_server<'s>(
         status_handle,
         &cancel_token,
         main_scope,
-    );
+    )
+    .await;
     let tls_config = tls_config(&settings).await;
-    // Note: to persist user login session across daemon restarts would require a
-    //  persisted master key and local db backend for the session data.
-    let session_layer = SessionManagerLayer::new(MemoryStore::default())
+    let session_key = admin::load_or_generate_session_key().await?;
+    let sessions_dir = std::path::PathBuf::from(DEFAULT_CONFIG_DIR).join("sessions");
+    let file_store = FileSessionStore::new(sessions_dir);
+    let moka_store = MokaSessionStore::new(Some(10));
+    let expired_deletion_store = file_store.clone();
+    let caching_store = CachingSessionStore::new(moka_store, file_store);
+    let session_layer = SessionManagerLayer::new(caching_store)
         .with_name(SESSION_COOKIE_NAME)
-        .with_private(Key::generate())
+        .with_private(session_key)
         // unsecure is used for local connections:
         .with_secure(false)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
-        .with_expiry(Expiry::OnSessionEnd);
+        .with_expiry(Expiry::OnInactivity(time::Duration::days(30)));
 
     // GRPC API
     // We use a separate socket because the purpose and scope is quite different comparatively
@@ -188,6 +203,11 @@ pub async fn start_server<'s>(
         ));
     }
 
+    // Extract proxy/cors settings for the API servers
+    let cors_origins = settings.origins.clone();
+    let allow_unencrypted = settings.allow_unencrypted;
+    let protocol_header = settings.protocol_header.clone();
+
     // Spawn all API servers on a dedicated thread
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -207,9 +227,13 @@ pub async fn start_server<'s>(
             grpc_ipv6.ok(),
             app_state,
             session_layer,
+            expired_deletion_store,
             compression_layers,
             tls_config,
             cancel_token,
+            cors_origins,
+            allow_unencrypted,
+            protocol_header,
         )));
     });
     Ok(())
@@ -221,34 +245,53 @@ async fn run_all_api_servers(
     grpc_ipv4: Option<SocketAddrV4>,
     grpc_ipv6: Option<SocketAddrV6>,
     app_state: AppState,
-    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
+    expired_deletion_store: FileSessionStore,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
+    cors_origins: Vec<String>,
+    allow_unencrypted: bool,
+    protocol_header: Option<String>,
 ) {
     let mut handles = Vec::new();
     let grpc_device_handle = app_state.device_handle.clone();
     let grpc_status_handle = app_state.status_handle.clone();
 
+    // Periodically clean up expired session files
+    tokio::task::spawn_local(
+        expired_deletion_store.continuously_delete_expired(Duration::from_secs(3600)),
+    );
+
     // REST API servers
-    if let Some(ipv4) = ipv4 {
+    if let Some(addr) = ipv4 {
         handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(ipv4),
+            SocketAddr::from(addr),
+            ipv4,
+            ipv6,
             app_state.clone(),
             session_layer.clone(),
             compression_layers.clone(),
             tls_config.clone(),
             cancel_token.clone(),
+            cors_origins.clone(),
+            allow_unencrypted,
+            protocol_header.clone(),
         )));
     }
-    if let Some(ipv6) = ipv6 {
+    if let Some(addr) = ipv6 {
         handles.push(tokio::task::spawn_local(create_api_server(
-            SocketAddr::from(ipv6),
+            SocketAddr::from(addr),
+            ipv4,
+            ipv6,
             app_state,
             session_layer,
             compression_layers,
             tls_config,
             cancel_token.clone(),
+            cors_origins,
+            allow_unencrypted,
+            protocol_header,
         )));
     }
 
@@ -278,13 +321,50 @@ async fn run_all_api_servers(
     }
 }
 
+async fn security_headers_middleware(req: Request, next: middleware::Next) -> Response {
+    let is_https = req
+        .extensions()
+        .get::<Protocol>()
+        .is_some_and(|p| *p == Protocol::Https);
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        axum::http::header::X_FRAME_OPTIONS,
+        HeaderValue::from_static("SAMEORIGIN"),
+    );
+    headers.insert(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    );
+    if is_https {
+        headers.insert(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
+    }
+    response
+}
+
 async fn create_api_server(
     addr: SocketAddr,
+    ipv4: Option<SocketAddrV4>,
+    ipv6: Option<SocketAddrV6>,
     app_state: AppState,
-    session_layer: SessionManagerLayer<MemoryStore, PrivateCookie>,
+    session_layer: SessionManagerLayer<SessionStoreType, PrivateCookie>,
     compression_layers: Option<(CompressionLayer, DecompressionLayer)>,
     tls_config: Option<RustlsConfig>,
     cancel_token: CancellationToken,
+    cors_origins: Vec<String>,
+    allow_unencrypted: bool,
+    protocol_header: Option<String>,
 ) -> Result<()> {
     aide::generate::on_error(|error| {
         debug!("OpenApi Generation Error: {error}");
@@ -303,7 +383,8 @@ async fn create_api_server(
         // 2MB is the default payload limit:
         .route_layer(DefaultBodyLimit::disable())
         .route_layer(session_layer)
-        .layer(cors_layer())
+        .layer(cors_layer(ipv4, ipv6, cors_origins))
+        .layer(middleware::from_fn(security_headers_middleware))
         .layer((
             TraceLayer::new_for_http(),
             TimeoutLayer::with_status_code(
@@ -327,7 +408,11 @@ async fn create_api_server(
         info!("Serving HTTP and HTTPS API on {addr}");
 
         // Add HTTPS redirect layer for non-localhost HTTP requests
-        let redirect_layer = dual_protocol::HttpsRedirectLayer { port: addr.port() };
+        let redirect_layer = dual_protocol::HttpsRedirectLayer {
+            port: addr.port(),
+            allow_unencrypted,
+            protocol_header,
+        };
         let router_with_redirect = base_router.layer(redirect_layer);
         let normalized_router =
             NormalizePathLayer::trim_trailing_slash().layer(router_with_redirect);
@@ -354,7 +439,7 @@ async fn create_api_server(
     Ok(())
 }
 
-#[allow(clippy::default_trait_access)]
+#[allow(clippy::default_trait_access, clippy::too_many_lines)]
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
     api.title("CoolerControl Daemon API")
         .summary("CoolerControl Rest Endpoints")
@@ -389,6 +474,17 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
                 description: Some(
                     "HTTP Basic authentication, mostly used to generate a secure authentication cookie."
                         .to_string(),
+                ),
+                extensions: Default::default(),
+            },
+        )
+        .security_scheme(
+            "BearerAuth",
+            SecurityScheme::Http {
+                scheme: "bearer".to_string(),
+                bearer_format: Some("cc_<uuid>".to_string()),
+                description: Some(
+                    "Bearer token authentication for external services.".to_string(),
                 ),
                 extensions: Default::default(),
             },
@@ -455,7 +551,7 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
         })
 }
 
-fn create_app_state<'s>(
+async fn create_app_state<'s>(
     all_devices: AllDevices,
     repos: Repos,
     engine: &Rc<Engine>,
@@ -471,6 +567,7 @@ fn create_app_state<'s>(
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
     let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
+    let token_handle = TokenHandle::new(cancel_token.clone()).await;
     let device_handle = DeviceHandle::new(
         all_devices.clone(),
         engine.clone(),
@@ -507,6 +604,7 @@ fn create_app_state<'s>(
     AppState {
         health,
         auth_handle,
+        token_handle,
         device_handle,
         status_handle,
         profile_handle,
@@ -531,41 +629,70 @@ fn optional_layers(
     }
 }
 
-fn cors_layer() -> cors::CorsLayer {
+fn cors_layer(
+    ipv4: Option<SocketAddrV4>,
+    ipv6: Option<SocketAddrV6>,
+    custom_origins: Vec<String>,
+) -> cors::CorsLayer {
+    // Allowed hosts for localhost and bound IPs (matched against parsed origin host)
+    let mut allowed_hosts = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "[::1]".to_string(),
+    ];
+    if let Some(addr) = ipv4 {
+        allowed_hosts.push(addr.ip().to_string());
+    }
+    if let Some(addr) = ipv6 {
+        allowed_hosts.push(format!("[{}]", addr.ip()));
+    }
+
+    // Custom origins from settings - exact match only
+    let exact_origins: Vec<String> = custom_origins
+        .into_iter()
+        .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
+        .collect();
+
     cors::CorsLayer::new()
         .allow_credentials(true)
         .allow_headers(cors::AllowHeaders::mirror_request())
         .allow_methods(cors::AllowMethods::mirror_request())
-        // We don't really care about Origin security, as it runs on each person's server
-        // and may also limit access through a proxy. Alternative impl below.
-        // Note: We can't use wildcard any with credentials.
-        .allow_origin(cors::AllowOrigin::mirror_request())
+        .allow_origin(cors::AllowOrigin::predicate(
+            move |origin: &HeaderValue, _req: &Parts| {
+                origin
+                    .to_str()
+                    .is_ok_and(|s| is_origin_allowed(s, &allowed_hosts, &exact_origins))
+            },
+        ))
         .max_age(Duration::from_secs(60) * 5)
+}
 
-    // Alternative:
-    //     let mut allowed_addresses = vec![
-    //         // always allowed standard addresses:
-    //         "//localhost:".to_string(),
-    //         "//127.0.0.1:".to_string(),
-    //         "//[::1]:".to_string(),
-    //     ];
-    //     if let Some(ipv4) = ipv4 {
-    //         allowed_addresses.push(format!("//{}:", ipv4.ip()));
-    //     }
-    //     if let Some(ipv6) = ipv6 {
-    //         allowed_addresses.push(format!("//[{}]:", ipv6.ip()));
-    //     }
-    //     Cors::default()
-    //         .allow_any_method()
-    //         .allow_any_header()
-    //         .supports_credentials()
-    //         .allowed_origin_fn(move |origin: &HeaderValue, _req_head: &RequestHead| {
-    //             if let Ok(str) = origin.to_str() {
-    //                 allowed_addresses.iter().any(|addr| str.contains(addr))
-    //             } else {
-    //                 false
-    //             }
-    //         })
+/// Checks if an origin is allowed based on allowed hosts and exact origins.
+fn is_origin_allowed(origin: &str, allowed_hosts: &[String], exact_origins: &[String]) -> bool {
+    // Check exact custom origins first (e.g., "https://coolercontrol.example.com")
+    if exact_origins.iter().any(|o| origin == o) {
+        return true;
+    }
+
+    // Parse origin and check host against allowed hosts
+    // Origin format: scheme://host[:port]
+    let Some(host_start) = origin.find("://") else {
+        return false;
+    };
+    let after_scheme = &origin[host_start + 3..];
+
+    // Extract host, handling IPv6 addresses in brackets
+    let host = if after_scheme.starts_with('[') {
+        // IPv6: find closing bracket, host includes brackets
+        after_scheme
+            .find(']')
+            .map_or(after_scheme, |i| &after_scheme[..=i])
+    } else {
+        // IPv4 or hostname: everything before the port
+        after_scheme.split(':').next().unwrap_or(after_scheme)
+    };
+
+    allowed_hosts.iter().any(|h| h == host)
 }
 
 /// TLS Configuration
@@ -781,6 +908,9 @@ pub enum CCError {
 
     #[display("{msg}")]
     InsufficientScope { msg: String },
+
+    #[display("{msg}")]
+    TooManyAttempts { msg: String },
 }
 
 impl IntoResponse for CCError {
@@ -817,6 +947,11 @@ impl IntoResponse for CCError {
                 let err_msg = self.to_string();
                 warn!("{err_msg}");
                 (StatusCode::FORBIDDEN, err_msg)
+            }
+            CCError::TooManyAttempts { .. } => {
+                let err_msg = self.to_string();
+                debug!("{err_msg}");
+                (StatusCode::TOO_MANY_REQUESTS, err_msg)
             }
         };
 
@@ -913,6 +1048,14 @@ impl OperationOutput for CCError {
                     },
                 ),
                 (
+                    Some(429),
+                    aide::openapi::Response {
+                        description: "Too Many Requests. Login attempts have been rate limited."
+                            .to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
                     Some(502),
                     aide::openapi::Response {
                         description: "Bad Gateway. An error has occurred with an external library."
@@ -931,6 +1074,7 @@ impl OperationOutput for CCError {
 pub struct AppState {
     pub health: HealthHandle,
     pub auth_handle: AuthHandle,
+    pub token_handle: TokenHandle,
     pub device_handle: DeviceHandle,
     pub status_handle: StatusHandle,
     pub profile_handle: ProfileHandle,
@@ -941,4 +1085,338 @@ pub struct AppState {
     pub alert_handle: AlertHandle,
     pub plugin_handle: PluginHandle,
     pub log_buf_handle: LogBufHandle,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::ServiceExt as _;
+
+    fn default_allowed_hosts() -> Vec<String> {
+        vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+            "[::1]".to_string(),
+        ]
+    }
+
+    #[test]
+    fn test_origin_localhost_http() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_localhost_https() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("https://localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_localhost_no_port() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://localhost", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_ipv4_loopback() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://127.0.0.1:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://127.0.0.1:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_ipv6_loopback() {
+        let hosts = default_allowed_hosts();
+        assert!(is_origin_allowed("http://[::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://[::1]:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_bound_ipv4() {
+        let mut hosts = default_allowed_hosts();
+        hosts.push("192.168.1.100".to_string());
+        assert!(is_origin_allowed("http://192.168.1.100:11987", &hosts, &[]));
+        assert!(is_origin_allowed(
+            "https://192.168.1.100:11987",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_bound_ipv6() {
+        let mut hosts = default_allowed_hosts();
+        hosts.push("[fe80::1]".to_string());
+        assert!(is_origin_allowed("http://[fe80::1]:11987", &hosts, &[]));
+        assert!(is_origin_allowed("https://[fe80::1]:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_custom_exact_match() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com".to_string()];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.example.com",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_custom_exact_match_with_port() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com:8443".to_string()];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.example.com:8443",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_custom_no_partial_match() {
+        let hosts = default_allowed_hosts();
+        let exact = vec!["https://coolercontrol.example.com".to_string()];
+        // Different port should not match exact origin
+        assert!(!is_origin_allowed(
+            "https://coolercontrol.example.com:8443",
+            &hosts,
+            &exact
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_evil_localhost_subdomain() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed(
+            "https://localhost.evil.com:443",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_evil_with_localhost_path() {
+        let hosts = default_allowed_hosts();
+        // This was vulnerable with contains() matching
+        assert!(!is_origin_allowed(
+            "https://evil.com//localhost:fake",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_lookalike_ip() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed(
+            "https://127.0.0.1.evil.com:443",
+            &hosts,
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_origin_rejects_arbitrary_domain() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("https://evil.com:443", &hosts, &[]));
+        assert!(!is_origin_allowed("https://attacker.org", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_rejects_invalid_format() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("not-a-url", &hosts, &[]));
+        assert!(!is_origin_allowed("localhost:11987", &hosts, &[]));
+        assert!(!is_origin_allowed("//localhost:11987", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_rejects_empty() {
+        let hosts = default_allowed_hosts();
+        assert!(!is_origin_allowed("", &hosts, &[]));
+    }
+
+    #[test]
+    fn test_origin_multiple_custom_origins() {
+        let hosts = default_allowed_hosts();
+        let exact = vec![
+            "https://coolercontrol.home.lan".to_string(),
+            "http://192.168.1.1:8080".to_string(),
+        ];
+        assert!(is_origin_allowed(
+            "https://coolercontrol.home.lan",
+            &hosts,
+            &exact
+        ));
+        assert!(is_origin_allowed("http://192.168.1.1:8080", &hosts, &exact));
+        assert!(!is_origin_allowed("https://other.com", &hosts, &exact));
+    }
+
+    // validate_name_string tests
+    #[test]
+    fn test_validate_name_valid() {
+        assert!(validate_name_string("My Profile").is_ok());
+        assert!(validate_name_string("profile-1").is_ok());
+        assert!(validate_name_string("Test_Name_123").is_ok());
+        assert!(validate_name_string("a").is_ok());
+        assert!(validate_name_string(&"a".repeat(50)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_empty() {
+        let result = validate_name_string("");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(CCError::UserError { .. })));
+    }
+
+    #[test]
+    fn test_validate_name_too_long() {
+        let result = validate_name_string(&"a".repeat(51));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_tab() {
+        assert!(validate_name_string("name\twith\ttabs").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_newline() {
+        assert!(validate_name_string("name\nwith\nnewlines").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_carriage_return() {
+        assert!(validate_name_string("name\rwith\rreturns").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_null() {
+        assert!(validate_name_string("name\0with\0nulls").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_vertical_tab() {
+        assert!(validate_name_string("name\x0Bwith\x0Bvtabs").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_form_feed() {
+        assert!(validate_name_string("name\x0Cwith\x0Cfeeds").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_escape() {
+        assert!(validate_name_string("name\x1Bwith\x1Besc").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_rejects_delete() {
+        assert!(validate_name_string("name\x7Fwith\x7Fdel").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_security_headers_present() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("x-content-type-options").unwrap(),
+            "nosniff"
+        );
+        assert_eq!(
+            response.headers().get("x-frame-options").unwrap(),
+            "SAMEORIGIN"
+        );
+        assert_eq!(
+            response.headers().get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        assert_eq!(
+            response.headers().get("permissions-policy").unwrap(),
+            "camera=(), microphone=(), geolocation=()"
+        );
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_hsts_header_set_for_https() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware))
+            .layer(Extension(Protocol::Https));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("strict-transport-security").unwrap(),
+            "max-age=31536000; includeSubDomains"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hsts_header_absent_for_http() {
+        use axum::body::Body;
+        use axum::http;
+        use axum::routing::get;
+
+        let app = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .layer(middleware::from_fn(security_headers_middleware))
+            .layer(Extension(Protocol::Http));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .is_none());
+    }
+
+    #[test]
+    fn test_validate_name_allows_unicode() {
+        assert!(validate_name_string("Ünïcödé Nàmé").is_ok());
+        assert!(validate_name_string("日本語").is_ok());
+        assert!(validate_name_string("émojis 🎉").is_ok());
+    }
 }

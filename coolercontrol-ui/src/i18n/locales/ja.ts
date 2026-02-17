@@ -52,6 +52,12 @@ export default {
         defaults: 'デフォルト',
         rename: '名前変更',
         password: 'パスワード',
+        currentPassword: '現在のパスワード',
+        newPassword: '新しいパスワード',
+        passwordPrompt: 'パスワードを入力',
+        passwordWeak: '弱い',
+        passwordMedium: '普通',
+        passwordStrong: '強い',
         savePassword: 'パスワードを保存',
         editName: '名前を編集',
         state: '状態',
@@ -99,6 +105,7 @@ export default {
             login: 'ログイン',
             logout: 'ログアウト',
             changePassword: 'パスワード変更',
+            accessTokens: 'アクセストークン',
             restartUI: 'UIを再起動',
             restartDaemonAndUI: 'デーモンとUIを再起動',
             restartConfirmMessage: 'デーモンとUIを再起動してもよろしいですか？',
@@ -175,6 +182,7 @@ export default {
             fullScreen: '全画面表示',
             menuBarAlwaysVisible: 'メニューバーを常に表示',
             hideMenuCollapseIcon: 'メニュー折りたたみアイコンを非表示',
+            eyeCandy: '視覚効果',
             showOnboarding: '起動時にオンボーディングツアーを表示',
             introduction: '紹介',
             startTour: 'ツアーを開始',
@@ -236,6 +244,8 @@ export default {
                 introduction: 'アプリケーション紹介ツアーを開始します。',
                 timeFormat: '時間形式：12時間（AM/PM）または24時間',
                 frequencyPrecision: '表示される周波数値の精度を調整します。',
+                eyeCandy:
+                    '回転するファンアイコンなどのビジュアルアニメーションを有効にします。\nこれにより追加のGPUリソースが使用されます。',
                 sidebarCollapse:
                     'サイドバーにメニュー折りたたみアイコンを表示するか、\n空のサイドバー領域を使用してメインメニューを展開または折りたたむかどうか。',
                 entitiesBelowSensors:
@@ -352,6 +362,8 @@ export default {
     },
     views: {
         error: {
+            accessDenied: 'アクセス拒否',
+            accessDeniedMessage: '認証に失敗しました。パスワードを確認して再度お試しください。',
             connectionError: 'CoolerControl 接続エラー',
             connectionToast: 'デーモンに接続できません',
             connectionToastDetail:
@@ -792,7 +804,7 @@ export default {
             newPasswordTitle: '新しいパスワードを入力してください',
             invalidPassword: '無効なパスワード',
             passwordHelp:
-                'インストール時、デーモンはデバイス制御エンドポイントを保護するためにデフォルトのパスワードを使用します。\nオプションで、保護を強化するために強力なパスワードを作成できます。\nこのダイアログが表示され、まだパスワードを設定していない場合は、UIを更新するか、\nアクセス保護メニューからログインをクリックしてみてください。詳細については、プロジェクトのwikiを参照してください。',
+                'パスワードをお忘れですか？以下のコマンドでリセットしてください：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>その後、UIを更新して新しいパスワードを設定してください。',
         },
         notFound: {
             message: '完璧なLinux 🐧 ディストリビューションのように、\nこのページは存在しません。',
@@ -987,12 +999,38 @@ export default {
     auth: {
         enterPassword: 'パスワードを入力してください',
         setNewPassword: '新しいパスワードを入力してください',
+        changeDefaultPassword:
+            'CoolerControlはデフォルトパスワードを使用しています。\n続行する前に安全なパスワードを設定してください。',
         loginFailed: 'ログイン失敗',
         invalidPassword: '無効なパスワード',
         passwordSetFailed: 'パスワード設定に失敗しました',
         passwordSetSuccessfully: '新しいパスワードが正常に設定されました',
         logoutSuccessful: 'ログアウトに成功しました。',
         unauthorizedAction: 'この操作を完了するにはログインする必要があります',
+        accessTokens: 'アクセストークン',
+        tokenLabel: 'ラベル（例：cctv）',
+        tokenExpiry: '有効期限（任意）',
+        createToken: 'トークンを作成',
+        tokenCreated: 'トークンが作成されました',
+        tokenCreatedDetail: 'このトークンを今すぐコピーしてください。再度表示されません。',
+        tokenCopied: 'トークンをクリップボードにコピーしました',
+        tokenDeleted: 'トークンが削除されました',
+        tokenCreateError: 'トークンの作成に失敗しました',
+        tokenDeleteError: 'トークンの削除に失敗しました',
+        tokenLoadError: 'トークンの読み込みに失敗しました',
+        tokenDeleteConfirm:
+            'このトークンを削除してもよろしいですか？使用中のサービスはアクセスできなくなります。',
+        tokenDeleteHeader: 'トークンを削除',
+        noTokens: 'アクセストークンはまだ作成されていません。',
+        expires: '有効期限',
+        expired: '期限切れ',
+        active: '有効',
+        never: 'なし',
+        lastUsed: '最終使用',
+        neverUsed: '未使用',
+        created: '作成日',
+        label: 'ラベル',
+        actions: '操作',
     },
     device_store: {
         unauthorized: {
@@ -1007,6 +1045,9 @@ export default {
             failed: {
                 summary: 'ログイン失敗',
                 detail: '無効なパスワード',
+            },
+            rate_limited: {
+                summary: 'ログインが一時的にブロックされています',
             },
         },
         logout: {

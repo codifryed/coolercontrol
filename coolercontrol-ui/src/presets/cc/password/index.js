@@ -33,13 +33,15 @@ export default {
             'p-5',
 
             // Shape
-            'border-0 dark:border',
-            'shadow-md rounded-md',
+            'border border-border-one',
+            'shadow-lg rounded-lg',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-900',
-            'text-surface-700 dark:text-white/80',
-            'dark:border-surface-700',
+            'bg-bg-one',
+            'text-text-color',
+            // 'bg-surface-0 dark:bg-surface-900',
+            // 'text-surface-700 dark:text-white/80',
+            // 'dark:border-surface-700',
         ],
     },
     meter: {
@@ -49,14 +51,14 @@ export default {
             'relative',
 
             // Shape and Size
-            'border-0',
+            'border border-border-one',
             'h-3',
 
             // Spacing
             'mb-2',
 
             // Colors
-            'bg-surface-100 dark:bg-surface-700',
+            'bg-bg-two',
         ],
     },
     meterLabel: ({ instance }) => ({
@@ -66,9 +68,9 @@ export default {
 
             // Colors
             {
-                'bg-red-500 dark:bg-red-400/50': instance?.meter?.strength == 'weak',
-                'bg-orange-500 dark:bg-orange-400/50': instance?.meter?.strength == 'medium',
-                'bg-green-500 dark:bg-green-400/50': instance?.meter?.strength == 'strong',
+                'bg-error': instance?.meter?.strength == 'weak',
+                'bg-warning': instance?.meter?.strength == 'medium',
+                'bg-green': instance?.meter?.strength == 'strong',
             },
 
             // Transitions
@@ -76,10 +78,10 @@ export default {
         ],
     }),
     maskIcon: {
-        class: ['absolute top-1/2 right-3 -mt-2 z-10', 'text-surface-600 dark:text-white/70'],
+        class: ['absolute top-1/2 right-3 -mt-2 z-10', 'text-text-color-secondary'],
     },
     unmaskIcon: {
-        class: ['absolute top-1/2 right-3 -mt-2 z-10', 'text-surface-600 dark:text-white/70'],
+        class: ['absolute top-1/2 right-3 -mt-2 z-10', 'text-text-color-secondary'],
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',

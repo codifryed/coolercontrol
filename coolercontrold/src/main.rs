@@ -59,6 +59,7 @@ mod notifier;
 mod repositories;
 mod setting;
 mod sleep_listener;
+mod token;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

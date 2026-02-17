@@ -52,6 +52,12 @@ export default {
         defaults: 'Predeterminados',
         rename: 'Renombrar',
         password: 'Contraseña',
+        currentPassword: 'Contraseña actual',
+        newPassword: 'Nueva contraseña',
+        passwordPrompt: 'Ingrese una contraseña',
+        passwordWeak: 'Débil',
+        passwordMedium: 'Medio',
+        passwordStrong: 'Fuerte',
         savePassword: 'Guardar contraseña',
         editName: 'Editar nombre',
         state: 'Estado',
@@ -102,6 +108,7 @@ export default {
             login: 'Iniciar sesión',
             logout: 'Cerrar sesión',
             changePassword: 'Cambiar contraseña',
+            accessTokens: 'Tokens de acceso',
             restartUI: 'Reiniciar interfaz',
             restartDaemonAndUI: 'Reiniciar daemon e interfaz',
             restartConfirmMessage: '¿Está seguro de que desea reiniciar el daemon y la interfaz?',
@@ -178,6 +185,7 @@ export default {
             fullScreen: 'Pantalla completa',
             menuBarAlwaysVisible: 'Barra de menú siempre visible',
             hideMenuCollapseIcon: 'Ocultar icono de contracción del menú',
+            eyeCandy: 'Efectos visuales',
             showOnboarding: 'Mostrar introducción al inicio',
             introduction: 'Introducción',
             startTour: 'Iniciar tour',
@@ -227,6 +235,8 @@ export default {
                 introduction: 'Iniciar el recorrido de introducción de la aplicación.',
                 timeFormat: 'Formato de hora: 12 horas (AM/PM) o 24 horas',
                 frequencyPrecision: 'Ajustar la precisión de los valores de frecuencia mostrados.',
+                eyeCandy:
+                    'Habilitar animaciones visuales como iconos de ventiladores giratorios.\nEsto utilizará algunos recursos adicionales de la GPU.',
                 sidebarCollapse:
                     'Si mostrar un icono de colapso del menú en la barra lateral,\no usar el área vacía de la barra lateral para expandir o colapsar el menú principal.',
                 entitiesBelowSensors:
@@ -658,6 +668,9 @@ export default {
             functionUpdateError: 'Hubo un error al intentar actualizar esta Función',
         },
         error: {
+            accessDenied: 'Acceso Denegado',
+            accessDeniedMessage:
+                'La autenticación falló. Por favor, verifique su contraseña e intente nuevamente.',
             connectionError: 'Error de Conexión CoolerControl',
             connectionToast: 'No se puede conectar al daemon',
             connectionToastDetail:
@@ -786,7 +799,7 @@ export default {
             newPasswordTitle: 'Introduzca Una Nueva Contraseña',
             invalidPassword: 'Contraseña Inválida',
             passwordHelp:
-                'Durante la instalación, el daemon utiliza una contraseña predeterminada para proteger los puntos de control del dispositivo. \nOpcionalmente, puede crear una contraseña fuerte para una mejor protección. \nSi ve este diálogo y aún no ha establecido una contraseña, intente actualizar la UI \n o haga clic en Iniciar Sesión desde el menú de Protección de Acceso. Consulte el wiki del proyecto para más información.',
+                '¿Olvidó su contraseña? Restablézcala con:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Luego actualice la UI para establecer una nueva contraseña.',
         },
         notFound: {
             message: 'Al igual que la distribución perfecta de Linux 🐧,\nesta página no existe.',
@@ -984,12 +997,38 @@ export default {
     auth: {
         enterPassword: 'Introduzca Su Contraseña',
         setNewPassword: 'Introduzca Una Nueva Contraseña',
+        changeDefaultPassword:
+            'CoolerControl está usando la contraseña predeterminada.\nPor favor, establezca una contraseña segura antes de continuar.',
         loginFailed: 'Inicio de Sesión Fallido',
         invalidPassword: 'Contraseña Inválida',
         passwordSetFailed: 'Establecer Contraseña Falló',
         passwordSetSuccessfully: 'Nueva contraseña establecida correctamente',
         logoutSuccessful: 'Ha cerrado sesión correctamente.',
         unauthorizedAction: 'Necesita iniciar sesión para completar esta acción',
+        accessTokens: 'Tokens de acceso',
+        tokenLabel: 'Etiqueta (ej. cctv)',
+        tokenExpiry: 'Fecha de expiración (opcional)',
+        createToken: 'Crear token',
+        tokenCreated: 'Token creado',
+        tokenCreatedDetail: 'Copie este token ahora. No se mostrará de nuevo.',
+        tokenCopied: 'Token copiado al portapapeles',
+        tokenDeleted: 'Token eliminado',
+        tokenCreateError: 'Error al crear el token',
+        tokenDeleteError: 'Error al eliminar el token',
+        tokenLoadError: 'Error al cargar los tokens',
+        tokenDeleteConfirm:
+            '¿Está seguro de que desea eliminar este token? Los servicios que lo usen perderán el acceso.',
+        tokenDeleteHeader: 'Eliminar token',
+        noTokens: 'Aún no se han creado tokens de acceso.',
+        expires: 'Expira',
+        expired: 'Expirado',
+        active: 'Activo',
+        never: 'Nunca',
+        lastUsed: 'Último uso',
+        neverUsed: 'Nunca usado',
+        created: 'Creado',
+        label: 'Etiqueta',
+        actions: 'Acciones',
     },
     daemon: {
         status: {
@@ -1011,6 +1050,9 @@ export default {
             failed: {
                 summary: 'Inicio de Sesión Fallido',
                 detail: 'Contraseña Inválida',
+            },
+            rate_limited: {
+                summary: 'Inicio de Sesión Temporalmente Bloqueado',
             },
         },
         logout: {

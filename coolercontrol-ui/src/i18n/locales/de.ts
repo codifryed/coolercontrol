@@ -52,6 +52,12 @@ export default {
         defaults: 'Standardwerte',
         rename: 'Umbenennen',
         password: 'Passwort',
+        currentPassword: 'Aktuelles Passwort',
+        newPassword: 'Neues Passwort',
+        passwordPrompt: 'Passwort eingeben',
+        passwordWeak: 'Schwach',
+        passwordMedium: 'Mittel',
+        passwordStrong: 'Stark',
         savePassword: 'Passwort speichern',
         editName: 'Namen bearbeiten',
         state: 'Status',
@@ -102,6 +108,7 @@ export default {
             login: 'Anmelden',
             logout: 'Abmelden',
             changePassword: 'Passwort ändern',
+            accessTokens: 'Zugriffstoken',
             restartUI: 'UI neustarten',
             restartDaemonAndUI: 'Daemon und UI neustarten',
             restartConfirmMessage:
@@ -179,6 +186,7 @@ export default {
             fullScreen: 'Vollbild',
             menuBarAlwaysVisible: 'Menüleiste immer sichtbar',
             hideMenuCollapseIcon: 'Menü-Einklapp-Symbol ausblenden',
+            eyeCandy: 'Augenschmaus',
             showOnboarding: 'Einführungstour beim Start anzeigen',
             introduction: 'Einführung',
             startTour: 'Tour starten',
@@ -229,6 +237,8 @@ export default {
                 timeFormat: 'Zeitformat: 12-Stunden (AM/PM) oder 24-Stunden',
                 frequencyPrecision:
                     'Stellen Sie die Genauigkeit der angezeigten Frequenzwerte ein.',
+                eyeCandy:
+                    'Visuelle Animationen wie drehende Lüftersymbole aktivieren.\nDies beansprucht zusätzliche GPU-Ressourcen.',
                 sidebarCollapse:
                     'Ob ein Menü-Einklapp-Symbol in der Seitenleiste angezeigt werden soll,\noder der leere Bereich der Seitenleiste genutzt wird, um das Hauptmenü zu erweitern oder einzuklappen.',
                 entitiesBelowSensors:
@@ -662,6 +672,9 @@ export default {
                 'Beim Versuch, diese Funktion zu aktualisieren, ist ein Fehler aufgetreten',
         },
         error: {
+            accessDenied: 'Zugriff verweigert',
+            accessDeniedMessage:
+                'Authentifizierung fehlgeschlagen. Bitte überprüfen Sie Ihr Passwort und versuchen Sie es erneut.',
             connectionError: 'CoolerControl-Verbindungsfehler',
             connectionToast: 'Verbindung zum Daemon nicht möglich',
             connectionToastDetail:
@@ -801,7 +814,7 @@ export default {
             newPasswordTitle: 'Geben Sie ein neues Passwort ein',
             invalidPassword: 'Ungültiges Passwort',
             passwordHelp:
-                'Bei der Installation verwendet der Daemon ein Standardpasswort zum Schutz der Gerätesteuerungsendpunkte. \nOptional können Sie ein starkes Passwort für verbesserten Schutz erstellen. \nWenn Sie diesen Dialog sehen und noch kein Passwort festgelegt haben, versuchen Sie, die UI zu aktualisieren \n oder auf Anmelden im Zugriffsschutzmenu zu klicken. Weitere Informationen finden Sie im Projekt-Wiki.',
+                'Passwort vergessen? Setzen Sie es zurück mit:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Aktualisieren Sie dann die UI, um ein neues Passwort festzulegen.',
         },
         notFound: {
             message: 'Genau wie die perfekte Linux 🐧 Distribution\nexistiert diese Seite nicht.',
@@ -1002,12 +1015,38 @@ export default {
     auth: {
         enterPassword: 'Geben Sie Ihr Passwort ein',
         setNewPassword: 'Geben Sie ein neues Passwort ein',
+        changeDefaultPassword:
+            'CoolerControl verwendet das Standardpasswort.\nBitte legen Sie ein sicheres Passwort fest, bevor Sie fortfahren.',
         loginFailed: 'Anmeldung fehlgeschlagen',
         invalidPassword: 'Ungültiges Passwort',
         passwordSetFailed: 'Passwort setzen fehlgeschlagen',
         passwordSetSuccessfully: 'Neues Passwort erfolgreich gesetzt',
         logoutSuccessful: 'Sie haben sich erfolgreich abgemeldet.',
         unauthorizedAction: 'Sie müssen angemeldet sein, um diese Aktion abzuschließen',
+        accessTokens: 'Zugriffstoken',
+        tokenLabel: 'Bezeichnung (z.B. cctv)',
+        tokenExpiry: 'Ablaufdatum (optional)',
+        createToken: 'Token erstellen',
+        tokenCreated: 'Token erstellt',
+        tokenCreatedDetail: 'Kopieren Sie diesen Token jetzt. Er wird nicht erneut angezeigt.',
+        tokenCopied: 'Token in Zwischenablage kopiert',
+        tokenDeleted: 'Token gelöscht',
+        tokenCreateError: 'Token konnte nicht erstellt werden',
+        tokenDeleteError: 'Token konnte nicht gelöscht werden',
+        tokenLoadError: 'Tokens konnten nicht geladen werden',
+        tokenDeleteConfirm:
+            'Möchten Sie diesen Token wirklich löschen? Alle Dienste, die ihn verwenden, verlieren den Zugriff.',
+        tokenDeleteHeader: 'Token löschen',
+        noTokens: 'Noch keine Zugriffstoken erstellt.',
+        expires: 'Läuft ab',
+        expired: 'Abgelaufen',
+        active: 'Aktiv',
+        never: 'Nie',
+        lastUsed: 'Zuletzt verwendet',
+        neverUsed: 'Nie verwendet',
+        created: 'Erstellt',
+        label: 'Bezeichnung',
+        actions: 'Aktionen',
     },
     device_store: {
         unauthorized: {
@@ -1022,6 +1061,9 @@ export default {
             failed: {
                 summary: 'Anmeldung fehlgeschlagen',
                 detail: 'Ungültiges Passwort',
+            },
+            rate_limited: {
+                summary: 'Anmeldung vorübergehend gesperrt',
             },
         },
         logout: {

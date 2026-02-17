@@ -52,6 +52,12 @@ export default {
         defaults: 'Par défaut',
         rename: 'Renommer',
         password: 'Mot de passe',
+        currentPassword: 'Mot de passe actuel',
+        newPassword: 'Nouveau mot de passe',
+        passwordPrompt: 'Entrez un mot de passe',
+        passwordWeak: 'Faible',
+        passwordMedium: 'Moyen',
+        passwordStrong: 'Fort',
         savePassword: 'Enregistrer le mot de passe',
         editName: 'Modifier le nom',
         state: 'État',
@@ -102,6 +108,7 @@ export default {
             login: 'Connexion',
             logout: 'Déconnexion',
             changePassword: 'Changer de mot de passe',
+            accessTokens: "Jetons d'accès",
             restartUI: "Redémarrer l'interface",
             restartDaemonAndUI: "Redémarrer le daemon et l'interface",
             restartConfirmMessage: "Êtes-vous sûr de vouloir redémarrer le daemon et l'interface ?",
@@ -178,6 +185,7 @@ export default {
             fullScreen: 'Plein écran',
             menuBarAlwaysVisible: 'Barre de menu toujours visible',
             hideMenuCollapseIcon: "Masquer l'icône de réduction du menu",
+            eyeCandy: 'Effets visuels',
             showOnboarding: 'Afficher le guide au démarrage',
             introduction: 'Introduction',
             startTour: 'Démarrer la visite',
@@ -232,6 +240,8 @@ export default {
                 introduction: "Commencer le tour d'introduction de l'application.",
                 timeFormat: "Format de l'heure : 12 heures (AM/PM) ou 24 heures",
                 frequencyPrecision: 'Ajuster la précision des valeurs de fréquence affichées.',
+                eyeCandy:
+                    'Activer les animations visuelles comme les icônes de ventilateurs en rotation.\nCela utilisera des ressources GPU supplémentaires.',
                 sidebarCollapse:
                     'Afficher ou non une icône de réduction du menu dans la barre latérale,\nou utiliser la zone vide de la barre latérale pour étendre ou réduire le menu principal.',
                 entitiesBelowSensors:
@@ -669,6 +679,9 @@ export default {
                 "Une erreur s'est produite lors de la tentative de mise à jour de cette Fonction",
         },
         error: {
+            accessDenied: 'Accès Refusé',
+            accessDeniedMessage:
+                "L'authentification a échoué. Veuillez vérifier votre mot de passe et réessayer.",
             connectionError: 'Erreur de Connexion CoolerControl',
             connectionToast: 'Impossible de se connecter au daemon',
             connectionToastDetail:
@@ -799,7 +812,7 @@ export default {
             newPasswordTitle: 'Entrez Un Nouveau Mot de Passe',
             invalidPassword: 'Mot de Passe Invalide',
             passwordHelp:
-                "Lors de l'installation, le daemon utilise un mot de passe par défaut pour protéger les points de contrôle des appareils. \nVous pouvez éventuellement créer un mot de passe fort pour une meilleure protection. \nSi vous voyez cette boîte de dialogue et que vous n'avez pas encore défini de mot de passe, essayez d'actualiser l'interface utilisateur \n ou cliquez sur Connexion dans le menu Protection d'Accès. Consultez le wiki du projet pour plus d'informations.",
+                "Mot de passe oublié ? Réinitialisez-le avec :<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Puis actualisez l'UI pour définir un nouveau mot de passe.",
         },
         notFound: {
             message: "Tout comme la distribution Linux 🐧 parfaite,\ncette page n'existe pas.",
@@ -999,12 +1012,38 @@ export default {
     auth: {
         enterPassword: 'Entrez Votre Mot de Passe',
         setNewPassword: 'Entrez Un Nouveau Mot de Passe',
+        changeDefaultPassword:
+            'CoolerControl utilise le mot de passe par défaut.\nVeuillez définir un mot de passe sécurisé avant de continuer.',
         loginFailed: 'Échec de Connexion',
         invalidPassword: 'Mot de Passe Invalide',
         passwordSetFailed: 'Échec de Définition du Mot de Passe',
         passwordSetSuccessfully: 'Nouveau mot de passe défini avec succès',
         logoutSuccessful: 'Vous vous êtes déconnecté avec succès.',
         unauthorizedAction: 'Vous devez être connecté pour effectuer cette action',
+        accessTokens: "Jetons d'accès",
+        tokenLabel: 'Libellé (ex. cctv)',
+        tokenExpiry: "Date d'expiration (facultatif)",
+        createToken: 'Créer un jeton',
+        tokenCreated: 'Jeton créé',
+        tokenCreatedDetail: 'Copiez ce jeton maintenant. Il ne sera plus affiché.',
+        tokenCopied: 'Jeton copié dans le presse-papiers',
+        tokenDeleted: 'Jeton supprimé',
+        tokenCreateError: 'Échec de la création du jeton',
+        tokenDeleteError: 'Échec de la suppression du jeton',
+        tokenLoadError: 'Échec du chargement des jetons',
+        tokenDeleteConfirm:
+            "Êtes-vous sûr de vouloir supprimer ce jeton ? Les services qui l'utilisent perdront l'accès.",
+        tokenDeleteHeader: 'Supprimer le jeton',
+        noTokens: "Aucun jeton d'accès créé pour le moment.",
+        expires: 'Expire',
+        expired: 'Expiré',
+        active: 'Actif',
+        never: 'Jamais',
+        lastUsed: 'Dernière utilisation',
+        neverUsed: 'Jamais utilisé',
+        created: 'Créé',
+        label: 'Libellé',
+        actions: 'Actions',
     },
     daemon: {
         status: {
@@ -1026,6 +1065,9 @@ export default {
             failed: {
                 summary: 'Échec de Connexion',
                 detail: 'Mot de Passe Invalide',
+            },
+            rate_limited: {
+                summary: 'Connexion Temporairement Bloquée',
             },
         },
         logout: {

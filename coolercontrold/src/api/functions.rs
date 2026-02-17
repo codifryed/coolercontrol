@@ -122,3 +122,118 @@ pub struct FunctionsDto {
 pub struct FunctionPath {
     function_uid: FunctionUID,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::setting::FunctionType;
+
+    fn valid_function() -> Function {
+        Function {
+            uid: "test-uid".to_string(),
+            name: "Test Function".to_string(),
+            f_type: FunctionType::Standard,
+            step_size_min: 2,
+            step_size_max: 100,
+            step_size_min_decreasing: 0,
+            step_size_max_decreasing: 0,
+            response_delay: None,
+            deviance: None,
+            only_downward: None,
+            sample_window: None,
+            threshold_hopping: true,
+        }
+    }
+
+    #[test]
+    fn test_validate_function_valid() {
+        let func = valid_function();
+        assert!(validate_function(&func).is_ok());
+    }
+
+    #[test]
+    fn test_validate_function_valid_fixed_step() {
+        let mut func = valid_function();
+        func.step_size_min = 5;
+        func.step_size_max = 0; // 0 = fixed step size
+        assert!(validate_function(&func).is_ok());
+    }
+
+    #[test]
+    fn test_validate_function_step_size_min_zero() {
+        let mut func = valid_function();
+        func.step_size_min = 0;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_step_size_min_over_100() {
+        let mut func = valid_function();
+        func.step_size_min = 101;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_step_size_max_over_100() {
+        let mut func = valid_function();
+        func.step_size_max = 101;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_min_greater_than_max() {
+        let mut func = valid_function();
+        func.step_size_min = 50;
+        func.step_size_max = 25;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_decreasing_min_over_100() {
+        let mut func = valid_function();
+        func.step_size_min_decreasing = 101;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_decreasing_max_over_100() {
+        let mut func = valid_function();
+        func.step_size_max_decreasing = 101;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_decreasing_min_greater_than_max() {
+        let mut func = valid_function();
+        func.step_size_min_decreasing = 50;
+        func.step_size_max_decreasing = 25;
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_decreasing_fixed_step() {
+        let mut func = valid_function();
+        func.step_size_min_decreasing = 10;
+        func.step_size_max_decreasing = 0; // 0 = fixed step size
+        assert!(validate_function(&func).is_ok());
+    }
+
+    #[test]
+    fn test_validate_function_empty_name() {
+        let mut func = valid_function();
+        func.name = String::new();
+        assert!(validate_function(&func).is_err());
+    }
+
+    #[test]
+    fn test_validate_function_boundary_values() {
+        let mut func = valid_function();
+        func.step_size_min = 1;
+        func.step_size_max = 100;
+        assert!(validate_function(&func).is_ok());
+
+        func.step_size_min = 100;
+        func.step_size_max = 100;
+        assert!(validate_function(&func).is_ok());
+    }
+}

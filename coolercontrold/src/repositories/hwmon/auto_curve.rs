@@ -737,23 +737,23 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    fn setup() -> HwmonFileContext {
+    async fn setup() -> HwmonFileContext {
         let test_base_path =
             Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
                 .to_path_buf();
-        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
         HwmonFileContext { test_base_path }
     }
 
-    fn teardown(ctx: &HwmonFileContext) {
-        cc_fs::remove_dir_all(&ctx.test_base_path).unwrap();
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
     }
 
     #[test]
     #[serial]
     fn is_temp_based_success() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -767,7 +767,7 @@ mod tests {
             let result = is_temp_based(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -776,7 +776,7 @@ mod tests {
     #[serial]
     fn is_temp_based_missing() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(
@@ -790,7 +790,7 @@ mod tests {
             let result = is_temp_based(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 result.not(),
                 "pwm number is different and should return false"
@@ -802,7 +802,7 @@ mod tests {
     #[serial]
     fn is_pwm_based_success() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_auto_point1_pwm"), b"1".to_vec())
@@ -813,7 +813,7 @@ mod tests {
             let result = is_pwm_based(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -822,7 +822,7 @@ mod tests {
     #[serial]
     fn is_pwm_based_missing() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm8_auto_point1_pwm"), b"1".to_vec())
@@ -833,7 +833,7 @@ mod tests {
             let result = is_pwm_based(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 result.not(),
                 "pwm number is different and should return false"
@@ -934,7 +934,7 @@ mod tests {
     #[serial]
     fn read_z53_auto_curve_detects_and_sets_pwm_curve() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given: create temp1_auto_point{1..40}_pwm to simulate kraken3
             for i in 1..=POINT_LENGTH_NZXT_KRAKEN3 as usize {
@@ -953,7 +953,7 @@ mod tests {
             let res = init_kraken3_auto_curve(test_base_path, &mut fan);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(res.is_ok());
             match fan.auto_curve {
                 AutoCurveInfo::PWM { point_length } => {
@@ -968,7 +968,7 @@ mod tests {
     #[serial]
     fn init_temp_based_curve_detects_points_and_sets_map() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given: two temps with different number of points
             cc_fs::write(
@@ -1009,7 +1009,7 @@ mod tests {
             let res = init_temp_based_curve(test_base_path, &mut fan);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(res.is_ok());
             match fan.auto_curve {
                 AutoCurveInfo::Temp { temp_lengths } => {
@@ -1025,7 +1025,7 @@ mod tests {
     #[serial]
     fn init_pwm_based_curve_detects_and_sets_length() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("pwm1_auto_point1_temp"), b"20".to_vec())
@@ -1051,7 +1051,7 @@ mod tests {
             let res = init_pwm_based_curve(test_base_path, &mut fan);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(res.is_ok());
             match fan.auto_curve {
                 AutoCurveInfo::PWM { point_length } => assert_eq!(point_length, 2),
@@ -1064,7 +1064,7 @@ mod tests {
     #[serial]
     fn apply_pwm_curve_writes_expected_files() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             // Pre-create files which apply_pwm_curve will write to
@@ -1105,7 +1105,7 @@ mod tests {
             let t2 = cc_fs::read_sysfs(test_base_path.join("pwm1_auto_point2_temp"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(pwm1.trim(), curve[0].1.to_string());
             assert_eq!(t1.trim(), curve[0].0.to_string());
             assert_eq!(pwm2.trim(), curve[1].1.to_string());
@@ -1117,7 +1117,7 @@ mod tests {
     #[serial]
     fn apply_temp_curve_writes_expected_files() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("temp1_auto_point1_pwm"), b"".to_vec())
@@ -1145,7 +1145,7 @@ mod tests {
             let t = cc_fs::read_sysfs(test_base_path.join("temp1_auto_point1_temp"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(pwm.trim(), curve[0].1.to_string());
             assert_eq!(t.trim(), curve[0].0.to_string());
         });
@@ -1155,7 +1155,7 @@ mod tests {
     #[serial]
     fn apply_temp_curve_to_pwm_channel_writes_expected_file() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("pwm1_auto_channels_temp"), b"".to_vec())
@@ -1177,7 +1177,7 @@ mod tests {
             let val = cc_fs::read_sysfs(test_base_path.join("pwm1_auto_channels_temp"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(val.trim(), temp_channel_number.to_string());
         });
     }
@@ -1186,7 +1186,7 @@ mod tests {
     #[serial]
     fn apply_kraken3_curve_writes_expected_pwm_points() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given: create files for all kraken points
             for i in 1..=POINT_LENGTH_NZXT_KRAKEN3 as usize {
@@ -1217,7 +1217,7 @@ mod tests {
             let p40 = cc_fs::read_sysfs(test_base_path.join("temp1_auto_point40_pwm"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(p1.trim(), "128");
             assert_eq!(p20.trim(), "128");
             assert_eq!(p40.trim(), "128");
@@ -1228,7 +1228,7 @@ mod tests {
     #[serial]
     fn is_temp_sel_success() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_temp_sel"), b"1".to_vec())
@@ -1242,7 +1242,7 @@ mod tests {
             let result = is_temp_sel(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(result);
         });
     }
@@ -1251,7 +1251,7 @@ mod tests {
     #[serial]
     fn is_temp_sel_missing_temp_sel() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_auto_point1_pwm"), b"1".to_vec())
@@ -1262,7 +1262,7 @@ mod tests {
             let result = is_temp_sel(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 result.not(),
                 "should return false when pwm_temp_sel is missing"
@@ -1274,7 +1274,7 @@ mod tests {
     #[serial]
     fn is_temp_sel_missing_pwm_based() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             // given
             let test_base_path = &ctx.test_base_path;
             cc_fs::write(test_base_path.join("pwm1_temp_sel"), b"1".to_vec())
@@ -1285,7 +1285,7 @@ mod tests {
             let result = is_temp_sel(test_base_path, 1);
 
             // then
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 result.not(),
                 "should return false when pwm_auto_point1_pwm is missing"
@@ -1297,7 +1297,7 @@ mod tests {
     #[serial]
     fn set_pwm_auto_point_pwm_writes_expected_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("pwm2_auto_point3_pwm"), b"".to_vec())
@@ -1312,7 +1312,7 @@ mod tests {
             let val = cc_fs::read_sysfs(test_base_path.join("pwm2_auto_point3_pwm"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(val.trim(), "150");
         });
     }
@@ -1321,7 +1321,7 @@ mod tests {
     #[serial]
     fn set_pwm_auto_point_temp_writes_expected_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("pwm3_auto_point2_temp"), b"".to_vec())
@@ -1336,7 +1336,7 @@ mod tests {
             let val = cc_fs::read_sysfs(test_base_path.join("pwm3_auto_point2_temp"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(val.trim(), "45000");
         });
     }
@@ -1345,7 +1345,7 @@ mod tests {
     #[serial]
     fn set_temp_auto_point_pwm_writes_expected_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("temp2_auto_point1_pwm"), b"".to_vec())
@@ -1360,7 +1360,7 @@ mod tests {
             let val = cc_fs::read_sysfs(test_base_path.join("temp2_auto_point1_pwm"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(val.trim(), "200");
         });
     }
@@ -1369,7 +1369,7 @@ mod tests {
     #[serial]
     fn set_temp_auto_point_temp_writes_expected_value() {
         cc_fs::test_runtime(async {
-            let ctx = setup();
+            let ctx = setup().await;
             let test_base_path = &ctx.test_base_path;
             // given
             cc_fs::write(test_base_path.join("temp3_auto_point4_temp"), b"".to_vec())
@@ -1384,7 +1384,7 @@ mod tests {
             let val = cc_fs::read_sysfs(test_base_path.join("temp3_auto_point4_temp"))
                 .await
                 .unwrap();
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert_eq!(val.trim(), "60000");
         });
     }

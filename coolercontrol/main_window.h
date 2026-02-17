@@ -53,7 +53,7 @@ class MainWindow final : public QMainWindow {
 
   void reestablishDaemonConnection() const;
 
-  void tryDaemonConnection() const;
+  void tryDaemonConnection();
 
   void startWatchingSSE() const;
 
@@ -106,11 +106,15 @@ class MainWindow final : public QMainWindow {
   QTimer* m_retryTimer;
   mutable bool m_forceQuit{false};
   mutable bool m_startup{true};
+  mutable bool m_webLoadFinished{false};
+  mutable bool m_loginWindowShown{false};
   mutable bool m_uiLoadingStopped{false};
   mutable bool m_changeAddress{false};
   mutable bool m_daemonHasErrors{false};
   mutable bool m_daemonHasWarnings{false};
   mutable int m_alertCount{0};
+  int m_uiLoadRetryCount{0};
+  static constexpr int MAX_UI_LOAD_RETRIES = 3;
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};

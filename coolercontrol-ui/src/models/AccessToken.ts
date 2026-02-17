@@ -16,8 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-export class ErrorResponse {
-    status?: number
+export interface AccessTokenInfo {
+    id: string
+    label: string
+    created_at: string
+    expires_at: string | null
+    last_used: string | null
+}
 
-    constructor(readonly error: string) {}
+export interface CreateTokenRequest {
+    label: string
+    expires_at: string | null
+}
+
+export interface CreateTokenResponse {
+    id: string
+    label: string
+    token: string
+    created_at: string
+    expires_at: string | null
 }

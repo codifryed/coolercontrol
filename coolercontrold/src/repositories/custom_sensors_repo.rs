@@ -92,7 +92,7 @@ impl CustomSensorsRepo {
             .cloned()
             .ok_or_else(|| {
                 CCError::NotFound {
-                    msg: format!("Custom Sensor not found: {custom_sensor_id}"),
+                    msg: "Custom Sensor not found".to_string(),
                 }
                 .into()
             })

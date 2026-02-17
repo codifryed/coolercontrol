@@ -51,6 +51,11 @@ import { Alert, AlertsDTO } from '@/models/Alert.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
 import PluginsDto from '@/models/Plugins.ts'
+import type {
+    AccessTokenInfo,
+    CreateTokenRequest,
+    CreateTokenResponse,
+} from '@/models/AccessToken.ts'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -59,7 +64,7 @@ import PluginsDto from '@/models/Plugins.ts'
 export default class DaemonClient {
     public readonly daemonURL: string
     // This is used specifically for SSE connections, which work better with http in Chrome
-    public readonly daemonHttpURL: string
+    // public readonly daemonHttpURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 10_000
     private daemonTimeoutExtended: number = 15_000 // this is for image processing calls that can take significantly longer
@@ -77,7 +82,7 @@ export default class DaemonClient {
     constructor(daemonAddress: string, daemonPort: number, sslEnabled: boolean) {
         const prefix = sslEnabled ? 'https' : 'http'
         this.daemonURL = `${prefix}://${daemonAddress}:${daemonPort}/`
-        this.daemonHttpURL = `http://${daemonAddress}:${daemonPort}/`
+        // this.daemonHttpURL = `http://${daemonAddress}:${daemonPort}/`
     }
 
     /**
@@ -212,7 +217,7 @@ export default class DaemonClient {
         }
     }
 
-    async login(passwd: string | undefined = undefined): Promise<boolean> {
+    async login(passwd: string | undefined = undefined): Promise<true | ErrorResponse> {
         if (passwd == null || passwd.length === 0) {
             passwd = this.defaultPasswd
         }
@@ -236,7 +241,12 @@ export default class DaemonClient {
             return true
         } catch (err: any) {
             this.logError(err)
-            return false
+            if (err.response) {
+                const errorResponse = plainToInstance(ErrorResponse, err.response.data as object)
+                errorResponse.status = err.response.status
+                return errorResponse
+            }
+            return new ErrorResponse('Unknown Cause')
         }
     }
 
@@ -259,18 +269,18 @@ export default class DaemonClient {
         }
     }
 
-    async setPasswd(passwd: string): Promise<undefined | ErrorResponse> {
-        if (passwd.length === 0) {
+    async setPasswd(currentPasswd: string, newPasswd: string): Promise<undefined | ErrorResponse> {
+        if (newPasswd.length === 0) {
             return new ErrorResponse('Password cannot be empty')
         }
         try {
             const response = await this.getClient().post(
                 '/set-passwd',
-                {},
+                { current_password: currentPasswd },
                 {
                     auth: {
                         username: this.userId,
-                        password: passwd,
+                        password: newPasswd,
                     },
                     'axios-retry': {
                         retries: 0,
@@ -1303,6 +1313,61 @@ export default class DaemonClient {
         } catch (err: any) {
             this.logError(err)
             return false
+        }
+    }
+
+    /* Access Tokens */
+
+    async listTokens(): Promise<AccessTokenInfo[] | ErrorResponse> {
+        try {
+            const response = await this.getClient().get('/tokens')
+            this.logDaemonResponse(response, 'List Tokens')
+            return response.data.tokens
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async createToken(
+        label: string,
+        expiresAt: string | null,
+    ): Promise<CreateTokenResponse | ErrorResponse> {
+        try {
+            const body: CreateTokenRequest = { label, expires_at: expiresAt }
+            const response = await this.getClient().post('/tokens', body, {
+                'axios-retry': {
+                    retries: 0,
+                },
+            })
+            this.logDaemonResponse(response, 'Create Token')
+            return response.data
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async deleteToken(tokenId: string): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(`/tokens/${tokenId}`)
+            this.logDaemonResponse(response, 'Delete Token')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
         }
     }
 }

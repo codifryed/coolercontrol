@@ -33,39 +33,85 @@ const deviceStore = useDeviceStore()
 const { t } = useI18n()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
+const promptMessage: string | undefined = dialogRef.value.data.promptMessage
+const currentPasswdInput: Ref<string> = ref(dialogRef.value.data.currentPasswd || '')
 const passwdInput: Ref<string> = ref('')
 
 const closeAndProcess = (): void => {
-    if (passwordIsInvalid()) {
+    if (formIsInvalid()) {
         return
     }
-    dialogRef.value.close({ passwd: passwdInput.value })
+    if (setPasswd) {
+        dialogRef.value.close({
+            currentPasswd: currentPasswdInput.value,
+            passwd: passwdInput.value,
+        })
+    } else {
+        dialogRef.value.close({ passwd: passwdInput.value })
+    }
 }
-const passwordIsInvalid = (): boolean =>
-    passwdInput.value == null || passwdInput.value.trim().length === 0
+const passwordIsInvalid = (value: string): boolean => value == null || value.trim().length === 0
+const formIsInvalid = (): boolean => {
+    if (setPasswd) {
+        return passwordIsInvalid(currentPasswdInput.value) || passwordIsInvalid(passwdInput.value)
+    }
+    return passwordIsInvalid(passwdInput.value)
+}
+const currentPasswdInputArea = ref()
 const passwdInputArea = ref()
 
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 300))
     await delay()
-    passwdInputArea.value.$el.children[0].focus()
+    if (setPasswd && !dialogRef.value.data.currentPasswd) {
+        currentPasswdInputArea.value.$el.children[0].focus()
+    } else if (setPasswd && dialogRef.value.data.currentPasswd) {
+        passwdInputArea.value.$el.children[0].focus()
+    } else {
+        passwdInputArea.value.$el.children[0].focus()
+    }
 })
 </script>
 
 <template>
-    <FloatLabel class="mt-6">
+    <p v-if="promptMessage" class="mb-12 text-text-color whitespace-pre-line">
+        {{ promptMessage }}
+    </p>
+    <FloatLabel v-if="setPasswd" class="mt-6">
         <Password
-            ref="passwdInputArea"
-            :class="{ filled: !passwordIsInvalid() }"
-            id="password"
-            v-model="passwdInput"
-            :invalid="passwordIsInvalid()"
+            ref="currentPasswdInputArea"
+            :class="{ filled: !passwordIsInvalid(currentPasswdInput) }"
+            id="current-password"
+            v-model="currentPasswdInput"
+            :invalid="passwordIsInvalid(currentPasswdInput)"
             :feedback="false"
             toggle-mask
             required
             @keydown.enter="closeAndProcess"
+            autofocus
         />
-        <label for="password">{{ t('common.password') }}</label>
+        <label for="current-password">{{ t('common.currentPassword') }}</label>
+    </FloatLabel>
+    <FloatLabel class="mt-6 mb-24">
+        <Password
+            ref="passwdInputArea"
+            :class="{ filled: !passwordIsInvalid(passwdInput) }"
+            :id="setPasswd ? 'new-password' : 'password'"
+            v-model="passwdInput"
+            :invalid="passwordIsInvalid(passwdInput)"
+            :feedback="setPasswd"
+            toggle-mask
+            required
+            @keydown.enter="closeAndProcess"
+            autofocus
+            :prompt-label="t('common.passwordPrompt')"
+            :weak-label="t('common.passwordWeak')"
+            :medium-label="t('common.passwordMedium')"
+            :strong-label="t('common.passwordStrong')"
+        />
+        <label :for="setPasswd ? 'new-password' : 'password'">{{
+            setPasswd ? t('common.newPassword') : t('common.password')
+        }}</label>
     </FloatLabel>
     <footer class="flex items-center place-content-between mt-4">
         <Button
@@ -74,6 +120,8 @@ nextTick(async () => {
             v-tooltip.bottom="{
                 value: t('components.password.passwordHelp'),
                 autoHide: false,
+                escape: false,
+                hideDelay: 500,
             }"
         >
             <svg-icon
@@ -87,7 +135,7 @@ nextTick(async () => {
             class="bg-accent/80 hover:!bg-accent/100"
             label="Save"
             @click="closeAndProcess"
-            :disabled="passwordIsInvalid()"
+            :disabled="formIsInvalid()"
         >
             {{ setPasswd ? t('common.savePassword') : t('common.ok') }}
         </Button>

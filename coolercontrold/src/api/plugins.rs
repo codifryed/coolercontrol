@@ -147,3 +147,62 @@ pub struct PluginDto {
 pub struct HasUiDto {
     pub has_ui: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_file_name_valid() {
+        let result = sanitize_file_name("index.html".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), OsString::from("index.html"));
+    }
+
+    #[test]
+    fn test_sanitize_file_name_valid_with_multiple_dots() {
+        let result = sanitize_file_name("app.bundle.js".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), OsString::from("app.bundle.js"));
+    }
+
+    #[test]
+    fn test_sanitize_file_name_rejects_absolute_path() {
+        assert!(sanitize_file_name("/etc/passwd".to_string()).is_err());
+        assert!(sanitize_file_name("/home/user/file.txt".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_sanitize_file_name_rejects_no_extension() {
+        assert!(sanitize_file_name("noextension".to_string()).is_err());
+        assert!(sanitize_file_name("Makefile".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_sanitize_file_name_strips_directory_traversal() {
+        // Path traversal should be stripped to just the filename
+        let result = sanitize_file_name("../../../etc/passwd.txt".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), OsString::from("passwd.txt"));
+    }
+
+    #[test]
+    fn test_sanitize_file_name_strips_relative_path() {
+        let result = sanitize_file_name("subdir/file.js".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), OsString::from("file.js"));
+    }
+
+    #[test]
+    fn test_sanitize_file_name_hidden_file_with_extension() {
+        let result = sanitize_file_name(".hidden.txt".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), OsString::from(".hidden.txt"));
+    }
+
+    #[test]
+    fn test_sanitize_file_name_rejects_hidden_file_no_extension() {
+        // ".gitignore" has no extension (the dot is part of the name)
+        assert!(sanitize_file_name(".gitignore".to_string()).is_err());
+    }
+}

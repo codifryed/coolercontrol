@@ -602,8 +602,8 @@ impl FunctionSafetyLatchProcessor {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn initial_max_no_duty_set_count(profile: &NormalizedGraphProfile) -> u8 {
-        if profile.function.response_delay.is_some() {
-            let response_delay_secs = f64::from(profile.function.response_delay.unwrap());
+        if let Some(response_delay) = profile.function.response_delay {
+            let response_delay_secs = f64::from(response_delay);
             let response_delay_count = response_delay_secs / profile.poll_rate;
             // use response_delay but within a reasonable limit
             let min_count = (MIN_NO_DUTY_SET_SECONDS / profile.poll_rate).ceil();

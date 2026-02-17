@@ -21,8 +21,6 @@ import { computed, defineAsyncComponent, inject, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
-    mdiAccountOffOutline,
-    mdiAccountOutline,
     mdiArrowLeft,
     mdiBellOutline,
     mdiBellPlusOutline,
@@ -36,6 +34,8 @@ import {
     mdiCogOutline,
     mdiFlaskPlusOutline,
     mdiHomeAnalytics,
+    mdiLockOffOutline,
+    mdiLockOutline,
     mdiMenuClose,
     mdiMenuOpen,
     mdiOpenInNew,
@@ -261,6 +261,7 @@ const accessItems = computed(() => [
         command: async () => {
             accessMenuRef.value?.handleClose()
             await deviceStore.logout()
+            deviceStore.reloadUI()
         },
         visible: deviceStore.loggedIn,
     },
@@ -270,6 +271,15 @@ const accessItems = computed(() => [
         command: async () => {
             accessMenuRef.value?.handleClose()
             await deviceStore.setPasswd()
+        },
+        visible: deviceStore.loggedIn,
+    },
+    {
+        label: t('layout.topbar.accessTokens'),
+        icon: 'pi pi-fw pi-key',
+        command: async () => {
+            accessMenuRef.value?.handleClose()
+            await deviceStore.manageTokens()
         },
         visible: deviceStore.loggedIn,
     },
@@ -708,9 +718,12 @@ const addItems = computed(() => [
                 aria-controls="access-overlay-menu"
             >
                 <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
-                    <svg-icon type="mdi" :path="mdiAccountOffOutline" :size="getREMSize(1.75)" />
+                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
                 </OverlayBadge>
-                <svg-icon v-else type="mdi" :path="mdiAccountOutline" :size="getREMSize(1.75)" />
+                <OverlayBadge v-else-if="deviceStore.isDefaultPasswd" :severity="'warn'">
+                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
+                </OverlayBadge>
+                <svg-icon v-else type="mdi" :path="mdiLockOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
                 <Menu :model="accessItems" append-to="self">

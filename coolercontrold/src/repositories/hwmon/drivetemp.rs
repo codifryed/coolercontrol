@@ -193,31 +193,31 @@ mod tests {
         hwmon_path: PathBuf,
     }
 
-    fn setup() -> HwmonDeviceContext {
+    async fn setup() -> HwmonDeviceContext {
         let test_dir = TEST_BASE_PATH_STR.to_string() + Uuid::new_v4().to_string().as_str();
         let base_path_str = test_dir.clone() + "/hwmon/hwmon1/";
         let hwmon_path = Path::new(&base_path_str).to_path_buf();
-        cc_fs::create_dir_all(&hwmon_path).unwrap();
+        cc_fs::create_dir_all(&hwmon_path).await.unwrap();
         HwmonDeviceContext {
             test_dir,
             hwmon_path,
         }
     }
 
-    fn teardown(ctx: &HwmonDeviceContext) {
-        cc_fs::remove_dir_all(&ctx.test_dir).unwrap();
+    async fn teardown(ctx: &HwmonDeviceContext) {
+        cc_fs::remove_dir_all(&ctx.test_dir).await.unwrap();
     }
 
     #[test]
     #[serial]
     fn find_dev_path_empty() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // when:
             let dev_result = get_block_device_path(&ctx.hwmon_path);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 dev_result.is_err(),
                 "Block device path is not empty: {dev_result:?}"
@@ -228,16 +228,18 @@ mod tests {
     #[test]
     #[serial]
     fn find_dev_path() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
-            cc_fs::create_dir_all(ctx.hwmon_path.join("device").join("block").join("sda")).unwrap();
+            cc_fs::create_dir_all(ctx.hwmon_path.join("device").join("block").join("sda"))
+                .await
+                .unwrap();
 
             // when:
             let dev_result = get_block_device_path(&ctx.hwmon_path);
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 dev_result.is_ok(),
                 "Block device path is empty: {dev_result:?}"
@@ -255,8 +257,8 @@ mod tests {
     #[serial]
     #[ignore = "requires a real block device & sudo privileges"]
     fn get_driver_power_state() {
-        let ctx = setup();
         cc_fs::test_runtime(async {
+            let ctx = setup().await;
             // given:
             let local_dev_path = PathBuf::from("/dev/sda");
 
@@ -264,7 +266,7 @@ mod tests {
             let dev_result = drive_power_state(&local_dev_path).await;
 
             // then:
-            teardown(&ctx);
+            teardown(&ctx).await;
             assert!(
                 dev_result.is_ok(),
                 "Error retrieving device power state: {dev_result:?}"
