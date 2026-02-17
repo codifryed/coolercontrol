@@ -68,7 +68,8 @@ tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-core = { version = "0.15.0", features = ["deletion-task"] }
 moka = { version = "0.12", features = ["future"] }
 base64 = "0.22"
-time = "0.3.47"
+# time > 0.3.45 requires rust >=1.88
+time = "=0.3.45"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [
