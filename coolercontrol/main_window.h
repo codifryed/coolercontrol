@@ -114,7 +114,7 @@ class MainWindow final : public QMainWindow {
   mutable bool m_daemonHasWarnings{false};
   mutable int m_alertCount{0};
   int m_uiLoadRetryCount{0};
-  static constexpr int MAX_UI_LOAD_RETRIES = 2;
+  static constexpr int MAX_UI_LOAD_RETRIES = 3;
 
   // This is empty when there is currently no active mode:
   mutable QString m_activeModeUID{QString()};
