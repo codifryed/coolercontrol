@@ -919,7 +919,7 @@ impl IntoResponse for CCError {
             CCError::InternalError { .. } => {
                 // We use the Display trait to format our errors
                 let err_msg = self.to_string();
-                warn!("{err_msg}");
+                debug!("{err_msg}");
                 (StatusCode::INTERNAL_SERVER_ERROR, err_msg)
             }
             CCError::ExternalError { .. } => {
@@ -929,12 +929,12 @@ impl IntoResponse for CCError {
             }
             CCError::NotFound { .. } => {
                 let err_msg = self.to_string();
-                warn!("{err_msg}");
+                debug!("{err_msg}");
                 (StatusCode::NOT_FOUND, err_msg)
             }
             CCError::UserError { .. } => {
                 let err_msg = self.to_string();
-                warn!("{err_msg}");
+                debug!("{err_msg}");
                 (StatusCode::BAD_REQUEST, err_msg)
             }
             CCError::InvalidCredentials { .. } => {
@@ -945,7 +945,7 @@ impl IntoResponse for CCError {
             }
             CCError::InsufficientScope { .. } => {
                 let err_msg = self.to_string();
-                warn!("{err_msg}");
+                debug!("{err_msg}");
                 (StatusCode::FORBIDDEN, err_msg)
             }
             CCError::TooManyAttempts { .. } => {
