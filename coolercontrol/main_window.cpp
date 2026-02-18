@@ -809,6 +809,7 @@ void MainWindow::tryDaemonConnection() {
       m_alertCount = 0;
       m_daemonHasErrors = false;
       m_daemonHasWarnings = false;
+      m_loginWindowShown = false;
       if (isHidden()) {
         // if the window was closed/hidden/suspended, this will refresh the app
         // This is particularly helpful when closed to tray and the daemon reconnects
