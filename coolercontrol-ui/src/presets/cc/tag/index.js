@@ -30,23 +30,22 @@ export default {
 
             //Shape
             {
-                'rounded-md': !props.rounded,
+                'rounded-lg': !props.rounded,
                 'rounded-full': props.rounded,
             },
 
             //Colors
-            'text-primary-contrast',
+            'text-text-color',
             {
-                'bg-primary dark:bg-primary':
-                    props.severity == null || props.severity === 'primary',
-                'text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-500/20':
-                    props.severity === 'secondary',
-                'bg-green-500 dark:bg-green-400': props.severity === 'success',
-                'bg-blue-500 dark:bg-blue-400': props.severity === 'info',
-                'bg-orange-500 dark:bg-orange-400': props.severity === 'warn',
-                'bg-red-500 dark:bg-red-400': props.severity === 'danger',
-                'text-surface-0 dark:text-surface-900 bg-surface-900 dark:bg-surface-0':
-                    props.severity === 'contrast',
+                'bg-accent/40': props.severity == null || props.severity === 'primary',
+                // 'text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-500/20':
+                //     props.severity === 'secondary',
+                'bg-green/40': props.severity === 'success',
+                'bg-blue/40': props.severity === 'info',
+                'bg-yellow/40 text-text-color-secondary': props.severity === 'warn',
+                'bg-red/40': props.severity === 'danger',
+                // 'text-surface-0 dark:text-surface-900 bg-surface-900 dark:bg-surface-0':
+                //     props.severity === 'contrast',
             },
         ],
     }),
