@@ -343,21 +343,12 @@ void MainWindow::forceQuit() {
 
 void MainWindow::forceRefresh() const {
   qInfo() << "Forced UI refresh";
-#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-  connect(
-      m_profile, &QWebEngineProfile::clearHttpCacheCompleted, this,
-      [this]() {
-        m_uiLoadingStopped = false;
-        m_view->load(getDaemonUrl());
-      },
-      Qt::SingleShotConnection);
-  m_profile->clearHttpCache();
-#else
-  m_profile->clearHttpCache();
-  delay(200);
+  // Note: clearHttpCache() is intentionally NOT called here because it can
+  // interfere with QWebEngineProfile's cookie state, causing session cookies
+  // to be lost on page reload. The daemon's cache headers already handle asset
+  // freshness correctly (no-cache for index.html, immutable for hashed assets).
   m_uiLoadingStopped = false;
   m_view->load(getDaemonUrl());
-#endif
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
