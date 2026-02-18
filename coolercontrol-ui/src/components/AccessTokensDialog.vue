@@ -223,7 +223,7 @@ onMounted(loadTokens)
                     :value="expiryStatus(data.expires_at).label"
                     :severity="expiryStatus(data.expires_at).severity as any"
                 />
-                <span v-if="data.expires_at" class="ml-2 text-sm">
+                <span v-if="data.expires_at" class="ml-2">
                     {{ formatDate(data.expires_at) }}
                 </span>
             </template>
