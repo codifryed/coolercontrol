@@ -496,7 +496,7 @@ async fn initialize_device_repos(
         init_scope.spawn(async {
             match init_service_plugin_repo(config.clone(), api_up_token.clone()).await {
                 Ok(repo) => {
-                    plugin_controller = PluginController::new(&repo);
+                    plugin_controller = PluginController::new(&repo, repo.is_systemd());
                     repos.external = Some(Rc::new(repo));
                 }
                 Err(err) => error!("Error initializing Service Plugin Repo: {err}"),

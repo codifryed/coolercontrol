@@ -24,6 +24,9 @@ use crate::device::{
 use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
+use crate::repositories::service_plugin::plugin_controller::{
+    secure_config_file, PLUGIN_CONFIG_FILE_NAME,
+};
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
@@ -246,6 +249,22 @@ impl ServicePluginRepo {
                     "Error adding plugin service. This service {service_id} will be skipped: {e}"
                 );
                 return;
+            }
+        }
+        let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
+        if config_path.exists() {
+            let owner = service_manager.is_systemd().then(|| {
+                if service_manifest.privileged {
+                    "root"
+                } else {
+                    CC_PLUGIN_USER
+                }
+            });
+            if let Err(err) = secure_config_file(&config_path, owner).await {
+                warn!(
+                    "Failed to secure plugin config file {}: {err}",
+                    config_path.display()
+                );
             }
         }
         match service_manifest.service_type {
@@ -709,6 +728,10 @@ impl ServicePluginRepo {
         disabled_channels_for_device.is_none()
             || disabled_channels_for_device
                 .is_some_and(|disabled_channels| disabled_channels.contains(channel_name).not())
+    }
+
+    pub fn is_systemd(&self) -> bool {
+        self.service_manager.is_systemd()
     }
 
     /// Returns a copy of the plugins information, used by the plugin controller.

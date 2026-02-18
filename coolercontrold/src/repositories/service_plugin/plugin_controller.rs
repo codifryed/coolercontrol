@@ -20,24 +20,31 @@ use crate::api::CCError;
 use crate::cc_fs;
 use crate::repositories::service_plugin::service_management::ServiceId;
 use crate::repositories::service_plugin::service_manifest::ServiceManifest;
-use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
-use anyhow::{Context, Result};
-use log::{debug, error};
+use crate::repositories::service_plugin::service_plugin_repo::{ServicePluginRepo, CC_PLUGIN_USER};
+use crate::repositories::utils::{ShellCommand, ShellCommandResult};
+use anyhow::{anyhow, Context, Result};
+use log::{debug, error, warn};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-const PLUGIN_CONFIG_FILE_NAME: &str = "config.json";
+pub const PLUGIN_CONFIG_FILE_NAME: &str = "config.json";
 const PLUGIN_UI_DIR_NAME: &str = "ui";
+const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 
 #[derive(Default)]
 pub struct PluginController {
     pub plugins: HashMap<ServiceId, ServiceManifest>,
+    is_systemd: bool,
 }
 
 impl PluginController {
-    pub fn new(service_plugin_repo: &ServicePluginRepo) -> Self {
+    pub fn new(service_plugin_repo: &ServicePluginRepo, is_systemd: bool) -> Self {
         Self {
             plugins: service_plugin_repo.get_plugins(),
+            is_systemd,
         }
     }
 
@@ -92,7 +99,21 @@ impl PluginController {
                     "Saving Plugin configuration file: {}",
                     config_path.display()
                 )
-            })
+            })?;
+        let owner = self.is_systemd.then(|| {
+            if manifest.privileged {
+                "root"
+            } else {
+                CC_PLUGIN_USER
+            }
+        });
+        if let Err(err) = secure_config_file(&config_path, owner).await {
+            warn!(
+                "Failed to secure plugin config file {}: {err}",
+                config_path.display()
+            );
+        }
+        Ok(())
     }
 
     pub fn get_plugin_ui_dir(&self, plugin_id: &str) -> Result<PathBuf> {
@@ -113,5 +134,135 @@ impl PluginController {
                 }
             })?;
         Ok(dir)
+    }
+}
+
+pub async fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {
+    cc_fs::set_permissions(path, Permissions::from_mode(PLUGIN_CONFIG_FILE_PERMISSIONS)).await?;
+    if let Some(owner) = owner {
+        let command = format!("chown {owner}:{owner} {}", path.display());
+        match ShellCommand::new(&command, Duration::from_secs(5))
+            .run()
+            .await
+        {
+            ShellCommandResult::Success { .. } => {}
+            ShellCommandResult::Error(stderr) => return Err(anyhow!("chown failed: {stderr}")),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_root() -> bool {
+        nix::unistd::geteuid().is_root()
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_sets_600_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+        std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
+
+        // secure_config_file will set permissions and attempt chown.
+        // chown may fail if not root, but permissions should still be set.
+        let _ = secure_config_file(&config_path, Some("root")).await;
+
+        let perms = std::fs::metadata(&config_path).unwrap().permissions();
+        assert_eq!(
+            perms.mode() & 0o777,
+            PLUGIN_CONFIG_FILE_PERMISSIONS,
+            "Config file should have 600 permissions"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_nonexistent_file_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("nonexistent.json");
+
+        let result = secure_config_file(&config_path, Some("root")).await;
+        assert!(result.is_err(), "Should fail for nonexistent file");
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_chown_fails_for_non_root() {
+        if is_root() {
+            // Skip: chown won't fail when running as root
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+
+        let result = secure_config_file(&config_path, Some("root")).await;
+        assert!(
+            result.is_err(),
+            "chown to root should fail when not running as root"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_chown_succeeds_as_root() {
+        if !is_root() {
+            // Skip: requires root privileges
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+
+        let result = secure_config_file(&config_path, Some("root")).await;
+        assert!(result.is_ok(), "chown to root should succeed as root");
+
+        let perms = std::fs::metadata(&config_path).unwrap().permissions();
+        assert_eq!(
+            perms.mode() & 0o777,
+            PLUGIN_CONFIG_FILE_PERMISSIONS,
+            "Config file should have 600 permissions"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_permissions_maintained_after_rewrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+
+        let _ = secure_config_file(&config_path, Some("root")).await;
+
+        // Simulate a rewrite that resets permissions
+        std::fs::write(&config_path, "{\"updated\": true}").unwrap();
+        std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
+
+        let _ = secure_config_file(&config_path, Some("root")).await;
+
+        let perms = std::fs::metadata(&config_path).unwrap().permissions();
+        assert_eq!(
+            perms.mode() & 0o777,
+            PLUGIN_CONFIG_FILE_PERMISSIONS,
+            "Permissions should be restored to 600 after re-securing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secure_config_file_no_owner_skips_chown() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        std::fs::write(&config_path, "{}").unwrap();
+        std::fs::set_permissions(&config_path, Permissions::from_mode(0o644)).unwrap();
+
+        let result = secure_config_file(&config_path, None).await;
+        assert!(result.is_ok(), "Should succeed without chown");
+
+        let perms = std::fs::metadata(&config_path).unwrap().permissions();
+        assert_eq!(
+            perms.mode() & 0o777,
+            PLUGIN_CONFIG_FILE_PERMISSIONS,
+            "Config file should have 600 permissions even without chown"
+        );
     }
 }
