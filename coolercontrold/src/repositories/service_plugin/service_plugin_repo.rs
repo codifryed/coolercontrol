@@ -250,21 +250,22 @@ impl ServicePluginRepo {
                 );
                 return;
             }
-        }
-        let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
-        if config_path.exists() {
-            let owner = service_manager.is_systemd().then(|| {
-                if service_manifest.privileged {
-                    "root"
-                } else {
-                    CC_PLUGIN_USER
+            let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
+            if config_path.exists() {
+                let owner = service_manager.is_systemd().then_some({
+                    if service_manifest.privileged {
+                        "root"
+                    } else {
+                        CC_PLUGIN_USER
+                    }
+                });
+
+                if let Err(err) = secure_config_file(&config_path, owner).await {
+                    warn!(
+                        "Failed to secure plugin config file {}: {err}",
+                        config_path.display()
+                    );
                 }
-            });
-            if let Err(err) = secure_config_file(&config_path, owner).await {
-                warn!(
-                    "Failed to secure plugin config file {}: {err}",
-                    config_path.display()
-                );
             }
         }
         match service_manifest.service_type {

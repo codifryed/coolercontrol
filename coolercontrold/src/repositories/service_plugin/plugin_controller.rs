@@ -26,6 +26,7 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error, warn};
 use std::collections::HashMap;
 use std::fs::Permissions;
+use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -100,7 +101,10 @@ impl PluginController {
                     config_path.display()
                 )
             })?;
-        let owner = self.is_systemd.then(|| {
+        if manifest.is_managed().not() {
+            return Ok(());
+        }
+        let owner = self.is_systemd.then_some({
             if manifest.privileged {
                 "root"
             } else {
