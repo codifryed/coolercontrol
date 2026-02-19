@@ -19,6 +19,7 @@
 <script setup lang="ts">
 import { onMounted, ref, type Ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
@@ -34,6 +35,7 @@ import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
 
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const { t } = useI18n()
@@ -136,7 +138,8 @@ function fallbackCopy(text: string): void {
 
 function formatDate(dateStr: string | null): string {
     if (!dateStr) return t('auth.never')
-    return new Date(dateStr).toLocaleString()
+    const options: Intl.DateTimeFormatOptions = settingsStore.time24 ? { hour12: false } : {}
+    return new Date(dateStr).toLocaleString(undefined, options)
 }
 
 function isExpired(expiresAt: string | null): boolean {
@@ -220,7 +223,7 @@ onMounted(loadTokens)
                     :value="expiryStatus(data.expires_at).label"
                     :severity="expiryStatus(data.expires_at).severity as any"
                 />
-                <span v-if="data.expires_at" class="ml-2 text-sm">
+                <span v-if="data.expires_at" class="ml-2">
                     {{ formatDate(data.expires_at) }}
                 </span>
             </template>

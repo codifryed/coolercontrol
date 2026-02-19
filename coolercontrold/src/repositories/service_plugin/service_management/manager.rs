@@ -111,10 +111,10 @@ impl Manager {
         }
     }
 
-    // pub fn is_systemd(&self) -> bool {
-    //     matches!(self, Self::Systemd(_))
-    // }
-    //
+    pub fn is_systemd(&self) -> bool {
+        matches!(self, Self::Systemd(_))
+    }
+
     // pub fn is_open_rc(&self) -> bool {
     //     matches!(self, Self::OpenRc(_))
     // }
