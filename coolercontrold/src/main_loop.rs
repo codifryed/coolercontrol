@@ -92,6 +92,7 @@ pub async fn run(
                 debug!("Skipping polling loop operations while system is entering/leaving sleep mode.");
             }
         }
+        engine.apply_lcd_shutdown_images().await;
         Ok(())
     })
     .await

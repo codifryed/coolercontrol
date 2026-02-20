@@ -38,13 +38,14 @@ use crate::setting::{
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
-use log::{error, info, log, trace, Level};
+use log::{debug, error, info, log, trace, warn, Level};
 use mime::Mime;
 use moro_local::Scope;
 use tokio::time::Instant;
 
 const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
+const LCD_SHUTDOWN_IMAGE_DIR: &str = "lcd_shutdown";
 const SYNC_CHANNEL_NAME: &str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
@@ -528,6 +529,102 @@ impl Engine {
         Ok(image_location)
     }
 
+    /// Saves an LCD shutdown image to the dedicated subdirectory.
+    /// Returns the absolute path string for storage in config.
+    pub async fn save_lcd_shutdown_image(
+        &self,
+        device_uid: &str,
+        channel_name: &str,
+        content_type: &Mime,
+        file_data: Vec<u8>,
+    ) -> Result<String> {
+        let shutdown_dir = std::path::Path::new(DEFAULT_CONFIG_DIR).join(LCD_SHUTDOWN_IMAGE_DIR);
+        cc_fs::create_dir_all(&shutdown_dir).await?;
+        let filename = if content_type == &mime::IMAGE_GIF {
+            format!("{device_uid}-{channel_name}.gif")
+        } else {
+            format!("{device_uid}-{channel_name}.png")
+        };
+        let image_path = shutdown_dir.join(&filename);
+        cc_fs::write(&image_path, file_data).await?;
+        image_path.to_str().map(ToString::to_string).ok_or_else(|| {
+            CCError::InternalError {
+                msg: "Path to str conversion".to_string(),
+            }
+            .into()
+        })
+    }
+
+    /// Applies all persisted LCD shutdown images to their respective devices.
+    /// Called during daemon shutdown before hardware is reset.
+    pub async fn apply_lcd_shutdown_images(&self) {
+        let shutdown_settings = match self.config.get_all_lcd_shutdown_settings() {
+            Ok(settings) => settings,
+            Err(err) => {
+                warn!("Failed to read LCD shutdown settings: {err}");
+                return;
+            }
+        };
+        for (device_uid, channel_name, lcd_settings) in shutdown_settings {
+            match self.get_device_repo(&device_uid) {
+                Ok((_device_lock, repo)) => {
+                    if let Err(err) = repo
+                        .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
+                        .await
+                    {
+                        warn!(
+                            "Failed to apply LCD shutdown image for {device_uid}:{channel_name}: {err}"
+                        );
+                    } else {
+                        let Ok(settings_current) = self
+                            .config
+                            .get_device_channel_settings(&device_uid, &channel_name)
+                        else {
+                            warn!("Failed to read LCD settings for {device_uid}:{channel_name}");
+                            return;
+                        };
+                        if Self::current_setting_is_externally_applied(&settings_current) {
+                            let _ = async {
+                                let config_setting = Setting {
+                                    channel_name: channel_name.clone(),
+                                    lcd: Some(lcd_settings),
+                                    ..Default::default()
+                                };
+                                self.config.set_device_setting(&device_uid, &config_setting);
+                                self.config.save_config_file().await
+                            }
+                            .await
+                            .inspect_err(|err| {
+                                warn!("Failed to save LCD shutdown setting as current: {err}");
+                            });
+                        }
+                        debug!(
+                            "Successfully applied LCD shutdown image for {device_uid}:{channel_name}"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        "Device not found for LCD shutdown image {device_uid}:{channel_name}: {err}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// An external applied LCD setting is one that was set by an external service where the
+    /// image may not be persisted.
+    ///
+    /// This is used to determine if a setting should be saved to the config file and thereby
+    /// used again on startup, since the currently applied image may not exist on restart.
+    fn current_setting_is_externally_applied(settings_current: &Setting) -> bool {
+        settings_current.lcd.as_ref().is_some_and(|lcd| {
+            lcd.image_file_processed
+                .as_ref()
+                .is_some_and(|path_image| path_image.starts_with(DEFAULT_CONFIG_DIR).not())
+        })
+    }
+
     /// Retrieves the saved image file
     pub async fn get_lcd_image(
         &self,
@@ -999,5 +1096,67 @@ impl Engine {
                 })
         });
         Ok(enabled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::setting::{LcdSettings, Setting};
+
+    fn lcd_settings_with_image(image_path: Option<String>) -> LcdSettings {
+        LcdSettings {
+            mode: "static".to_string(),
+            brightness: None,
+            orientation: None,
+            image_file_processed: image_path,
+            carousel: None,
+            colors: Vec::new(),
+            temp_source: None,
+        }
+    }
+
+    // Returns false when the setting has no LCD settings at all.
+    #[test]
+    fn externally_applied_no_lcd() {
+        let setting = Setting {
+            lcd: None,
+            ..Default::default()
+        };
+        assert!(!Engine::current_setting_is_externally_applied(&setting));
+    }
+
+    // Returns false when LCD settings exist but no image path is set.
+    #[test]
+    fn externally_applied_lcd_no_image_path() {
+        let setting = Setting {
+            lcd: Some(lcd_settings_with_image(None)),
+            ..Default::default()
+        };
+        assert!(!Engine::current_setting_is_externally_applied(&setting));
+    }
+
+    // Returns false when the image path starts with DEFAULT_CONFIG_DIR
+    // (i.e. the image was saved internally by the daemon).
+    #[test]
+    fn externally_applied_internal_image_path() {
+        let internal_path = format!("{DEFAULT_CONFIG_DIR}/lcd_image.png");
+        let setting = Setting {
+            lcd: Some(lcd_settings_with_image(Some(internal_path))),
+            ..Default::default()
+        };
+        assert!(!Engine::current_setting_is_externally_applied(&setting));
+    }
+
+    // Returns true when the image path does NOT start with DEFAULT_CONFIG_DIR
+    // (i.e. the image was set by an external service).
+    #[test]
+    fn externally_applied_external_image_path() {
+        let external_path = "/tmp/external_lcd_image.png".to_string();
+        let setting = Setting {
+            lcd: Some(lcd_settings_with_image(Some(external_path))),
+            ..Default::default()
+        };
+        assert!(Engine::current_setting_is_externally_applied(&setting));
     }
 }

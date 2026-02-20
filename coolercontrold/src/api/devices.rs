@@ -192,6 +192,37 @@ fn validate_form_images(
     Ok(file_data)
 }
 
+/// Upload and save an LCD image to display when the daemon shuts down.
+pub async fn set_device_lcd_shutdown_image(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+    NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
+) -> Result<(), CCError> {
+    let file_data = validate_form_images(&mut form)?;
+    device_handle
+        .device_set_lcd_shutdown_image(
+            path.device_uid,
+            path.channel_name,
+            form.mode.clone(),
+            form.brightness,
+            form.orientation,
+            file_data,
+        )
+        .await
+        .map_err(handle_error)
+}
+
+/// Remove the saved LCD shutdown image for the given device channel.
+pub async fn delete_device_lcd_shutdown_image(
+    Path(path): Path<DeviceChannelPath>,
+    State(AppState { device_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    device_handle
+        .device_clear_lcd_shutdown_image(path.device_uid, path.channel_name)
+        .await
+        .map_err(handle_error)
+}
+
 pub async fn device_setting_lighting_modify(
     Path(path): Path<DeviceChannelPath>,
     State(AppState { device_handle, .. }): State<AppState>,

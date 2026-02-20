@@ -300,6 +300,29 @@ fn device_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
         .api_route(
+            "/devices/{device_uid}/settings/{channel_name}/lcd/shutdown-image",
+            put_with(devices::set_device_lcd_shutdown_image, |o| {
+                o.summary("Set LCD Shutdown Image")
+                    .description(
+                        "Upload and save an LCD image that will be applied to the \
+                        device when the daemon shuts down.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .delete_with(devices::delete_device_lcd_shutdown_image, |o| {
+                o.summary("Clear LCD Shutdown Image")
+                    .description(
+                        "Remove the saved LCD shutdown image for the given device channel.",
+                    )
+                    .tag("device")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lighting",
             put_with(devices::device_setting_lighting_modify, |o| {
                 o.summary("Device Channel Lighting")
