@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::rc::Rc;
 
@@ -26,7 +26,7 @@ use crate::device::{
     ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
 };
 use crate::engine::commanders::graph::GraphProfileCommander;
-use crate::engine::commanders::lcd::LcdCommander;
+use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
 use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
@@ -565,56 +565,183 @@ impl Engine {
                 return;
             }
         };
+        let mut channels_with_settings = HashSet::new();
         for (device_uid, channel_name, lcd_settings) in shutdown_settings {
-            let Ok(settings_current) = self
-                .config
-                .get_device_channel_settings(&device_uid, &channel_name)
-            else {
-                continue; // If there are currently no settings applied, leave the device alone
-            };
-            let Some(ref settings_lcd_current) = settings_current.lcd else {
-                continue; // If there are currently no LCD settings applied, leave the device alone
-            };
-            if settings_lcd_current.mode == LcdModeName::None
-                || settings_lcd_current.mode == LcdModeName::Liquid
-            {
-                continue; // These settings mean we should also leave the device alone.
-            }
-            match self.get_device_repo(&device_uid) {
-                Ok((_device_lock, repo)) => {
-                    if let Err(err) = repo
-                        .apply_setting_lcd(&device_uid, &channel_name, &lcd_settings)
-                        .await
-                    {
-                        warn!(
-                            "Failed to apply LCD shutdown image for {device_uid}:{channel_name}: {err}"
-                        );
-                    } else {
-                        if Self::current_setting_is_externally_applied(&settings_current) {
-                            let _ = async {
-                                let config_setting = Setting {
-                                    channel_name: channel_name.clone(),
-                                    lcd: Some(lcd_settings),
-                                    ..Default::default()
-                                };
-                                self.config.set_device_setting(&device_uid, &config_setting);
-                                self.config.save_config_file().await
-                            }
-                            .await
-                            .inspect_err(|err| {
-                                warn!("Failed to save LCD shutdown setting as current: {err}");
-                            });
-                        }
-                        debug!(
-                            "Successfully applied LCD shutdown image for {device_uid}:{channel_name}"
-                        );
-                    }
-                }
-                Err(err) => {
+            channels_with_settings.insert((device_uid.clone(), channel_name.clone()));
+            self.apply_explicit_lcd_shutdown(&device_uid, &channel_name, lcd_settings)
+                .await;
+        }
+        self.apply_default_lcd_shutdown_images(&channels_with_settings)
+            .await;
+    }
+
+    /// Applies a user-configured LCD shutdown image to a device channel.
+    async fn apply_explicit_lcd_shutdown(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lcd_settings: LcdSettings,
+    ) {
+        let Ok(settings_current) = self
+            .config
+            .get_device_channel_settings(device_uid, channel_name)
+        else {
+            return; // If there are currently no settings applied, leave the device alone.
+        };
+        let Some(ref settings_lcd_current) = settings_current.lcd else {
+            return; // If there are currently no LCD settings applied, leave the device alone.
+        };
+        if settings_lcd_current.mode == LcdModeName::None
+            || settings_lcd_current.mode == LcdModeName::Liquid
+        {
+            return; // These settings mean we should also leave the device alone.
+        }
+        match self.get_device_repo(device_uid) {
+            Ok((_device_lock, repo)) => {
+                if let Err(err) = repo
+                    .apply_setting_lcd(device_uid, channel_name, &lcd_settings)
+                    .await
+                {
                     warn!(
-                        "Device not found for LCD shutdown image {device_uid}:{channel_name}: {err}"
+                        "Failed to apply LCD shutdown image for {device_uid}:{channel_name}: {err}"
+                    );
+                } else {
+                    if Self::current_setting_is_externally_applied(&settings_current) {
+                        let _ = async {
+                            let config_setting = Setting {
+                                channel_name: channel_name.to_string(),
+                                lcd: Some(lcd_settings),
+                                ..Default::default()
+                            };
+                            self.config.set_device_setting(device_uid, &config_setting);
+                            self.config.save_config_file().await
+                        }
+                        .await
+                        .inspect_err(|err| {
+                            warn!("Failed to save LCD shutdown setting as current: {err}");
+                        });
+                    }
+                    debug!(
+                        "Successfully applied LCD shutdown image for {device_uid}:{channel_name}"
                     );
                 }
+            }
+            Err(err) => {
+                warn!("Device not found for LCD shutdown image {device_uid}:{channel_name}: {err}");
+            }
+        }
+    }
+
+    /// Applies the default shutdown image for LCD channels currently in Temp or Carousel
+    /// mode that do not have an explicit shutdown setting configured.
+    async fn apply_default_lcd_shutdown_images(
+        &self,
+        channels_with_settings: &HashSet<(String, String)>,
+    ) {
+        let channels = self.find_lcd_channels_needing_default_shutdown(channels_with_settings);
+        for (device_uid, channel_name) in channels {
+            self.apply_default_shutdown_image(&device_uid, &channel_name)
+                .await;
+        }
+    }
+
+    /// Finds LCD device channels that need a default shutdown image applied.
+    /// These are channels currently in Temp or Carousel mode without an explicit
+    /// shutdown setting.
+    fn find_lcd_channels_needing_default_shutdown(
+        &self,
+        channels_with_settings: &HashSet<(String, String)>,
+    ) -> Vec<(String, String)> {
+        let mut result = Vec::new();
+        for (device_uid, device_lock) in self.all_devices.as_ref() {
+            let device = device_lock.borrow();
+            for (channel_name, channel_info) in &device.info.channels {
+                if channel_info.lcd_info.is_none() {
+                    continue;
+                }
+                if channels_with_settings.contains(&(device_uid.clone(), channel_name.clone())) {
+                    continue;
+                }
+                let Ok(settings) = self
+                    .config
+                    .get_device_channel_settings(device_uid, channel_name)
+                else {
+                    continue;
+                };
+                let Some(ref lcd) = settings.lcd else {
+                    continue;
+                };
+                if lcd.mode == LcdModeName::Temp || lcd.mode == LcdModeName::Carousel {
+                    result.push((device_uid.clone(), channel_name.clone()));
+                }
+            }
+        }
+        result
+    }
+
+    /// Processes and applies the embedded default shutdown image to a single LCD channel.
+    async fn apply_default_shutdown_image(&self, device_uid: &UID, channel_name: &str) {
+        let lcd_info = {
+            let Some(device_lock) = self.all_devices.get(device_uid) else {
+                return;
+            };
+            let device = device_lock.borrow();
+            let Some(info) = device.info.channels.get(channel_name) else {
+                return;
+            };
+            let Some(lcd_info) = info.lcd_info.clone() else {
+                return;
+            };
+            lcd_info
+        };
+        let processed = match processors::image::process_image(
+            mime::IMAGE_PNG,
+            DEFAULT_LCD_SHUTDOWN_IMAGE.to_vec(),
+            lcd_info.screen_width,
+            lcd_info.screen_height,
+        )
+        .await
+        {
+            Ok((_, data)) => data,
+            Err(err) => {
+                warn!("Failed to process default shutdown image for {device_uid}:{channel_name}: {err}");
+                return;
+            }
+        };
+        let image_path = match self
+            .save_lcd_shutdown_image(device_uid, channel_name, &mime::IMAGE_PNG, processed)
+            .await
+        {
+            Ok(path) => path,
+            Err(err) => {
+                warn!(
+                    "Failed to save default shutdown image for {device_uid}:{channel_name}: {err}"
+                );
+                return;
+            }
+        };
+        let lcd_settings = LcdSettings {
+            mode: LcdModeName::Image,
+            brightness: None,
+            orientation: None,
+            image_file_processed: Some(image_path),
+            carousel: None,
+            colors: Vec::new(),
+            temp_source: None,
+        };
+        match self.get_device_repo(device_uid) {
+            Ok((_device_lock, repo)) => {
+                if let Err(err) = repo
+                    .apply_setting_lcd(device_uid, channel_name, &lcd_settings)
+                    .await
+                {
+                    warn!("Failed to apply default shutdown image for {device_uid}:{channel_name}: {err}");
+                } else {
+                    debug!("Applied default shutdown image for {device_uid}:{channel_name}");
+                }
+            }
+            Err(err) => {
+                warn!("Device not found for default shutdown image {device_uid}:{channel_name}: {err}");
             }
         }
     }

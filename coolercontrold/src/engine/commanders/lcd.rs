@@ -44,6 +44,7 @@ const IMAGE_HEIGHT: u32 = 320;
 const IMAGE_FILENAME_SINGLE_TEMP: &str = "single_temp.png";
 const FONT_MONO_BYTES: &[u8] = include_bytes!("../../../resources/RobotoMono-Medium.ttf");
 const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Regular.ttf");
+pub const DEFAULT_LCD_SHUTDOWN_IMAGE: &[u8] = include_bytes!("../../../resources/lcd-shutdown.png");
 
 /// This enables regularly updated LCD screen changes
 pub struct LcdCommander {
