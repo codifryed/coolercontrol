@@ -100,10 +100,21 @@ pub struct TempSource {
     pub device_uid: DeviceUID,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum LcdModeName {
+    None,
+    Liquid,
+    Image,
+    Temp,
+    Carousel,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct LcdSettings {
     /// The Lcd mode name
-    pub mode: String,
+    pub mode: LcdModeName,
 
     /// The LCD brightness (0-100%)
     pub brightness: Option<u8>,

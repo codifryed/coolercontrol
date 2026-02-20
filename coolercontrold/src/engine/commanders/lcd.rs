@@ -36,7 +36,7 @@ use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::engine::main::ReposByType;
 use crate::engine::processors;
-use crate::setting::LcdSettings;
+use crate::setting::{LcdModeName, LcdSettings};
 use crate::AllDevices;
 
 const IMAGE_WIDTH: u32 = 320;
@@ -203,7 +203,7 @@ impl LcdCommander {
         let mut temps_to_display = Vec::new();
         for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
-                if lcd_settings.mode != "temp" {
+                if lcd_settings.mode != LcdModeName::Temp {
                     continue;
                 }
                 if let Some(current_source_temp_data) = self.get_source_temp_data(lcd_settings) {
@@ -280,7 +280,7 @@ impl LcdCommander {
         lcd_settings: LcdSettings,
         temp_data_to_display: Rc<TempData>,
     ) {
-        if lcd_settings.mode != "temp" {
+        if lcd_settings.mode != LcdModeName::Temp {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
@@ -330,7 +330,7 @@ impl LcdCommander {
             None
         };
         let lcd_settings = LcdSettings {
-            mode: "image".to_string(),
+            mode: LcdModeName::Image,
             brightness,
             orientation,
             image_file_processed: Some(image_path),
@@ -642,7 +642,7 @@ impl LcdCommander {
     fn set_carousel_lcd_image<'s>(&'s self, scope: &'s Scope<'s, 's, ()>) {
         for (device_uid, channel_settings) in self.scheduled_settings.borrow().iter() {
             for (channel_name, lcd_settings) in channel_settings {
-                if lcd_settings.mode != "carousel" {
+                if lcd_settings.mode != LcdModeName::Carousel {
                     continue;
                 }
                 let elapsed_secs = self
@@ -696,7 +696,7 @@ impl LcdCommander {
                     None
                 };
                 let lcd_settings = LcdSettings {
-                    mode: "image".to_string(),
+                    mode: LcdModeName::Image,
                     brightness,
                     orientation,
                     image_file_processed: Some(image_path),

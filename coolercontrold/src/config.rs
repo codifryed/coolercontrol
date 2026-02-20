@@ -37,8 +37,8 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
-    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings,
-    Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
+    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
+    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
     DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
@@ -399,7 +399,7 @@ impl Config {
     fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] =
-            Item::Value(Value::String(Formatted::new(lcd.mode.clone())));
+            Item::Value(Value::String(Formatted::new(lcd.mode.to_string())));
         if let Some(brightness) = lcd.brightness {
             channel_setting["lcd"]["brightness"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(brightness))));
@@ -830,12 +830,13 @@ impl Config {
             let lcd_table = value
                 .as_inline_table()
                 .with_context(|| "lcd should be an inline table")?;
-            let mode = lcd_table
+            let mode: LcdModeName = lcd_table
                 .get("mode")
                 .with_context(|| "lcd.mode should be present")?
                 .as_str()
                 .with_context(|| "lcd.mode should be a String")?
-                .to_string();
+                .parse()
+                .with_context(|| "lcd.mode should be a valid LcdModeName")?;
             let brightness = if let Some(brightness_value) = lcd_table.get("brightness") {
                 let brightness_u8: u8 = brightness_value
                     .as_integer()
@@ -2377,7 +2378,7 @@ mod tests {
     #[serial]
     fn test_lcd_shutdown_setting_roundtrip() {
         cc_fs::test_runtime(async {
-            use crate::setting::LcdSettings;
+            use crate::setting::{LcdModeName, LcdSettings};
 
             let path = Path::new("/tmp/config-lcd-shutdown-test.toml").to_path_buf();
             let path_ui = Path::new("/tmp/config-ui-lcd-shutdown-test.json").to_path_buf();
@@ -2392,7 +2393,7 @@ mod tests {
             let device_uid = "test-device-uid";
             let channel_name = "lcd1";
             let lcd = LcdSettings {
-                mode: "image".to_string(),
+                mode: LcdModeName::Image,
                 brightness: Some(50),
                 orientation: Some(90),
                 image_file_processed: Some(
@@ -2416,7 +2417,7 @@ mod tests {
             let (uid, ch, retrieved) = &all[0];
             assert_eq!(uid, device_uid);
             assert_eq!(ch, channel_name);
-            assert_eq!(retrieved.mode, "image");
+            assert_eq!(retrieved.mode, LcdModeName::Image);
             assert_eq!(retrieved.brightness, Some(50));
             assert_eq!(retrieved.orientation, Some(90));
             assert_eq!(

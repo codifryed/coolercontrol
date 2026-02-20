@@ -19,7 +19,7 @@
 use crate::api::{handle_error, AppState, CCError};
 use crate::device::{ChannelName, DeviceInfo, DeviceType, DeviceUID, LcInfo, UID};
 use crate::engine::processors::image;
-use crate::setting::{LcdSettings, LightingSettings, Setting};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, Setting};
 use crate::Device;
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
@@ -124,11 +124,14 @@ pub async fn update_device_setting_lcd_image(
 ) -> Result<(), CCError> {
     let file_data = validate_form_images(&mut form)?;
     let log_success = lcd_image_update_query.log.unwrap_or(true);
+    let mode: LcdModeName = form.mode.parse().map_err(|_| CCError::UserError {
+        msg: format!("Invalid LCD mode name: {}", form.mode),
+    })?;
     device_handle
         .device_image_update(
             path.device_uid,
             path.channel_name,
-            form.mode.clone(),
+            mode,
             form.brightness,
             form.orientation,
             file_data,
@@ -199,11 +202,14 @@ pub async fn set_device_lcd_shutdown_image(
     NoApi(mut form): NoApi<TypedMultipart<LcdImageSettingsForm>>,
 ) -> Result<(), CCError> {
     let file_data = validate_form_images(&mut form)?;
+    let mode: LcdModeName = form.mode.parse().map_err(|_| CCError::UserError {
+        msg: format!("Invalid LCD mode name: {}", form.mode),
+    })?;
     device_handle
         .device_set_lcd_shutdown_image(
             path.device_uid,
             path.channel_name,
-            form.mode.clone(),
+            mode,
             form.brightness,
             form.orientation,
             file_data,

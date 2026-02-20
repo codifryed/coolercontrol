@@ -23,7 +23,7 @@ use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
-use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
 use mime::Mime;
@@ -63,7 +63,7 @@ enum DeviceMessage {
     DeviceImageUpdate {
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,
@@ -117,7 +117,7 @@ enum DeviceMessage {
     DeviceSetLCDShutdownImage {
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,
@@ -539,7 +539,7 @@ impl DeviceHandle {
         &self,
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,
@@ -689,7 +689,7 @@ impl DeviceHandle {
         &self,
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,

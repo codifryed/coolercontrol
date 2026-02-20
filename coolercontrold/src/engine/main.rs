@@ -32,8 +32,8 @@ use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    ChannelExtensions, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType,
-    ProfileUID, Setting, DEFAULT_FUNCTION_UID,
+    ChannelExtensions, FunctionUID, LcdModeName, LcdSettings, LightingSettings, Profile,
+    ProfileType, ProfileUID, Setting, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
@@ -432,7 +432,7 @@ impl Engine {
                 "LCD Screen modes not enabled for this device: {device_uid}"
             ));
         }
-        let result = if lcd_settings.mode == "temp" {
+        let result = if lcd_settings.mode == LcdModeName::Temp {
             if lcd_settings.temp_source.is_none() {
                 return Err(anyhow!(
                     "A Temp Source must be set when scheduling a LCD Temperature display for this device: {device_uid}"
@@ -440,7 +440,7 @@ impl Engine {
             }
             self.lcd_commander
                 .schedule_single_temp(device_uid, channel_name, lcd_settings)
-        } else if lcd_settings.mode == "carousel" {
+        } else if lcd_settings.mode == LcdModeName::Carousel {
             self.lcd_commander
                 .schedule_carousel(device_uid, channel_name, lcd_settings)
                 .await
@@ -1102,11 +1102,11 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{LcdSettings, Setting};
+    use crate::setting::{LcdModeName, LcdSettings, Setting};
 
     fn lcd_settings_with_image(image_path: Option<String>) -> LcdSettings {
         LcdSettings {
-            mode: "static".to_string(),
+            mode: LcdModeName::Image,
             brightness: None,
             orientation: None,
             image_file_processed: image_path,

@@ -584,7 +584,7 @@ impl DeviceServiceClient {
             )),
             mut device_client = self.get_device_client(device_uid)?.lock() => {
                 let lcd_setting = LcdSetting {
-                    mode: lcd.mode.clone(),
+                    mode: lcd.mode.to_string(),
                     brightness: lcd.brightness.map(u32::from),
                     orientation: lcd.orientation.map(u32::from),
                     image_path: lcd.image_file_processed.clone(),
