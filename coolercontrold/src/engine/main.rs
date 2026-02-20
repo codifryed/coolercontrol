@@ -566,6 +566,20 @@ impl Engine {
             }
         };
         for (device_uid, channel_name, lcd_settings) in shutdown_settings {
+            let Ok(settings_current) = self
+                .config
+                .get_device_channel_settings(&device_uid, &channel_name)
+            else {
+                continue; // If there are currently no settings applied, leave the device alone
+            };
+            let Some(ref settings_lcd_current) = settings_current.lcd else {
+                continue; // If there are currently no LCD settings applied, leave the device alone
+            };
+            if settings_lcd_current.mode == LcdModeName::None
+                || settings_lcd_current.mode == LcdModeName::Liquid
+            {
+                continue; // These settings mean we should also leave the device alone.
+            }
             match self.get_device_repo(&device_uid) {
                 Ok((_device_lock, repo)) => {
                     if let Err(err) = repo
@@ -576,13 +590,6 @@ impl Engine {
                             "Failed to apply LCD shutdown image for {device_uid}:{channel_name}: {err}"
                         );
                     } else {
-                        let Ok(settings_current) = self
-                            .config
-                            .get_device_channel_settings(&device_uid, &channel_name)
-                        else {
-                            warn!("Failed to read LCD settings for {device_uid}:{channel_name}");
-                            return;
-                        };
                         if Self::current_setting_is_externally_applied(&settings_current) {
                             let _ = async {
                                 let config_setting = Setting {
