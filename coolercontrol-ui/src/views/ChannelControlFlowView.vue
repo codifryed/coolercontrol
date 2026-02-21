@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useControlFlowGraph } from '@/components/control-flow/useControlFlowGraph'
@@ -38,6 +39,7 @@ const props = defineProps<{
     channelName: string
 }>()
 
+const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
@@ -100,13 +102,13 @@ const channelLabel = computed(() => {
     <div class="flex h-full flex-col">
         <div class="flex items-center gap-3 border-b-4 border-border-one px-4 py-2">
             <span class="text-2xl font-bold text-text-color">
-                {{ channelLabel }} - Control Flow
+                {{ channelLabel }} - {{ t('views.controls.controlFlow') }}
             </span>
         </div>
 
         <div v-if="nodes.length === 0" class="flex flex-1 items-center justify-center">
             <div class="text-center text-text-color-secondary">
-                <p class="text-lg">No control chain found for this channel.</p>
+                <p class="text-lg">{{ t('views.controls.noControlChain') }}</p>
             </div>
         </div>
 
@@ -139,7 +141,6 @@ const channelLabel = computed(() => {
                 :line-width="1"
                 :gap="deviceStore.getREMSize(6)"
             />
-            <!--            <FlowLegend />-->
             <MiniMap
                 pannable
                 zoomable

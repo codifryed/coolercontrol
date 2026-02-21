@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { CustomSensorNodeData } from './useControlFlowGraph'
@@ -28,6 +29,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiFlaskRoundBottom } from '@mdi/js'
 
 const props = defineProps<NodeProps<CustomSensorNodeData>>()
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const router = useRouter()
 
@@ -70,7 +72,7 @@ const typeBadgeClass: Record<string, string> = {
         </div>
         <div class="px-3 pb-2">
             <div v-if="liveTemp" class="text-lg font-bold text-text-color">
-                {{ liveTemp }}&deg;C
+                {{ liveTemp }}{{ t('common.tempUnit') }}
             </div>
         </div>
         <Handle type="source" :position="Position.Left" class="!bg-accent" />

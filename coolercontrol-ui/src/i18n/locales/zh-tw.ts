@@ -709,6 +709,10 @@ export default {
         controls: {
             viewType: '視圖類型',
             controlOrView: '控制或查看',
+            title: '系統控制',
+            noControllableChannels: '未找到可控通道。',
+            noControlChain: '未找到此通道的控制鏈。',
+            controlFlow: '控制流',
         },
         devices: {
             detectionIssues: '檢測問題？請查看',
@@ -1127,6 +1131,10 @@ export default {
             none: '無',
             liquidctl: '水冷控制',
             custom: '自定義',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: '燈光',
         },
     },
 }

@@ -47,7 +47,7 @@ const H_PADDING = deviceStore.getREMSize(1)
 <template>
     <div class="flex h-full flex-col">
         <div class="flex items-center justify-between border-b-4 border-border-one px-4 py-2">
-            <span class="text-2xl font-bold text-text-color">System Controls</span>
+            <span class="text-2xl font-bold text-text-color">{{ t('views.controls.title') }}</span>
             <div class="flex items-center gap-x-1 text-sm text-text-color-secondary">
                 <svg-icon
                     type="mdi"
@@ -68,17 +68,16 @@ const H_PADDING = deviceStore.getREMSize(1)
 
         <div v-if="nodes.length === 0" class="flex flex-1 items-center justify-center">
             <div class="text-center text-text-color-secondary">
-                <p class="text-lg">No controllable channels found.</p>
+                <p class="text-lg">{{ t('views.controls.noControllableChannels') }}</p>
                 <p class="mt-2">
-                    Check the
+                    {{ t('layout.settings.devices.detectionIssues') }}
                     <a
                         target="_blank"
                         href="https://docs.coolercontrol.org/hardware-support.html"
                         class="text-accent"
                     >
-                        hardware support documentation
+                        {{ t('layout.settings.devices.hardwareSupportDoc') }}
                     </a>
-                    for details.
                 </p>
             </div>
         </div>

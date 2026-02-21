@@ -569,6 +569,10 @@ export default {
         controls: {
             viewType: '보기 유형',
             controlOrView: '제어 또는 보기',
+            title: '시스템 제어',
+            noControllableChannels: '제어 가능한 채널을 찾을 수 없습니다.',
+            noControlChain: '이 채널에 대한 제어 체인을 찾을 수 없습니다.',
+            controlFlow: '제어 흐름',
         },
         modes: {
             createMode: '모드 생성',
@@ -1147,6 +1151,10 @@ export default {
             none: '없음',
             liquidctl: 'Liquidctl',
             custom: '커스텀',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: '조명',
         },
     },
 }

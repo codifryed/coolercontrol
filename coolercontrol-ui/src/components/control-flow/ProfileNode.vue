@@ -22,11 +22,13 @@ import type { NodeProps } from '@vue-flow/core'
 import type { ProfileNodeData } from './useControlFlowGraph'
 import { ProfileType } from '@/models/Profile'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiFunction, mdiChartLine } from '@mdi/js'
 
 const props = defineProps<NodeProps<ProfileNodeData>>()
+const { t } = useI18n()
 const router = useRouter()
 
 function onClickProfile() {
@@ -80,13 +82,14 @@ const typeBadgeClass: Record<string, string> = {
                 v-if="data.profileType === ProfileType.Fixed && data.speedFixed != null"
                 class="text-xs text-text-color-secondary"
             >
-                Fixed: {{ data.speedFixed }}%
+                {{ t('models.profile.profileType.fixed') }}: {{ data.speedFixed
+                }}{{ t('common.percentUnit') }}
             </div>
             <div
                 v-if="data.profileType === ProfileType.Mix && data.mixFunctionType"
                 class="text-xs text-text-color-secondary"
             >
-                Mix: {{ data.mixFunctionType }}
+                {{ t('models.profile.profileType.mix') }}: {{ data.mixFunctionType }}
             </div>
             <!-- Function sub-section -->
             <div

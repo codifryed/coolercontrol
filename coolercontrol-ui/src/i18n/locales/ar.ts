@@ -570,6 +570,10 @@ export default {
         controls: {
             viewType: 'نوع العرض',
             controlOrView: 'تحكم أو عرض',
+            title: 'التحكم بالنظام',
+            noControllableChannels: 'لم يتم العثور على قنوات يمكن التحكم بها.',
+            noControlChain: 'لم يتم العثور على سلسلة تحكم لهذه القناة.',
+            controlFlow: 'تدفق التحكم',
         },
         modes: {
             createMode: 'إنشاء وضع',
@@ -1147,6 +1151,10 @@ export default {
             none: 'لا شيء',
             liquidctl: 'Liquidctl',
             custom: 'مخصص',
+        },
+        channelType: {
+            lcd: 'شاشة LCD',
+            lighting: 'الإضاءة',
         },
     },
 }

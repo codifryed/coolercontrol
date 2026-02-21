@@ -579,6 +579,10 @@ export default {
         controls: {
             viewType: 'Тип отображения',
             controlOrView: 'Управление или просмотр',
+            title: 'Управление системой',
+            noControllableChannels: 'Управляемые каналы не найдены.',
+            noControlChain: 'Цепочка управления для этого канала не найдена.',
+            controlFlow: 'Поток управления',
         },
         modes: {
             createMode: 'Создать режим',
@@ -1158,6 +1162,10 @@ export default {
             none: 'Нет',
             liquidctl: 'Liquidctl',
             custom: 'Пользовательский',
+        },
+        channelType: {
+            lcd: 'ЖК-экран',
+            lighting: 'Подсветка',
         },
     },
 }

@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { TempSourceNodeData } from './useControlFlowGraph'
@@ -28,6 +29,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiThermometer } from '@mdi/js'
 
 const props = defineProps<NodeProps<TempSourceNodeData>>()
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const router = useRouter()
 
@@ -67,7 +69,7 @@ function onClick() {
                 {{ data.deviceLabel }}
             </div>
             <div v-if="liveTemp" class="text-lg font-bold text-text-color">
-                {{ liveTemp }}&deg;C
+                {{ liveTemp }}{{ t('common.tempUnit') }}
             </div>
         </div>
         <Handle type="source" :position="Position.Left" class="!bg-accent" />
