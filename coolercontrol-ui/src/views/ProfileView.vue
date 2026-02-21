@@ -1941,6 +1941,20 @@ onUnmounted(() => {
     window.removeEventListener('resize', updateKnobSize)
     stopRepeat()
 })
+
+// Prevent the Knob component from consuming non-left mouse button clicks (e.g. browser
+// back/forward buttons). Stop the event before it reaches PrimeVue's handler, then
+// manually trigger history navigation so the browser gesture still works.
+function onKnobMousedown(e: MouseEvent) {
+    if (e.button === 0) return
+    e.stopImmediatePropagation()
+    e.preventDefault()
+}
+function onKnobMouseup(e: MouseEvent) {
+    if (e.button !== 3 && e.button !== 4) return
+    if (e.button === 3) window.history.back()
+    else if (e.button === 4) window.history.forward()
+}
 </script>
 
 <template>
@@ -2208,17 +2222,22 @@ onUnmounted(() => {
         <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
             {{ t('views.profiles.systemDefault') }}
         </div>
-        <Knob
+        <div
             v-else-if="showDutyKnob"
-            v-model="selectedDuty"
-            class="duty-knob-input m-2 w-full h-full flex justify-center"
-            :value-template="(value) => `${value}${t('common.percentUnit')}`"
-            :min="dutyMin"
-            :max="dutyMax"
-            :step="1"
-            :stroke-width="deviceStore.getREMSize(0.75)"
-            :size="knobSize"
-        />
+            @mousedown.capture="onKnobMousedown"
+            @mouseup.capture="onKnobMouseup"
+        >
+            <Knob
+                v-model="selectedDuty"
+                class="duty-knob-input m-2 w-full h-full flex justify-center"
+                :value-template="(value) => `${value}${t('common.percentUnit')}`"
+                :min="dutyMin"
+                :max="dutyMax"
+                :step="1"
+                :stroke-width="deviceStore.getREMSize(0.75)"
+                :size="knobSize"
+            />
+        </div>
         <div v-else-if="showGraph" class="relative">
             <v-chart
                 id="control-graph"
@@ -2436,23 +2455,28 @@ onUnmounted(() => {
             :mixFunctionType="chosenProfileMixFunction"
             :key="mixProfileKeys"
         />
-        <Knob
+        <div
             v-else-if="showStaticOffsetKnob"
-            v-model="selectedStaticOffset"
-            class="m-2 w-full h-full flex justify-center"
-            :value-template="
-                (value) =>
-                    value > 0
-                        ? `+${value}${t('common.percentUnit')}`
-                        : `${value}${t('common.percentUnit')}`
-            "
-            :min="offsetMin"
-            :max="offsetMax"
-            :step="1"
-            :stroke-width="deviceStore.getREMSize(0.75)"
-            :size="knobSize"
-            :disabled="chosenOverlayMemberProfile == null"
-        />
+            @mousedown.capture="onKnobMousedown"
+            @mouseup.capture="onKnobMouseup"
+        >
+            <Knob
+                v-model="selectedStaticOffset"
+                class="m-2 w-full h-full flex justify-center outline-none !outline-0"
+                :value-template="
+                    (value) =>
+                        value > 0
+                            ? `+${value}${t('common.percentUnit')}`
+                            : `${value}${t('common.percentUnit')}`
+                "
+                :min="offsetMin"
+                :max="offsetMax"
+                :step="1"
+                :stroke-width="deviceStore.getREMSize(0.75)"
+                :size="knobSize"
+                :disabled="chosenOverlayMemberProfile == null"
+            />
+        </div>
         <OverlayProfileEditorChart
             v-else-if="showOverlayChart"
             :profile-u-i-d="currentProfile.uid"
