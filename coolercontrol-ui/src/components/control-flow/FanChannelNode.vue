@@ -103,19 +103,18 @@ function onClick() {
                 {{ profileName }}
             </div>
             <div class="flex items-center gap-3 text-xs">
-                <template v-if="data.isManual">
-                    <span class="rounded bg-warning/20 px-1.5 py-0.5 font-medium text-warning">
-                        Manual: {{ data.manualDuty }}%
-                    </span>
-                </template>
-                <template v-else>
-                    <span v-if="liveValues.duty" class="font-medium text-text-color">
-                        {{ liveValues.duty }}%
-                    </span>
-                    <span v-if="liveValues.rpm" class="text-text-color-secondary">
-                        {{ liveValues.rpm }} RPM
-                    </span>
-                </template>
+                <span
+                    v-if="data.isManual"
+                    class="rounded bg-warning/20 px-1.5 py-0.5 font-medium text-warning"
+                >
+                    Manual: {{ data.manualDuty }}%
+                </span>
+                <span v-if="liveValues.duty" class="font-medium text-text-color">
+                    {{ liveValues.duty }}%
+                </span>
+                <span v-if="liveValues.rpm" class="text-text-color-secondary">
+                    {{ liveValues.rpm }} RPM
+                </span>
             </div>
         </div>
         <Handle type="target" :position="Position.Right" class="!bg-accent" />

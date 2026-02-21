@@ -114,6 +114,7 @@ const channelLabel = computed(() => {
             id="channel-control-flow"
             :nodes="nodes"
             :edges="edges"
+            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MAX_ZOOM }"
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
