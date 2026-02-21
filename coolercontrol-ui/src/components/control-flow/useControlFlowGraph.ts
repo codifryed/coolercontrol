@@ -71,7 +71,7 @@ export interface CustomSensorNodeData {
 
 const NODE_WIDTH = 260
 const NODE_HEIGHT = 120
-export const COLUMN_GAP = 350
+export const COLUMN_GAP = 325
 
 // Fixed column assignments by node type/subtype.
 // Flow moves left-to-right: Fan → Overlay → Mix → Graph → CustomSensor → TempSource
