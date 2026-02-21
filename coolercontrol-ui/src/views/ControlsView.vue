@@ -22,6 +22,8 @@ import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useOverviewGraph } from '@/components/control-flow/useOverviewGraph'
 import FanChannelNode from '@/components/control-flow/FanChannelNode.vue'
+import LcdChannelNode from '@/components/control-flow/LcdChannelNode.vue'
+import LightingChannelNode from '@/components/control-flow/LightingChannelNode.vue'
 import DeviceLabelNode from '@/components/control-flow/DeviceLabelNode.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
@@ -96,7 +98,7 @@ function fitToWidth() {
 
         <div v-if="nodes.length === 0" class="flex flex-1 items-center justify-center">
             <div class="text-center text-text-color-secondary">
-                <p class="text-lg">No controllable fan channels found.</p>
+                <p class="text-lg">No controllable channels found.</p>
                 <p class="mt-2">
                     Check the
                     <a
@@ -130,6 +132,12 @@ function fitToWidth() {
         >
             <template #node-fanChannel="fanProps">
                 <FanChannelNode v-bind="fanProps" />
+            </template>
+            <template #node-lcdChannel="lcdProps">
+                <LcdChannelNode v-bind="lcdProps" />
+            </template>
+            <template #node-lightingChannel="lightingProps">
+                <LightingChannelNode v-bind="lightingProps" />
             </template>
             <template #node-deviceLabel="labelProps">
                 <DeviceLabelNode v-bind="labelProps" />

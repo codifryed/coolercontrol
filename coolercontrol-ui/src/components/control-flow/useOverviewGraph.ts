@@ -29,6 +29,22 @@ export interface DeviceLabelNodeData {
     channelCount: number
 }
 
+export interface LcdChannelNodeData {
+    deviceUID: string
+    channelName: string
+    channelLabel: string
+    channelColor: string
+    deviceLabel: string
+}
+
+export interface LightingChannelNodeData {
+    deviceUID: string
+    channelName: string
+    channelLabel: string
+    channelColor: string
+    deviceLabel: string
+}
+
 const deviceStore = useDeviceStore()
 const FANS_PER_ROW = 3
 const COL_GAP = deviceStore.getREMSize(20)
@@ -84,62 +100,62 @@ export function useOverviewGraph() {
             const deviceName = deviceSettings?.name ?? device.name
             const deviceColor = deviceSettings?.userColor ?? '#568af2'
 
-            // Get ordered channels
-            const channels: string[] = []
-            for (const [channelName, channelInfo] of device.info!.channels.entries()) {
-                if (channelInfo.speed_options?.fixed_enabled) {
-                    channels.push(channelName)
-                }
-            }
-
-            if (channels.length === 0) continue
-
-            // Sort channels by menuOrder children
             const menuItem = settingsStore.menuOrder.find((m) => m.id === device.uid)
-            if (menuItem?.children?.length) {
-                const getChildIndex = (channelName: string) => {
-                    const idx = menuItem.children.indexOf(`${device.uid}_${channelName}`)
-                    return idx >= 0 ? idx : Number.MAX_SAFE_INTEGER
-                }
-                channels.sort((a, b) => getChildIndex(a) - getChildIndex(b))
+            const getChildIndex = (channelName: string) => {
+                if (!menuItem?.children?.length) return Number.MAX_SAFE_INTEGER
+                const idx = menuItem.children.indexOf(`${device.uid}_${channelName}`)
+                return idx >= 0 ? idx : Number.MAX_SAFE_INTEGER
             }
 
-            // Add device label node
-            const labelNodeId = `device-label::${device.uid}`
+            // Collect each channel type
+            const fanChannels: string[] = []
+            const lcdChannels: string[] = []
+            const lightingChannels: string[] = []
+            for (const [channelName, channelInfo] of device.info!.channels.entries()) {
+                if (channelInfo.speed_options?.fixed_enabled) fanChannels.push(channelName)
+                if (channelInfo.lcd_modes.length > 0) lcdChannels.push(channelName)
+                if (channelInfo.lighting_modes.length > 0) lightingChannels.push(channelName)
+            }
+
+            if (fanChannels.length + lcdChannels.length + lightingChannels.length === 0) continue
+
+            // Sort each type by menuOrder children
+            fanChannels.sort((a, b) => getChildIndex(a) - getChildIndex(b))
+            lcdChannels.sort((a, b) => getChildIndex(a) - getChildIndex(b))
+            lightingChannels.sort((a, b) => getChildIndex(a) - getChildIndex(b))
+
+            // Label spans the widest row across all channel types
+            const maxColsUsed = Math.max(
+                Math.min(fanChannels.length, FANS_PER_ROW),
+                Math.min(lcdChannels.length, FANS_PER_ROW),
+                Math.min(lightingChannels.length, FANS_PER_ROW),
+            )
             result.push({
-                id: labelNodeId,
+                id: `device-label::${device.uid}`,
                 type: 'deviceLabel',
                 position: { x: 0, y: currentY },
                 data: {
                     deviceName,
                     deviceColor,
-                    channelCount: channels.length,
+                    channelCount: maxColsUsed,
                 } satisfies DeviceLabelNodeData,
             })
             currentY += DEVICE_LABEL_HEIGHT
 
-            // Add fan nodes in rows
-            for (let i = 0; i < channels.length; i++) {
-                const channelName = channels[i]
-                const col = i % FANS_PER_ROW
-                const row = Math.floor(i / FANS_PER_ROW)
-
+            // Fan nodes
+            for (let i = 0; i < fanChannels.length; i++) {
+                const channelName = fanChannels[i]
                 const channelLabel =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
                 const channelColor =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
-
                 const channelSetting = daemonSettings?.settings.get(channelName)
-                const isManual = channelSetting?.speed_fixed != null
-                const profileUID = channelSetting?.profile_uid
-
-                const fanNodeId = `fan::${device.uid}::${channelName}`
                 result.push({
-                    id: fanNodeId,
+                    id: `fan::${device.uid}::${channelName}`,
                     type: 'fanChannel',
                     position: {
-                        x: col * COL_GAP,
-                        y: currentY + row * ROW_GAP,
+                        x: (i % FANS_PER_ROW) * COL_GAP,
+                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
                     },
                     data: {
                         deviceUID: device.uid,
@@ -147,15 +163,71 @@ export function useOverviewGraph() {
                         channelLabel,
                         channelColor,
                         deviceLabel: deviceName,
-                        isManual,
+                        isManual: channelSetting?.speed_fixed != null,
                         manualDuty: channelSetting?.speed_fixed,
-                        profileUID,
+                        profileUID: channelSetting?.profile_uid,
                     } satisfies FanNodeData,
                 })
             }
+            if (fanChannels.length > 0) {
+                currentY += Math.ceil(fanChannels.length / FANS_PER_ROW) * ROW_GAP
+            }
 
-            const rowCount = Math.ceil(channels.length / FANS_PER_ROW)
-            currentY += rowCount * ROW_GAP + GROUP_GAP
+            // LCD nodes
+            for (let i = 0; i < lcdChannels.length; i++) {
+                const channelName = lcdChannels[i]
+                const channelLabel =
+                    deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
+                const channelColor =
+                    deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
+                result.push({
+                    id: `lcd::${device.uid}::${channelName}`,
+                    type: 'lcdChannel',
+                    position: {
+                        x: (i % FANS_PER_ROW) * COL_GAP,
+                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
+                    },
+                    data: {
+                        deviceUID: device.uid,
+                        channelName,
+                        channelLabel,
+                        channelColor,
+                        deviceLabel: deviceName,
+                    } satisfies LcdChannelNodeData,
+                })
+            }
+            if (lcdChannels.length > 0) {
+                currentY += Math.ceil(lcdChannels.length / FANS_PER_ROW) * ROW_GAP
+            }
+
+            // Lighting nodes
+            for (let i = 0; i < lightingChannels.length; i++) {
+                const channelName = lightingChannels[i]
+                const channelLabel =
+                    deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
+                const channelColor =
+                    deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
+                result.push({
+                    id: `lighting::${device.uid}::${channelName}`,
+                    type: 'lightingChannel',
+                    position: {
+                        x: (i % FANS_PER_ROW) * COL_GAP,
+                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
+                    },
+                    data: {
+                        deviceUID: device.uid,
+                        channelName,
+                        channelLabel,
+                        channelColor,
+                        deviceLabel: deviceName,
+                    } satisfies LightingChannelNodeData,
+                })
+            }
+            if (lightingChannels.length > 0) {
+                currentY += Math.ceil(lightingChannels.length / FANS_PER_ROW) * ROW_GAP
+            }
+
+            currentY += GROUP_GAP
         }
 
         return result

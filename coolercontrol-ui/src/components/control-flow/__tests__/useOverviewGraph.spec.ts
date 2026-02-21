@@ -56,7 +56,12 @@ vi.mock('vue-router', () => ({
 function makeDevice(uid: string, name: string, type: DeviceType, channels: Record<string, any>) {
     const channelMap = new Map<string, any>()
     for (const [k, v] of Object.entries(channels)) {
-        channelMap.set(k, v)
+        // Ensure lcd_modes and lighting_modes are always arrays (matching ChannelInfo defaults)
+        channelMap.set(k, {
+            lcd_modes: [],
+            lighting_modes: [],
+            ...v,
+        })
     }
     return {
         uid,
@@ -297,6 +302,79 @@ describe('useOverviewGraph', () => {
         expect(fanNodes[4].position.x).toBe(320)
         // Row 2 should be lower than row 1
         expect(fanNodes[3].position.y).toBeGreaterThan(fanNodes[0].position.y)
+    })
+
+    it('creates lcdChannel nodes for devices with lcd_modes', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                lcd1: { lcd_modes: [{ name: 'temp', frontend_name: 'Temp' }] },
+            }),
+        )
+        mockUISettings.value.set(
+            'dev1',
+            makeUIDeviceSettings(
+                'My Device',
+                { lcd1: { name: 'LCD Screen', color: '#aabbcc' } },
+                '#112233',
+            ),
+        )
+
+        const { nodes } = useOverviewGraph()
+        const lcdNodes = nodes.value.filter((n) => n.type === 'lcdChannel')
+        expect(lcdNodes).toHaveLength(1)
+        expect(lcdNodes[0].data.channelLabel).toBe('LCD Screen')
+        expect(lcdNodes[0].data.channelColor).toBe('#aabbcc')
+        expect(lcdNodes[0].data.deviceUID).toBe('dev1')
+    })
+
+    it('creates lightingChannel nodes for devices with lighting_modes', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                led1: {
+                    lighting_modes: [
+                        {
+                            name: 'fixed',
+                            frontend_name: 'Fixed',
+                            min_colors: 1,
+                            max_colors: 1,
+                            speed_enabled: false,
+                            backward_enabled: false,
+                        },
+                    ],
+                },
+            }),
+        )
+        mockUISettings.value.set(
+            'dev1',
+            makeUIDeviceSettings('My Device', { led1: { name: 'LED Ring', color: '#ff00ff' } }),
+        )
+
+        const { nodes } = useOverviewGraph()
+        const lightingNodes = nodes.value.filter((n) => n.type === 'lightingChannel')
+        expect(lightingNodes).toHaveLength(1)
+        expect(lightingNodes[0].data.channelLabel).toBe('LED Ring')
+        expect(lightingNodes[0].data.channelColor).toBe('#ff00ff')
+        expect(lightingNodes[0].data.deviceUID).toBe('dev1')
+    })
+
+    it('places lcd nodes below fan nodes within the same device group', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                fan1: { speed_options: { fixed_enabled: true } },
+                lcd1: { lcd_modes: [{ name: 'temp', frontend_name: 'Temp' }] },
+            }),
+        )
+
+        const { nodes } = useOverviewGraph()
+        const fanNode = nodes.value.find((n) => n.type === 'fanChannel')
+        const lcdNode = nodes.value.find((n) => n.type === 'lcdChannel')
+
+        expect(fanNode).toBeDefined()
+        expect(lcdNode).toBeDefined()
+        expect(lcdNode!.position.y).toBeGreaterThan(fanNode!.position.y)
     })
 
     it('uses default colors when no user settings', () => {
