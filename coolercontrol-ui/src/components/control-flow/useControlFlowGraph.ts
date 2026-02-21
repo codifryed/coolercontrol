@@ -230,12 +230,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 }
             } else if (profile.p_type === ProfileType.Overlay) {
                 if (profile.member_profile_uids.length > 0) {
-                    traceProfileChain(
-                        profile.member_profile_uids[0],
-                        nodeId,
-                        visited,
-                        depth + 1,
-                    )
+                    traceProfileChain(profile.member_profile_uids[0], nodeId, visited, depth + 1)
                 }
             }
 
