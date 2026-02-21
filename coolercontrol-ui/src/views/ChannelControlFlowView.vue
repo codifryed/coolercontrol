@@ -25,12 +25,13 @@ import FanChannelNode from '@/components/control-flow/FanChannelNode.vue'
 import ProfileNode from '@/components/control-flow/ProfileNode.vue'
 import TempSourceNode from '@/components/control-flow/TempSourceNode.vue'
 import CustomSensorNode from '@/components/control-flow/CustomSensorNode.vue'
-import FlowLegend from '@/components/control-flow/FlowLegend.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
+import { Controls } from '@vue-flow/controls'
+import { MiniMap } from '@vue-flow/minimap'
 
 const props = defineProps<{
     deviceUID: string
@@ -44,7 +45,7 @@ const colorStore = useThemeColorsStore()
 provide('flowViewMode', 'detail')
 
 const MAX_ZOOM = 1.2
-const MIN_ZOOM = 0.75
+const MIN_ZOOM = 1.0
 const NODE_WIDTH = 260
 const H_PADDING = deviceStore.getREMSize(1)
 const V_PADDING = deviceStore.getREMSize(4)
@@ -114,7 +115,7 @@ const channelLabel = computed(() => {
             id="channel-control-flow"
             :nodes="nodes"
             :edges="edges"
-            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MAX_ZOOM }"
+            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MIN_ZOOM }"
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
@@ -138,13 +139,22 @@ const channelLabel = computed(() => {
                 :line-width="1"
                 :gap="deviceStore.getREMSize(6)"
             />
-            <FlowLegend />
+            <!--            <FlowLegend />-->
+            <MiniMap
+                pannable
+                zoomable
+                :mask-color="colorStore.rgbToHex(colorStore.themeColors.bg_two) + '50'"
+                :node-color="colorStore.rgbToHex(colorStore.themeColors.text_color_secondary)"
+            />
+            <Controls :show-interactive="false" class="!bg-bg-two" />
         </VueFlow>
     </div>
 </template>
 
 <style>
 @import '@vue-flow/core/dist/style.css';
+@import '@vue-flow/controls/dist/style.css';
+@import '@vue-flow/minimap/dist/style.css';
 
 .vue-flow {
     background-color: rgb(var(--colors-bg-one));
@@ -159,5 +169,21 @@ const channelLabel = computed(() => {
     height: 8px;
     border-radius: 50%;
     border: none;
+}
+
+.vue-flow__controls-button {
+    background-color: rgb(var(--colors-bg-two));
+    border-color: rgb(var(--colors-bg-two));
+    color: rgb(var(--colors-text-color));
+}
+
+.vue-flow__controls-button:hover {
+    background-color: rgb(var(--colors-bg-two));
+    border-color: rgb(var(--colors-bg-two));
+    color: rgb(var(--colors-text-color));
+}
+
+.vue-flow__minimap {
+    background-color: rgb(var(--colors-bg-one));
 }
 </style>
