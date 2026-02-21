@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiFlaskPlusOutline } from '@mdi/js'
+import { mdiFunctionVariant } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { defineAsyncComponent, inject } from 'vue'
@@ -74,7 +74,7 @@ emitter.on('function-add', addFunction)
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
             @click.stop="addFunction"
         >
-            <svg-icon type="mdi" :path="mdiFlaskPlusOutline" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiFunctionVariant" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>
