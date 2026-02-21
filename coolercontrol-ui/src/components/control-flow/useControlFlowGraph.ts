@@ -144,7 +144,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             }
         }
 
-        function addEdge(sourceId: string, targetId: string, isDashed: boolean = false): void {
+        function addEdge(sourceId: string, targetId: string): void {
             const edgeId = `edge::${sourceId}->${targetId}`
             if (edgeMap.has(edgeId)) return
             edgeMap.set(edgeId, {
@@ -160,7 +160,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 style: {
                     stroke: 'rgb(var(--colors-accent))',
                     strokeWidth: 2,
-                    ...(isDashed ? { strokeDasharray: '6 4' } : {}),
+                    strokeDasharray: '6 4',
                 },
             })
             if (!nodeConnections.has(sourceId)) nodeConnections.set(sourceId, new Set())
@@ -173,13 +173,12 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             profileUID: UID,
             fanNodeId: string,
             visited: Set<string>,
-            isDashed: boolean = false,
             depth: number = 0,
         ): string | undefined {
             if (depth > 2) return undefined
             const nodeId = `profile::${profileUID}`
             if (visited.has(nodeId)) {
-                addEdge(nodeId, fanNodeId, isDashed)
+                addEdge(nodeId, fanNodeId)
                 return nodeId
             }
             visited.add(nodeId)
@@ -216,7 +215,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 } satisfies ProfileNodeData,
             }
             addNode(profileNode, profileColumn(profile.p_type))
-            addEdge(nodeId, fanNodeId, isDashed)
+            addEdge(nodeId, fanNodeId)
 
             if (profile.p_type === ProfileType.Graph && profile.temp_source) {
                 traceTempSource(
@@ -227,7 +226,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 )
             } else if (profile.p_type === ProfileType.Mix) {
                 for (const memberUID of profile.member_profile_uids) {
-                    traceProfileChain(memberUID, nodeId, visited, true, depth + 1)
+                    traceProfileChain(memberUID, nodeId, visited, depth + 1)
                 }
             } else if (profile.p_type === ProfileType.Overlay) {
                 if (profile.member_profile_uids.length > 0) {
@@ -235,7 +234,6 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                         profile.member_profile_uids[0],
                         nodeId,
                         visited,
-                        true,
                         depth + 1,
                     )
                 }
