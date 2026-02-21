@@ -305,13 +305,17 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             if (!visited.has(csNodeId)) {
                 visited.add(csNodeId)
                 const sensor = customSensors.value.get(sensorId)
+                const csSettings = settingsStore.allUIDeviceSettings.get(deviceUID)
                 const csNode: Node = {
                     id: csNodeId,
                     type: 'customSensor',
                     position: { x: 0, y: 0 },
                     data: {
                         sensorId,
-                        sensorName: sensor?.id ?? sensorId,
+                        sensorName:
+                            csSettings?.sensorsAndChannels.get(sensorId)?.name ??
+                            sensor?.id ??
+                            sensorId,
                         csType: sensor?.cs_type ?? 'Unknown',
                         deviceUID,
                     } satisfies CustomSensorNodeData,
