@@ -17,8 +17,8 @@
   -->
 
 <script setup lang="ts">
-import { nextTick, provide, ref } from 'vue'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { provide, ref } from 'vue'
+import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { useOverviewGraph } from '@/components/control-flow/useOverviewGraph'
 import FanChannelNode from '@/components/control-flow/FanChannelNode.vue'
@@ -40,38 +40,8 @@ provide('flowViewMode', 'overview')
 
 const { nodes } = useOverviewGraph()
 
-const MIN_ZOOM = 1.2
-const lockedZoom = ref(MIN_ZOOM)
-const FAN_NODE_WIDTH = 220
-const LABEL_COL_GAP = 320
+const lockedZoom = ref(1.2)
 const H_PADDING = deviceStore.getREMSize(1)
-
-const { onPaneReady, setViewport } = useVueFlow('control-flow-overview')
-
-onPaneReady(() => {
-    nextTick(() => fitToWidth())
-})
-
-function fitToWidth() {
-    let maxRight = 0
-    for (const node of nodes.value) {
-        let nodeWidth: number
-        if (node.type === 'deviceLabel') {
-            const cols = Math.min(node.data.channelCount, 3)
-            nodeWidth = Math.max(FAN_NODE_WIDTH, (cols - 1) * LABEL_COL_GAP + FAN_NODE_WIDTH)
-        } else {
-            nodeWidth = FAN_NODE_WIDTH
-        }
-        maxRight = Math.max(maxRight, node.position.x + nodeWidth)
-    }
-    if (maxRight === 0) return
-
-    // const vpWidth = dimensions.value.width
-    // const zoom = Math.max((vpWidth - H_PADDING * 2) / maxRight, MIN_ZOOM)
-    // lockedZoom.value = zoom
-    // setViewport({ x: H_PADDING, y: H_PADDING, zoom })
-    setViewport({ x: H_PADDING, y: H_PADDING, zoom: lockedZoom.value })
-}
 </script>
 
 <template>
@@ -118,6 +88,7 @@ function fitToWidth() {
             id="control-flow-overview"
             :nodes="nodes"
             :edges="[]"
+            :default-viewport="{ x: H_PADDING, y: H_PADDING, zoom: lockedZoom }"
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
