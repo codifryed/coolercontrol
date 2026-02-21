@@ -152,7 +152,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 source: sourceId,
                 target: targetId,
                 type: 'default',
-                animated: true,
+                animated: settingsStore.eyeCandy,
                 markerEnd: {
                     type: MarkerType.Arrow,
                     color: 'rgb(var(--colors-accent))',

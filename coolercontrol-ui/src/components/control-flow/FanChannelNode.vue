@@ -92,7 +92,18 @@ function onClick() {
             class="flex items-center gap-2 rounded-t-lg px-3 py-2"
             :style="{ borderTop: `3px solid ${data.channelColor}` }"
         >
-            <svg-icon type="mdi" :path="mdiFan" class="size-5 text-text-color" />
+            <svg-icon
+                type="mdi"
+                :path="mdiFan"
+                class="size-5 text-text-color"
+                :class="{
+                    'animate-spin-slow':
+                        settingsStore.eyeCandy &&
+                        (liveValues.rpm != null
+                            ? Number(liveValues.rpm) > 0
+                            : Number(liveValues.duty ?? 0) > 0),
+                }"
+            />
             <div class="flex-1 truncate text-sm font-semibold text-text-color">
                 {{ data.channelLabel }}
             </div>
