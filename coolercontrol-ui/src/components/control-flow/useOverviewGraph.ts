@@ -35,6 +35,7 @@ export interface LcdChannelNodeData {
     channelLabel: string
     channelColor: string
     deviceLabel: string
+    currentMode?: string
 }
 
 export interface LightingChannelNodeData {
@@ -43,12 +44,14 @@ export interface LightingChannelNodeData {
     channelLabel: string
     channelColor: string
     deviceLabel: string
+    currentMode?: string
 }
 
 const deviceStore = useDeviceStore()
 const FANS_PER_ROW = 3
 const COL_GAP = deviceStore.getREMSize(20)
 const ROW_GAP = deviceStore.getREMSize(10)
+const INTER_TYPE_GAP = deviceStore.getREMSize(8)
 const DEVICE_LABEL_HEIGHT = deviceStore.getREMSize(3.5)
 const GROUP_GAP = 0
 
@@ -170,7 +173,10 @@ export function useOverviewGraph() {
                 })
             }
             if (fanChannels.length > 0) {
-                currentY += Math.ceil(fanChannels.length / FANS_PER_ROW) * ROW_GAP
+                const hasMore = lcdChannels.length > 0 || lightingChannels.length > 0
+                const lastRowGap = hasMore ? INTER_TYPE_GAP : ROW_GAP
+                currentY +=
+                    (Math.ceil(fanChannels.length / FANS_PER_ROW) - 1) * ROW_GAP + lastRowGap
             }
 
             // LCD nodes
@@ -180,6 +186,13 @@ export function useOverviewGraph() {
                     deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
                 const channelColor =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
+                const channelSetting = daemonSettings?.settings.get(channelName)
+                const lcdModeName = channelSetting?.lcd?.mode
+                const lcdFrontendName = lcdModeName
+                    ? device
+                          .info!.channels.get(channelName)
+                          ?.lcd_modes.find((m) => m.name === lcdModeName)?.frontend_name
+                    : undefined
                 result.push({
                     id: `lcd::${device.uid}::${channelName}`,
                     type: 'lcdChannel',
@@ -193,11 +206,15 @@ export function useOverviewGraph() {
                         channelLabel,
                         channelColor,
                         deviceLabel: deviceName,
+                        currentMode: lcdFrontendName,
                     } satisfies LcdChannelNodeData,
                 })
             }
             if (lcdChannels.length > 0) {
-                currentY += Math.ceil(lcdChannels.length / FANS_PER_ROW) * ROW_GAP
+                const hasMore = lightingChannels.length > 0
+                const lastRowGap = hasMore ? INTER_TYPE_GAP : ROW_GAP
+                currentY +=
+                    (Math.ceil(lcdChannels.length / FANS_PER_ROW) - 1) * ROW_GAP + lastRowGap
             }
 
             // Lighting nodes
@@ -207,6 +224,13 @@ export function useOverviewGraph() {
                     deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
                 const channelColor =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
+                const channelSetting = daemonSettings?.settings.get(channelName)
+                const lightingModeName = channelSetting?.lighting?.mode
+                const lightingFrontendName = lightingModeName
+                    ? device
+                          .info!.channels.get(channelName)
+                          ?.lighting_modes.find((m) => m.name === lightingModeName)?.frontend_name
+                    : undefined
                 result.push({
                     id: `lighting::${device.uid}::${channelName}`,
                     type: 'lightingChannel',
@@ -220,6 +244,7 @@ export function useOverviewGraph() {
                         channelLabel,
                         channelColor,
                         deviceLabel: deviceName,
+                        currentMode: lightingFrontendName,
                     } satisfies LightingChannelNodeData,
                 })
             }
