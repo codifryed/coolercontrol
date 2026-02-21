@@ -575,6 +575,10 @@ export default {
         controls: {
             viewType: 'View Type',
             controlOrView: 'Control or View',
+            title: 'System Controls',
+            noControllableChannels: 'No controllable channels found.',
+            noControlChain: 'No control chain found for this channel.',
+            controlFlow: 'Control Flow',
         },
         modes: {
             createMode: 'Create Mode',
@@ -1155,6 +1159,10 @@ export default {
             none: 'None',
             liquidctl: 'Liquidctl',
             custom: 'Custom',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: 'Lighting',
         },
     },
 }

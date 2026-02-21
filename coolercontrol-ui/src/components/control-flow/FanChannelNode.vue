@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { computed, inject } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { FanNodeData } from './useControlFlowGraph'
@@ -29,6 +30,7 @@ import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiFan } from '@mdi/js'
 
 const props = defineProps<NodeProps<FanNodeData>>()
+const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
@@ -36,7 +38,7 @@ const flowViewMode = inject<string>('flowViewMode', 'detail')
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
-    if (props.data.profileUID === '0') return 'Default'
+    if (props.data.profileUID === '0') return t('models.profile.profileType.default')
     return settingsStore.profiles.find((p) => p.uid === props.data.profileUID)?.name
 })
 
@@ -107,13 +109,14 @@ function onClick() {
                     v-if="data.isManual"
                     class="rounded bg-warning/20 px-1.5 py-0.5 font-medium text-warning"
                 >
-                    Manual: {{ data.manualDuty }}%
+                    {{ t('views.speed.manual') }}: {{ data.manualDuty
+                    }}{{ t('common.percentUnit') }}
                 </span>
                 <span v-if="liveValues.duty" class="font-medium text-text-color">
-                    {{ liveValues.duty }}%
+                    {{ liveValues.duty }}{{ t('common.percentUnit') }}
                 </span>
                 <span v-if="liveValues.rpm" class="text-text-color-secondary">
-                    {{ liveValues.rpm }} RPM
+                    {{ liveValues.rpm }} {{ t('models.dataType.rpm') }}
                 </span>
             </div>
         </div>

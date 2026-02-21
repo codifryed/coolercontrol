@@ -20,11 +20,13 @@
 import type { NodeProps } from '@vue-flow/core'
 import type { LcdChannelNodeData } from './useOverviewGraph'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiTelevisionShimmer } from '@mdi/js'
 
 const props = defineProps<NodeProps<LcdChannelNodeData>>()
+const { t } = useI18n()
 const router = useRouter()
 
 function onClick() {
@@ -60,7 +62,9 @@ function onClick() {
             <div v-if="data.currentMode" class="truncate text-xs text-accent">
                 {{ data.currentMode }}
             </div>
-            <div v-else class="text-xs text-text-color-secondary">LCD</div>
+            <div v-else class="text-xs text-text-color-secondary">
+                {{ t('models.channelType.lcd') }}
+            </div>
         </div>
     </div>
 </template>

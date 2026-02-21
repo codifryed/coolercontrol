@@ -525,6 +525,10 @@ export default {
         controls: {
             viewType: 'Tipo de Visualização',
             controlOrView: 'Controlar ou Visualizar',
+            title: 'Controles do Sistema',
+            noControllableChannels: 'Nenhum canal controlável encontrado.',
+            noControlChain: 'Nenhuma cadeia de controle encontrada para este canal.',
+            controlFlow: 'Fluxo de Controle',
         },
         modes: {
             createMode: 'Criar Modo',
@@ -1198,6 +1202,10 @@ export default {
             none: 'Nenhum',
             liquidctl: 'Liquidctl',
             custom: 'Personalizado',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: 'Iluminação',
         },
     },
 }

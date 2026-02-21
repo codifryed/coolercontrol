@@ -620,6 +620,10 @@ export default {
         controls: {
             viewType: 'ビュータイプ',
             controlOrView: '制御または表示',
+            title: 'システム制御',
+            noControllableChannels: '制御可能なチャンネルが見つかりません。',
+            noControlChain: 'このチャンネルの制御チェーンが見つかりません。',
+            controlFlow: '制御フロー',
         },
         modes: {
             createMode: 'モードを作成',
@@ -1161,6 +1165,10 @@ export default {
             none: 'なし',
             liquidctl: 'Liquidctl',
             custom: 'カスタム',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: 'ライティング',
         },
     },
 }
