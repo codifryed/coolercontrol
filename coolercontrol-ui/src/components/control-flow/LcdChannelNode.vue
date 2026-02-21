@@ -57,7 +57,10 @@ function onClick() {
             <div class="truncate text-xs text-text-color-secondary">
                 {{ data.deviceLabel }}
             </div>
-            <div class="text-xs text-text-color-secondary">LCD</div>
+            <div v-if="data.currentMode" class="truncate text-xs text-accent">
+                {{ data.currentMode }}
+            </div>
+            <div v-else class="text-xs text-text-color-secondary">LCD</div>
         </div>
     </div>
 </template>
