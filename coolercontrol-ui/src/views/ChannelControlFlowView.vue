@@ -175,13 +175,21 @@ const channelLabel = computed(() => {
 .vue-flow__controls-button {
     background-color: rgb(var(--colors-bg-two));
     border-color: rgb(var(--colors-bg-two));
-    color: rgb(var(--colors-text-color));
+    color: rgb(var(--colors-text-color-secondary));
+}
+
+.vue-flow__controls-button svg {
+    fill: rgb(var(--colors-text-color-secondary));
 }
 
 .vue-flow__controls-button:hover {
-    background-color: rgb(var(--colors-bg-two));
+    background-color: rgba(var(--colors-surface-hover) / 0.05);
     border-color: rgb(var(--colors-bg-two));
-    color: rgb(var(--colors-text-color));
+    color: rgb(var(--colors-text-color-secondary));
+}
+
+.vue-flow__controls-button:hover svg {
+    fill: rgb(var(--colors-text-color));
 }
 
 .vue-flow__minimap {
