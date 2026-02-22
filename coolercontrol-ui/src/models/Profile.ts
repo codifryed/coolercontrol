@@ -309,6 +309,7 @@ export enum ProfileMixFunctionType {
     Max = 'Max',
     Avg = 'Avg',
     Diff = 'Diff',
+    Sum = 'Sum',
 }
 
 /**
@@ -325,6 +326,8 @@ export function getProfileMixFunctionTypeDisplayName(type: ProfileMixFunctionTyp
             return t('models.profile.mixFunctionType.avg')
         case ProfileMixFunctionType.Diff:
             return t('models.profile.mixFunctionType.diff')
+        case ProfileMixFunctionType.Sum:
+            return t('models.profile.mixFunctionType.sum')
         default:
             return type
     }

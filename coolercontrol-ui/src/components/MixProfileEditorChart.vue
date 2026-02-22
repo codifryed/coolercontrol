@@ -268,6 +268,11 @@ const applyMixFunction = (duties: number[], functionType: ProfileMixFunctionType
                 ),
                 0,
             )
+        case ProfileMixFunctionType.Sum:
+            return Math.min(
+                duties.reduce((a, b) => a + b, 0),
+                100,
+            )
     }
 }
 

@@ -1109,6 +1109,7 @@ export default {
                 max: 'अधिकतम',
                 avg: 'औसत',
                 diff: 'अंतर',
+                sum: 'योग',
             },
         },
         customSensor: {

@@ -400,6 +400,11 @@ impl MixProfileCommander {
                 .reduce(Sub::sub)
                 .unwrap_or_default()
                 .clamp(0, 100) as Duty,
+            ProfileMixFunctionType::Sum => member_values
+                .iter()
+                .map(|d| **d as usize)
+                .sum::<usize>()
+                .clamp(0, 100) as Duty,
         }
     }
 
@@ -509,6 +514,42 @@ mod tests {
         let mix_function = ProfileMixFunctionType::Diff;
         let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn apply_mix_function_test_sum() {
+        // Sum of two values within range.
+        let member_values = vec![&30, &40];
+        let mix_function = ProfileMixFunctionType::Sum;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 70);
+    }
+
+    #[test]
+    fn apply_mix_function_test_sum_clamped_at_max() {
+        // Sum exceeds 100% — must clamp to 100.
+        let member_values = vec![&70, &60];
+        let mix_function = ProfileMixFunctionType::Sum;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 100);
+    }
+
+    #[test]
+    fn apply_mix_function_test_sum_three_members() {
+        // Sum of three values, exact total in range.
+        let member_values = vec![&20, &30, &25];
+        let mix_function = ProfileMixFunctionType::Sum;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 75);
+    }
+
+    #[test]
+    fn apply_mix_function_test_sum_at_boundary() {
+        // Sum exactly at 100% — no clamping needed.
+        let member_values = vec![&50, &50];
+        let mix_function = ProfileMixFunctionType::Sum;
+        let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
+        assert_eq!(result, 100);
     }
 
     /// Verify child Mix profiles (no Mix sub-members) process from graph cache only.
