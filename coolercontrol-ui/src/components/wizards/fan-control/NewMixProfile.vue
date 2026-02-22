@@ -74,7 +74,15 @@ const mixFunctionTypeOptions = computed(() => {
 })
 const chosenMemberProfiles: Ref<Array<Profile>> = ref([])
 const memberProfileOptions: Ref<Array<Profile>> = computed(() =>
-    settingsStore.profiles.filter((profile) => profile.p_type === ProfileType.Graph),
+    settingsStore.profiles.filter((profile) => {
+        if (profile.p_type === ProfileType.Graph) return true
+        if (profile.p_type !== ProfileType.Mix) return false
+        // Exclude Mix profiles that already have Mix sub-members
+        const hasMixSubMembers = profile.member_profile_uids.some(
+            (uid) => settingsStore.profiles.find((p) => p.uid === uid)?.p_type === ProfileType.Mix,
+        )
+        return !hasMixSubMembers
+    }),
 )
 const saveSetting = async () => {
     if (chosenMemberProfiles.value.length < 2) {

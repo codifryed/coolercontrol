@@ -69,10 +69,18 @@ const memberProfiles: Ref<Array<Profile>> = ref(
 )
 if (baseProfile!.p_type === ProfileType.Mix) {
     // member profiles are either the Overlay Profile's base profile,
-    // or if the base profile is a Mix Profile, we draw the members are that of the Mix profile.
-    memberProfiles.value = settingsStore.profiles.filter((profile) =>
-        baseProfile!.member_profile_uids.includes(profile.uid),
-    )
+    // or if the base profile is a Mix Profile, we draw the members as that of the Mix profile.
+    // Mix sub-members are flattened to their Graph sub-members for charting.
+    memberProfiles.value = settingsStore.profiles
+        .filter((profile) => baseProfile!.member_profile_uids.includes(profile.uid))
+        .flatMap((profile) => {
+            if (profile.p_type === ProfileType.Mix) {
+                return settingsStore.profiles.filter((p) =>
+                    profile.member_profile_uids.includes(p.uid),
+                )
+            }
+            return [profile]
+        })
 }
 let currentAxisTempMin = 0
 let currentAxisTempMax = 100

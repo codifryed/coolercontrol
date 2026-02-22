@@ -62,6 +62,7 @@ impl MixProfileCommander {
         device_channel: DeviceChannelProfileSetting,
         mix_profile: &MixProfile,
         member_profiles: Vec<Profile>,
+        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
     ) -> Result<()> {
         if mix_profile.p_type != ProfileType::Mix {
             return Err(anyhow!(
@@ -77,7 +78,7 @@ impl MixProfileCommander {
             return Err(anyhow!("Member profiles must be present for a Mix Profile"));
         }
         let normalized_mix_setting = Self::normalize_mix_setting(mix_profile, &member_profiles);
-        self.schedule_member_profiles(&device_channel, member_profiles)?;
+        self.schedule_member_profiles(&device_channel, member_profiles, &member_sub_profiles)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
@@ -99,12 +100,52 @@ impl MixProfileCommander {
         &self,
         device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
+        member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> Result<()> {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
-            // Add the Mix setting for each member profile to be processed
-            self.graph_commander
-                .schedule_setting(device_channel.clone(), &member_profile)?;
+            match member_profile.p_type {
+                ProfileType::Graph => {
+                    self.graph_commander
+                        .schedule_setting(device_channel.clone(), &member_profile)?;
+                }
+                ProfileType::Mix => {
+                    // Schedule the child Mix's own Graph sub-members via graph_commander
+                    if let Some(sub_profiles) = member_sub_profiles.get(&member_profile.uid) {
+                        for sub_profile in sub_profiles {
+                            self.graph_commander
+                                .schedule_setting(device_channel.clone(), sub_profile)?;
+                        }
+                    }
+                    // Add the child Mix itself to scheduled_settings with its own
+                    // NormalizedMixProfile entry
+                    let sub_members = member_sub_profiles
+                        .get(&member_profile.uid)
+                        .cloned()
+                        .unwrap_or_default();
+                    let normalized_child =
+                        Self::normalize_mix_setting(&member_profile, &sub_members);
+                    let mut settings_lock = self.scheduled_settings.borrow_mut();
+                    if let Some(mut existing_device_channels) =
+                        settings_lock.remove(&normalized_child)
+                    {
+                        existing_device_channels.insert(device_channel.clone());
+                        settings_lock.insert(Rc::new(normalized_child), existing_device_channels);
+                    } else {
+                        let mut new_device_channels = HashSet::new();
+                        new_device_channels.insert(device_channel.clone());
+                        settings_lock.insert(Rc::new(normalized_child), new_device_channels);
+                        self.process_output_cache
+                            .borrow_mut()
+                            .insert(member_profile.uid.clone(), None);
+                    }
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "Only Graph and Mix Profiles are supported as Mix members"
+                    ));
+                }
+            }
             if self
                 .all_last_applied_duties
                 .borrow()
@@ -120,7 +161,7 @@ impl MixProfileCommander {
     }
 
     pub fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
-        let mut mix_profile_to_remove: Option<Rc<NormalizedMixProfile>> = None;
+        let mut mix_profiles_to_remove: Vec<Rc<NormalizedMixProfile>> = Vec::new();
         let device_channel = DeviceChannelProfileSetting::Mix {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
@@ -129,13 +170,13 @@ impl MixProfileCommander {
         for (mix_profile, device_channels) in scheduled_settings_lock.iter_mut() {
             device_channels.remove(&device_channel);
             if device_channels.is_empty() {
-                mix_profile_to_remove.replace(Rc::clone(mix_profile));
+                mix_profiles_to_remove.push(Rc::clone(mix_profile));
                 self.process_output_cache
                     .borrow_mut()
                     .remove(&mix_profile.profile_uid);
             }
         }
-        if let Some(mix_profile) = mix_profile_to_remove {
+        for mix_profile in mix_profiles_to_remove {
             scheduled_settings_lock.remove(&mix_profile);
         }
         self.graph_commander
@@ -145,51 +186,112 @@ impl MixProfileCommander {
     /// This method processes all scheduled profiles and updates the output cache.
     /// This should be called very early, right after the `GraphProfileCommander` processes,
     /// and only once per update cycle.
+    ///
+    /// Two-pass processing (mirrors custom_sensors_repo::update_statuses()):
+    /// - Pass 1: Process child Mix profiles (those with no Mix sub-members)
+    /// - Pass 2: Process parent Mix profiles (those with Mix sub-members),
+    ///   reading child Mix output from the process_output_cache populated in pass 1
     pub fn process_all_profiles(&self) {
         self.update_last_applied_duties();
-        let mut output_cache_lock = self.process_output_cache.borrow_mut();
-        // All the member profiles have been processed already by the graph_commander:
-        let requested_duties = self.graph_commander.process_output_cache.borrow();
+        let graph_duties = self.graph_commander.process_output_cache.borrow();
         let last_applied_duties = self.all_last_applied_duties.borrow();
-        'mix: for mix_profile in self.scheduled_settings.borrow().keys() {
-            let mut member_values = Vec::with_capacity(last_applied_duties.len());
-            let mut members_have_no_output = true;
-            for member_profile_uid in &mix_profile.member_profile_uids {
-                let Some(output) = requested_duties.get(member_profile_uid) else {
-                    error!(
-                        "Mix Profile calculation for {} skipped because of missing member output duty ",
-                        mix_profile.profile_uid
-                    );
-                    // In very rare cases in the past, this was possible due to a race condition.
-                    // This should no longer happen, but we avoid the panic anyway.
-                    if let Some(cache) = output_cache_lock.get_mut(&mix_profile.profile_uid) {
-                        *cache = None;
-                    }
-                    continue 'mix;
-                };
-                let duty_value_for_calculation = if let Some(duty) = output {
-                    members_have_no_output = false;
-                    duty
-                } else {
-                    // We need the last applied values as a backup from all member profiles when ANY
-                    // profile produces output, so we can properly compare the results and apply the
-                    // correct Duty.
-                    &last_applied_duties[member_profile_uid]
-                };
-                member_values.push(duty_value_for_calculation);
+        let scheduled = self.scheduled_settings.borrow();
+
+        // Pass 1: Process children (Mix profiles with no Mix sub-members)
+        let mut pass1_results: HashMap<ProfileUID, Option<Duty>> = HashMap::new();
+        for mix_profile in scheduled.keys() {
+            if mix_profile.member_mix_profile_uids.is_empty().not() {
+                continue; // Skip parents in pass 1
             }
-            if members_have_no_output {
-                // Nothing to set if all member Profile Outputs are None
-                if let Some(cache) = output_cache_lock.get_mut(&mix_profile.profile_uid) {
-                    *cache = None;
+            let result = Self::process_single_mix_profile(
+                mix_profile,
+                &graph_duties,
+                &HashMap::new(), // No mix outputs needed for children
+                &last_applied_duties,
+            );
+            pass1_results.insert(mix_profile.profile_uid.clone(), result);
+        }
+
+        // Write pass 1 results into the output cache
+        {
+            let mut output_cache_lock = self.process_output_cache.borrow_mut();
+            for (uid, result) in &pass1_results {
+                if let Some(cache) = output_cache_lock.get_mut(uid) {
+                    *cache = *result;
                 }
-                continue;
-            }
-            let duty_to_apply = Self::apply_mix_function(&member_values, mix_profile.mix_function);
-            if let Some(cache) = output_cache_lock.get_mut(&mix_profile.profile_uid) {
-                *cache = Some(duty_to_apply);
             }
         }
+
+        // Pass 2: Process parents (Mix profiles with Mix sub-members)
+        let mix_duties = self.process_output_cache.borrow();
+        let mut pass2_results: HashMap<ProfileUID, Option<Duty>> = HashMap::new();
+        for mix_profile in scheduled.keys() {
+            if mix_profile.member_mix_profile_uids.is_empty() {
+                continue; // Skip children in pass 2
+            }
+            let result = Self::process_single_mix_profile(
+                mix_profile,
+                &graph_duties,
+                &mix_duties,
+                &last_applied_duties,
+            );
+            pass2_results.insert(mix_profile.profile_uid.clone(), result);
+        }
+        drop(mix_duties);
+
+        // Write pass 2 results into the output cache
+        let mut output_cache_lock = self.process_output_cache.borrow_mut();
+        for (uid, result) in pass2_results {
+            if let Some(cache) = output_cache_lock.get_mut(&uid) {
+                *cache = result;
+            }
+        }
+    }
+
+    /// Processes a single Mix profile and returns the calculated duty.
+    fn process_single_mix_profile(
+        mix_profile: &NormalizedMixProfile,
+        graph_duties: &HashMap<ProfileUID, Option<Duty>>,
+        mix_duties: &HashMap<ProfileUID, Option<Duty>>,
+        last_applied_duties: &HashMap<ProfileUID, Duty>,
+    ) -> Option<Duty> {
+        let mut member_values = Vec::with_capacity(mix_profile.member_profile_uids.len());
+        let mut members_have_no_output = true;
+        for member_profile_uid in &mix_profile.member_profile_uids {
+            // Look up the member's output from the appropriate cache
+            let output = if mix_profile
+                .member_mix_profile_uids
+                .contains(member_profile_uid)
+            {
+                mix_duties.get(member_profile_uid)
+            } else {
+                graph_duties.get(member_profile_uid)
+            };
+            let Some(output) = output else {
+                error!(
+                    "Mix Profile calculation for {} skipped because of missing member output duty ",
+                    mix_profile.profile_uid
+                );
+                return None;
+            };
+            let duty_value_for_calculation = if let Some(duty) = output {
+                members_have_no_output = false;
+                duty
+            } else {
+                // We need the last applied values as a backup from all member profiles when ANY
+                // profile produces output, so we can properly compare the results and apply the
+                // correct Duty.
+                last_applied_duties.get(member_profile_uid)?
+            };
+            member_values.push(duty_value_for_calculation);
+        }
+        if members_have_no_output {
+            return None;
+        }
+        Some(Self::apply_mix_function(
+            &member_values,
+            mix_profile.mix_function,
+        ))
     }
 
     /// Processes all the member Profiles and applies the appropriate output per Mix Profile.
@@ -210,15 +312,26 @@ impl MixProfileCommander {
     /// that when a member profile is first used, it has a proper last applied duty to compare to.
     fn update_last_applied_duties(&self) {
         let mut last_applied_duties = self.all_last_applied_duties.borrow_mut();
-        let requested_duties = self.graph_commander.process_output_cache.borrow();
-        for (profile_uid, output) in requested_duties.iter() {
+        // Update from graph commander output cache
+        let graph_duties = self.graph_commander.process_output_cache.borrow();
+        for (profile_uid, output) in graph_duties.iter() {
             let Some(duty) = output else {
                 continue;
             };
-            if last_applied_duties.contains_key(profile_uid) {
-                if let Some(d) = last_applied_duties.get_mut(profile_uid) {
-                    *d = *duty;
-                }
+            if let Some(d) = last_applied_duties.get_mut(profile_uid) {
+                *d = *duty;
+            } else {
+                last_applied_duties.insert(profile_uid.clone(), *duty);
+            }
+        }
+        // Also update from own process output cache (for Mix members used as children)
+        let mix_duties = self.process_output_cache.borrow();
+        for (profile_uid, output) in mix_duties.iter() {
+            let Some(duty) = output else {
+                continue;
+            };
+            if let Some(d) = last_applied_duties.get_mut(profile_uid) {
+                *d = *duty;
             } else {
                 last_applied_duties.insert(profile_uid.clone(), *duty);
             }
@@ -284,6 +397,11 @@ impl MixProfileCommander {
         NormalizedMixProfile {
             profile_uid: profile.uid.clone(),
             mix_function: profile.mix_function_type.unwrap(),
+            member_mix_profile_uids: member_profiles
+                .iter()
+                .filter(|p| p.p_type == ProfileType::Mix)
+                .map(|p| p.uid.clone())
+                .collect(),
             member_profile_uids: member_profiles.iter().map(|p| p.uid.clone()).collect(),
         }
     }
@@ -294,6 +412,8 @@ pub struct NormalizedMixProfile {
     profile_uid: ProfileUID,
     mix_function: ProfileMixFunctionType,
     member_profile_uids: Vec<ProfileUID>,
+    /// Subset of member_profile_uids that are Mix-type profiles (children).
+    member_mix_profile_uids: Vec<ProfileUID>,
 }
 
 impl Default for NormalizedMixProfile {
@@ -302,6 +422,7 @@ impl Default for NormalizedMixProfile {
             profile_uid: String::default(),
             mix_function: ProfileMixFunctionType::Max,
             member_profile_uids: Vec::new(),
+            member_mix_profile_uids: Vec::new(),
         }
     }
 }
@@ -324,7 +445,9 @@ impl Hash for NormalizedMixProfile {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::commanders::mix::MixProfileCommander;
+    use std::collections::HashMap;
+
+    use crate::engine::commanders::mix::{MixProfileCommander, NormalizedMixProfile};
     use crate::setting::ProfileMixFunctionType;
 
     #[test]
@@ -373,5 +496,184 @@ mod tests {
         let mix_function = ProfileMixFunctionType::Diff;
         let result = MixProfileCommander::apply_mix_function(&member_values, mix_function);
         assert_eq!(result, 0);
+    }
+
+    /// Verify child Mix profiles (no Mix sub-members) process from graph cache only.
+    #[test]
+    fn process_child_before_parent() {
+        let child = NormalizedMixProfile {
+            profile_uid: "child_mix".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "graph_b".to_string()],
+            member_mix_profile_uids: vec![],
+        };
+        let graph_duties = HashMap::from([
+            ("graph_a".to_string(), Some(40u8)),
+            ("graph_b".to_string(), Some(60u8)),
+        ]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &child,
+            &graph_duties,
+            &HashMap::new(),
+            &last_applied,
+        );
+        assert_eq!(result, Some(60)); // Max of 40, 60
+    }
+
+    /// Verify parent Mix reads Mix member output from mix_duties, not graph_duties.
+    #[test]
+    fn parent_reads_mix_member_output() {
+        let parent = NormalizedMixProfile {
+            profile_uid: "parent_mix".to_string(),
+            mix_function: ProfileMixFunctionType::Avg,
+            member_profile_uids: vec!["graph_c".to_string(), "child_mix".to_string()],
+            member_mix_profile_uids: vec!["child_mix".to_string()],
+        };
+        let graph_duties = HashMap::from([("graph_c".to_string(), Some(80u8))]);
+        let mix_duties = HashMap::from([("child_mix".to_string(), Some(60u8))]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &parent,
+            &graph_duties,
+            &mix_duties,
+            &last_applied,
+        );
+        assert_eq!(result, Some(70)); // Avg of 80, 60
+    }
+
+    /// Verify a parent with both Graph and Mix members combines values correctly.
+    #[test]
+    fn mixed_graph_and_mix_members() {
+        let parent = NormalizedMixProfile {
+            profile_uid: "parent".to_string(),
+            mix_function: ProfileMixFunctionType::Min,
+            member_profile_uids: vec![
+                "graph_1".to_string(),
+                "graph_2".to_string(),
+                "child_mix".to_string(),
+            ],
+            member_mix_profile_uids: vec!["child_mix".to_string()],
+        };
+        let graph_duties = HashMap::from([
+            ("graph_1".to_string(), Some(50u8)),
+            ("graph_2".to_string(), Some(30u8)),
+        ]);
+        let mix_duties = HashMap::from([("child_mix".to_string(), Some(45u8))]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &parent,
+            &graph_duties,
+            &mix_duties,
+            &last_applied,
+        );
+        assert_eq!(result, Some(30)); // Min of 50, 30, 45
+    }
+
+    /// Verify mix functions work correctly with values from different processing stages.
+    #[test]
+    fn apply_mix_function_nested_values_max() {
+        let parent = NormalizedMixProfile {
+            profile_uid: "parent".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "child_mix".to_string()],
+            member_mix_profile_uids: vec!["child_mix".to_string()],
+        };
+        let graph_duties = HashMap::from([("graph_a".to_string(), Some(25u8))]);
+        let mix_duties = HashMap::from([("child_mix".to_string(), Some(75u8))]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &parent,
+            &graph_duties,
+            &mix_duties,
+            &last_applied,
+        );
+        assert_eq!(result, Some(75)); // Max of 25, 75
+    }
+
+    /// Verify Diff function with nested values.
+    #[test]
+    fn apply_mix_function_nested_values_diff() {
+        let parent = NormalizedMixProfile {
+            profile_uid: "parent".to_string(),
+            mix_function: ProfileMixFunctionType::Diff,
+            member_profile_uids: vec!["child_mix".to_string(), "graph_a".to_string()],
+            member_mix_profile_uids: vec!["child_mix".to_string()],
+        };
+        let graph_duties = HashMap::from([("graph_a".to_string(), Some(30u8))]);
+        let mix_duties = HashMap::from([("child_mix".to_string(), Some(80u8))]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &parent,
+            &graph_duties,
+            &mix_duties,
+            &last_applied,
+        );
+        assert_eq!(result, Some(50)); // Diff: 80 - 30 = 50
+    }
+
+    /// Verify None output when all members have no output.
+    #[test]
+    fn all_members_no_output_returns_none() {
+        let child = NormalizedMixProfile {
+            profile_uid: "mix".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "graph_b".to_string()],
+            member_mix_profile_uids: vec![],
+        };
+        let graph_duties =
+            HashMap::from([("graph_a".to_string(), None), ("graph_b".to_string(), None)]);
+        let last_applied =
+            HashMap::from([("graph_a".to_string(), 50u8), ("graph_b".to_string(), 60u8)]);
+        let result = MixProfileCommander::process_single_mix_profile(
+            &child,
+            &graph_duties,
+            &HashMap::new(),
+            &last_applied,
+        );
+        assert_eq!(result, None);
+    }
+
+    /// Verify missing member output returns None (skips processing).
+    #[test]
+    fn missing_member_output_returns_none() {
+        let mix_profile = NormalizedMixProfile {
+            profile_uid: "mix".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "graph_missing".to_string()],
+            member_mix_profile_uids: vec![],
+        };
+        let graph_duties = HashMap::from([("graph_a".to_string(), Some(50u8))]);
+        let last_applied = HashMap::new();
+        let result = MixProfileCommander::process_single_mix_profile(
+            &mix_profile,
+            &graph_duties,
+            &HashMap::new(),
+            &last_applied,
+        );
+        assert_eq!(result, None);
+    }
+
+    /// Verify last_applied_duties fallback when one member has output and another doesn't.
+    #[test]
+    fn uses_last_applied_duties_as_fallback() {
+        let mix_profile = NormalizedMixProfile {
+            profile_uid: "mix".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "graph_b".to_string()],
+            member_mix_profile_uids: vec![],
+        };
+        let graph_duties = HashMap::from([
+            ("graph_a".to_string(), Some(70u8)),
+            ("graph_b".to_string(), None),
+        ]);
+        let last_applied = HashMap::from([("graph_b".to_string(), 40u8)]);
+        let result = MixProfileCommander::process_single_mix_profile(
+            &mix_profile,
+            &graph_duties,
+            &HashMap::new(),
+            &last_applied,
+        );
+        assert_eq!(result, Some(70)); // Max of 70, 40
     }
 }

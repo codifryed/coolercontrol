@@ -60,6 +60,7 @@ impl OverlayProfileCommander {
         overlay_profile: &OverlayProfile,
         member_profile: &Profile,
         member_profile_members: Vec<Profile>,
+        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
     ) -> anyhow::Result<()> {
         if overlay_profile.p_type != ProfileType::Overlay {
             return Err(anyhow!(
@@ -78,7 +79,12 @@ impl OverlayProfileCommander {
         }
         let normalized_overlay_setting =
             Self::normalize_overlay_setting(overlay_profile, member_profile);
-        self.schedule_member_profiles(&device_channel, member_profile, member_profile_members)?;
+        self.schedule_member_profiles(
+            &device_channel,
+            member_profile,
+            member_profile_members,
+            member_sub_profiles,
+        )?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) =
             settings_lock.remove(&normalized_overlay_setting)
@@ -106,6 +112,7 @@ impl OverlayProfileCommander {
         device_channel: &DeviceChannelProfileSetting,
         member_profile: &Profile,
         member_profile_members: Vec<Profile>,
+        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
     ) -> anyhow::Result<()> {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         // Add the Overlay settings for the member profile to be processed
@@ -119,6 +126,7 @@ impl OverlayProfileCommander {
                     device_channel.clone(),
                     member_profile,
                     member_profile_members,
+                    member_sub_profiles,
                 )?;
             }
             _ => return Err(anyhow!("Only Graph and Mix Profiles are supported")),

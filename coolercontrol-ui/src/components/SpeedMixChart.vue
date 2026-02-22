@@ -23,7 +23,7 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { FunctionType, Profile } from '@/models/Profile'
+import { FunctionType, Profile, ProfileType } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -61,9 +61,17 @@ const { t } = useI18n()
 const dutyMin: number = 0
 const dutyMax: number = 100
 const memberProfiles: Ref<Array<Profile>> = ref(
-    settingsStore.profiles.filter((profile) =>
-        props.profile.member_profile_uids.includes(profile.uid),
-    ),
+    settingsStore.profiles
+        .filter((profile) => props.profile.member_profile_uids.includes(profile.uid))
+        .flatMap((profile) => {
+            if (profile.p_type === ProfileType.Mix) {
+                // Flatten Mix members into their Graph sub-members for display
+                return settingsStore.profiles.filter((p) =>
+                    profile.member_profile_uids.includes(p.uid),
+                )
+            }
+            return [profile]
+        }),
 )
 let currentAxisTempMin = 0
 let currentAxisTempMax = 100
