@@ -18,10 +18,13 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+    TempStatus,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
-use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]
 pub struct AquaComputerSupport;
@@ -39,7 +42,7 @@ impl DeviceSupport for AquaComputerSupport {
     }
 
     fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
-        let mut channels = HashMap::new();
+        let mut channels = HashMap::with_capacity(device_response.properties.speed_channels.len());
         for channel_name in &device_response.properties.speed_channels {
             channels.insert(
                 channel_name.to_owned(),
@@ -71,5 +74,25 @@ impl DeviceSupport for AquaComputerSupport {
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
         Vec::new()
+    }
+
+    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
+        let mut temps = Vec::with_capacity(status_map.len());
+        self.add_temp_sensors(status_map, &mut temps);
+        self.add_software_temp_sensors(status_map, &mut temps);
+        temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        temps
+    }
+
+    fn get_channel_statuses(
+        &self,
+        status_map: &StatusMap,
+        _device_index: u8,
+    ) -> Vec<ChannelStatus> {
+        let mut channel_statuses = Vec::with_capacity(status_map.len());
+        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        self.add_flow_sensor_status(status_map, &mut channel_statuses);
+        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
+        channel_statuses
     }
 }
