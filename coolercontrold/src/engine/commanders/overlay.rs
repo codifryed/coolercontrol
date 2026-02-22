@@ -126,7 +126,7 @@ impl OverlayProfileCommander {
                     device_channel.clone(),
                     member_profile,
                     member_profile_members,
-                    member_sub_profiles,
+                    &member_sub_profiles,
                 )?;
             }
             _ => return Err(anyhow!("Only Graph and Mix Profiles are supported")),

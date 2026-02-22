@@ -62,7 +62,7 @@ impl MixProfileCommander {
         device_channel: DeviceChannelProfileSetting,
         mix_profile: &MixProfile,
         member_profiles: Vec<Profile>,
-        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
+        member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> Result<()> {
         if mix_profile.p_type != ProfileType::Mix {
             return Err(anyhow!(
@@ -78,7 +78,7 @@ impl MixProfileCommander {
             return Err(anyhow!("Member profiles must be present for a Mix Profile"));
         }
         let normalized_mix_setting = Self::normalize_mix_setting(mix_profile, &member_profiles);
-        self.schedule_member_profiles(&device_channel, member_profiles, &member_sub_profiles)?;
+        self.schedule_member_profiles(&device_channel, member_profiles, member_sub_profiles)?;
         let mut settings_lock = self.scheduled_settings.borrow_mut();
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
@@ -187,10 +187,10 @@ impl MixProfileCommander {
     /// This should be called very early, right after the `GraphProfileCommander` processes,
     /// and only once per update cycle.
     ///
-    /// Two-pass processing (mirrors custom_sensors_repo::update_statuses()):
+    /// Two-pass processing (mirrors `custom_sensors_repo::update_statuses()`):
     /// - Pass 1: Process child Mix profiles (those with no Mix sub-members)
     /// - Pass 2: Process parent Mix profiles (those with Mix sub-members),
-    ///   reading child Mix output from the process_output_cache populated in pass 1
+    ///   reading child Mix output from the `process_output_cache` populated in pass 1
     pub fn process_all_profiles(&self) {
         self.update_last_applied_duties();
         let graph_duties = self.graph_commander.process_output_cache.borrow();
@@ -339,10 +339,23 @@ impl MixProfileCommander {
     }
 
     /// Collects the duties to apply for all scheduled Mix Profiles from the output cache.
+    /// Child Mix profiles (those referenced by a parent's member_mix_profile_uids) are
+    /// skipped — their duty feeds into the parent, not directly to hardware.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let mut output_to_apply = HashMap::new();
         let output_cache_lock = self.process_output_cache.borrow();
-        for (mix_profile, device_channels) in self.scheduled_settings.borrow().iter() {
+        let scheduled = self.scheduled_settings.borrow();
+        // Collect UIDs of child Mix profiles referenced by any parent
+        let child_mix_uids: HashSet<&ProfileUID> = scheduled
+            .keys()
+            .flat_map(|mp| mp.member_mix_profile_uids.iter())
+            .collect();
+        for (mix_profile, device_channels) in scheduled.iter() {
+            // Skip child Mix profiles — their duty is consumed by the parent Mix,
+            // not applied directly to hardware.
+            if child_mix_uids.contains(&mix_profile.profile_uid) {
+                continue;
+            }
             let optional_duty_to_set = output_cache_lock[&mix_profile.profile_uid]
                 .as_ref()
                 .copied();
@@ -412,7 +425,7 @@ pub struct NormalizedMixProfile {
     profile_uid: ProfileUID,
     mix_function: ProfileMixFunctionType,
     member_profile_uids: Vec<ProfileUID>,
-    /// Subset of member_profile_uids that are Mix-type profiles (children).
+    /// Subset of `member_profile_uids` that are Mix-type profiles (children).
     member_mix_profile_uids: Vec<ProfileUID>,
 }
 
@@ -521,7 +534,7 @@ mod tests {
         assert_eq!(result, Some(60)); // Max of 40, 60
     }
 
-    /// Verify parent Mix reads Mix member output from mix_duties, not graph_duties.
+    /// Verify parent Mix reads Mix member output from `mix_duties`, not `graph_duties`.
     #[test]
     fn parent_reads_mix_member_output() {
         let parent = NormalizedMixProfile {
@@ -654,7 +667,7 @@ mod tests {
         assert_eq!(result, None);
     }
 
-    /// Verify last_applied_duties fallback when one member has output and another doesn't.
+    /// Verify `last_applied_duties` fallback when one member has output and another doesn't.
     #[test]
     fn uses_last_applied_duties_as_fallback() {
         let mix_profile = NormalizedMixProfile {

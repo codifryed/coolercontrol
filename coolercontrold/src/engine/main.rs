@@ -363,7 +363,7 @@ impl Engine {
                 },
                 profile,
                 member_profiles,
-                member_sub_profiles,
+                &member_sub_profiles,
             )
         } else {
             Err(anyhow!(
