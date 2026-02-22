@@ -33,7 +33,6 @@ import {
     mdiChartMultiple,
     mdiDotsVertical,
     mdiFan,
-    mdiFlask,
     mdiFlaskRoundBottom,
     mdiFunction,
     mdiHomeAnalytics,
@@ -1039,7 +1038,7 @@ const addFunction = (functionUID: UID): void => {
     functionsParent?.children.push({
         id: newFunction.uid,
         label: newFunction.name,
-        icon: mdiFlask,
+        icon: mdiFunction,
         deviceUID: 'Functions',
         uid: newFunction.uid,
         to: { name: 'functions', params: { functionUID: newFunction.uid } },
