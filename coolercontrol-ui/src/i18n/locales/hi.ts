@@ -578,6 +578,10 @@ export default {
         controls: {
             viewType: 'दृश्य प्रकार',
             controlOrView: 'नियंत्रण या दृश्य',
+            title: 'सिस्टम नियंत्रण',
+            noControllableChannels: 'कोई नियंत्रणीय चैनल नहीं मिला।',
+            noControlChain: 'इस चैनल के लिए कोई नियंत्रण श्रृंखला नहीं मिली।',
+            controlFlow: 'नियंत्रण प्रवाह',
         },
         modes: {
             createMode: 'मोड बनाएं',
@@ -1158,6 +1162,10 @@ export default {
             none: 'कोई नहीं',
             liquidctl: 'Liquidctl',
             custom: 'कस्टम',
+        },
+        channelType: {
+            lcd: 'LCD',
+            lighting: 'लाइटिंग',
         },
     },
 }

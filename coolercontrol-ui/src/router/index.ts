@@ -44,6 +44,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: 'controls/:deviceUID/:channelName',
+                    name: 'channel-control-flow',
+                    component: () => import('@/views/ChannelControlFlowView.vue'),
+                    props: true,
+                },
+                {
                     path: 'app-info',
                     name: 'app-info',
                     component: () => import('@/views/AppInfoView.vue'),

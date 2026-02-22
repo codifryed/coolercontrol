@@ -31,11 +31,11 @@ import {
     mdiChartBoxOutline,
     mdiChartLine,
     mdiChartMultiple,
-    mdiCircleMultipleOutline,
     mdiDotsVertical,
     mdiFan,
     mdiFlask,
-    mdiFlaskOutline,
+    mdiFlaskRoundBottom,
+    mdiFunction,
     mdiHomeAnalytics,
     mdiLedOn,
     mdiLightningBoltCircle,
@@ -497,7 +497,7 @@ const functionsTree = (): any => {
     return {
         id: 'functions',
         label: t('layout.menu.functions'),
-        icon: mdiFlaskOutline,
+        icon: mdiFunction,
         name: null, // devices should not have names
         menus: [Menu.FUNCTION_INFO, Menu.FUNCTION_ADD],
         subMenus: [SubMenu.MOVE_TOP, SubMenu.COLOR, SubMenu.MOVE_BOTTOM],
@@ -507,7 +507,7 @@ const functionsTree = (): any => {
                 return {
                     id: fun.uid,
                     label: fun.name,
-                    icon: mdiFlask,
+                    icon: mdiFunction,
                     deviceUID: 'Functions',
                     uid: fun.uid,
                     to: { name: 'functions', params: { functionUID: fun.uid } },
@@ -569,7 +569,7 @@ const customSensorsTree = (): any => {
                 id: `${device.uid}_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
-                icon: mdiThermometer,
+                icon: mdiFlaskRoundBottom,
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
@@ -587,7 +587,7 @@ const customSensorsTree = (): any => {
             // deviceUID is used to sort the menu items and custom-sensors has a deviceUID
             id: deviceUID,
             label: t('layout.menu.customSensors'),
-            icon: mdiCircleMultipleOutline,
+            icon: mdiFlaskRoundBottom,
             name: null, // devices should not have names
             deviceUID: deviceUID,
             menus: [Menu.CUSTOM_SENSOR_INFO, Menu.CUSTOM_SENSOR_ADD],

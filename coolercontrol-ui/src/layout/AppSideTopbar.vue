@@ -33,6 +33,7 @@ import {
     mdiChartBoxPlusOutline,
     mdiCogOutline,
     mdiFlaskPlusOutline,
+    mdiFunctionVariant,
     mdiHomeAnalytics,
     mdiLockOffOutline,
     mdiLockOutline,
@@ -41,7 +42,6 @@ import {
     mdiOpenInNew,
     mdiPlus,
     mdiPlusBoxMultipleOutline,
-    mdiPlusCircleMultipleOutline,
     mdiPower,
     mdiTuneVerticalVariant,
 } from '@mdi/js'
@@ -371,7 +371,7 @@ const addItems = computed(() => [
     },
     {
         label: t('layout.add.function'),
-        mdiIcon: mdiFlaskPlusOutline,
+        mdiIcon: mdiFunctionVariant,
         command: () => {
             addMenuRef.value?.handleClose()
             emitter.emit('function-add')
@@ -387,7 +387,7 @@ const addItems = computed(() => [
     },
     {
         label: t('layout.add.customSensor'),
-        mdiIcon: mdiPlusCircleMultipleOutline,
+        mdiIcon: mdiFlaskPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
             emitter.emit('custom-sensor-add')

@@ -19,7 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
-import { mdiFlaskRoundBottom } from '@mdi/js'
+import { mdiFunctionVariant } from '@mdi/js'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { defineAsyncComponent } from 'vue'
@@ -63,7 +63,7 @@ const applyFunction = async (): Promise<void> => {
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
             @click.stop.prevent="applyFunction"
         >
-            <svg-icon type="mdi" :path="mdiFlaskRoundBottom" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiFunctionVariant" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>

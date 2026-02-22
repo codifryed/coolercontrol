@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { mdiPlusCircleMultipleOutline } from '@mdi/js'
+import { mdiFlaskPlusOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
@@ -59,11 +59,7 @@ emitter.on('custom-sensor-add', addCustomSensor)
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color outline-0"
             @click.stop="addCustomSensor"
         >
-            <svg-icon
-                type="mdi"
-                :path="mdiPlusCircleMultipleOutline"
-                :size="deviceStore.getREMSize(1.5)"
-            />
+            <svg-icon type="mdi" :path="mdiFlaskPlusOutline" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>
