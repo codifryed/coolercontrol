@@ -31,14 +31,14 @@ use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::device::{Duty, UID};
+use crate::device::{ChannelName, Duty, UID};
 use crate::engine::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
-    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdSettings, LightingSettings,
-    Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
+    Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
+    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
     DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
@@ -308,6 +308,64 @@ impl Config {
         }
     }
 
+    /// Persists an LCD shutdown setting for the given device and channel.
+    /// The image will be applied to the LCD when the daemon shuts down.
+    pub fn set_lcd_shutdown_setting(
+        &self,
+        device_uid: &str,
+        channel_name: &str,
+        lcd: &LcdSettings,
+    ) {
+        let mut doc = self.document.borrow_mut();
+        // Ensure the outer table exists before double-indexing (it's not in the default config).
+        doc["lcd-shutdown-settings"].or_insert(Item::Table(Table::new()));
+        let device_settings =
+            doc["lcd-shutdown-settings"][device_uid].or_insert(Item::Table(Table::new()));
+        let channel_setting = &mut device_settings[channel_name];
+        Self::set_setting_lcd(channel_setting, lcd);
+    }
+
+    /// Returns all persisted LCD shutdown settings as `(device_uid, channel_name, LcdSettings)`.
+    pub fn get_all_lcd_shutdown_settings(&self) -> Result<Vec<(UID, ChannelName, LcdSettings)>> {
+        let mut results = Vec::new();
+        // Use get() instead of [] to avoid a panic when the key is absent from the config.
+        let doc = self.document.borrow();
+        let Some(device_table) = doc
+            .as_table()
+            .get("lcd-shutdown-settings")
+            .and_then(|i| i.as_table())
+        else {
+            return Ok(results);
+        };
+        for (device_uid, device_item) in device_table {
+            let channel_table = device_item
+                .as_table()
+                .with_context(|| "lcd-shutdown device setting should be a table")?;
+            for (channel_name, base_item) in channel_table {
+                let setting_table = base_item
+                    .as_inline_table()
+                    .with_context(|| "LCD shutdown channel setting should be an inline table")?
+                    .clone()
+                    .into_table();
+                if let Some(lcd) = Self::get_lcd(&setting_table)? {
+                    results.push((device_uid.to_string(), channel_name.to_string(), lcd));
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    /// Removes the LCD shutdown setting for the given device and channel.
+    pub fn remove_lcd_shutdown_setting(&self, device_uid: &str, channel_name: &str) {
+        let mut doc = self.document.borrow_mut();
+        // Use as_table_mut().get_mut() to avoid creating a spurious None entry when absent.
+        if let Some(outer) = doc.as_table_mut().get_mut("lcd-shutdown-settings") {
+            if let Some(device_settings) = outer.get_mut(device_uid) {
+                device_settings[channel_name] = Item::None;
+            }
+        }
+    }
+
     fn set_setting_fixed_speed(channel_setting: &mut Item, speed_fixed: u8) {
         channel_setting["profile_uid"] = Item::None; // clear profile setting
         channel_setting["speed_fixed"] =
@@ -341,7 +399,7 @@ impl Config {
     fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] =
-            Item::Value(Value::String(Formatted::new(lcd.mode.clone())));
+            Item::Value(Value::String(Formatted::new(lcd.mode.to_string())));
         if let Some(brightness) = lcd.brightness {
             channel_setting["lcd"]["brightness"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(brightness))));
@@ -772,12 +830,13 @@ impl Config {
             let lcd_table = value
                 .as_inline_table()
                 .with_context(|| "lcd should be an inline table")?;
-            let mode = lcd_table
+            let mode: LcdModeName = lcd_table
                 .get("mode")
                 .with_context(|| "lcd.mode should be present")?
                 .as_str()
                 .with_context(|| "lcd.mode should be a String")?
-                .to_string();
+                .parse()
+                .with_context(|| "lcd.mode should be a valid LcdModeName")?;
             let brightness = if let Some(brightness_value) = lcd_table.get("brightness") {
                 let brightness_u8: u8 = brightness_value
                     .as_integer()
@@ -2305,6 +2364,73 @@ mod tests {
             assert!(config.get_profiles().await.is_ok(), "Get Profiles");
             assert!(config.get_functions().await.is_ok(), "Get Functions");
             assert!(config.get_custom_sensors().is_ok(), "Get Custom sensors");
+            assert!(
+                config.get_all_lcd_shutdown_settings().is_ok(),
+                "LCD shutdown settings"
+            );
+
+            // teardown:
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_lcd_shutdown_setting_roundtrip() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{LcdModeName, LcdSettings};
+
+            let path = Path::new("/tmp/config-lcd-shutdown-test.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-lcd-shutdown-test.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            let device_uid = "test-device-uid";
+            let channel_name = "lcd1";
+            let lcd = LcdSettings {
+                mode: LcdModeName::Image,
+                brightness: Some(50),
+                orientation: Some(90),
+                image_file_processed: Some(
+                    "/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string(),
+                ),
+                carousel: None,
+                temp_source: None,
+                colors: vec![],
+            };
+
+            // Initially empty
+            let all = config.get_all_lcd_shutdown_settings().unwrap();
+            assert!(all.is_empty(), "should start empty");
+
+            // Set the shutdown setting
+            config.set_lcd_shutdown_setting(device_uid, channel_name, &lcd);
+
+            // Get all settings and verify roundtrip
+            let all = config.get_all_lcd_shutdown_settings().unwrap();
+            assert_eq!(all.len(), 1);
+            let (uid, ch, retrieved) = &all[0];
+            assert_eq!(uid, device_uid);
+            assert_eq!(ch, channel_name);
+            assert_eq!(retrieved.mode, LcdModeName::Image);
+            assert_eq!(retrieved.brightness, Some(50));
+            assert_eq!(retrieved.orientation, Some(90));
+            assert_eq!(
+                retrieved.image_file_processed,
+                Some("/etc/coolercontrol/lcd_shutdown/test-device-uid-lcd1.png".to_string())
+            );
+
+            // Remove the setting
+            config.remove_lcd_shutdown_setting(device_uid, channel_name);
+
+            // Verify it's gone
+            let all = config.get_all_lcd_shutdown_settings().unwrap();
+            assert!(all.is_empty(), "should be empty after removal");
 
             // teardown:
             cc_fs::remove_file(path).await.unwrap();

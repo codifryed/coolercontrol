@@ -18,11 +18,12 @@
 use crate::api::actor::{run_api_actor, ApiActor};
 use crate::api::devices::DeviceDto;
 use crate::api::CCError;
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
-use crate::setting::{LcdSettings, LightingSettings, ProfileUID, Setting};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting};
 use crate::AllDevices;
 use anyhow::Result;
 use mime::Mime;
@@ -62,7 +63,7 @@ enum DeviceMessage {
     DeviceImageUpdate {
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,
@@ -111,6 +112,20 @@ enum DeviceMessage {
     DeviceAseTekType {
         device_uid: DeviceUID,
         is_legacy690: bool,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    DeviceSetLCDShutdownImage {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        mode: LcdModeName,
+        brightness: Option<u8>,
+        orientation: Option<u16>,
+        files: Vec<(Mime, Vec<u8>)>,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    DeviceClearLCDShutdownImage {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
         respond_to: oneshot::Sender<Result<()>>,
     },
 }
@@ -385,6 +400,68 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                 .await;
                 let _ = respond_to.send(result);
             }
+            DeviceMessage::DeviceSetLCDShutdownImage {
+                device_uid,
+                channel_name,
+                mode,
+                brightness,
+                orientation,
+                mut files,
+                respond_to,
+            } => {
+                let result = async {
+                    let (content_type, file_data) = self
+                        .engine
+                        .process_lcd_image(&device_uid, &channel_name, &mut files)
+                        .await?;
+                    let image_path = self
+                        .engine
+                        .save_lcd_shutdown_image(
+                            &device_uid,
+                            &channel_name,
+                            &content_type,
+                            file_data,
+                        )
+                        .await?;
+                    let lcd_settings = LcdSettings {
+                        mode,
+                        brightness,
+                        orientation,
+                        image_file_processed: Some(image_path),
+                        carousel: None,
+                        temp_source: None,
+                        colors: Vec::with_capacity(0),
+                    };
+                    self.config
+                        .set_lcd_shutdown_setting(&device_uid, &channel_name, &lcd_settings);
+                    self.config.save_config_file().await
+                }
+                .await;
+                let _ = respond_to.send(result);
+            }
+            DeviceMessage::DeviceClearLCDShutdownImage {
+                device_uid,
+                channel_name,
+                respond_to,
+            } => {
+                let result = async {
+                    if let Ok(settings) = self.config.get_all_lcd_shutdown_settings() {
+                        for (uid, ch, lcd) in settings {
+                            if uid == device_uid && ch == channel_name {
+                                if let Some(path) = lcd.image_file_processed {
+                                    let _ = cc_fs::remove_file(std::path::Path::new(&path)).await;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    self.config
+                        .remove_lcd_shutdown_setting(&device_uid, &channel_name);
+                    self.config.save_config_file().await
+                }
+                .await;
+                let _ = respond_to.send(result);
+            }
         }
     }
 }
@@ -462,7 +539,7 @@ impl DeviceHandle {
         &self,
         device_uid: DeviceUID,
         channel_name: ChannelName,
-        mode: String,
+        mode: LcdModeName,
         brightness: Option<u8>,
         orientation: Option<u16>,
         files: Vec<(Mime, Vec<u8>)>,
@@ -602,6 +679,44 @@ impl DeviceHandle {
         let msg = DeviceMessage::DeviceAseTekType {
             device_uid,
             is_legacy690,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_set_lcd_shutdown_image(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+        mode: LcdModeName,
+        brightness: Option<u8>,
+        orientation: Option<u16>,
+        files: Vec<(Mime, Vec<u8>)>,
+    ) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceSetLCDShutdownImage {
+            device_uid,
+            channel_name,
+            mode,
+            brightness,
+            orientation,
+            files,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn device_clear_lcd_shutdown_image(
+        &self,
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    ) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = DeviceMessage::DeviceClearLCDShutdownImage {
+            device_uid,
+            channel_name,
             respond_to: tx,
         };
         let _ = self.sender.send(msg).await;

@@ -38,7 +38,7 @@ use crate::repositories::liquidctl::liqctld_service;
 use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
-use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -636,7 +636,7 @@ impl LiquidctlRepo {
                 warn!("Error setting lcd/screen orientation {orientation} | {err}.");
             }
         }
-        if lcd_settings.mode == "image" {
+        if lcd_settings.mode == LcdModeName::Image {
             if let Some(image_file) = &lcd_settings.image_file_processed {
                 let mode = if image_file.contains(".gif") {
                     // tmp image is pre-processed
@@ -654,12 +654,12 @@ impl LiquidctlRepo {
                 .await
                 .map_err(|err| anyhow!("Setting lcd/screen 'image/gif' - {err}"))?;
             }
-        } else if lcd_settings.mode == "liquid" {
+        } else if lcd_settings.mode == LcdModeName::Liquid {
             self.send_screen_request(
                 &device_data.type_index,
                 &device_data.uid,
                 channel_name,
-                &lcd_settings.mode,
+                &lcd_settings.mode.to_string(),
                 None,
             )
             .await
@@ -750,7 +750,7 @@ impl LiquidctlRepo {
                     continue;
                 }
                 let lcd_settings = LcdSettings {
-                    mode: "liquid".to_string(),
+                    mode: LcdModeName::Liquid,
                     brightness: None,
                     orientation: None,
                     image_file_processed: None,

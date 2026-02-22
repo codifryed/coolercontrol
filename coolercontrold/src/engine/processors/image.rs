@@ -133,12 +133,31 @@ async fn process_static_image(
     //  and these processing functions are rarely executed.
     let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
         let mut image_output = Cursor::new(Vec::new());
-        image::load_from_memory(&file_data)?
+        let rgba = image::load_from_memory(&file_data)?
             .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)
-            .write_to(&mut image_output, image::ImageFormat::Png)?;
+            .to_rgba8();
+        let rgb = flatten_alpha_to_black(&rgba);
+        image::DynamicImage::ImageRgb8(rgb).write_to(&mut image_output, image::ImageFormat::Png)?;
         Ok(image_output)
     });
     Ok((mime::IMAGE_PNG, join_handle.await??.into_inner()))
+}
+
+/// Composites an RGBA image onto a black background, producing an RGB image.
+/// Uses standard alpha blending: `channel_out = channel * alpha / 255`.
+#[allow(clippy::cast_possible_truncation)]
+fn flatten_alpha_to_black(rgba: &image::RgbaImage) -> image::RgbImage {
+    let (width, height) = rgba.dimensions();
+    let mut rgb = image::RgbImage::new(width, height);
+    for (x, y, pixel) in rgba.enumerate_pixels() {
+        let [r, g, b, a] = pixel.0;
+        let alpha = u16::from(a);
+        let out_r = (u16::from(r) * alpha / 255) as u8;
+        let out_g = (u16::from(g) * alpha / 255) as u8;
+        let out_b = (u16::from(b) * alpha / 255) as u8;
+        rgb.put_pixel(x, y, image::Rgb([out_r, out_g, out_b]));
+    }
+    rgb
 }
 
 /// Processes images from a specified directory for display on an LCD screen carousel.
