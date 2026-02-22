@@ -1176,17 +1176,22 @@ mod tests {
 
     #[test]
     fn add_liquid_temp_filters_out_of_range() {
-        // Confirms that hardware temperature values outside [-40, 200]°C are not
-        // added to the status vector, preventing garbage readings from propagating.
+        // Confirms that hardware temperature values outside [-40, 200]°C are clamped.
         let device_support = KrakenX3Support::new();
         let given_expected = vec![
             (
                 HashMap::from([("liquid temperature".to_string(), "999.0".to_string())]),
-                vec![],
+                vec![TempStatus {
+                    name: "liquid".to_string(),
+                    temp: 200.0,
+                }],
             ),
             (
                 HashMap::from([("liquid temperature".to_string(), "-100.0".to_string())]),
-                vec![],
+                vec![TempStatus {
+                    name: "liquid".to_string(),
+                    temp: -40.0,
+                }],
             ),
         ];
         assert_temp_status_vector_contents_eq(&device_support, given_expected);
@@ -1194,7 +1199,7 @@ mod tests {
 
     #[test]
     fn add_single_fan_status_filters_invalid_duty() {
-        // Confirms that a duty value outside 0–100% is dropped while a valid RPM
+        // Confirms that a duty value outside 0–100% is clamped while a valid RPM
         // value in the same reading is still included.
         let device_support = KrakenX3Support::new();
         let device_id: u8 = 1;
@@ -1207,7 +1212,7 @@ mod tests {
             vec![ChannelStatus {
                 name: "fan".to_string(),
                 rpm: Some(rpm),
-                duty: None,
+                duty: Some(100.0),
                 ..Default::default()
             }],
         )];
@@ -1216,7 +1221,7 @@ mod tests {
 
     #[test]
     fn add_single_pump_status_filters_invalid_duty() {
-        // Confirms that an invalid duty value from hardware is filtered for pump channels.
+        // Confirms that an invalid duty value from hardware is clamped for pump channels.
         let device_support = KrakenX3Support::new();
         let device_id: u8 = 1;
         let rpm: u32 = 2400;
@@ -1228,7 +1233,7 @@ mod tests {
             vec![ChannelStatus {
                 name: "pump".to_string(),
                 rpm: Some(rpm),
-                duty: None,
+                duty: Some(0.0),
                 ..Default::default()
             }],
         )];
@@ -1237,7 +1242,7 @@ mod tests {
 
     #[test]
     fn add_multiple_fans_filters_invalid_duty() {
-        // Confirms that an out-of-range duty in multi-fan status is filtered while
+        // Confirms that an out-of-range duty in multi-fan status is clamped while
         // the corresponding RPM value is preserved.
         let device_support = KrakenX3Support::new();
         let device_id: u8 = 1;
@@ -1250,7 +1255,7 @@ mod tests {
             vec![ChannelStatus {
                 name: "fan1".to_string(),
                 rpm: Some(rpm),
-                duty: None,
+                duty: Some(100.0),
                 ..Default::default()
             }],
         )];
@@ -1318,18 +1323,27 @@ mod tests {
 
     #[test]
     fn add_software_temp_sensors_filters_out_of_range() {
-        // Confirms that temperature values outside [-40, 200]°C are filtered by valid_temp
-        // and do not appear in the output.
+        // Confirms that temperature values outside [-40, 200]°C are clamped by valid_temp.
         let device_support = KrakenX3Support::new();
         let given = HashMap::from([
             ("soft. sensor 1".to_string(), "999.0".to_string()),
             ("soft. sensor 2".to_string(), "-100.0".to_string()),
         ]);
+        let expected = [
+            TempStatus {
+                name: "soft-sensor1".to_string(),
+                temp: 200.0,
+            },
+            TempStatus {
+                name: "soft-sensor2".to_string(),
+                temp: -40.0,
+            },
+        ];
         let mut result_temps = vec![];
         device_support.add_software_temp_sensors(&given, &mut result_temps);
         assert!(
-            result_temps.is_empty(),
-            "expected no results, got: {result_temps:?}"
+            expected.iter().all(|ts| result_temps.contains(ts)),
+            "result missing expected entries: {result_temps:?}"
         );
     }
 
