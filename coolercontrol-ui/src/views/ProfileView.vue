@@ -259,15 +259,6 @@ const chosenMemberProfiles: Ref<Array<Profile>> = ref(
         (uid) => settingsStore.profiles.find((profile) => profile.uid === uid)!,
     ),
 )
-// Flattened Graph profiles for chart display - Mix members are resolved to their Graph sub-members
-const chosenMemberProfilesForChart = computed(() =>
-    chosenMemberProfiles.value.flatMap((profile) => {
-        if (profile.p_type === ProfileType.Mix) {
-            return settingsStore.profiles.filter((p) => profile.member_profile_uids.includes(p.uid))
-        }
-        return [profile]
-    }),
-)
 const chosenOverlayMemberProfile: Ref<Profile | undefined> = ref(
     currentProfile.value.member_profile_uids.length != 1
         ? undefined
@@ -2478,7 +2469,7 @@ function onKnobMouseup(e: MouseEvent) {
         <MixProfileEditorChart
             v-else-if="showMixChart"
             class="p-6"
-            :profiles="chosenMemberProfilesForChart"
+            :profiles="chosenMemberProfiles"
             :mixFunctionType="chosenProfileMixFunction"
             :key="mixProfileKeys"
         />
