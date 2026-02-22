@@ -289,19 +289,32 @@ async fn get_pwm_duty(
         Some(path) => path,
         None => &base_path.join(format_pwm!(channel_number)),
     };
-    cc_fs::read_sysfs(pwm_path)
+    match cc_fs::read_sysfs(pwm_path)
         .await
         .and_then(check_parsing_8)
         .map(pwm_value_to_duty)
-        .inspect_err(|err| {
+    {
+        Ok(duty) => Some(duty),
+        Err(err) => {
+            let is_unsupported = err
+                .downcast_ref::<Error>()
+                .is_some_and(|io_err| io_err.kind() == ErrorKind::Unsupported);
+            if is_unsupported {
+                if devices::get_device_name(base_path).await == devices::DEVICE_NAME_GPD_FAN {
+                    // The GPD Fan driver doesn't support pwm reading in auto-mode; return 100%
+                    // as many other hwmon drivers do by default.
+                    return Some(100.0);
+                }
+            }
             if log_error {
                 warn!(
                     "Could not read fan pwm value at {} ; {err}",
                     pwm_path.display()
                 );
             }
-        })
-        .ok()
+            None
+        }
+    }
 }
 
 pub async fn get_fan_rpm(
@@ -378,7 +391,7 @@ fn determine_pwm_writable(base_path: &Path, channel_number: u8) -> bool {
         // This check should be sufficient, as we're running as root:
         .is_ok_and(|att| att.permissions().readonly().not());
     if pwm_writable.not() {
-        warn!(
+        info!(
             "PWM fan at {} is NOT writable - \
             Fan control is not currently supported by the installed driver.",
             pwm_path.display()
@@ -1058,6 +1071,117 @@ mod tests {
             teardown(&ctx).await;
             assert!(result.is_ok());
             assert_eq!(current_duty.to_string(), "50");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_returns_duty_when_file_valid() {
+        // Verifies the happy path: a readable pwm file with a valid u8 value is converted to
+        // a duty percentage and returned as Some.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: pwm1 = 255 (full speed)
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"255".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, true).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(result, Some(100.0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_returns_none_when_file_missing() {
+        // Verifies the negative space: when the pwm sysfs file does not exist (ENOENT),
+        // the function returns None without panicking.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: no pwm1 file exists
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_returns_none_when_file_has_invalid_content() {
+        // Verifies that a pwm file containing non-numeric content (parse error) returns None
+        // rather than propagating the error upward.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: pwm1 contains text that cannot be parsed as u8
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"not_a_number".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_gpd_device_returns_duty_when_file_valid() {
+        // Verifies that a GPD device with a readable pwm file returns the correct duty via the
+        // normal path. The GPD special-case only activates on Unsupported errors; a successful
+        // read must not be affected.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: device is gpdfan with a valid pwm file
+            cc_fs::write(ctx.test_base_path.join("name"), b"gpdfan".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(result.is_some());
+            assert_eq!(result, Some(pwm_value_to_duty(128)));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_gpd_device_returns_none_for_enoent_not_unsupported() {
+        // Verifies the negative space of the GPD auto-mode fallback: the 100% fallback is
+        // gated on io::ErrorKind::Unsupported (EOPNOTSUPP). A missing-file error (ENOENT) on
+        // a GPD device must still return None, not Some(100.0).
+        // Note: testing the Unsupported + gpdfan → Some(100.0) path requires the actual GPD
+        // fan kernel driver which returns EOPNOTSUPP on pwm reads in auto-mode; it cannot be
+        // reproduced with a regular filesystem and must be verified via integration testing.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: device is gpdfan but there is no pwm file (ENOENT, not EOPNOTSUPP)
+            cc_fs::write(ctx.test_base_path.join("name"), b"gpdfan".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then: ENOENT is not Unsupported, so the GPD fallback must not fire
+            teardown(&ctx).await;
+            assert_eq!(result, None);
         });
     }
 }
