@@ -339,7 +339,7 @@ impl MixProfileCommander {
     }
 
     /// Collects the duties to apply for all scheduled Mix Profiles from the output cache.
-    /// Child Mix profiles (those referenced by a parent's member_mix_profile_uids) are
+    /// Child Mix profiles (those referenced by a parent's `member_mix_profile_uids`) are
     /// skipped — their duty feeds into the parent, not directly to hardware.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let mut output_to_apply = HashMap::new();
