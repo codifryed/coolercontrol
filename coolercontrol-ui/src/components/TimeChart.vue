@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { Device, UID } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
@@ -299,6 +299,51 @@ const updateUSeriesData = () => {
 //     refreshSeriesListData()
 // }
 
+let chart: uPlot | null = null
+let isZoomed: boolean = false
+let rafId: number | null = null
+let rafPaused: boolean = false // rAF stopped due to user interaction
+let userZoomed: boolean = false // user has made a zoom selection
+const startRaf = () => {
+    if (rafId !== null || chart === null) return
+    const animate = () => {
+        const now = Date.now() / 1000
+        chart!.setData(uSeriesData, false)
+        chart!.setScale('x', { min: now - timeRangeSeconds, max: now })
+        rafId = requestAnimationFrame(animate)
+    }
+    rafId = requestAnimationFrame(animate)
+}
+
+const stopRaf = () => {
+    if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+    }
+}
+
+// watch(
+//     () => settingsStore.eyeCandy,
+//     (enabled) => {
+//         if (enabled) {
+//             rafPaused = false
+//             userZoomed = false
+//             startRaf()
+//         } else {
+//             stopRaf()
+//             rafPaused = false
+//             userZoomed = false
+//             if (chart !== null) {
+//                 chart.setData(uSeriesData, true)
+//             }
+//         }
+//     },
+// )
+
+onUnmounted(() => {
+    stopRaf()
+})
+
 // @ts-ignore
 let refreshSeriesListData = () => {
     initUSeriesData()
@@ -388,6 +433,7 @@ const hourFormat = settingsStore.time24 ? 'HH' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
+    pxAlign: 1,
     series: uPlotSeries,
     axes: [
         {
@@ -663,6 +709,31 @@ const uOptions: uPlot.Options = {
         columnHighlightPlugin(),
         mouseWheelZoomPlugin(),
     ],
+    hooks: {
+        setScale: [
+            (u: uPlot, key: string) => {
+                // Only handle user-driven scale changes. Internal uPlot calls during init,
+                // data updates, and rAF-driven setScale are all silenced by the rafPaused guard.
+                if (key !== 'x' || !settingsStore.eyeCandy || !rafPaused) return
+                // Compare visible span to the actual data span with 1% tolerance.
+                // This is robust against floating-point drift and the fact that data[0][0]
+                // may be zero-padded at startup.
+                const scaleSpan = u.scales.x.max! - u.scales.x.min!
+                const dataSpan = u.data[0][u.data[0].length - 1] - u.data[0][0]
+                if (scaleSpan >= dataSpan * 0.99) {
+                    // Scale covers the full data range — restart animation.
+                    // Check isFullRange FIRST so a zoom-out that immediately hits full range
+                    // restarts on the very first setScale, regardless of userZoomed state.
+                    userZoomed = false
+                    rafPaused = false
+                    startRaf()
+                } else if (!userZoomed) {
+                    // First scale change that is a real zoom-in (drag or wheel).
+                    userZoomed = true
+                }
+            },
+        ],
+    },
 }
 console.debug('Processed status data for System Overview')
 
@@ -670,44 +741,92 @@ console.debug('Processed status data for System Overview')
 
 onMounted(async () => {
     const uChartElement: HTMLElement = document.getElementById('u-plot-chart') ?? new HTMLElement()
-    const uPlotChart = new uPlot(uOptions, uSeriesData, uChartElement)
+    chart = new uPlot(uOptions, uSeriesData, uChartElement)
     const getChartSize = () => {
         const cwh = uChartElement.getBoundingClientRect()
         return { width: cwh.width, height: cwh.height }
     }
-    let isZoomed: boolean = false
-    uPlotChart.setSize(getChartSize())
+    chart.setSize(getChartSize())
     const resizeObserver = new ResizeObserver((_) => {
-        uPlotChart.setSize(getChartSize())
+        chart!.setSize(getChartSize())
     })
     resizeObserver.observe(uChartElement)
 
-    refreshSeriesListData = () => {
-        initUSeriesData()
-        uPlotChart.setData(uSeriesData)
+    uChartElement.addEventListener('mousedown', () => {
+        if (settingsStore.eyeCandy && rafId !== null) {
+            stopRaf()
+            rafPaused = true
+        }
+    })
+    // capture: true fires during the capture phase (top-down), before the wheel zoom
+    // plugin's listener on the child u.over element (bubbling phase). This ensures
+    // rafPaused = true before setScale fires, so hooks.setScale sees the correct state.
+    uChartElement.addEventListener(
+        'wheel',
+        () => {
+            if (settingsStore.eyeCandy && rafId !== null) {
+                if (
+                    chart!.scales.x.min != chart!.data[0][0] ||
+                    chart!.scales.x.max != chart!.data[0][chart!.data[0].length - 1]
+                ) {
+                    stopRaf()
+                    rafPaused = true
+                }
+                // Don't set userZoomed here — hooks.setScale inspects the actual scale span
+                // to determine whether this is a zoom-in or a clamp at full range.
+            }
+        },
+        { capture: true, passive: true },
+    )
+    uChartElement.addEventListener('mouseup', () => {
+        if (settingsStore.eyeCandy && rafPaused) {
+            // Defer: uPlot listens on document for mouseup to finalize zoom, so setScale
+            // fires after this element listener. Check userZoomed only after that happens.
+            setTimeout(() => {
+                if (rafPaused && !userZoomed) {
+                    rafPaused = false
+                    startRaf()
+                }
+            }, 0)
+        }
+    })
+    if (settingsStore.eyeCandy) {
+        startRaf()
     }
 
+    refreshSeriesListData = () => {
+        initUSeriesData()
+        chart!.setData(uSeriesData)
+    }
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
-                // zoom handling:
-                if (
-                    uPlotChart.scales.x.min != uPlotChart.data[0][0] ||
-                    uPlotChart.scales.x.max != uPlotChart.data[0][uPlotChart.data[0].length - 1]
-                ) {
-                    isZoomed = true
-                    return
-                } else if (isZoomed) {
-                    // zoom has been reset
-                    isZoomed = false
-                    initUSeriesData() // reinit everything
+                if (!settingsStore.eyeCandy) {
+                    // Non-animated mode: zoom detection via scale vs data bounds comparison
+                    if (
+                        chart!.scales.x.min != chart!.data[0][0] ||
+                        chart!.scales.x.max != chart!.data[0][chart!.data[0].length - 1]
+                    ) {
+                        isZoomed = true
+                        return
+                    } else if (isZoomed) {
+                        // zoom has been reset
+                        isZoomed = false
+                        initUSeriesData() // reinit everything
+                    }
                 }
                 if (onlyRecentStatus) {
                     updateUSeriesData()
                 } else {
                     initUSeriesData() // reinit everything
                 }
-                uPlotChart.setData(uSeriesData, true)
+                if (!settingsStore.eyeCandy) {
+                    chart!.setData(uSeriesData, true)
+                } else if (rafId === null) {
+                    // eyeCandy, rAF paused (user zoomed): keep data live, preserve scale
+                    chart!.setData(uSeriesData, false)
+                }
+                // if rAF is running, it calls setData each frame
             })
         }
     })
