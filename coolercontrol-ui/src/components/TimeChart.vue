@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { Device, UID } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
@@ -309,7 +309,12 @@ const startRaf = () => {
     const animate = () => {
         const now = Date.now() / 1000
         chart!.setData(uSeriesData, false)
-        chart!.setScale('x', { min: now - timeRangeSeconds, max: now })
+        // Snap the right edge to a whole device-pixel boundary so the x-axis only
+        // advances in integer-pixel steps. This stabilises the dash/dot phase between
+        // frames and eliminates the shaky/crawling appearance of dashed series.
+        const pxPerSec = chart!.bbox.width / timeRangeSeconds
+        const snappedNow = pxPerSec > 0 ? Math.round(now * pxPerSec) / pxPerSec : now
+        chart!.setScale('x', { min: snappedNow - timeRangeSeconds, max: snappedNow })
         rafId = requestAnimationFrame(animate)
     }
     rafId = requestAnimationFrame(animate)
@@ -321,24 +326,6 @@ const stopRaf = () => {
         rafId = null
     }
 }
-
-// watch(
-//     () => settingsStore.eyeCandy,
-//     (enabled) => {
-//         if (enabled) {
-//             rafPaused = false
-//             userZoomed = false
-//             startRaf()
-//         } else {
-//             stopRaf()
-//             rafPaused = false
-//             userZoomed = false
-//             if (chart !== null) {
-//                 chart.setData(uSeriesData, true)
-//             }
-//         }
-//     },
-// )
 
 onUnmounted(() => {
     stopRaf()
@@ -433,7 +420,7 @@ const hourFormat = settingsStore.time24 ? 'HH' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
-    pxAlign: 1,
+    pxAlign: 0,
     series: uPlotSeries,
     axes: [
         {
