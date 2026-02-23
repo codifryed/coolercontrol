@@ -739,8 +739,12 @@ onMounted(async () => {
     })
     resizeObserver.observe(uChartElement)
 
-    uChartElement.addEventListener('mousedown', () => {
-        if (settingsStore.eyeCandy && rafId !== null) {
+    uChartElement.addEventListener('mousedown', (event: MouseEvent) => {
+        if (
+            settingsStore.eyeCandy &&
+            rafId !== null &&
+            (event.button === 0 || event.button === 2)
+        ) {
             stopRaf()
             rafPaused = true
         }
