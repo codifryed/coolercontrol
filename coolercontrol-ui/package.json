@@ -86,8 +86,8 @@
         "editorconfig": {
             "minimatch": "^9.0.6"
         },
-        "glob": {
-            "minimatch": "^9.0.6"
+        "js-beautify": {
+            "glob": "^13.0.0"
         }
     }
 }
