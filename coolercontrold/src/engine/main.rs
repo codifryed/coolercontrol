@@ -309,8 +309,35 @@ impl Engine {
             .into_iter()
             .map(|f| f.uid)
             .collect::<Vec<FunctionUID>>();
+        // Resolve sub-members for Mix-type members and validate hierarchy
+        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> = HashMap::new();
+        for member in &member_profiles {
+            if member.p_type == ProfileType::Mix {
+                let sub_members = self
+                    .get_ordered_member_profiles(&member.member_profile_uids)
+                    .await?;
+                // Single-level enforcement: sub-members must all be Graph
+                if sub_members.iter().any(|p| p.p_type != ProfileType::Graph) {
+                    return Err(anyhow!(
+                        "Mix member '{}' contains non-Graph sub-members (multi-level nesting not allowed)",
+                        member.name
+                    ));
+                }
+                // Validate sub-member functions exist
+                if sub_members
+                    .iter()
+                    .any(|p| all_function_uids.contains(&p.function_uid).not())
+                {
+                    return Err(anyhow!(
+                        "All sub-member Profile Functions should be present"
+                    ));
+                }
+                member_sub_profiles.insert(member.uid.clone(), sub_members);
+            }
+        }
         let member_profile_functions_all_present = member_profiles
             .iter()
+            .filter(|p| p.p_type == ProfileType::Graph)
             .all(|p| all_function_uids.contains(&p.function_uid));
         if member_profile_functions_all_present.not() {
             return Err(anyhow!("All Member Profile Functions should be present"));
@@ -336,6 +363,7 @@ impl Engine {
                 },
                 profile,
                 member_profiles,
+                &member_sub_profiles,
             )
         } else {
             Err(anyhow!(
@@ -381,6 +409,18 @@ impl Engine {
         let member_profile_members = self
             .get_ordered_member_profiles(&member_profile.member_profile_uids)
             .await?;
+        // Resolve sub-members if the overlay's member Mix has Mix sub-members
+        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> = HashMap::new();
+        if member_profile.p_type == ProfileType::Mix {
+            for sub_member in &member_profile_members {
+                if sub_member.p_type == ProfileType::Mix {
+                    let sub_sub_members = self
+                        .get_ordered_member_profiles(&sub_member.member_profile_uids)
+                        .await?;
+                    member_sub_profiles.insert(sub_member.uid.clone(), sub_sub_members);
+                }
+            }
+        }
         if speed_options.fixed_enabled {
             // clear any profile setting for this channel first:
             self.overlay_commander
@@ -403,6 +443,7 @@ impl Engine {
                 profile,
                 &member_profile,
                 member_profile_members,
+                member_sub_profiles,
             )
         } else {
             Err(anyhow!(

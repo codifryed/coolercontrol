@@ -225,9 +225,27 @@ const chosenFunction: Ref<Function> = ref(
     settingsStore.functions.find((f) => f.uid === currentProfile.value.function_uid)!,
 )
 const memberProfileOptions: Ref<Array<Profile>> = computed(() =>
-    settingsStore.profiles.filter(
-        (profile) => profile.uid !== props.profileUID && profile.p_type === ProfileType.Graph,
-    ),
+    settingsStore.profiles.filter((profile) => {
+        if (profile.uid === props.profileUID) return false
+        if (profile.p_type === ProfileType.Graph) return true
+        if (profile.p_type !== ProfileType.Mix) return false
+        // Exclude Mix profiles that already have Mix sub-members (can't be a child if already a parent)
+        const hasMixSubMembers = profile.member_profile_uids.some(
+            (uid) => settingsStore.profiles.find((p) => p.uid === uid)?.p_type === ProfileType.Mix,
+        )
+        if (hasMixSubMembers) return false
+        // Exclude if circular reference (member contains current profile)
+        if (profile.member_profile_uids.includes(props.profileUID)) return false
+        // Exclude if current profile is already a child of another Mix (can't become a parent)
+        const currentIsChildOfAnotherMix = settingsStore.profiles.some(
+            (p) =>
+                p.p_type === ProfileType.Mix &&
+                p.uid !== props.profileUID &&
+                p.member_profile_uids.includes(props.profileUID),
+        )
+        if (currentIsChildOfAnotherMix) return false
+        return true
+    }),
 )
 const offsetMemberProfileOptions: Ref<Array<Profile>> = computed(() =>
     settingsStore.profiles.filter(

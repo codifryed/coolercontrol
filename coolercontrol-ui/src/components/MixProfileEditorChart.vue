@@ -32,7 +32,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, toRaw, watch } from 'vue'
-import { ProfileMixFunctionType, Profile, FunctionType } from '@/models/Profile'
+import { ProfileMixFunctionType, Profile, ProfileType, FunctionType } from '@/models/Profile'
 import { useI18n } from 'vue-i18n'
 
 echarts.use([
@@ -60,6 +60,15 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const { t } = useI18n()
 
+// Flatten Mix member profiles to their Graph sub-members for chart visual display.
+// props.profiles may contain Mix-type members in a parent Mix hierarchy.
+const graphProfiles: Array<Profile> = props.profiles.flatMap((profile) => {
+    if (profile.p_type === ProfileType.Mix) {
+        return settingsStore.profiles.filter((p) => profile.member_profile_uids.includes(p.uid))
+    }
+    return [profile]
+})
+
 //--------------------------------------------------------------------------------------------------
 
 // Graph is completely redrawn on profile-member change
@@ -67,7 +76,7 @@ let currentAxisTempMin = 0
 let currentAxisTempMax = 100
 let profileTempMin = 50
 let profileTempMax = 50
-for (const profile of props.profiles) {
+for (const profile of graphProfiles) {
     for (const device of deviceStore.allDevices()) {
         if (device.uid === profile.temp_source?.device_uid) {
             if (device.info == null) {
@@ -102,14 +111,14 @@ interface LineData {
 // @ts-ignore
 const tempLineData: [[LineData, LineData]] = []
 const graphLineData: Array<Array<LineData>> = []
-for (let i = 0; i < props.profiles.length; i++) {
+for (let i = 0; i < graphProfiles.length; i++) {
     tempLineData.push([{ value: [] }, { value: [] }])
     graphLineData.push([])
 }
 const calculatedDutyLineData: [LineData, LineData] = [{ value: [] }, { value: [] }]
 
 const getTempLineColor = (profileIndex: number): string => {
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     if (profile.temp_source == null) {
         return colors.themeColors.accent
     }
@@ -121,7 +130,7 @@ const getTempLineColor = (profileIndex: number): string => {
     )
 }
 const calcSmoothness = (profileIndex: number): number => {
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 0.0
@@ -130,7 +139,7 @@ const calcSmoothness = (profileIndex: number): number => {
     }
 }
 const calcLineShadowColor = (profileIndex: number): string => {
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return colors.themeColors.bg_one
@@ -139,7 +148,7 @@ const calcLineShadowColor = (profileIndex: number): string => {
     }
 }
 const calcLineShadowSize = (profileIndex: number): number => {
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     const fun = settingsStore.functions.find((f) => f.uid === profile.function_uid)
     if (fun == null || fun.f_type === FunctionType.Identity) {
         return 10
@@ -221,7 +230,7 @@ const option = {
 }
 
 const getTemp = (profileIndex: number): number => {
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     if (profile.temp_source == null) {
         return 0
     }
@@ -234,28 +243,63 @@ const getTemp = (profileIndex: number): number => {
     return Number(tempValue)
 }
 
+const getTempForProfile = (profile: Profile): number => {
+    if (profile.temp_source == null) return 0
+    const tempValue = deviceStore.currentDeviceStatus
+        .get(profile.temp_source.device_uid)
+        ?.get(profile.temp_source.temp_name)?.temp
+    return tempValue != null ? Number(tempValue) : 0
+}
+
+const applyMixFunction = (duties: number[], functionType: ProfileMixFunctionType): number => {
+    if (duties.length === 0) return 0
+    switch (functionType) {
+        case ProfileMixFunctionType.Avg:
+            return duties.reduce((a, b) => a + b, 0) / duties.length
+        case ProfileMixFunctionType.Max:
+            return Math.max(...duties)
+        case ProfileMixFunctionType.Min:
+            return Math.min(...duties)
+        case ProfileMixFunctionType.Diff:
+            return Math.max(
+                Math.min(
+                    duties.reduce((a, b) => a - b),
+                    100,
+                ),
+                0,
+            )
+        case ProfileMixFunctionType.Sum:
+            return Math.min(
+                duties.reduce((a, b) => a + b, 0),
+                100,
+            )
+    }
+}
+
 /**
- * Calculate a simple duty (no function settings) from the member profiles and MixFunctionType
+ * Calculate a simple duty (no function settings) from the member profiles and MixFunctionType.
+ * For Mix members, the child's mix function is applied to its Graph sub-members first.
  */
 const calculateDuty = (): number => {
     const allDuties: number[] = []
-    for (let i = 0; i < props.profiles.length; i++) {
-        const temp = getTemp(i)
-        const profile = props.profiles[i]
-        const duty = interpolate_profile(profile.speed_profile, temp)
-        allDuties.push(duty)
+    for (const member of props.profiles) {
+        if (member.p_type === ProfileType.Mix && member.mix_function_type != null) {
+            const childDuties: number[] = []
+            for (const subUid of member.member_profile_uids) {
+                const subProfile = settingsStore.profiles.find((p) => p.uid === subUid)
+                if (subProfile == null) continue
+                const temp = getTempForProfile(subProfile)
+                childDuties.push(interpolate_profile(subProfile.speed_profile, temp))
+            }
+            if (childDuties.length > 0) {
+                allDuties.push(applyMixFunction(childDuties, member.mix_function_type))
+            }
+        } else {
+            const temp = getTempForProfile(member)
+            allDuties.push(interpolate_profile(member.speed_profile, temp))
+        }
     }
-    switch (props.mixFunctionType) {
-        case ProfileMixFunctionType.Avg:
-            return allDuties.reduce((a, b) => a + b, 0) / allDuties.length
-        case ProfileMixFunctionType.Max:
-            return Math.max(...allDuties)
-        case ProfileMixFunctionType.Min:
-            return Math.min(...allDuties)
-        case ProfileMixFunctionType.Diff:
-            const diff = allDuties.reduce((a, b) => a - b)
-            return Math.max(Math.min(diff, 100), 0)
-    }
+    return applyMixFunction(allDuties, props.mixFunctionType)
 }
 
 /**
@@ -293,7 +337,7 @@ const getDutyPosition = (duty: number): string => {
 }
 
 // series is dynamic and dependent on member profiles
-for (let i = 0; i < props.profiles.length; i++) {
+for (let i = 0; i < graphProfiles.length; i++) {
     option.series.push(
         // @ts-ignore
         {
@@ -434,7 +478,7 @@ const setGraphData = (profileIndex: number) => {
     tempLineData[profileIndex][0].value = [temp, dutyMin]
     tempLineData[profileIndex][1].value = [temp, dutyMax]
     graphLineData[profileIndex].length = 0
-    const profile = props.profiles[profileIndex]
+    const profile = graphProfiles[profileIndex]
     if (profile.speed_profile.length > 1) {
         const firstPoint = profile.speed_profile[0]
         if (firstPoint[0] > axisXTempMin) {
@@ -449,7 +493,7 @@ const setGraphData = (profileIndex: number) => {
         }
     }
 }
-for (let i = 0; i < props.profiles.length; i++) {
+for (let i = 0; i < graphProfiles.length; i++) {
     setGraphData(i)
 }
 
@@ -478,7 +522,7 @@ watch(rawStore.currentDeviceStatus, () => {
             },
         ],
     })
-    for (let i = 0; i < props.profiles.length; i++) {
+    for (let i = 0; i < graphProfiles.length; i++) {
         const temp = getTemp(i)
         tempLineData[i][0].value = [temp, dutyMin]
         tempLineData[i][1].value = [temp, dutyMax]
@@ -495,7 +539,7 @@ watch(rawStore.currentDeviceStatus, () => {
 })
 
 watch(settingsStore.allUIDeviceSettings, () => {
-    for (let i = 0; i < props.profiles.length; i++) {
+    for (let i = 0; i < graphProfiles.length; i++) {
         const tempLineColor = getTempLineColor(i)
         // @ts-ignore
         option.series[i * 2].lineStyle.color = tempLineColor

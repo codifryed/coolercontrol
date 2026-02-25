@@ -1098,6 +1098,7 @@ export default {
                 max: '최대',
                 avg: '평균',
                 diff: '차이',
+                sum: '합계',
             },
         },
         customSensor: {

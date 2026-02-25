@@ -1133,6 +1133,7 @@ export default {
                 max: 'Maximum',
                 avg: 'Moyenne',
                 diff: 'Différence',
+                sum: 'Somme',
             },
         },
         customSensor: {

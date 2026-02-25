@@ -1078,6 +1078,7 @@ export default {
                 max: '最大值',
                 avg: '平均值',
                 diff: '差值',
+                sum: '總和',
             },
         },
         customSensor: {

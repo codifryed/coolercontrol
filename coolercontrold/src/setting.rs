@@ -419,6 +419,7 @@ pub enum ProfileMixFunctionType {
     Max,
     Avg,
     Diff,
+    Sum,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize, JsonSchema)]

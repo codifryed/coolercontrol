@@ -1098,6 +1098,7 @@ export default {
                 max: 'الحد الأقصى',
                 avg: 'متوسط',
                 diff: 'الفرق',
+                sum: 'المجموع',
             },
         },
         customSensor: {

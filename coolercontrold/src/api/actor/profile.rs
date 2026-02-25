@@ -76,7 +76,7 @@ impl ProfileActor {
         }
     }
 
-    fn verify_profile_internals(&self, profile: &Profile) -> Result<()> {
+    async fn verify_profile_internals(&self, profile: &Profile) -> Result<()> {
         if profile.p_type == ProfileType::Graph {
             // verify function exists
             let _ = self.config.get_function(&profile.function_uid)?;
@@ -107,6 +107,78 @@ impl ProfileActor {
                     ),
                 }
                 .into());
+            }
+        } else if profile.p_type == ProfileType::Mix {
+            let all_profiles = self.config.get_profiles().await?;
+            for member_uid in &profile.member_profile_uids {
+                // Verify member profile exists
+                let Some(member) = all_profiles.iter().find(|p| &p.uid == member_uid) else {
+                    return Err(CCError::UserError {
+                        msg: format!("Member Profile with UID: {member_uid} not found"),
+                    }
+                    .into());
+                };
+                // Verify members are Graph or Mix only
+                if member.p_type != ProfileType::Graph && member.p_type != ProfileType::Mix {
+                    return Err(CCError::UserError {
+                        msg: format!(
+                            "Mix member '{}' must be a Graph or Mix profile",
+                            member.name
+                        ),
+                    }
+                    .into());
+                }
+                // For Mix members: verify single-level (no Mix sub-members)
+                if member.p_type == ProfileType::Mix {
+                    let has_mix_sub_members = member.member_profile_uids.iter().any(|sub_uid| {
+                        all_profiles
+                            .iter()
+                            .find(|p| &p.uid == sub_uid)
+                            .is_some_and(|p| p.p_type == ProfileType::Mix)
+                    });
+                    if has_mix_sub_members {
+                        return Err(CCError::UserError {
+                            msg: format!(
+                                "Mix member '{}' already contains Mix sub-members \
+                                 (only single-level nesting allowed)",
+                                member.name
+                            ),
+                        }
+                        .into());
+                    }
+                    // Check circular reference: member doesn't contain this profile's UID
+                    if member.member_profile_uids.contains(&profile.uid) {
+                        return Err(CCError::UserError {
+                            msg: format!(
+                                "Circular reference: Mix member '{}' contains this profile",
+                                member.name
+                            ),
+                        }
+                        .into());
+                    }
+                }
+            }
+            // Check: if this profile is already a child of another Mix, it cannot have Mix members
+            let has_mix_members = profile.member_profile_uids.iter().any(|uid| {
+                all_profiles
+                    .iter()
+                    .find(|p| &p.uid == uid)
+                    .is_some_and(|p| p.p_type == ProfileType::Mix)
+            });
+            if has_mix_members {
+                let is_child_of_another_mix = all_profiles.iter().any(|p| {
+                    p.p_type == ProfileType::Mix
+                        && p.uid != profile.uid
+                        && p.member_profile_uids.contains(&profile.uid)
+                });
+                if is_child_of_another_mix {
+                    return Err(CCError::UserError {
+                        msg: "This Mix profile is already a member of another Mix profile \
+                              and cannot contain Mix members itself"
+                            .to_string(),
+                    }
+                    .into());
+                }
             }
         }
         Ok(())
@@ -141,7 +213,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
                 respond_to,
             } => {
                 let result = async {
-                    self.verify_profile_internals(&profile)?;
+                    self.verify_profile_internals(&profile).await?;
                     self.config.set_profile(profile)?;
                     self.config.save_config_file().await
                 }
@@ -154,7 +226,7 @@ impl ApiActor<ProfileMessage> for ProfileActor {
             } => {
                 let result = async {
                     let profile_uid = profile.uid.clone();
-                    self.verify_profile_internals(&profile)?;
+                    self.verify_profile_internals(&profile).await?;
                     self.config.update_profile(profile)?;
                     self.engine.profile_updated(&profile_uid).await;
                     self.config.save_config_file().await

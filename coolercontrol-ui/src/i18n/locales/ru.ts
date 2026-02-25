@@ -1109,6 +1109,7 @@ export default {
                 max: 'Максимум',
                 avg: 'Среднее',
                 diff: 'Разность',
+                sum: 'Сумма',
             },
         },
         customSensor: {
