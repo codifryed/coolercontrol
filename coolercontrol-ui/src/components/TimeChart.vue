@@ -310,7 +310,7 @@ const startRaf = () => {
         const now = Date.now() / 1000
         chart!.setData(uSeriesData, false)
         // Snap the right edge to a whole device-pixel boundary so the x-axis only
-        // advances in integer-pixel steps. This stabilises the dash/dot phase between
+        // advances in integer-pixel steps. This stabilizes the dash/dot phase between
         // frames and eliminates the shaky/crawling appearance of dashed series.
         const pxPerSec = chart!.bbox.width / timeRangeSeconds
         const snappedNow = pxPerSec > 0 ? Math.round(now * pxPerSec) / pxPerSec : now
@@ -708,9 +708,6 @@ const uOptions: uPlot.Options = {
                 const scaleSpan = u.scales.x.max! - u.scales.x.min!
                 const dataSpan = u.data[0][u.data[0].length - 1] - u.data[0][0]
                 if (scaleSpan >= dataSpan * 0.99) {
-                    // Scale covers the full data range — restart animation.
-                    // Check isFullRange FIRST so a zoom-out that immediately hits full range
-                    // restarts on the very first setScale, regardless of userZoomed state.
                     userZoomed = false
                     rafPaused = false
                     startRaf()
@@ -750,8 +747,7 @@ onMounted(async () => {
         }
     })
     // capture: true fires during the capture phase (top-down), before the wheel zoom
-    // plugin's listener on the child u.over element (bubbling phase). This ensures
-    // rafPaused = true before setScale fires, so hooks.setScale sees the correct state.
+    // plugin's listener on the child u.over element (bubbling phase).
     uChartElement.addEventListener(
         'wheel',
         () => {
@@ -763,8 +759,6 @@ onMounted(async () => {
                     stopRaf()
                     rafPaused = true
                 }
-                // Don't set userZoomed here — hooks.setScale inspects the actual scale span
-                // to determine whether this is a zoom-in or a clamp at full range.
             }
         },
         { capture: true, passive: true },
