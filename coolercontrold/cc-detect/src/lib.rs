@@ -58,9 +58,6 @@ use environment::Environment;
 use module_loader::LoadResult;
 use superio::DetectedChip;
 
-/// Override file path for user/distro chip additions.
-pub const OVERRIDE_FILE_PATH: &str = "/etc/coolercontrol/detect.toml";
-
 /// Complete detection results.
 #[derive(Debug, Clone, Serialize)]
 pub struct DetectionResults {
@@ -100,12 +97,14 @@ pub struct EnvironmentInfo {
 ///
 /// # Arguments
 /// * `load_modules` - If `true`, also load detected kernel modules via modprobe.
+/// * `override_path` - Optional path to a TOML file with additional chip definitions to merge
+///   into the compiled-in database at runtime. Pass `None` to skip.
 ///
 /// # Returns
 /// Detection results including detected chips, skipped drivers, and environment info.
 #[cfg(target_arch = "x86_64")]
 #[must_use]
-pub fn run_detection(load_modules: bool) -> DetectionResults {
+pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> DetectionResults {
     info!("Starting Super-I/O hardware detection");
 
     let env = Environment::detect();
@@ -126,9 +125,10 @@ pub fn run_detection(load_modules: bool) -> DetectionResults {
 
     // Load chip database
     let mut db = ChipDatabase::load_compiled();
-    let override_path = Path::new(OVERRIDE_FILE_PATH);
-    if override_path.exists() {
-        db.load_override(override_path);
+    if let Some(path) = override_path {
+        if path.exists() {
+            db.load_override(path);
+        }
     }
 
     // Open /dev/port
@@ -154,7 +154,7 @@ pub fn run_detection(load_modules: bool) -> DetectionResults {
 
 /// Non-x86_64 stub: detection is not supported.
 #[cfg(not(target_arch = "x86_64"))]
-pub fn run_detection(_load_modules: bool) -> DetectionResults {
+pub fn run_detection(_load_modules: bool, _override_path: Option<&Path>) -> DetectionResults {
     info!("Super-I/O detection is only supported on x86_64");
     DetectionResults {
         detected_chips: Vec::new(),

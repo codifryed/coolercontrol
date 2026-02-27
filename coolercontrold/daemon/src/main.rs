@@ -17,11 +17,12 @@
  */
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
 use crate::alerts::AlertController;
-use crate::config::Config;
+use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
@@ -218,6 +219,7 @@ fn main() -> Result<()> {
 
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
+
         let (repos, custom_sensors_repo, plugin_controller, api_up_token) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
@@ -432,7 +434,10 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
 
 fn handle_detect_command(args: &Args) {
     if let Some(SubCommands::Detect { load }) = &args.command {
-        let results = cc_detect::run_detection(*load);
+        let results = cc_detect::run_detection(
+            *load,
+            Some(&Path::new(DEFAULT_CONFIG_DIR).join("detect.toml")),
+        );
         cc_detect::output_results(&results);
         exit_successfully()
     }
@@ -453,7 +458,10 @@ fn run_sensors_detection(config: &Rc<Config>) {
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             info!("Running Super-I/O hardware detection");
-            let results = cc_detect::run_detection(true);
+            let results = cc_detect::run_detection(
+                true,
+                Some(&Path::new(DEFAULT_CONFIG_DIR).join("detect.toml")),
+            );
             for chip in &results.detected_chips {
                 info!(
                     "Detected: {} (driver: {}, status: {})",

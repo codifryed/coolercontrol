@@ -33,20 +33,22 @@ Chip definitions are compiled into the binary from TOML data files:
 - `data/superio_smsc.toml`
 - `data/superio_national_semi.toml`
 
-User or distro additions can be placed in `/etc/coolercontrol/detect.toml`, which is merged at
-runtime without recompiling.
+An optional runtime override file can be passed to `run_detection` to merge additional chip
+definitions without recompiling.
 
 ## Usage
 
 ```rust
+use std::path::Path;
 use cc_detect::{run_detection, output_results};
 
-// Detect chips only (no module loading)
-let results = run_detection(false);
+// Detect chips only, no override file, no module loading
+let results = run_detection(false, None);
 output_results(&results);
 
-// Detect and load kernel modules via modprobe
-let results = run_detection(true);
+// Detect with a custom override file and load kernel modules via modprobe
+let override_path = Path::new("/etc/myapp/detect.toml");
+let results = run_detection(true, Some(override_path));
 for chip in &results.detected_chips {
     println!("{} ({}): {}", chip.name, chip.driver, chip.module_status);
 }
