@@ -83,19 +83,19 @@ then:
 Clean & Build the UI assets, daemon and desktop release binaries:
 
 ```bash
-cd .. && make dev-build
+cd ../.. && make dev-build
 ```
 
 Install the build daemon and desktop binaries:
 
 ```bash
-cd .. && make dev-install
+cd ../.. && make dev-install
 ```
 
 Run all tests for the UI assets, daemon, and desktop application:
 
 ```bash
-cd .. && make dev-test
+cd ../.. && make dev-test
 ```
 
 **Alternatively:**  
