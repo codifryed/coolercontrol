@@ -63,6 +63,7 @@ make dev
   - https://tailwindcss.com/docs/upgrade-guide
   - Looks like 4.0 only works for Chrome 111+
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
+- "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
 
 ## Formatting
 
