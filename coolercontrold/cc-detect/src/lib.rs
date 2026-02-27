@@ -2,6 +2,12 @@
  * CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2026  Guy Boldon, megadjc and contributors
  *
+ * This library is derived from lm-sensors (sensors-detect).
+ * lm-sensors is Copyright (C) the lm-sensors contributors.
+ * Source: https://github.com/lm-sensors/lm-sensors
+ * TsunamiMommy fork: https://github.com/TsunamiMommy/lm-sensors
+ * Original license: GNU General Public License, version 2 or later (GPL-2.0-or-later).
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -17,11 +23,22 @@
  */
 
 //! Detects Super-I/O chips via I/O port probing and loads the appropriate
-//! kernel modules. Based on the
-//! [TsunamiMommy/lm-sensors](https://github.com/TsunamiMommy/lm-sensors) fork with a two-path
-//! detection algorithm (fast non-invasive + fallback with config mode entry).
+//! kernel modules.
 //!
-//! This crate is x86_64-only - Super-I/O I/O port probing is architecture-specific.
+//! # Attribution
+//!
+//! This crate is a Rust reimplementation derived from the `sensors-detect`
+//! script in [lm-sensors](https://github.com/lm-sensors/lm-sensors)
+//! (GPL-2.0-or-later, Copyright (C) the lm-sensors contributors) and the
+//! [TsunamiMommy/lm-sensors](https://github.com/TsunamiMommy/lm-sensors) fork.
+//!
+//! The chip databases in `data/` are likewise derived from lm-sensors chip
+//! definitions and are distributed under the same GPL-2.0-or-later terms.
+//!
+//! # Architecture
+//!
+//! This crate is x86_64-only - Super-I/O I/O port probing is
+//! architecture-specific. On all other targets `run_detection` is a no-op.
 
 pub mod chip_db;
 pub mod chips_custom;
