@@ -70,8 +70,8 @@ pub fn detect_superio(port_io: &mut dyn PortIo, db: &ChipDatabase) -> Vec<Detect
         match try_fast_path(port_io, addr_reg, data_reg, db) {
             Ok(Some(chip)) => {
                 info!(
-                    "Detected {} at 0x{:02X} (driver: {}) (Fast path)",
-                    chip.name, addr_reg, chip.driver
+                    "Detected {} at 0x{:02X} id:0x{:04X} (driver: {}) (Fast path)",
+                    chip.name, addr_reg, chip.device_id, chip.driver
                 );
                 detected.push(chip);
                 continue; // Skip fallback for this address
@@ -88,8 +88,8 @@ pub fn detect_superio(port_io: &mut dyn PortIo, db: &ChipDatabase) -> Vec<Detect
         match try_fallback_path(port_io, addr_reg, data_reg, db, &custom_chips) {
             Ok(Some(chip)) => {
                 info!(
-                    "Detected {} at 0x{:02X} (driver: {}) (Fallback path)",
-                    chip.name, addr_reg, chip.driver
+                    "Detected {} at 0x{:02X} id:0x{:04X} (driver: {}) (Fallback path)",
+                    chip.name, addr_reg, chip.device_id, chip.driver
                 );
                 detected.push(chip);
             }
@@ -144,8 +144,12 @@ fn try_fast_path(
                 active,
             }));
         }
-        debug!("Fast path matched {} but no driver available", chip.name);
+        info!(
+            "No driver match for {} ID: 0x{id:04X} (Fast path)",
+            chip.name
+        );
     }
+    info!("No chip match for device ID: 0x{id:04X} (Fast path)");
 
     Ok(None)
 }
@@ -246,7 +250,14 @@ fn probe_family(
 
     // Match against this family's TOML chips
     for chip in &family.chips {
-        if chip.matches_id(id) && chip.has_driver() {
+        if chip.matches_id(id) {
+            if !chip.has_driver() {
+                info!(
+                    "Chip has no driver for {} ID: 0x{id:04X} (Family: {})",
+                    chip.name, family.name
+                );
+                continue;
+            }
             debug!("Matched chip: {} (driver: {})", chip.name, chip.driver);
             let (base_addr, active) = read_chip_details(port_io, addr_reg, data_reg, chip)?;
             return Ok(Some(DetectedChip {
@@ -261,7 +272,7 @@ fn probe_family(
         }
     }
 
-    debug!("Family {}: no match for ID 0x{:04X}", family.name, id);
+    info!("No Match for chip Family {}: ID 0x{:04X}", family.name, id);
     Ok(None)
 }
 
