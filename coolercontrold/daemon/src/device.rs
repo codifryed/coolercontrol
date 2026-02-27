@@ -114,7 +114,7 @@ impl Device {
         device_id: Option<String>,
         poll_rate: f64,
     ) -> Self {
-        let uid = Self::create_uid_from(&name, &d_type, type_index, device_id.as_ref());
+        let uid = Self::create_uid_from(&name, d_type, type_index, device_id.as_ref());
         let status_history = Arc::new(VecDeque::with_capacity(Self::calc_history_stack_size(
             poll_rate,
         )));
@@ -141,7 +141,7 @@ impl Device {
     ///     - the device has been swapped with another device plugged into the system
     pub fn create_uid_from(
         name: &str,
-        d_type: &DeviceType,
+        d_type: DeviceType,
         type_index: u8,
         device_id: Option<&String>,
     ) -> UID {

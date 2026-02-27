@@ -83,8 +83,7 @@ impl GpuAMD {
                 continue;
             }
             let u_id = devices::get_device_unique_id(&path, &device_name).await;
-            let device_uid =
-                Device::create_uid_from(&device_name, &DeviceType::GPU, 0, Some(&u_id));
+            let device_uid = Device::create_uid_from(&device_name, DeviceType::GPU, 0, Some(&u_id));
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)

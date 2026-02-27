@@ -461,7 +461,7 @@ impl Repository for HwmonRepo {
             let u_id = devices::get_device_unique_id(&path, &device_name).await;
             debug!("Detected UID: {u_id}");
             let device_uid =
-                Device::create_uid_from(&device_name, &DeviceType::Hwmon, 0, Some(&u_id));
+                Device::create_uid_from(&device_name, DeviceType::Hwmon, 0, Some(&u_id));
             let cc_device_setting = self
                 .config
                 .get_cc_settings_for_device(&device_uid)

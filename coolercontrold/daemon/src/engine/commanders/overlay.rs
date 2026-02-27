@@ -60,7 +60,7 @@ impl OverlayProfileCommander {
         overlay_profile: &OverlayProfile,
         member_profile: &Profile,
         member_profile_members: Vec<Profile>,
-        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
+        member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> anyhow::Result<()> {
         if overlay_profile.p_type != ProfileType::Overlay {
             return Err(anyhow!(
@@ -112,7 +112,7 @@ impl OverlayProfileCommander {
         device_channel: &DeviceChannelProfileSetting,
         member_profile: &Profile,
         member_profile_members: Vec<Profile>,
-        member_sub_profiles: HashMap<ProfileUID, Vec<Profile>>,
+        member_sub_profiles: &HashMap<ProfileUID, Vec<Profile>>,
     ) -> anyhow::Result<()> {
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         // Add the Overlay settings for the member profile to be processed
@@ -126,7 +126,7 @@ impl OverlayProfileCommander {
                     device_channel.clone(),
                     member_profile,
                     member_profile_members,
-                    &member_sub_profiles,
+                    member_sub_profiles,
                 )?;
             }
             _ => return Err(anyhow!("Only Graph and Mix Profiles are supported")),

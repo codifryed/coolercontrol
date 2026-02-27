@@ -242,7 +242,7 @@ impl GpuNVidia {
             let name = device_lock
                 .name()
                 .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
-            let device_uid = Device::create_uid_from(&name, &DeviceType::GPU, type_index, None);
+            let device_uid = Device::create_uid_from(&name, DeviceType::GPU, type_index, None);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
             if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
                 info!("Skipping disabled device: {name} with UID: {device_uid}");
@@ -827,12 +827,8 @@ impl GpuNVidia {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
                     let type_index = nv_status.index + starting_nvidia_index;
-                    let device_uid = Device::create_uid_from(
-                        &nv_status.name,
-                        &DeviceType::GPU,
-                        type_index,
-                        None,
-                    );
+                    let device_uid =
+                        Device::create_uid_from(&nv_status.name, DeviceType::GPU, type_index, None);
                     let cc_device_setting = self.config.get_cc_settings_for_device(&device_uid)?;
                     if cc_device_setting.is_some() && cc_device_setting.as_ref().unwrap().disable {
                         info!(

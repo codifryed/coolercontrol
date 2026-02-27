@@ -443,7 +443,7 @@ impl Engine {
                 profile,
                 &member_profile,
                 member_profile_members,
-                member_sub_profiles,
+                &member_sub_profiles,
             )
         } else {
             Err(anyhow!(

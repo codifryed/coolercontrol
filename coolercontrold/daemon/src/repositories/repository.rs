@@ -114,7 +114,7 @@ pub struct Repositories {
 impl Repositories {
     /// This is here to help with future refactorings and improvements.
     #[allow(dead_code)]
-    pub fn get_by_type(&self, device_type: &DeviceType) -> Option<Rc<dyn Repository>> {
+    pub fn get_by_type(&self, device_type: DeviceType) -> Option<Rc<dyn Repository>> {
         match device_type {
             DeviceType::CPU => Self::clone_rc(self.cpu.as_ref()),
             DeviceType::GPU => Self::clone_rc(self.gpu.as_ref()),

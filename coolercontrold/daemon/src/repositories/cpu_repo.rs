@@ -661,7 +661,7 @@ impl CpuRepo {
                 // cpu_info is set first, filling in model names:
                 let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
                 let device_uid =
-                    Device::create_uid_from(&cpu_name, &DeviceType::CPU, type_index, None);
+                    Device::create_uid_from(&cpu_name, DeviceType::CPU, type_index, None);
                 let cc_device_setting = self
                     .config
                     .get_cc_settings_for_device(&device_uid)
