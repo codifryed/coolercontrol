@@ -74,6 +74,7 @@ pub struct DetectedChipInfo {
     pub driver: String,
     pub address: String,
     pub base_address: String,
+    pub device_id: String,
     pub features: Vec<String>,
     pub module_status: String,
 }
@@ -212,6 +213,7 @@ fn process_results(
             driver: chip.driver.clone(),
             address: format!("0x{:02X}", chip.address),
             base_address: format!("0x{:04X}", chip.base_address),
+            device_id: format!("0x{:04X}", chip.device_id),
             features: chip.features.clone(),
             module_status,
         });
@@ -255,14 +257,19 @@ pub fn output_results(results: &DetectionResults) {
 
     info!("Detected Super-I/O chips:");
     info!(
-        "  {:<40} {:<14} {:<8} {:<10} Status",
-        "Chip", "Driver", "Address", "Base Addr"
+        "  {:<40} {:<14} {:<8} {:<10} {:<8} Status",
+        "Chip", "Driver", "Address", "Base Addr", "Dev ID"
     );
     info!("  {}", "-".repeat(90));
     for chip in &results.detected_chips {
         info!(
-            "  {:<40} {:<14} {:<8} {:<10} {}",
-            chip.name, chip.driver, chip.address, chip.base_address, chip.module_status
+            "  {:<40} {:<14} {:<8} {:<10} {:<8} {}",
+            chip.name,
+            chip.driver,
+            chip.address,
+            chip.base_address,
+            chip.device_id,
+            chip.module_status
         );
     }
 
@@ -292,6 +299,7 @@ mod tests {
             driver: "it87".into(),
             address: 0x2E,
             base_address: 0x0290,
+            device_id: 0x0290,
             features: vec!["fan".into(), "temp".into()],
             active: true,
         }];
@@ -351,6 +359,7 @@ mod tests {
                 driver: "it87".into(),
                 address: "0x2E".into(),
                 base_address: "0x0290".into(),
+                device_id: "0x0290".into(),
                 features: vec!["fan".into()],
                 module_status: "loaded".into(),
             }],

@@ -53,6 +53,7 @@ pub struct DetectedChip {
     pub driver: String,
     pub address: u16,
     pub base_address: u16,
+    pub device_id: u16,
     pub features: Vec<String>,
     pub active: bool,
 }
@@ -138,6 +139,7 @@ fn try_fast_path(
                 driver: chip.driver.clone(),
                 address: addr_reg,
                 base_address: base_addr,
+                device_id: id,
                 features: chip.features.clone(),
                 active,
             }));
@@ -218,6 +220,7 @@ fn probe_family(
                         driver: custom_chip.entry.driver.clone(),
                         address: addr_reg,
                         base_address: base_addr,
+                        device_id: custom_chip.entry.devid,
                         features: custom_chip.entry.features.clone(),
                         active,
                     }));
@@ -251,6 +254,7 @@ fn probe_family(
                 driver: chip.driver.clone(),
                 address: addr_reg,
                 base_address: base_addr,
+                device_id: id,
                 features: chip.features.clone(),
                 active,
             }));
