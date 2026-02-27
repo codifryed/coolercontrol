@@ -208,6 +208,7 @@ fn main() -> Result<()> {
         handle_non_root_commands(&cmd_args).await?;
         let log_buf_handle = logger::setup_logging(&cmd_args, run_token.clone()).await?;
         verify_is_root()?;
+        handle_detect_command(&cmd_args);
         #[cfg(feature = "io_uring")]
         cc_fs::register_uring_buffers()?;
         let config = Rc::new(Config::load_config_file().await?);
@@ -216,6 +217,7 @@ fn main() -> Result<()> {
         admin::load_passwd().await?;
 
         pause_before_startup(&config).await?;
+        run_sensors_detection(&config);
         let (repos, custom_sensors_repo, plugin_controller, api_up_token) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
@@ -372,29 +374,33 @@ enum SubCommands {
         #[arg()]
         urgency: Option<String>,
     },
+    /// Run hardware detection and print results
+    Detect {
+        /// Also load detected kernel modules
+        #[arg(long)]
+        load: bool,
+    },
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
-    match &args.command {
-        Some(SubCommands::Notify {
+    if let Some(SubCommands::Notify {
+        title,
+        message,
+        icon,
+        audio,
+        urgency,
+    }) = &args.command
+    {
+        notifier::notify(
             title,
             message,
-            icon,
-            audio,
-            urgency,
-        }) => {
-            notifier::notify(
-                title,
-                message,
-                icon.unwrap_or(0),
-                audio.is_some_and(|a| a),
-                urgency.as_ref().map_or("1", |u| u.as_str()),
-                args.debug,
-            )
-            .await?;
-            exit_successfully();
-        }
-        None => {}
+            icon.unwrap_or(0),
+            audio.is_some_and(|a| a),
+            urgency.as_ref().map_or("1", |u| u.as_str()),
+            args.debug,
+        )
+        .await?;
+        exit_successfully();
     }
     Ok(())
 }
@@ -424,13 +430,58 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
     Ok(())
 }
 
-fn exit_with_error(err: &Error) {
+fn handle_detect_command(args: &Args) {
+    if let Some(SubCommands::Detect { load }) = &args.command {
+        let results = cc_detect::run_detection(*load);
+        cc_detect::output_results(&results);
+        exit_successfully()
+    }
+}
+
+fn exit_with_error(err: &Error) -> ! {
     error!("{err}");
     std::process::exit(1);
 }
 
-fn exit_successfully() {
+fn exit_successfully() -> ! {
     std::process::exit(0)
+}
+
+/// Run Super-I/O hardware detection and load kernel modules if enabled.
+#[cfg(target_arch = "x86_64")]
+fn run_sensors_detection(config: &Rc<Config>) {
+    match config.get_settings() {
+        Ok(settings) if settings.sensors_auto_detect => {
+            info!("Running Super-I/O hardware detection");
+            let results = cc_detect::run_detection(true);
+            for chip in &results.detected_chips {
+                info!(
+                    "Detected: {} (driver: {}, status: {})",
+                    chip.name, chip.driver, chip.module_status
+                );
+            }
+            for skip in &results.skipped {
+                info!(
+                    "Skipped driver {} (preferred: {})",
+                    skip.driver, skip.preferred
+                );
+            }
+            if results.detected_chips.is_empty() && !results.environment.is_container {
+                info!("No Super-I/O chips detected");
+            }
+        }
+        Ok(_) => {
+            info!("Super-I/O hardware detection disabled by configuration");
+        }
+        Err(err) => {
+            warn!("Could not read settings for sensors detection: {err}");
+        }
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn run_sensors_detection(_config: &Rc<Config>) {
+    // Super-I/O detection is x86_64-only
 }
 
 /// Some hardware needs additional time to come up and be ready to communicate.

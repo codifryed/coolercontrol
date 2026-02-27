@@ -209,6 +209,7 @@ impl CoolerControlSettingsDto {
             origins,
             allow_unencrypted,
             protocol_header,
+            sensors_auto_detect: current_settings.sensors_auto_detect,
         }
     }
 }

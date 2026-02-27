@@ -1108,6 +1108,11 @@ impl Config {
             } else {
                 None
             };
+            let sensors_auto_detect = settings
+                .get("sensors_auto_detect")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool()
+                .with_context(|| "sensors_auto_detect should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1127,6 +1132,7 @@ impl Config {
                 origins,
                 allow_unencrypted,
                 protocol_header,
+                sensors_auto_detect,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1185,6 +1191,9 @@ impl Config {
             base_settings["protocol_header"] =
                 Item::Value(Value::String(Formatted::new(header.clone())));
         }
+        base_settings["sensors_auto_detect"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.sensors_auto_detect,
+        )));
     }
 
     /// This gets the `CoolerControl` settings for specific devices

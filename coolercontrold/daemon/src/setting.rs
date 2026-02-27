@@ -185,6 +185,8 @@ pub struct CoolerControlSettings {
     pub allow_unencrypted: bool,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
     pub protocol_header: Option<String>,
+    /// Whether to auto-detect Super-I/O sensors and load kernel modules at startup
+    pub sensors_auto_detect: bool,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.

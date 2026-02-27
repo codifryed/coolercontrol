@@ -21,6 +21,7 @@ mod alerts;
 mod auth;
 mod base;
 mod custom_sensors;
+mod detect;
 pub mod devices;
 mod dual_protocol;
 mod functions;

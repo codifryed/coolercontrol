@@ -159,6 +159,10 @@ drivetemp_suspend = false
 # Note: This should only be used as a last resort and is not recommended.
 # allow_unencrypted = false
 
+# Whether to auto-detect Super-I/O hardware sensors and load the appropriate kernel
+# modules at startup. This helps ensure all hwmon chips are available. (x86_64 only)
+# sensors_auto_detect = true
+
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true

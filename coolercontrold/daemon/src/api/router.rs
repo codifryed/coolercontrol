@@ -17,8 +17,8 @@
  */
 
 use crate::api::{
-    alerts, auth, base, custom_sensors, functions, modes, plugins, profiles, settings, sse, status,
-    tokens,
+    alerts, auth, base, custom_sensors, detect, functions, modes, plugins, profiles, settings, sse,
+    status, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -43,6 +43,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(settings_routes())
         .merge(plugins_routes())
         .merge(alert_routes())
+        .merge(detect_routes())
         .merge(sse_routes());
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
@@ -921,6 +922,29 @@ fn alert_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+}
+
+fn detect_routes() -> ApiRouter<AppState> {
+    ApiRouter::new().api_route(
+        "/detect",
+        get_with(detect::get_detect, |o| {
+            o.summary("Detect Hardware")
+                .description(
+                    "Run Super-I/O hardware detection and return results without loading modules.",
+                )
+                .tag("detect")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .post_with(detect::post_detect, |o| {
+            o.summary("Detect Hardware and Load Modules")
+                .description("Run Super-I/O hardware detection and optionally load kernel modules.")
+                .tag("detect")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .layer(axum::middleware::from_fn(auth::auth_middleware)),
+    )
 }
 
 fn sse_routes() -> ApiRouter<AppState> {
