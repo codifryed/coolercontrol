@@ -1,32 +1,28 @@
 # cc-detect
 
-Super-I/O hardware detection for Linux. Probes I/O ports to identify Super-I/O
-chips and optionally loads the appropriate kernel modules via `modprobe`.
+Super-I/O hardware detection for Linux. Probes I/O ports to identify Super-I/O chips and optionally
+loads the appropriate kernel modules via `modprobe`.
 
-This crate is **x86_64 only** - Super-I/O I/O port probing is
-architecture-specific. On other architectures `run_detection` is a no-op that
-returns empty results.
+This crate is **x86_64 only** - Super-I/O I/O port probing is architecture-specific. On other
+architectures `run_detection` is a no-op that returns empty results.
 
 ## What is a Super-I/O chip?
 
-Super-I/O chips are hardware monitoring controllers found on most desktop and
-server motherboards (ITE, Winbond/Nuvoton, SMSC, National Semiconductor). They
-expose fan speeds, temperatures, and voltages through `hwmon` kernel drivers
-such as `it87`, `nct6775`, and `w83627hf`.
+Super-I/O chips are hardware monitoring controllers found on most desktop and server motherboards
+(ITE, Winbond/Nuvoton, SMSC, National Semiconductor). They expose fan speeds, temperatures, and
+voltages through `hwmon` kernel drivers such as `it87`, `nct6775`, and `w83627hf`.
 
 ## How it works
 
 Detection uses a two-path algorithm inspired by the
 [TsunamiMommy/lm-sensors](https://github.com/TsunamiMommy/lm-sensors) fork:
 
-1. **Fast path (non-invasive)** - reads the chip ID register directly from
-   `/dev/port` without entering config mode. Safe and preferred.
-2. **Fallback path** - enters config mode using family-specific password
-   sequences (ITE, Winbond, SMSC, National Semiconductor) and retries. Always
-   exits config mode after probing, even on error.
+1. **Fast path (non-invasive)** - reads the chip ID register directly from `/dev/port` without
+   entering config mode. Safe and preferred.
+2. **Fallback path** - enters config mode using family-specific password sequences (ITE, Winbond,
+   SMSC, National Semiconductor) and retries. Always exits config mode after probing, even on error.
 
-Both standard I/O addresses are probed: `0x2E/0x2F` (primary) and
-`0x4E/0x4F` (secondary).
+Both standard I/O addresses are probed: `0x2E/0x2F` (primary) and `0x4E/0x4F` (secondary).
 
 ## Chip database
 
@@ -37,8 +33,8 @@ Chip definitions are compiled into the binary from TOML data files:
 - `data/superio_smsc.toml`
 - `data/superio_national_semi.toml`
 
-User or distro additions can be placed in `/etc/coolercontrol/detect.toml`,
-which is merged at runtime without recompiling.
+User or distro additions can be placed in `/etc/coolercontrol/detect.toml`, which is merged at
+runtime without recompiling.
 
 ## Usage
 
@@ -70,7 +66,7 @@ pub struct DetectionResults {
 `module_status` on each `DetectedChipInfo` is one of:
 
 | Value                       | Meaning                                        |
-|-----------------------------|------------------------------------------------|
+| --------------------------- | ---------------------------------------------- |
 | `detection_only`            | Module loading was not requested               |
 | `loaded`                    | Module loaded successfully                     |
 | `already_loaded`            | Module was already present in the kernel       |
@@ -91,18 +87,17 @@ None. Dependencies are minimal.
 
 ## Attribution
 
-This crate is a Rust reimplementation derived from the `sensors-detect` script
-in [lm-sensors](https://github.com/lm-sensors/lm-sensors) and the
+This crate is a Rust reimplementation derived from the `sensors-detect` script in
+[lm-sensors](https://github.com/lm-sensors/lm-sensors) and the
 [TsunamiMommy/lm-sensors](https://github.com/TsunamiMommy/lm-sensors) fork.
 
-- **lm-sensors** - Copyright (C) the lm-sensors contributors.
-  Licensed under the GNU General Public License, version 2 or later
-  (GPL-2.0-or-later).
-- **TsunamiMommy/lm-sensors** - fork that introduced the two-path detection
-  algorithm to avoid hardware issues on Gigabyte and other motherboards.
+- **lm-sensors** - Copyright (C) the lm-sensors contributors. Licensed under the GNU General Public
+  License, version 2 or later (GPL-2.0-or-later).
+- **TsunamiMommy/lm-sensors** - fork that introduced the two-path detection algorithm to avoid
+  hardware issues on Gigabyte and other motherboards.
 
-The chip databases in `data/` are likewise derived from lm-sensors chip
-definitions and carry the same GPL-2.0-or-later terms.
+The chip databases in `data/` are likewise derived from lm-sensors chip definitions and carry the
+same GPL-2.0-or-later terms.
 
 ## License
 
