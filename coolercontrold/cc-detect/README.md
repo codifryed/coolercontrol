@@ -85,6 +85,52 @@ pub struct DetectionResults {
 
 None. Dependencies are minimal.
 
+## Contributing
+
+See the project-wide
+[CONTRIBUTING.md](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md) for
+the general workflow (fork, branch, MR) and code of conduct.
+
+### Adding or correcting chip entries
+
+The most common contribution is adding a missing chip or fixing an incorrect device ID. Each chip
+family has its own TOML file in `data/`:
+
+```toml
+[[chips]]
+name    = "ITE IT8XXX Super IO Sensors"  # human-readable name
+driver  = "it87"                         # kernel module (without .ko)
+devid   = 0x8xxx                         # 16-bit device ID from the datasheet
+devid_mask = 0xFFFF                      # mask applied before comparison (use 0xFF00 for 8-bit IDs)
+logdev  = 0x04                           # logical device number for the hwmon function
+features = ["voltage", "fan", "temp"]   # any subset of these three
+```
+
+After editing a data file, verify the change compiles and all tests pass:
+
+```bash
+cargo test
+```
+
+### Adding a new chip family
+
+New families with non-standard config-mode entry sequences go in a new TOML file. Add the file to
+`src/chip_db.rs` alongside the existing `include_str!` constants and update the
+`ChipDatabase::load_compiled` call.
+
+### Tests
+
+Each new detection path should have a corresponding unit test in `src/superio.rs` using
+`MockPortIo`. Follow the existing patterns for sequencing `inb` return values.
+
+### Formatting
+
+Run `rustfmt` before submitting. From the repo root:
+
+```bash
+make ci-fmt
+```
+
 ## Attribution
 
 This crate is a Rust reimplementation derived from the `sensors-detect` script in
