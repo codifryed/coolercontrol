@@ -1,0 +1,17 @@
+[package]
+name = "cc-detect"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Super-I/O hardware detection"
+categories = ["hardware-support"]
+keywords = ["sensors", "hardware", "drivers"]
+homepage = "https://coolercontrol.org"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+#readme = "README.md"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+log = "0.4"
