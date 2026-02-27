@@ -16,11 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use axum::extract::State;
 use axum::Json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::api::CCError;
+use crate::api::{AppState, CCError};
 
 /// Request body for POST /detect
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -95,24 +96,28 @@ impl From<cc_detect::DetectionResults> for DetectResponse {
 }
 
 /// GET /detect — Run detection and return results (no module loading).
-pub async fn get_detect() -> Result<Json<DetectResponse>, CCError> {
-    let results = tokio::task::spawn_blocking(|| cc_detect::run_detection(false))
+pub async fn get_detect(
+    State(AppState { detect_handle, .. }): State<AppState>,
+) -> Result<Json<DetectResponse>, CCError> {
+    detect_handle
+        .run(false)
         .await
+        .map(|r| Json(DetectResponse::from(r)))
         .map_err(|e| CCError::InternalError {
-            msg: format!("Detection task failed: {e}"),
-        })?;
-    Ok(Json(DetectResponse::from(results)))
+            msg: format!("Detection failed: {e}"),
+        })
 }
 
 /// POST /detect — Run detection and optionally load modules.
 pub async fn post_detect(
+    State(AppState { detect_handle, .. }): State<AppState>,
     Json(request): Json<DetectRequest>,
 ) -> Result<Json<DetectResponse>, CCError> {
-    let results =
-        tokio::task::spawn_blocking(move || cc_detect::run_detection(request.load_modules))
-            .await
-            .map_err(|e| CCError::InternalError {
-                msg: format!("Detection task failed: {e}"),
-            })?;
-    Ok(Json(DetectResponse::from(results)))
+    detect_handle
+        .run(request.load_modules)
+        .await
+        .map(|r| Json(DetectResponse::from(r)))
+        .map_err(|e| CCError::InternalError {
+            msg: format!("Detection failed: {e}"),
+        })
 }

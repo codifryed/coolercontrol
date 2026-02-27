@@ -39,8 +39,9 @@ mod tokens;
 use crate::admin;
 use crate::alerts::AlertController;
 use crate::api::actor::{
-    AlertHandle, AuthHandle, CustomSensorHandle, DeviceHandle, FunctionHandle, HealthHandle,
-    ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle, TokenHandle,
+    AlertHandle, AuthHandle, CustomSensorHandle, DetectHandle, DeviceHandle, FunctionHandle,
+    HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
+    TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MokaSessionStore};
@@ -79,6 +80,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::Not;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,7 +216,7 @@ pub async fn start_server<'s>(
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .enable_time()
-            .max_blocking_threads(1) // not needed for API servers
+            .max_blocking_threads(1) // rarely needed for the API servers
             .thread_keep_alive(Duration::from_secs(60))
             .thread_name("cc-api")
             .event_interval(200)
@@ -567,6 +569,11 @@ async fn create_app_state<'s>(
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
+    let detect_handle = DetectHandle::new(
+        Path::new(DEFAULT_CONFIG_DIR).join("detect.toml"),
+        cancel_token.clone(),
+        main_scope,
+    );
     let auth_handle = AuthHandle::new(cancel_token.clone(), main_scope);
     let token_handle = TokenHandle::new(cancel_token.clone()).await;
     let device_handle = DeviceHandle::new(
@@ -604,6 +611,7 @@ async fn create_app_state<'s>(
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
     AppState {
         health,
+        detect_handle,
         auth_handle,
         token_handle,
         device_handle,
@@ -1074,6 +1082,7 @@ impl OperationOutput for CCError {
 #[derive(Clone)]
 pub struct AppState {
     pub health: HealthHandle,
+    pub detect_handle: DetectHandle,
     pub auth_handle: AuthHandle,
     pub token_handle: TokenHandle,
     pub device_handle: DeviceHandle,
