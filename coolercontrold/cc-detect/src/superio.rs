@@ -428,15 +428,11 @@ mod tests {
     fn test_fallback_detects_winbond_chip() {
         // Trace of reads before Winbond family device ID read:
         // Fast path at 0x2E: 2 reads (hi, lo) -> 0x0000 = no chip
-        // Fallback:
-        //   NatSemi custom (PC8374L): 1 read (devid check fails)
-        //   NatSemi standard: 2 reads (hi, lo) -> 0x0000
-        //   SMSC custom (SCH5627): 1 read (devid check fails)
-        //   SMSC custom (SCH5636): 1 read (devid check fails)
-        //   SMSC standard: 2 reads (hi, lo) -> 0x0000
-        // Total before Winbond: 9 reads
+        // Fallback (order: ITE=0, Winbond=1, NatSemi=2, SMSC=3):
+        //   ITE standard: 2 reads (hi, lo) -> 0x0000 (no custom chips)
+        // Total before Winbond: 4 reads
         // Then Winbond standard: 2 reads -> 0x5200 (W83627HF)
-        let mut reads = vec![0x00; 9]; // fast path + NatSemi + SMSC
+        let mut reads = vec![0x00; 4]; // fast path (2) + ITE devid (2)
         reads.extend([0x52, 0x00]); // Winbond family: W83627HF ID (8-bit devid)
         reads.extend([0x02, 0x90]); // base address
         reads.extend([0x01]); // activation

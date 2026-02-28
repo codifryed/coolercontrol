@@ -143,13 +143,13 @@ fn pc8374l_detect(
 }
 
 /// Get all custom chips organized by family index.
-/// Family indices: 0=NatSemi, 1=SMSC, 2=Winbond, 3=ITE
+/// Family indices: 0=ITE, 1=Winbond, 2=NatSemi, 3=SMSC
 #[must_use]
 pub fn all_custom_chips() -> Vec<(usize, Vec<CustomChip>)> {
     vec![
-        (0, custom_natsemi_chips()),
-        (1, custom_smsc_chips()),
-        // Family 2 (Winbond) and 3 (ITE) have no custom chips -
+        (2, custom_natsemi_chips()),
+        (3, custom_smsc_chips()),
+        // Families 0 (ITE) and 1 (Winbond) have no custom chips -
         // all their chips use standard ID matching from TOML.
     ]
 }
@@ -214,12 +214,12 @@ mod tests {
     fn test_all_custom_chips() {
         let chips = all_custom_chips();
         assert!(!chips.is_empty());
-        // NatSemi family
+        // NatSemi family (index 2: ITE=0, Winbond=1, NatSemi=2, SMSC=3)
         let natsemi = &chips[0];
-        assert_eq!(natsemi.0, 0); // family index
-                                  // SMSC family
+        assert_eq!(natsemi.0, 2);
+        // SMSC family
         let smsc = &chips[1];
-        assert_eq!(smsc.0, 1);
+        assert_eq!(smsc.0, 3);
         assert_eq!(smsc.1.len(), 2); // SCH5627 + SCH5636
     }
 }

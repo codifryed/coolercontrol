@@ -125,11 +125,14 @@ impl ChipDatabase {
         debug!("Loading compiled chip database");
         let mut families = Vec::new();
 
+        // ITE first: all 16-bit masks; prevents 8-bit SMSC/Winbond entries from
+        // false-matching ITE chip IDs (e.g. SMSC devid=0x86 matches 0x86xx ITE IDs).
+        // Order: ITE (idx 0), Winbond (idx 1), NatSemi (idx 2), SMSC (idx 3).
         for (toml_str, source) in [
+            (TOML_ITE, "ite"),
+            (TOML_WINBOND, "winbond"),
             (TOML_NATIONAL_SEMI, "national_semi"),
             (TOML_SMSC, "smsc"),
-            (TOML_WINBOND, "winbond"),
-            (TOML_ITE, "ite"),
         ] {
             match parse_toml_family(toml_str) {
                 Ok(family) => {
