@@ -260,7 +260,7 @@ pub fn output_results(results: &DetectionResults) {
         "  {:<40} {:<14} {:<8} {:<10} {:<8} Status",
         "Chip", "Driver", "Address", "Base Addr", "Dev ID"
     );
-    info!("  {}", "-".repeat(90));
+    info!("  {}", "-".repeat(98));
     for chip in &results.detected_chips {
         info!(
             "  {:<40} {:<14} {:<8} {:<10} {:<8} {}",

@@ -21,7 +21,7 @@ use crate::{cc_fs, exit_successfully, Args, ENV_CC_LOG, ENV_LOG, VERSION};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use env_logger::Logger;
-use log::{info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use log::{debug, info, trace, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::NixPath;
 use nu_glob::{glob, Uninterruptible};
 use regex::Regex;
@@ -46,32 +46,62 @@ pub async fn setup_logging(cmd_args: &Args, run_token: CancellationToken) -> Res
     };
     let (logger, log_buf_handle) = CCLogger::new(log_level, VERSION, run_token)?;
     logger.init()?;
+    info!("System Info:");
+    info!("  {}", "-".repeat(60));
+    info!("  {:<20} {}", "CoolerControlD", VERSION);
     info!(
-        "System Info:\n\
-        CoolerControlD:     {VERSION}\n\
-        Name:               {}\n\
-        OS:                 {}\n\
-        Host:               {}\n\
-        Kernel:             {}\n\
-        Arch:               {}\n\
-        Board Manufacturer: {}\n\
-        Board Name:         {}\n\
-        Board Version:      {}\n\
-        BIOS Manufacturer:  {}\n\
-        BIOS Version:       {}\n\
-        {}",
-        sysinfo::System::name().unwrap_or_default(),
-        sysinfo::System::long_os_version().unwrap_or_default(),
-        sysinfo::System::host_name().unwrap_or_default(),
-        sysinfo::System::kernel_version().unwrap_or_default(),
-        sysinfo::System::cpu_arch(),
-        get_dmi_system_info("board_vendor").await,
-        get_dmi_system_info("board_name").await,
-        get_dmi_system_info("board_version").await,
-        get_dmi_system_info("bios_vendor").await,
-        get_dmi_system_info("bios_release").await,
-        get_xdg_desktop_info().await.unwrap_or_default(),
+        "  {:<20} {}",
+        "Name",
+        sysinfo::System::name().unwrap_or_default()
     );
+    info!(
+        "  {:<20} {}",
+        "OS",
+        sysinfo::System::long_os_version().unwrap_or_default()
+    );
+    info!(
+        "  {:<20} {}",
+        "Host",
+        sysinfo::System::host_name().unwrap_or_default()
+    );
+    info!(
+        "  {:<20} {}",
+        "Kernel",
+        sysinfo::System::kernel_version().unwrap_or_default()
+    );
+    info!("  {:<20} {}", "Arch", sysinfo::System::cpu_arch());
+    info!(
+        "  {:<20} {}",
+        "Board Manufacturer",
+        get_dmi_system_info("board_vendor").await
+    );
+    info!(
+        "  {:<20} {}",
+        "Board Name",
+        get_dmi_system_info("board_name").await
+    );
+    info!(
+        "  {:<20} {}",
+        "Board Version",
+        get_dmi_system_info("board_version").await
+    );
+    info!(
+        "  {:<20} {}",
+        "BIOS Manufacturer",
+        get_dmi_system_info("bios_vendor").await
+    );
+    info!(
+        "  {:<20} {}",
+        "BIOS Version",
+        get_dmi_system_info("bios_release").await
+    );
+    match get_xdg_desktop_info().await {
+        Ok((desktops, sessions)) => {
+            info!("  {:<20} {}", "XDG Desktops", desktops);
+            info!("  {:<20} {}", "XDG Session Types", sessions);
+        }
+        Err(err) => debug!("Failed to get XDG desktop info: {err}"),
+    }
     if cmd_args.system_info {
         let _ = liqctld_service::verify_env().await;
         exit_successfully();
@@ -87,7 +117,7 @@ async fn get_dmi_system_info(name: &str) -> String {
         .to_owned()
 }
 
-async fn get_xdg_desktop_info() -> Result<String> {
+async fn get_xdg_desktop_info() -> Result<(String, String)> {
     let mut desktops = HashSet::new();
     let mut sessions_types = HashSet::new();
     let environ_paths = glob("/proc/*/environ", Uninterruptible)?
@@ -120,13 +150,11 @@ async fn get_xdg_desktop_info() -> Result<String> {
         }
     }
     if desktops.is_empty() {
-        Ok(String::default())
+        Err(anyhow::anyhow!("No XDG Desktops found"))
     } else {
         let desktop_list = Vec::from_iter(desktops).join(", ");
         let session_list = Vec::from_iter(sessions_types).join(", ");
-        Ok(format!(
-            "XDG Desktops:       {desktop_list}\nXDG Session Types:  {session_list}"
-        ))
+        Ok((desktop_list, session_list))
     }
 }
 
