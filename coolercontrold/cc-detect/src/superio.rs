@@ -145,11 +145,12 @@ fn try_fast_path(
             }));
         }
         info!(
-            "No driver match for {} ID: 0x{id:04X} (Fast path)",
+            "Detected {} at 0x{addr_reg:02X} id:0x{id:04X} (no driver) (Fast path)",
             chip.name
         );
+        return Ok(None);
     }
-    info!("No chip match for device ID: 0x{id:04X} (Fast path)");
+    info!("Unknown chip at 0x{addr_reg:02X} id:0x{id:04X} (Fast path)");
 
     Ok(None)
 }
@@ -253,7 +254,7 @@ fn probe_family(
         if chip.matches_id(id) {
             if !chip.has_driver() {
                 info!(
-                    "Chip has no driver for {} ID: 0x{id:04X} (Family: {})",
+                    "Detected {} at 0x{addr_reg:02X} id:0x{id:04X} (no driver) (Family: {})",
                     chip.name, family.name
                 );
                 continue;
@@ -272,7 +273,10 @@ fn probe_family(
         }
     }
 
-    info!("No Match for chip Family {}: ID 0x{:04X}", family.name, id);
+    info!(
+        "Unknown chip at 0x{addr_reg:02X} id:0x{id:04X} (Family: {})",
+        family.name
+    );
     Ok(None)
 }
 
@@ -408,6 +412,34 @@ mod tests {
         let results = detect_superio(&mut mock, &db);
         // eSPI bridge should not be reported as a detected chip
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_fast_path_unknown_id() {
+        // 0xABCD is a valid device ID (non-zero, non-0xFFFF) but not in any chip DB family.
+        // The fast path should log it and return no detection.
+        let mut mock = mock_for_full_scan(vec![0xAB, 0xCD]);
+        let db = make_test_db();
+        let results = detect_superio(&mut mock, &db);
+        assert!(
+            results.is_empty(),
+            "unrecognized device ID should not produce a detection"
+        );
+    }
+
+    #[test]
+    fn test_fallback_unknown_id() {
+        // Fast path: 0x0000 = chip not readable without config mode entry.
+        // Fallback ITE: reads 0xABCD = valid but not in any DB family.
+        // All other families: padded 0xFF = no chip.
+        // Fast path (2) + ITE devid (2) = 4 reads before ITE returns None.
+        let mut mock = mock_for_full_scan(vec![0x00, 0x00, 0xAB, 0xCD]);
+        let db = make_test_db();
+        let results = detect_superio(&mut mock, &db);
+        assert!(
+            results.is_empty(),
+            "unrecognized device ID in fallback should not produce a detection"
+        );
     }
 
     #[test]
