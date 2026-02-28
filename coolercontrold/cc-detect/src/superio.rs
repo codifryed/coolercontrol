@@ -116,6 +116,7 @@ fn try_fast_path(
     debug!("Fast path read ID at 0x{addr_reg:02X}: 0x{id:04X}");
 
     if id == 0x0000 || id == 0xFFFF {
+        // 0x0000/0xFFFF = no chip/not readable, config mode entry required
         return Ok(None);
     }
 
