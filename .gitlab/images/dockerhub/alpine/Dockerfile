@@ -34,7 +34,7 @@ ENV CC_DBUS=OFF
 ENV CC_SERVICE_MANAGER=OFF
 ENV CC_TLS=OFF
 
-RUN apk add --update python3 libusb
+RUN apk add --update python3 libusb openrc
 
 COPY --from=daemon-builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY --from=liquidctl-builder /root/.local /root/.local
