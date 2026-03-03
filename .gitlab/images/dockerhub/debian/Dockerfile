@@ -54,20 +54,24 @@ ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
-ENV CC_SERVICE_MANAGER=OFF
 ENV CC_TLS=OFF
 
 RUN apt update && apt install -y --no-install-recommends \
-    libusb-1.0-0 && \
+    libusb-1.0-0 \
+    openrc && \
+    sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
+    sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
 COPY --from=daemon-builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY --from=liquidctl-builder /root/.local /root/.local
+COPY .gitlab/images/dockerhub/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 RUN coolercontrold --version
 
 EXPOSE 11987
 EXPOSE 11988
 
-ENTRYPOINT ["coolercontrold"]
+ENTRYPOINT ["/entrypoint.sh"]
 
