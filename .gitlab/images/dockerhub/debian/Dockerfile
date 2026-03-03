@@ -58,6 +58,7 @@ ENV CC_SERVICE_MANAGER=OFF
 ENV CC_TLS=OFF
 
 RUN apt update && apt install -y --no-install-recommends \
+    openrc \
     libusb-1.0-0 && \
     rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
 
