@@ -22,7 +22,10 @@
 //! with a real implementation using `/dev/port` and a mock for testing.
 
 use std::fmt;
+
+#[cfg(target_arch = "x86_64")]
 use std::fs::{File, OpenOptions};
+#[cfg(target_arch = "x86_64")]
 use std::io::{Read, Seek, SeekFrom, Write};
 
 /// Error type for port I/O operations.

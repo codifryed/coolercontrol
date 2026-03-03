@@ -50,12 +50,19 @@ pub mod superio;
 
 use std::path::Path;
 
-use log::{debug, info, warn};
+use log::info;
 use serde::Serialize;
 
+#[cfg(target_arch = "x86_64")]
+use log::{debug, warn};
+
+#[cfg(target_arch = "x86_64")]
 use chip_db::ChipDatabase;
+#[cfg(target_arch = "x86_64")]
 use environment::Environment;
+#[cfg(target_arch = "x86_64")]
 use module_loader::LoadResult;
+#[cfg(target_arch = "x86_64")]
 use superio::DetectedChip;
 
 /// Complete detection results.
@@ -168,6 +175,7 @@ pub fn run_detection(_load_modules: bool, _override_path: Option<&Path>) -> Dete
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 fn process_results(
     detected: &Vec<DetectedChip>,
     load_modules: bool,
@@ -292,6 +300,7 @@ pub fn output_results(results: &DetectionResults) {
 mod tests {
     use super::*;
 
+    #[cfg(target_arch = "x86_64")]
     #[test]
     fn test_process_results_detection_only() {
         let detected = vec![DetectedChip {
@@ -318,6 +327,7 @@ mod tests {
         assert_eq!(results.detected_chips[0].module_status, "detection_only");
     }
 
+    #[cfg(target_arch = "x86_64")]
     #[test]
     fn test_process_results_empty() {
         let env = Environment {
