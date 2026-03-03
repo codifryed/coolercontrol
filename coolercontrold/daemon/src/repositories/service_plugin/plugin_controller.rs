@@ -39,13 +39,19 @@ const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 pub struct PluginController {
     pub plugins: HashMap<ServiceId, ServiceManifest>,
     is_systemd: bool,
+    is_open_rc: bool,
 }
 
 impl PluginController {
-    pub fn new(service_plugin_repo: &ServicePluginRepo, is_systemd: bool) -> Self {
+    pub fn new(
+        service_plugin_repo: &ServicePluginRepo,
+        is_systemd: bool,
+        is_open_rc: bool,
+    ) -> Self {
         Self {
             plugins: service_plugin_repo.get_plugins(),
             is_systemd,
+            is_open_rc,
         }
     }
 
@@ -104,7 +110,7 @@ impl PluginController {
         if manifest.is_managed().not() {
             return Ok(());
         }
-        let owner = self.is_systemd.then_some({
+        let owner = (self.is_systemd || self.is_open_rc).then_some({
             if manifest.privileged {
                 "root"
             } else {
@@ -139,6 +145,20 @@ impl PluginController {
             })?;
         Ok(dir)
     }
+}
+
+pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()> {
+    if let Some(owner) = owner {
+        let command = format!("chown -R {owner}:{owner} {}", path.display());
+        match ShellCommand::new(&command, Duration::from_secs(5))
+            .run()
+            .await
+        {
+            ShellCommandResult::Success { .. } => {}
+            ShellCommandResult::Error(stderr) => return Err(anyhow!("chown -R failed: {stderr}")),
+        }
+    }
+    Ok(())
 }
 
 pub async fn secure_config_file(path: &Path, owner: Option<&str>) -> Result<()> {

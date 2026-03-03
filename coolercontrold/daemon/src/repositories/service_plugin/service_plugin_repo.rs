@@ -25,7 +25,7 @@ use crate::grpc_api::device_service::v1::health_response;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::plugin_controller::{
-    secure_config_file, PLUGIN_CONFIG_FILE_NAME,
+    secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
 };
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
@@ -250,16 +250,21 @@ impl ServicePluginRepo {
                 );
                 return;
             }
+            let owner = (service_manager.is_systemd() || service_manager.is_open_rc()).then_some(
+                if service_manifest.privileged {
+                    "root"
+                } else {
+                    CC_PLUGIN_USER
+                },
+            );
+            if let Err(err) = secure_plugin_folder(&service_manifest.path, owner).await {
+                warn!(
+                    "Failed to secure plugin folder {}: {err}",
+                    service_manifest.path.display()
+                );
+            }
             let config_path = service_manifest.path.join(PLUGIN_CONFIG_FILE_NAME);
             if config_path.exists() {
-                let owner = service_manager.is_systemd().then_some({
-                    if service_manifest.privileged {
-                        "root"
-                    } else {
-                        CC_PLUGIN_USER
-                    }
-                });
-
                 if let Err(err) = secure_config_file(&config_path, owner).await {
                     warn!(
                         "Failed to secure plugin config file {}: {err}",
@@ -733,6 +738,10 @@ impl ServicePluginRepo {
 
     pub fn is_systemd(&self) -> bool {
         self.service_manager.is_systemd()
+    }
+
+    pub fn is_open_rc(&self) -> bool {
+        self.service_manager.is_open_rc()
     }
 
     /// Returns a copy of the plugins information, used by the plugin controller.
