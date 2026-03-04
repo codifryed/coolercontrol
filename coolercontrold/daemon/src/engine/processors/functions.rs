@@ -62,16 +62,15 @@ impl Processor for FunctionIdentityPreProcessor {
     fn clear_state(&self, _: &ProfileUID) {}
 
     fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let temp_source_device_option = self
+        let Some(temp_source_device) = self
             .all_devices
-            .get(data.profile.temp_source.device_uid.as_str());
-        if temp_source_device_option.is_none() {
+            .get(data.profile.temp_source.device_uid.as_str())
+        else {
             log_missing_temp_device(data);
             data.temp = Some(EMERGENCY_MISSING_TEMP);
             return data;
-        }
-        data.temp = temp_source_device_option
-            .unwrap()
+        };
+        data.temp = temp_source_device
             .borrow()
             .status_history
             .iter()
@@ -127,15 +126,15 @@ impl FunctionStandardPreProcessor {
         data: &mut SpeedProfileData,
         temp_source_device_option: Option<&DeviceLock>,
     ) {
-        if temp_source_device_option.is_none() {
+        let Some(temp_source_device_lock) = temp_source_device_option else {
             log_missing_temp_device(data);
             if metadata.last_applied_temp == 0. {
                 metadata.temp_hist_stack.clear();
             }
             metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
             return;
-        }
-        let temp_source_device = temp_source_device_option.unwrap().borrow();
+        };
+        let temp_source_device = temp_source_device_lock.borrow();
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
             let mut latest_temps = temp_source_device
@@ -158,7 +157,7 @@ impl FunctionStandardPreProcessor {
             metadata.temp_hist_stack.extend(latest_temps);
         } else {
             // the normal operation
-            let current_temp = temp_source_device
+            let current_temp_celsius = temp_source_device
                 .status_history
                 .back()
                 .and_then(|status| {
@@ -176,8 +175,72 @@ impl FunctionStandardPreProcessor {
                             Some(EMERGENCY_MISSING_TEMP)
                         })
                 })
-                .unwrap();
-            metadata.temp_hist_stack.push_back(current_temp);
+                .unwrap_or(EMERGENCY_MISSING_TEMP);
+            metadata.temp_hist_stack.push_back(current_temp_celsius);
+        }
+        debug_assert!(
+            !metadata.temp_hist_stack.is_empty(),
+            "temp stack must not be empty after fill"
+        );
+    }
+
+    fn apply_hysteresis<'a>(
+        metadata: &mut ChannelSettingMetadata,
+        data: &'a mut SpeedProfileData,
+    ) -> &'a mut SpeedProfileData {
+        let only_downward = data.profile.function.only_downward.unwrap_or(false);
+        let deviance = data.profile.function.deviance.unwrap_or(2.0);
+
+        if only_downward {
+            let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
+                return data;
+            };
+            if newest_temp_celsius > metadata.last_applied_temp {
+                metadata.temp_hist_stack.clear();
+                metadata.temp_hist_stack.push_back(newest_temp_celsius);
+                data.temp = Some(newest_temp_celsius);
+                metadata.last_applied_temp = newest_temp_celsius;
+                return data;
+            }
+        }
+        let Some(&oldest_temp_celsius) = metadata.temp_hist_stack.front() else {
+            return data;
+        };
+        let oldest_temp_within_tolerance =
+            Self::temp_within_tolerance(oldest_temp_celsius, metadata.last_applied_temp, deviance);
+        if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
+            let newest_temp_within_tolerance = metadata.temp_hist_stack.back().is_some_and(|&t| {
+                Self::temp_within_tolerance(t, metadata.last_applied_temp, deviance)
+            });
+            if oldest_temp_within_tolerance && newest_temp_within_tolerance {
+                // normalize the stack to skip spikes within the delay period
+                let adjust_count = metadata.temp_hist_stack.len() - 1; // we leave the newest temp as is
+                metadata
+                    .temp_hist_stack
+                    .iter_mut()
+                    .take(adjust_count)
+                    .for_each(|temp| *temp = oldest_temp_celsius);
+            }
+        }
+        if data.safety_latch_triggered {
+            if data.profile.function.threshold_hopping {
+                // bypass thresholds
+                data.temp = Some(oldest_temp_celsius);
+                metadata.last_applied_temp = oldest_temp_celsius;
+                data
+            } else {
+                // If hopping is disabled, we want to re-apply the last applied temp NOT the
+                // oldest temp, which would bypass the hysteresis thresholds.
+                data.temp = Some(metadata.last_applied_temp);
+                data
+            }
+        } else if oldest_temp_within_tolerance {
+            data // nothing to apply
+        } else {
+            // should use temp from hysteresis stack
+            data.temp = Some(oldest_temp_celsius);
+            metadata.last_applied_temp = oldest_temp_celsius;
+            data
         }
     }
 
@@ -188,7 +251,13 @@ impl FunctionStandardPreProcessor {
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
-        (f64::from(profile.function.response_delay.unwrap()) / profile.poll_rate).ceil() as u8 + 1
+        let response_delay_secs = f64::from(
+            profile
+                .function
+                .response_delay
+                .unwrap_or(DEFAULT_MAX_NO_DUTY_SET_SECONDS as u8),
+        );
+        (response_delay_secs / profile.poll_rate).ceil() as u8 + 1
     }
 }
 
@@ -220,7 +289,10 @@ impl Processor for FunctionStandardPreProcessor {
 
         // setup metadata:
         let mut metadata_lock = self.channel_settings_metadata.borrow_mut();
-        let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
+        let Some(metadata) = metadata_lock.get_mut(&data.profile.profile_uid) else {
+            error!("Missing metadata for profile: {}", data.profile.profile_uid);
+            return data;
+        };
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
             metadata.ideal_stack_size =
@@ -234,65 +306,14 @@ impl Processor for FunctionStandardPreProcessor {
             && metadata.temp_hist_stack.len() < metadata.ideal_stack_size
         {
             // Very first run after boot/wakeup, let's apply something right away
-            let temp_to_apply = metadata.temp_hist_stack.front().copied().unwrap();
-            data.temp = Some(temp_to_apply);
-            metadata.last_applied_temp = temp_to_apply;
+            if let Some(&temp_to_apply) = metadata.temp_hist_stack.front() {
+                data.temp = Some(temp_to_apply);
+                metadata.last_applied_temp = temp_to_apply;
+            }
             return data;
         }
 
-        // main processor logic:
-        if data.profile.function.only_downward.unwrap() {
-            let newest_temp = *metadata.temp_hist_stack.back().unwrap();
-            if newest_temp > metadata.last_applied_temp {
-                metadata.temp_hist_stack.clear();
-                metadata.temp_hist_stack.push_back(newest_temp);
-                data.temp = Some(newest_temp);
-                metadata.last_applied_temp = newest_temp;
-                return data;
-            }
-        }
-        let oldest_temp = metadata.temp_hist_stack.front().copied().unwrap();
-        let oldest_temp_within_tolerance = Self::temp_within_tolerance(
-            oldest_temp,
-            metadata.last_applied_temp,
-            data.profile.function.deviance.unwrap(),
-        );
-        if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
-            let newest_temp_within_tolerance = Self::temp_within_tolerance(
-                *metadata.temp_hist_stack.back().unwrap(),
-                metadata.last_applied_temp,
-                data.profile.function.deviance.unwrap(),
-            );
-            if oldest_temp_within_tolerance && newest_temp_within_tolerance {
-                // normalize the stack, as we want to skip any spikes that happened within the delay period
-                let adjust_count = metadata.temp_hist_stack.len() - 1; // we leave the newest temp as is
-                metadata
-                    .temp_hist_stack
-                    .iter_mut()
-                    .take(adjust_count)
-                    .for_each(|temp| *temp = oldest_temp);
-            }
-        }
-        if data.safety_latch_triggered {
-            if data.profile.function.threshold_hopping {
-                // bypass thresholds
-                data.temp = Some(oldest_temp);
-                metadata.last_applied_temp = oldest_temp;
-                data
-            } else {
-                // If hopping is disabled, we want to re-apply the last applied temp NOT the
-                // oldest temp, which would bypass the hysteresis thresholds.
-                data.temp = Some(metadata.last_applied_temp);
-                data
-            }
-        } else if oldest_temp_within_tolerance {
-            data // nothing to apply
-        } else {
-            // should use temp from hysteresis stack
-            data.temp = Some(oldest_temp);
-            metadata.last_applied_temp = oldest_temp;
-            data
-        }
+        Self::apply_hysteresis(metadata, data)
     }
 }
 

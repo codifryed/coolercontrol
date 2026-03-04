@@ -16,9 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::cmp::Ordering;
+use std::collections::VecDeque;
+
 use crate::device::{Duty, Temp};
 use crate::setting::Offset;
-use std::collections::VecDeque;
 
 /// Sort, cleanup, and set safety levels for the given profile[(temp, duty)].
 /// This will ensure that:
@@ -38,8 +40,8 @@ pub fn normalize_profile(
         .make_contiguous()
         .sort_by(|(temp_a, duty_a), (temp_b, duty_b)|
             // reverse ordering for duty so that the largest given duty value is used
-            temp_a.partial_cmp(temp_b).unwrap().then(duty_b.cmp(duty_a)));
-    let mut normalized_profile = Vec::new();
+            temp_a.partial_cmp(temp_b).unwrap_or(Ordering::Equal).then(duty_b.cmp(duty_a)));
+    let mut normalized_profile = Vec::with_capacity(sorted_profile.len());
     normalized_profile.push(sorted_profile.pop_front().unwrap());
     let (mut previous_temp, mut previous_duty) = normalized_profile[0];
     for (temp, duty) in sorted_profile {
@@ -61,6 +63,14 @@ pub fn normalize_profile(
         previous_temp = temp;
         previous_duty = adjusted_duty;
     }
+    debug_assert!(
+        !normalized_profile.is_empty(),
+        "normalized profile must not be empty"
+    );
+    debug_assert!(
+        normalized_profile.windows(2).all(|w| w[0].1 <= w[1].1),
+        "normalized profile duty must be monotonically increasing"
+    );
     normalized_profile
 }
 /// This will ensure that:
@@ -73,12 +83,12 @@ pub fn normalize_offset_profile(profile: &[(Duty, Offset)]) -> Vec<(Duty, Offset
         .make_contiguous()
         .sort_by(|(duty_a, offset_a), (duty_b, offset_b)|
             // reverse ordering for offset so that the largest given offset value is used
-            duty_a.partial_cmp(duty_b).unwrap().then(offset_b.cmp(offset_a)));
+            duty_a.partial_cmp(duty_b).unwrap_or(Ordering::Equal).then(offset_b.cmp(offset_a)));
     for (_, offset) in &mut sorted_profile {
         // clamp offsets to limits
         *offset = *(offset.clamp(&mut -100, &mut 100));
     }
-    let mut normalized_profile = Vec::new();
+    let mut normalized_profile = Vec::with_capacity(sorted_profile.len());
     normalized_profile.push(sorted_profile.pop_front().unwrap());
     let mut previous_duty = normalized_profile[0].0;
     for (duty, offset) in sorted_profile {
@@ -116,7 +126,7 @@ pub fn interpolate_profile(normalized_profile: &[(Temp, Duty)], temp: Temp) -> D
 
     // Binary search for the insertion point
     let idx = normalized_profile
-        .binary_search_by(|(t, _)| t.partial_cmp(&temp).unwrap())
+        .binary_search_by(|(t, _)| t.partial_cmp(&temp).unwrap_or(Ordering::Equal))
         .unwrap_or_else(|i| i);
 
     // Clamp to valid range

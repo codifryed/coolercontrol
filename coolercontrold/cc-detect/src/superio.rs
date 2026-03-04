@@ -197,23 +197,13 @@ fn try_fallback_path(
     Ok(None)
 }
 
-/// Probe a single chip family at the given address.
-fn probe_family(
+/// Try detecting a chip using custom detection functions.
+fn try_custom_chip_detection(
     port_io: &mut dyn PortIo,
     addr_reg: u16,
     data_reg: u16,
-    family: &ChipFamily,
     custom_chips: &[&CustomChip],
 ) -> Result<Option<DetectedChip>, PortIoError> {
-    debug!("Probing family: {} at 0x{:02X}", family.name, addr_reg);
-
-    // Enter config mode with family-specific password sequence
-    let entry_seq = family.entry_sequence(addr_reg);
-    for &byte in entry_seq {
-        port_io.outb(addr_reg, byte)?;
-    }
-
-    // Try custom chip detection functions first
     for custom_chip in custom_chips {
         match (custom_chip.detect)(port_io, addr_reg, data_reg) {
             Ok(true) => {
@@ -240,6 +230,28 @@ fn probe_family(
                 );
             }
         }
+    }
+    Ok(None)
+}
+
+/// Probe a single chip family at the given address.
+fn probe_family(
+    port_io: &mut dyn PortIo,
+    addr_reg: u16,
+    data_reg: u16,
+    family: &ChipFamily,
+    custom_chips: &[&CustomChip],
+) -> Result<Option<DetectedChip>, PortIoError> {
+    debug!("Probing family: {} at 0x{:02X}", family.name, addr_reg);
+
+    // Enter config mode with family-specific password sequence
+    let entry_seq = family.entry_sequence(addr_reg);
+    for &byte in entry_seq {
+        port_io.outb(addr_reg, byte)?;
+    }
+
+    if let Some(chip) = try_custom_chip_detection(port_io, addr_reg, data_reg, custom_chips)? {
+        return Ok(Some(chip));
     }
 
     // Read the standard device ID

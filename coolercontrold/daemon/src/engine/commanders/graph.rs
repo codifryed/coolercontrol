@@ -188,8 +188,9 @@ impl GraphProfileCommander {
 
     /// Collects all the processed outputs for all scheduled Graph Profiles.
     fn collect_processed_outputs(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
-        let mut output_to_apply = HashMap::new();
-        for (normalized_profile, device_channels) in self.scheduled_settings.borrow().iter() {
+        let settings = self.scheduled_settings.borrow();
+        let mut output_to_apply = HashMap::with_capacity(settings.len());
+        for (normalized_profile, device_channels) in settings.iter() {
             let optional_duty_to_set = self.process_output_cache.borrow()
                 [&normalized_profile.profile_uid]
                 .as_ref()
@@ -265,12 +266,13 @@ impl GraphProfileCommander {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<NormalizedGraphProfile> {
-        if profile.temp_source.is_none() || profile.speed_profile.is_none() {
+        let (Some(temp_source), Some(speed_profile)) =
+            (profile.temp_source.as_ref(), profile.speed_profile.as_ref())
+        else {
             return Err(anyhow!(
                 "Not enough info to schedule a manual speed profile"
             ));
-        }
-        let temp_source = profile.temp_source.as_ref().unwrap();
+        };
         let temp_source_device = self
             .all_devices
             .get(temp_source.device_uid.as_str())
@@ -283,8 +285,7 @@ impl GraphProfileCommander {
         let max_temp = f64::from(temp_source_device.borrow().info.temp_max);
         let max_duty = self.get_max_device_duty(device_uid, channel_name)?;
         let function = self.get_profiles_function(&profile.function_uid)?;
-        let normalized_speed_profile =
-            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
+        let normalized_speed_profile = utils::normalize_profile(speed_profile, max_temp, max_duty);
         let poll_rate = self.config.get_settings()?.poll_rate;
         Ok(NormalizedGraphProfile {
             profile_uid: profile.uid.clone(),

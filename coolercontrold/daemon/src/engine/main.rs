@@ -310,7 +310,8 @@ impl Engine {
             .map(|f| f.uid)
             .collect::<Vec<FunctionUID>>();
         // Resolve sub-members for Mix-type members and validate hierarchy
-        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> = HashMap::new();
+        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
+            HashMap::with_capacity(member_profiles.len());
         for member in &member_profiles {
             if member.p_type == ProfileType::Mix {
                 let sub_members = self
@@ -381,10 +382,10 @@ impl Engine {
         if profile.member_profile_uids.len() != 1 {
             return Err(anyhow!("Overlay Profile should one member profile"));
         }
-        if profile.offset_profile.is_none() {
+        let Some(offset_profile) = profile.offset_profile.as_ref() else {
             return Err(anyhow!("Overlay Profile should have an offset profile"));
-        }
-        if profile.offset_profile.as_ref().unwrap().is_empty() {
+        };
+        if offset_profile.is_empty() {
             return Err(anyhow!(
                 "Overlay Profile offset profiles should have at least one duty/offset pair"
             ));
@@ -410,7 +411,8 @@ impl Engine {
             .get_ordered_member_profiles(&member_profile.member_profile_uids)
             .await?;
         // Resolve sub-members if the overlay's member Mix has Mix sub-members
-        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> = HashMap::new();
+        let mut member_sub_profiles: HashMap<ProfileUID, Vec<Profile>> =
+            HashMap::with_capacity(member_profile_members.len());
         if member_profile.p_type == ProfileType::Mix {
             for sub_member in &member_profile_members {
                 if sub_member.p_type == ProfileType::Mix {
@@ -606,7 +608,7 @@ impl Engine {
                 return;
             }
         };
-        let mut channels_with_settings = HashSet::new();
+        let mut channels_with_settings = HashSet::with_capacity(shutdown_settings.len());
         for (device_uid, channel_name, lcd_settings) in shutdown_settings {
             channels_with_settings.insert((device_uid.clone(), channel_name.clone()));
             self.apply_explicit_lcd_shutdown(&device_uid, &channel_name, lcd_settings)
@@ -1217,7 +1219,7 @@ impl Engine {
         member_profile_uids: &Vec<UID>,
     ) -> Result<Vec<Profile>> {
         let mut all_profiles = self.config.get_profiles().await?;
-        let mut member_profiles = Vec::new();
+        let mut member_profiles = Vec::with_capacity(member_profile_uids.len());
         for member_profile_uid in member_profile_uids {
             let Some(index) = all_profiles
                 .iter()

@@ -350,15 +350,14 @@ impl AlertController {
     pub async fn update(&self, mut alert: Alert) -> Result<()> {
         {
             let mut alerts_lock = self.alerts.borrow_mut();
-            if alerts_lock.contains_key(&alert.uid).not() {
+            let Some(existing_alert) = alerts_lock.get(&alert.uid) else {
                 return Err(CCError::NotFound {
                     msg: format!("Alert with uid {} does not exist", alert.uid),
                 }
                 .into());
-            }
+            };
             // don't overwrite state:
-            let current_state = alerts_lock.get(&alert.uid).unwrap().state;
-            alert.state = current_state;
+            alert.state = existing_alert.state;
             alerts_lock.replace(alert.uid.clone(), alert);
         }
         self.save_alert_data_to_config().await
@@ -398,7 +397,14 @@ impl AlertController {
                 Self::activate_alert_with_error(&mut alerts_to_fire, alert, "Device not found");
                 continue;
             };
-            let most_recent_status = device.borrow().status_current().unwrap();
+            let Some(most_recent_status) = device.borrow().status_current() else {
+                Self::activate_alert_with_error(
+                    &mut alerts_to_fire,
+                    alert,
+                    "Device has no current status",
+                );
+                continue;
+            };
             let channel_value = if alert.channel_source.channel_metric == ChannelMetric::Temp {
                 let Some(temp_status) = most_recent_status
                     .temps
