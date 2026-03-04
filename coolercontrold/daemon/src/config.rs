@@ -565,10 +565,12 @@ impl Config {
             Some(
                 value
                     .as_str()
-                    .expect("mix_function_type must be a valid string")
+                    .with_context(|| "mix_function_type must be a valid string")?
                     .try_into()
                     .ok()
-                    .with_context(|| "mix_function_type must be a valid string")?,
+                    .with_context(|| {
+                        "mix_function_type must be a valid Enum member of ProfileMixFunctionType"
+                    })?,
             )
         } else {
             None
