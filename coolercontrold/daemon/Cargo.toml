@@ -25,12 +25,12 @@ cc-detect = { path = "../cc-detect" }
 log = "0.4.29"
 env_logger = "0.11.9"
 systemd-journal-logger = "2.2.2"
-clap = { version = "4.5.59", features = [
+clap = { version = "4.5.60", features = [
   "derive",
 ] } # Command line argument parser - pkg
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 derive_more = { version = "2.1.1", features = ["display", "error"] }
-tokio = { version = "1.49.0", default-features = false, features = [
+tokio = { version = "1.50.0", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -95,7 +95,7 @@ axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 rcgen = "0.14.7"
 pin-project-lite = "0.2"
 tokio-rustls = "0.26"
-tempfile = "3.25.0"
+tempfile = "3.26.0"
 hyper = { version = "1.8.1", default-features = false, features = [
   "http1",
   "client",
@@ -108,7 +108,7 @@ hyper-util = { version = "0.1.20", default-features = false, features = [
 http-body-util = "0.1.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.148"
-zbus = { version = "5.13.2", default-features = false, features = [
+zbus = { version = "5.14.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 futures-util = { version = "0.3.32", default-features = false, features = [
@@ -121,7 +121,7 @@ sysinfo = { version = "=0.36", default-features = false, features = [
 chrono = { version = "0.4.43", features = [
   "serde",
 ] } # We use timestamps in our status history
-strum = { version = "0.27.2", features = ["derive"] } # Enum -> String
+strum = { version = "0.28.0", features = ["derive"] } # Enum -> String
 regex = "1.12.3"
 cached = { version = "0.56.0", default-features = false, features = [
   "proc_macro",
@@ -141,7 +141,7 @@ sha2 = "0.10.9"
 argon2 = "0.5"
 subtle = "2.6"
 toml_edit = "0.23.9"
-nix = { version = "0.31.1", default-features = false, features = [
+nix = { version = "0.31.2", default-features = false, features = [
   "user",
   "signal",
   "process",
@@ -174,9 +174,9 @@ gifski = { version = "1.34.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.12.0" # for gif processing
 rgb = "0.8.52" # for gif processing
-uuid = { version = "1.21.0", features = ["v4"] }
+uuid = { version = "1.22.0", features = ["v4"] }
 # service plugin dependencies
-tonic = { version = "0.14.4", default-features = false, features = [
+tonic = { version = "0.14.5", default-features = false, features = [
   "channel",
   "codegen",
   "server",
@@ -184,15 +184,15 @@ tonic = { version = "0.14.4", default-features = false, features = [
   "router",
 ] }
 prost = "0.14.3"
-tonic-prost = "0.14.4"
-tonic-health = "0.14.4"
-tonic-reflection = "0.14.4"
+tonic-prost = "0.14.5"
+tonic-health = "0.14.5"
+tonic-reflection = "0.14.5"
 
 [dev-dependencies]
-serial_test = "3.2.0"
+serial_test = "3.4.0"
 
 [build-dependencies]
-tonic-prost-build = "0.14.4"
+tonic-prost-build = "0.14.5"
 
 [lints.clippy]
 upper_case_acronyms = "allow"
