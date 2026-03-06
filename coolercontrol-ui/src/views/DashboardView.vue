@@ -430,6 +430,7 @@ onUnmounted(() => {
                 :dashboard="dashboard"
                 :key="'table' + chartKey"
             />
+            <!--            todo: get rid on control dashboards-->
             <ControlsOverview
                 v-else-if="dashboard.chartType == ChartType.CONTROLS"
                 :dashboard="dashboard"
