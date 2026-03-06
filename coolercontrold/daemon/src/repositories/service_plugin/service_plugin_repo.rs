@@ -302,7 +302,13 @@ impl ServicePluginRepo {
                 // It takes a moment for the status to come up, also for service crashing.
                 sleep(Duration::from_secs(1)).await;
                 match service_manager.status(&service_id).await {
-                    Ok(ServiceStatus::Running) => break,
+                    Ok(ServiceStatus::Running) => {
+                        info!(
+                            "Plugin service {} is running.",
+                            service_id.to_service_name()
+                        );
+                        break;
+                    }
                     Ok(status) => debug!(
                         "Service {service_id} not yet running after {}s: {status:?}",
                         wait_secs + 1
@@ -401,7 +407,7 @@ impl ServicePluginRepo {
                         );
                     }
                     info!(
-                        "Plugin Service {} v{} successfully started and connected.",
+                        "Plugin Service {} v{} successfully connected.",
                         service_id.to_service_name(),
                         device_service_conn.version
                     );
@@ -456,7 +462,13 @@ impl ServicePluginRepo {
             while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
                 sleep(Duration::from_secs(1)).await;
                 match service_manager.status(&service_id).await {
-                    Ok(ServiceStatus::Running) => break,
+                    Ok(ServiceStatus::Running) => {
+                        info!(
+                            "Integration service {} is running.",
+                            service_id.to_service_name()
+                        );
+                        break;
+                    }
                     Ok(status) => debug!(
                         "Integration service {service_id} not yet running after {}s: {status:?}",
                         wait_secs + 1
