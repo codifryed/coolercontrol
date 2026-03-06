@@ -31,18 +31,21 @@ ENV CC_PORT=11987
 ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
-ENV CC_SERVICE_MANAGER=OFF
 ENV CC_TLS=OFF
 
-RUN apk add --update python3 libusb openrc
+RUN apk add --update python3 libusb openrc && \
+    sed -i 's/#rc_sys=""/rc_sys="docker"/' /etc/rc.conf && \
+    sed -i 's/#rc_depend_strict="YES"/rc_depend_strict="NO"/' /etc/rc.conf
 
 COPY --from=daemon-builder /usr/src/coolercontrol/coolercontrold/target/release/coolercontrold /usr/local/bin/coolercontrold
 COPY --from=liquidctl-builder /root/.local /root/.local
+COPY .gitlab/images/dockerhub/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 RUN coolercontrold --version
 
 EXPOSE 11987
 EXPOSE 11988
 
-ENTRYPOINT ["coolercontrold"]
+ENTRYPOINT ["/entrypoint.sh"]
 

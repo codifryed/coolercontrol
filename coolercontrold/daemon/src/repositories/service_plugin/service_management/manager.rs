@@ -115,9 +115,9 @@ impl Manager {
         matches!(self, Self::Systemd(_))
     }
 
-    // pub fn is_open_rc(&self) -> bool {
-    //     matches!(self, Self::OpenRc(_))
-    // }
+    pub fn is_open_rc(&self) -> bool {
+        matches!(self, Self::OpenRc(_))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
