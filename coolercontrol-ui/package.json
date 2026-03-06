@@ -70,7 +70,7 @@
         "tailwindcss-themer": "^4.1.1",
         "typescript": "^5.9.3",
         "vite": "^7.3.1",
-        "vite-svg-loader": "^5.1.0",
+        "vite-svg-loader": "^5.1.1",
         "vitest": "^4.0.18",
         "vue-tsc": "^3.2.5"
     },
@@ -88,6 +88,8 @@
         },
         "js-beautify": {
             "glob": "^13.0.0"
-        }
+        },
+        "immutable": ">=5.1.5",
+        "rollup": ">=4.59.0"
     }
 }
