@@ -489,7 +489,10 @@ export const useDeviceStore = defineStore('device', () => {
         const sessionIsValid = await daemonClient.sessionIsValid()
         if (sessionIsValid) {
             loggedIn.value = true
-            isDefaultPasswd.value = localStorage.getItem('isDefaultPasswd') !== 'false'
+            // The daemon's verify-session endpoint guarantees the password is not default
+            // when it returns success, so we trust it over localStorage which may be stale.
+            isDefaultPasswd.value = false
+            localStorage.setItem('isDefaultPasswd', 'false')
             console.info('Login Session still valid')
             // Do not show this message on startup:
             if (appAgeMilli() > showLoginMessageThreshold) {
