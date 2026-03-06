@@ -1,0 +1,296 @@
+# ITE Super-I/O chips
+# Entry password for 0x2E: [0x87, 0x01, 0x55, 0x55]
+# Entry password for 0x4E: [0x87, 0x01, 0x55, 0xAA]
+
+[family]
+name = "ITE"
+entry_sequence_2e = [0x87, 0x01, 0x55, 0x55]
+entry_sequence_4e = [0x87, 0x01, 0x55, 0xAA]
+
+[[chips]]
+name = "ITE IT8603E Super IO Sensors"
+driver = "it87"
+devid = 0x8603
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8606E Super IO Sensors"
+driver = "it87"
+devid = 0x8606
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8607E Super IO Sensors"
+driver = "it87"
+devid = 0x8607
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8613E Super IO Sensors"
+driver = "it87"
+devid = 0x8613
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8620E Super IO Sensors"
+driver = "it87"
+devid = 0x8620
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8622E Super IO Sensors"
+driver = "it87"
+devid = 0x8622
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8623E Super IO Sensors"
+driver = "it87"
+devid = 0x8623
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8625E Super IO Sensors"
+driver = "it87"
+devid = 0x8625
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8626E Super IO Sensors"
+driver = "it87"
+devid = 0x8626
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8655E Super IO Sensors"
+driver = "it87"
+devid = 0x8655
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8665E Super IO Sensors"
+driver = "it87"
+devid = 0x8665
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8686E Super IO Sensors"
+driver = "it87"
+devid = 0x8686
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8688E Super IO Sensors"
+driver = "it87"
+devid = 0x8688
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8689E Super IO Sensors"
+driver = "it87"
+devid = 0x8689
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8696E Super IO Sensors"
+driver = "it87"
+devid = 0x8696
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8698E Super IO Sensors"
+driver = "it87"
+devid = 0x8698
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8705F Super IO Sensors"
+driver = "it87"
+devid = 0x8705
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8712F Super IO Sensors"
+driver = "it87"
+devid = 0x8712
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8716F Super IO Sensors"
+driver = "it87"
+devid = 0x8716
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8718F Super IO Sensors"
+driver = "it87"
+devid = 0x8718
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8720F Super IO Sensors"
+driver = "it87"
+devid = 0x8720
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8721F/IT8758E Super IO Sensors"
+driver = "it87"
+devid = 0x8721
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8726F Super IO Sensors"
+driver = "it87"
+devid = 0x8726
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8728F Super IO Sensors"
+driver = "it87"
+devid = 0x8728
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8731F Super IO Sensors"
+driver = "it87"
+devid = 0x8731
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8732F Super IO Sensors"
+driver = "it87"
+devid = 0x8732
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8752F Super IO Sensors"
+driver = "it87"
+devid = 0x8752
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8771E Super IO Sensors"
+driver = "it87"
+devid = 0x8771
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8772E Super IO Sensors"
+driver = "it87"
+devid = 0x8772
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8781F Super IO Sensors"
+driver = "it87"
+devid = 0x8781
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8782F Super IO Sensors"
+driver = "it87"
+devid = 0x8782
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8783F Super IO Sensors"
+driver = "it87"
+devid = 0x8783
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8786E Super IO Sensors"
+driver = "it87"
+devid = 0x8786
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8790E Super IO Sensors"
+driver = "it87"
+devid = 0x8790
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT8792E Super IO Sensors"
+driver = "it87"
+devid = 0x8733
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "ITE IT87952E Super IO Sensors"
+driver = "it87"
+devid = 0x8695
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]

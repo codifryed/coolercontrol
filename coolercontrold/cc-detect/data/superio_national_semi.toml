@@ -1,0 +1,53 @@
+# National Semiconductor / Infineon Super-I/O chips
+# These chips require no config mode entry password.
+
+[family]
+name = "National Semiconductor"
+
+[[chips]]
+name = "Nat. Semi. PC87360 Super IO Fan Sensors"
+driver = "pc87360"
+devid = 0xE1
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]
+
+[[chips]]
+name = "Nat. Semi. PC87363 Super IO Fan Sensors"
+driver = "pc87360"
+devid = 0xE8
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]
+
+[[chips]]
+name = "Nat. Semi. PC87364 Super IO Fan Sensors"
+driver = "pc87360"
+devid = 0xE4
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]
+
+[[chips]]
+name = "Nat. Semi. PC87365 Super IO Fan Sensors"
+driver = "pc87360"
+devid = 0xE5
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]
+
+[[chips]]
+name = "Nat. Semi. PC87366 Super IO Fan Sensors"
+driver = "pc87360"
+devid = 0xE9
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]
+
+[[chips]]
+name = "Nat. Semi. PC87427 Super IO Fan Sensors"
+driver = "pc87427"
+devid = 0xF2
+devid_mask = 0xFF
+logdev = 0x09
+features = ["fan"]

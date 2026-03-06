@@ -1,0 +1,249 @@
+/*
+ * CoolerControl - monitor and control your cooling and other devices
+ * Copyright (c) 2021-2025  Guy Boldon, Eren Simsek and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+use crate::api::devices::DevicePath;
+use crate::api::{handle_error, AppState, CCError};
+use crate::device::{ChannelName, UID};
+use crate::setting::{
+    CCChannelSettings, CCDeviceSettings, CoolerControlSettings, DeviceExtensions,
+};
+use axum::extract::{Path, State};
+use axum::Json;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::Duration;
+
+/// Get General `CoolerControl` settings
+pub async fn get_cc(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlSettingsDto>, CCError> {
+    setting_handle
+        .get_cc()
+        .await
+        .map(|settings| Json(CoolerControlSettingsDto::from(settings)))
+        .map_err(handle_error)
+}
+
+/// Apply General `CoolerControl` settings
+pub async fn update_cc(
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(cc_settings_request): Json<CoolerControlSettingsDto>,
+) -> Result<(), CCError> {
+    setting_handle
+        .update_cc(cc_settings_request)
+        .await
+        .map_err(handle_error)
+}
+
+/// Get All `CoolerControl` settings that apply to a specific Device
+pub async fn get_all_cc_devices(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlAllDeviceSettingsDto>, CCError> {
+    setting_handle
+        .get_all_cc_devices()
+        .await
+        .map(|devices| Json(CoolerControlAllDeviceSettingsDto { devices }))
+        .map_err(handle_error)
+}
+
+/// Get `CoolerControl` settings that apply to a specific Device
+pub async fn get_cc_device(
+    Path(path): Path<DevicePath>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<Json<CoolerControlDeviceSettingsDto>, CCError> {
+    setting_handle
+        .get_cc_device(path.device_uid)
+        .await
+        .map(Json)
+        .map_err(handle_error)
+}
+
+/// Save `CoolerControl` settings that apply to a specific Device
+pub async fn update_cc_device(
+    Path(path): Path<DevicePath>,
+    State(AppState { setting_handle, .. }): State<AppState>,
+    Json(cc_device_settings_request): Json<CCDeviceSettings>,
+) -> Result<(), CCError> {
+    setting_handle
+        .update_cc_device(path.device_uid, cc_device_settings_request)
+        .await
+        .map_err(handle_error)
+}
+
+/// Retrieves the persisted UI Settings, if found.
+pub async fn get_ui(
+    State(AppState { setting_handle, .. }): State<AppState>,
+) -> Result<String, CCError> {
+    setting_handle.get_ui().await.map_err(handle_error)
+}
+
+/// Persists the UI Settings, overriding anything previously saved
+pub async fn update_ui(
+    State(AppState { setting_handle, .. }): State<AppState>,
+    ui_settings_request: String,
+) -> Result<(), CCError> {
+    setting_handle
+        .update_ui(ui_settings_request)
+        .await
+        .map_err(handle_error)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlSettingsDto {
+    apply_on_boot: Option<bool>,
+    no_init: Option<bool>,
+    startup_delay: Option<u16>,
+    thinkpad_full_speed: Option<bool>,
+    liquidctl_integration: Option<bool>,
+    hide_duplicate_devices: Option<bool>,
+    compress: Option<bool>,
+    poll_rate: Option<f64>,
+    drivetemp_suspend: Option<bool>,
+    /// Custom origins to allow in CORS (for reverse proxy setups)
+    origins: Option<Vec<String>>,
+    /// Allow unencrypted HTTP connections from non-localhost addresses
+    allow_unencrypted: Option<bool>,
+    /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
+    protocol_header: Option<String>,
+}
+
+impl CoolerControlSettingsDto {
+    pub fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
+        let apply_on_boot = if let Some(apply) = self.apply_on_boot {
+            apply
+        } else {
+            current_settings.apply_on_boot
+        };
+        let no_init = if let Some(init) = self.no_init {
+            init
+        } else {
+            current_settings.no_init
+        };
+        let startup_delay = if let Some(delay) = self.startup_delay {
+            Duration::from_secs(u64::from(delay.clamp(0, 30)))
+        } else {
+            current_settings.startup_delay
+        };
+        let thinkpad_full_speed = if let Some(full_speed) = self.thinkpad_full_speed {
+            full_speed
+        } else {
+            current_settings.thinkpad_full_speed
+        };
+        let hide_duplicate_devices = if let Some(hide) = self.hide_duplicate_devices {
+            hide
+        } else {
+            current_settings.hide_duplicate_devices
+        };
+        let liquidctl_integration = if let Some(integrate) = self.liquidctl_integration {
+            integrate
+        } else {
+            current_settings.liquidctl_integration
+        };
+        let compress = if let Some(compress) = self.compress {
+            compress
+        } else {
+            current_settings.compress
+        };
+        let poll_rate = if let Some(poll_rate) = self.poll_rate {
+            // clamps and rounds to the nearest half-second.
+            (poll_rate.clamp(0.5, 5.0) * 2.).round() / 2.
+        } else {
+            current_settings.poll_rate
+        };
+        let drivetemp_suspend = if let Some(d_suspend) = self.drivetemp_suspend {
+            d_suspend
+        } else {
+            current_settings.drivetemp_suspend
+        };
+        let origins = if let Some(ref origins) = self.origins {
+            origins.clone()
+        } else {
+            current_settings.origins
+        };
+        let allow_unencrypted = if let Some(allow) = self.allow_unencrypted {
+            allow
+        } else {
+            current_settings.allow_unencrypted
+        };
+        let protocol_header = if let Some(ref header) = self.protocol_header {
+            if header.is_empty() {
+                None
+            } else {
+                Some(header.clone())
+            }
+        } else {
+            current_settings.protocol_header
+        };
+        CoolerControlSettings {
+            apply_on_boot,
+            no_init,
+            startup_delay,
+            thinkpad_full_speed,
+            hide_duplicate_devices,
+            liquidctl_integration,
+            port: current_settings.port,
+            ipv4_address: current_settings.ipv4_address,
+            ipv6_address: current_settings.ipv6_address,
+            compress,
+            poll_rate,
+            drivetemp_suspend,
+            tls_enabled: current_settings.tls_enabled,
+            tls_cert_path: current_settings.tls_cert_path,
+            tls_key_path: current_settings.tls_key_path,
+            origins,
+            allow_unencrypted,
+            protocol_header,
+            sensors_auto_detect: current_settings.sensors_auto_detect,
+        }
+    }
+}
+
+impl From<CoolerControlSettings> for CoolerControlSettingsDto {
+    #[allow(clippy::cast_possible_truncation)]
+    fn from(settings: CoolerControlSettings) -> Self {
+        Self {
+            apply_on_boot: Some(settings.apply_on_boot),
+            no_init: Some(settings.no_init),
+            startup_delay: Some(settings.startup_delay.as_secs() as u16),
+            thinkpad_full_speed: Some(settings.thinkpad_full_speed),
+            hide_duplicate_devices: Some(settings.hide_duplicate_devices),
+            liquidctl_integration: Some(settings.liquidctl_integration),
+            compress: Some(settings.compress),
+            poll_rate: Some(settings.poll_rate),
+            drivetemp_suspend: Some(settings.drivetemp_suspend),
+            origins: Some(settings.origins),
+            allow_unencrypted: Some(settings.allow_unencrypted),
+            protocol_header: settings.protocol_header,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlDeviceSettingsDto {
+    pub uid: UID,
+    pub name: String,
+    pub disable: bool,
+    pub extensions: DeviceExtensions,
+    pub channel_settings: HashMap<ChannelName, CCChannelSettings>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct CoolerControlAllDeviceSettingsDto {
+    devices: Vec<CoolerControlDeviceSettingsDto>,
+}

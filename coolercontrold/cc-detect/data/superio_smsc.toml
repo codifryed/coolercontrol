@@ -1,0 +1,111 @@
+# SMSC Super-I/O chips
+# Entry password: [0x55] for both 0x2E and 0x4E
+
+[family]
+name = "SMSC"
+entry_sequence_2e = [0x55]
+entry_sequence_4e = [0x55]
+
+[[chips]]
+name = "SMSC LPC47B27x Super IO Fan Sensors"
+driver = "smsc47m1"
+devid = 0x51
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["fan"]
+
+[[chips]]
+name = "SMSC LPC47B397-NC Super IO"
+driver = "smsc47b397"
+devid = 0x6F
+devid_mask = 0xFF
+logdev = 0x08
+features = ["fan", "temp"]
+
+[[chips]]
+name = "SMSC LPC47M10x/112/13x Super IO Fan Sensors"
+driver = "smsc47m1"
+devid = 0x59
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["fan"]
+
+[[chips]]
+name = "SMSC LPC47M14x Super IO Fan Sensors"
+driver = "smsc47m1"
+devid = 0x5F
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["fan"]
+
+[[chips]]
+name = "SMSC LPC47M15x/192/997 Super IO Fan Sensors"
+driver = "smsc47m1"
+devid = 0x60
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["fan"]
+
+[[chips]]
+name = "SMSC LPC47M292 Super IO Fan Sensors"
+driver = "smsc47m1"
+devid = 0x6B00
+devid_mask = 0xFF80
+logdev = 0x0A
+features = ["fan"]
+
+[[chips]]
+name = "SMSC SCH3112 Super IO"
+driver = "dme1737"
+devid = 0x7C
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH3114 Super IO"
+driver = "dme1737"
+devid = 0x7D
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH3116 Super IO"
+driver = "dme1737"
+devid = 0x7F
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH5127 Super IO"
+driver = "dme1737"
+devid = 0x86
+devid_mask = 0xFF
+logdev = 0x0A
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH5307-NS Super IO"
+driver = "smsc47b397"
+devid = 0x81
+devid_mask = 0xFF
+logdev = 0x08
+features = ["fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH5317 Super IO"
+driver = "smsc47b397"
+devid = 0x85
+devid_mask = 0xFF
+logdev = 0x08
+features = ["fan", "temp"]
+
+[[chips]]
+name = "SMSC SCH5317 Super IO (alt ID)"
+driver = "smsc47b397"
+devid = 0x8C
+devid_mask = 0xFF
+logdev = 0x08
+features = ["fan", "temp"]

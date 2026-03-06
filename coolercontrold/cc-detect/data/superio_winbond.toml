@@ -1,0 +1,396 @@
+# VIA / Winbond / Nuvoton / Fintek Super-I/O chips
+# Entry password: [0x87, 0x87] for both 0x2E and 0x4E
+
+[family]
+name = "Winbond / Nuvoton / Fintek"
+entry_sequence_2e = [0x87, 0x87]
+entry_sequence_4e = [0x87, 0x87]
+
+# VIA chips
+[[chips]]
+name = "VIA VT1211 Super IO Sensors"
+driver = "vt1211"
+devid = 0x3C
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+# Winbond chips
+[[chips]]
+name = "Winbond W83627HF/F/HG/G Super IO Sensors"
+driver = "w83627hf"
+devid = 0x52
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83627THF/THG Super IO Sensors"
+driver = "w83627hf"
+devid = 0x82
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83637HF/HG Super IO Sensors"
+driver = "w83627hf"
+devid = 0x70
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83687THF Super IO Sensors"
+driver = "w83627hf"
+devid = 0x85
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83697HF/F/HG Super IO Sensors"
+driver = "w83627hf"
+devid = 0x60
+devid_mask = 0xFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83627EHF/EF/EHG/EG Super IO Sensors"
+driver = "w83627ehf"
+devid = 0x8840
+devid_mask = 0xFFC0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83627DHG Super IO Sensors"
+driver = "w83627ehf"
+devid = 0xA020
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83627DHG-P/W83527HG Super IO Sensors"
+driver = "w83627ehf"
+devid = 0xB070
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83627UHG/NCT6627UD Super IO Sensors"
+driver = "w83627ehf"
+devid = 0xA230
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Winbond W83667HG Super IO Sensors"
+driver = "w83627ehf"
+devid = 0xA510
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton W83667HG-B (NCT5571D) Super IO Sensors"
+driver = "w83627ehf"
+devid = 0xB350
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton W83677HG-I Super IO Sensors"
+driver = "nct6775"
+devid = 0xB470
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+# Nuvoton NCT67xx chips
+[[chips]]
+name = "Nuvoton NCT6683D eSIO"
+driver = "nct6683"
+devid = 0xC730
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6686D eSIO"
+driver = "nct6687"
+devid = 0xD440
+devid_mask = 0xFFF0
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6687D eSIO"
+driver = "nct6683"
+devid = 0xD590
+devid_mask = 0xFFFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6687D-R eSIO"
+driver = "nct6687"
+devid = 0xD592
+devid_mask = 0xFFFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+# Nuvoton NCT6xxx nct6775 driver family
+[[chips]]
+name = "Nuvoton NCT6102D/NCT6104D/NCT6106D Super IO Sensors"
+driver = "nct6775"
+devid = 0xC450
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6112D/NCT6114D/NCT6116D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD280
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT5573D/NCT5577D/NCT6776F Super IO Sensors"
+driver = "nct6775"
+devid = 0xC330
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT5532D/NCT6779D Super IO Sensors"
+driver = "nct6775"
+devid = 0xC560
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6791D Super IO Sensors"
+driver = "nct6775"
+devid = 0xC800
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6792D Super IO Sensors"
+driver = "nct6775"
+devid = 0xC910
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6793D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD120
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6795D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD350
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6796D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD420
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6796D-S Super IO Sensors"
+driver = "nct6775"
+devid = 0xD801
+devid_mask = 0xFFFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6797D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD450
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6798D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD428
+devid_mask = 0xFFF8
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6799D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD802
+devid_mask = 0xFFFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Nuvoton NCT6701D Super IO Sensors"
+driver = "nct6775"
+devid = 0xD806
+devid_mask = 0xFFFF
+logdev = 0x0B
+features = ["voltage", "fan", "temp"]
+
+# Fintek chips
+[[chips]]
+name = "Fintek F71805F/FG Super IO Sensors"
+driver = "f71805f"
+devid = 0x0406
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71808E Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0901
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71808A Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1001
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71862FG Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0601
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71868A Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1106
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71869F/E Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0814
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71869A Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1007
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71806FG/F71872FG Super IO Sensors"
+driver = "f71805f"
+devid = 0x0341
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71858DG Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0507
+devid_mask = 0xFFFF
+logdev = 0x02
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71882FG/F71883FG Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0541
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71889FG/F81801U Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0723
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71889ED Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0909
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F71889A Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1005
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F81768D Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1210
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F81865F Super IO Sensors"
+driver = "f71882fg"
+devid = 0x0704
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Fintek F81866D Super IO Sensors"
+driver = "f71882fg"
+devid = 0x1010
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]
+
+[[chips]]
+name = "Asus F8000 Super IO"
+driver = "f71882fg"
+devid = 0x0581
+devid_mask = 0xFFFF
+logdev = 0x04
+features = ["voltage", "fan", "temp"]

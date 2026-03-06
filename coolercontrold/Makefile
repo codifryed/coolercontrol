@@ -11,7 +11,7 @@ CARGO := $(shell command -v cargo || command -v cargo-1.85)
 
 build: release += --release
 build:
-	@-cp -rf ../coolercontrol-ui/dist/* resources/app/
+	@-cp -rf ../coolercontrol-ui/dist/* daemon/resources/app/
 	@$(CARGO) build --locked $(release)
 
 test: release += --release
@@ -43,7 +43,7 @@ clean: clean-app
 	@-$(RM) -rf .cargo
 
 clean-app:
-	@-$(RM) -rf resources/app/*
+	@-$(RM) -rf daemon/resources/app/*
 
 install:
 	@mkdir -p $(DESTDIR)$(prefix)/bin
