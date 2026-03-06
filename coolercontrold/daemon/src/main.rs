@@ -35,7 +35,9 @@ use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
-use log::{debug, error, info, warn};
+#[cfg(target_arch = "x86_64")]
+use log::debug;
+use log::{error, info, warn};
 use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
