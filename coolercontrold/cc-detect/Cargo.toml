@@ -11,6 +11,9 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 
+[lib]
+doctest = false
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
