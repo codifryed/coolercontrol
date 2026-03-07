@@ -40,88 +40,72 @@ Powerful cooling control and monitoring for Linux 🐧
 
 <!-- trunk-ignore-begin(markdownlint/MD051): links with emojis -->
 
-[Install](https://docs.coolercontrol.org/getting-started.html) ·
-[Hardware Support](https://docs.coolercontrol.org/hardware-support.html) ·
-[Documentation](https://docs.coolercontrol.org) · [Discord](https://discord.gg/MbcgUFAfhV)
+[Install](https://coolercontrol.org/getting-started.html) &middot;
+[Hardware Support](https://coolercontrol.org/hardware-support.html) &middot;
+[Documentation](https://coolercontrol.org) &middot; [Discord](https://discord.gg/MbcgUFAfhV)
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
 </h2>
 </div>
+
 <br/>
 
-CoolerControl is an open-source application for monitoring and controlling supported cooling
-devices. It features an intuitive interface, flexible control options, and live thermal data to keep
-your system quiet, cool, and stable.
+CoolerControl is an open-source application for monitoring and controlling supported cooling devices
+on Linux. It features a system daemon with a built-in Web UI, an optional desktop app, and a
+comprehensive REST API.
 
-## ✨ Features
+## Features
 
-- Highly configurable GUI with dashboards
-- System daemon runs in the background
-- Control devices based on any temperature or combinations of sensors
-- Auto-detection of hwmon/sysfs and liquidctl devices
-- Enhanced liquidctl device support (AIOs, USB fan hubs, LCD screens, RGB lighting, etc.)
+- System daemon with built-in Web UI and optional desktop application
+- Auto-detection of hwmon/sysfs, liquidctl, NVIDIA, and AMD GPU devices
 - GPU fan control for most NVIDIA and AMD GPUs
-- Fully customizable `Profiles` (Fixed, Graph, Mix, Overlay) that can be applied to multiple fans
-- `Functions` add hysteresis, thresholds, directionality, and response-time control
-- System-wide cooling `Modes` to adjust all devices at once
+- Customizable `Profiles` (Fixed, Graph, Mix, Overlay) applied to any fan or pump
+- `Functions` for hysteresis, thresholds, directionality, and response-time control
+- System-wide `Modes` to switch all device settings at once
 - `Custom Sensors` from files or combinations of existing sensors
-- Multiple `Dashboards` with filters for sensor data
-- `Alerts` for temperature/fan anomalies
+- `Dashboards` and `Alerts` for monitoring and anomaly detection
+- Headless and remote access support
 - Reapplies settings after sleep
-- External monitoring and GUI support
-- Headless support with a built-in Web UI
-- Comprehensive REST API for integrations
 
-### 🛠️ Installation Instructions
+For the full feature set and configuration guides, see the
+[documentation](https://coolercontrol.org).
 
-[See the Getting Started page](https://docs.coolercontrol.org/getting-started.html)
+## Installation
 
-## 🧰 Hardware Support
+See the [Getting Started](https://coolercontrol.org/getting-started.html) page for install
+instructions for all supported distributions (Arch, Debian/Ubuntu, Fedora, openSUSE, Nix, Gentoo,
+Unraid, Docker, AppImage, and source builds).
 
-[See the Hardware Support page](https://docs.coolercontrol.org/hardware-support.html)
+## Hardware Support
 
-## ❔ Problem or Question
+See the [Hardware Support](https://coolercontrol.org/hardware-support.html) page for details on
+motherboard fans, USB AIOs, GPU fan control, laptops, and HDDs.
 
-If you are experiencing an issue or have a feature request, please open an
-[issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the
-provided templates. When submitting a bug
-[daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file)
-are invaluable for determining the cause. If you have a general question, please join the
-[Discord](https://discord.gg/MbcgUFAfhV) channel where community members can also help.
+## Problems and Questions
 
-## ❤️ Support CoolerControl
+- Open an [issue on GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) using one of
+  the provided templates. Daemon logs are invaluable for bug reports.
+- Join the [Discord](https://discord.gg/MbcgUFAfhV) for general questions and community support.
 
-Made for Linux, used 24/7. CoolerControl started as the tool I needed for my own rigs and grew from
-there. If you’d like to help, your support goes straight into new features, integrations,
-maintenance, and a cup of coffee to power those late‑night coding sessions.
+## Contributing
 
-<div>
+Contributions are welcome. Please open an
+[issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) or discuss on
+[Discord](https://discord.gg/MbcgUFAfhV) before submitting changes. See the
+[contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md)
+for details.
+
+## Support
+
 <!-- trunk-ignore-begin(markdownlint)-->
+
 <a href="https://ko-fi.com/codifryed"><img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
 <a href="https://github.com/sponsors/codifryed"><img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA"></a>
+
 <!-- trunk-ignore-end(markdownlint)-->
-</div>
 
-## 🚀 Contributing
-
-Contributions are welcome and if you have an idea or want to submit some changes, it's best to
-either [submit an Issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues/) or get on
-[Discord](https://discord.gg/MbcgUFAfhV) to discuss it first. For general information, please read
-the
-[contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
-
-## ⭐ Acknowledgements
-
-- A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
-- Major thanks to the Python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-- Thanks to the many contributors to [hwmon](https://docs.kernel.org/hwmon/)
-
-## 📝 License
-
-This program is licensed under [GPLv3+](LICENSE)
-
-## 🗒️ Related Projects
+## Related Projects
 
 - [liquidctl](https://github.com/liquidctl/liquidctl)  
   Cross-platform tool and drivers for liquid coolers and other devices.
@@ -137,3 +121,7 @@ This program is licensed under [GPLv3+](LICENSE)
 
 - [FanControl](https://github.com/Rem0o/FanControl.Releases)  
   A focused and highly customizable fan controlling software for Windows.
+
+## License
+
+This program is licensed under [GPLv3+](LICENSE)
