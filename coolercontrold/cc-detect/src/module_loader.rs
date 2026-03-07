@@ -26,7 +26,7 @@ use log::{debug, info, warn};
 use crate::shell_command::{ShellCommand, ShellCommandResult};
 
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const UDEVADM_TIMEOUT: Duration = Duration::from_secs(15);
+const UDEVADM_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Driver conflict rules. If both drivers are detected, only load the preferred one.
 pub struct DriverConflict {
@@ -211,7 +211,7 @@ pub fn udevadm_settle() {
             debug!("udevadm settle completed");
         }
         ShellCommandResult::Error(err) => {
-            warn!("udevadm settle failed: {err}");
+            info!("udevadm settle failed: {err}");
         }
     }
 }

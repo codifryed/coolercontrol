@@ -226,15 +226,14 @@ impl ModeController {
         moro_local::async_scope!(|scope| -> Result<()> {
             // devices that have been disabled are simply skipped.
             for device_uid in self.all_devices.keys() {
-                if mode.all_device_settings.contains_key(device_uid).not() {
+                let Some(mode_device_settings) = mode.all_device_settings.get(device_uid) else {
                     self.reset_device_settings(device_uid, scope)?;
                     continue;
-                }
+                };
                 let mut saved_device_settings_map: HashMap<ChannelName, Setting> = HashMap::new();
                 for setting in self.config.get_device_settings(device_uid)? {
                     saved_device_settings_map.insert(setting.channel_name.clone(), setting);
                 }
-                let mode_device_settings = mode.all_device_settings.get(device_uid).unwrap();
                 self.reset_unset_mode_channels(
                     device_uid,
                     &saved_device_settings_map,
@@ -581,19 +580,15 @@ impl ModeController {
     fn remove_affected_settings(&self, settings_to_delete: Vec<(String, String, String)>) {
         let mut modes = self.modes.borrow_mut();
         for (mode_uid, device_uid, channel_name) in settings_to_delete {
-            let device_settings = modes
-                .get_mut(&mode_uid)
-                .unwrap()
-                .all_device_settings
-                .get_mut(&device_uid)
-                .unwrap();
+            let Some(mode) = modes.get_mut(&mode_uid) else {
+                continue;
+            };
+            let Some(device_settings) = mode.all_device_settings.get_mut(&device_uid) else {
+                continue;
+            };
             device_settings.remove(&channel_name);
             if device_settings.is_empty() {
-                modes
-                    .get_mut(&mode_uid)
-                    .unwrap()
-                    .all_device_settings
-                    .remove(&device_uid);
+                mode.all_device_settings.remove(&device_uid);
             }
         }
     }

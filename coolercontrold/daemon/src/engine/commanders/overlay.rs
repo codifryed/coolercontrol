@@ -67,12 +67,12 @@ impl OverlayProfileCommander {
                 "Only Overlay Profiles are supported for scheduling in the MixProfileCommander"
             ));
         }
-        if overlay_profile.offset_profile.is_none() {
+        let Some(offset_profile) = overlay_profile.offset_profile.as_ref() else {
             return Err(anyhow!(
                 "Offset Profile must be present for an Overlay Profile"
             ));
-        }
-        if overlay_profile.offset_profile.as_ref().unwrap().is_empty() {
+        };
+        if offset_profile.is_empty() {
             return Err(anyhow!(
                 "Overlay Profile offset profiles should have at least one duty/offset pair"
             ));
@@ -221,9 +221,10 @@ impl OverlayProfileCommander {
 
     /// Collects the duties to apply for all scheduled Overlay Profiles from the output cache.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
-        let mut output_to_apply = HashMap::new();
+        let settings = self.scheduled_settings.borrow();
+        let mut output_to_apply = HashMap::with_capacity(settings.len());
         let output_cache_lock = self.process_output_cache.borrow();
-        for (overlay_profile, device_channels) in self.scheduled_settings.borrow().iter() {
+        for (overlay_profile, device_channels) in settings.iter() {
             let optional_duty_to_set = output_cache_lock[&overlay_profile.profile_uid]
                 .as_ref()
                 .copied();

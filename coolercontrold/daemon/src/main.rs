@@ -35,6 +35,8 @@ use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::repositories::service_plugin::service_plugin_repo::ServicePluginRepo;
 use anyhow::{anyhow, Error, Result};
 use clap::Parser;
+#[cfg(target_arch = "x86_64")]
+use log::debug;
 use log::{error, info, warn};
 use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
@@ -457,14 +459,14 @@ fn exit_successfully() -> ! {
 fn run_sensors_detection(config: &Rc<Config>) {
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
-            info!("Running Super-I/O hardware detection");
+            debug!("Running Super-I/O hardware detection");
             let results = cc_detect::run_detection(
                 true,
                 Some(&Path::new(DEFAULT_CONFIG_DIR).join("detect.toml")),
             );
             for chip in &results.detected_chips {
                 info!(
-                    "Detected: {} (driver: {}, status: {})",
+                    "{} (driver: {}, status: {})",
                     chip.name, chip.driver, chip.module_status
                 );
             }

@@ -96,17 +96,32 @@ impl OpenRcManager {
             .await
             .map_err(Into::into)
             .and_then(|output| {
-            if output.status.success() {
-                Ok(output)
-            } else {
-                let err = String::from_utf8_lossy(&output.stderr).to_string();
-                let out = String::from_utf8_lossy(&output.stdout).to_string();
-                Err(anyhow!(
-                    "rc-service command {cmd} for service {service_id} failed with exit code {}: {err} {out}",
-                    output.status.code().unwrap_or(-1)
-                ))
-            }
-        })
+                if output.status.success() {
+                    Ok(output)
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr).to_string();
+                    let out = String::from_utf8_lossy(&output.stdout).to_string();
+                    Err(anyhow!(
+                        "rc-service {cmd} for {service_id} failed (code {}): {err} {out}",
+                        output.status.code().unwrap_or(-1)
+                    ))
+                }
+            })
+    }
+
+    /// Like `rc_service`, but returns the raw `Output` regardless of exit code.
+    /// Required for `status`, where the exit code itself carries the service state.
+    async fn rc_service_output(cmd: &str, service_id: &ServiceId) -> Result<Output> {
+        Command::new(RC_SERVICE)
+            .kill_on_drop(true)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .arg(service_id.to_service_name())
+            .arg(cmd)
+            .output()
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -147,29 +162,29 @@ impl ServiceManager for OpenRcManager {
     }
 
     async fn status(&self, service_id: &ServiceId) -> Result<ServiceStatus> {
-        let output = Self::rc_service("status", service_id).await?;
-        match output.status.code() {
-            Some(1) => {
-                let mut stdio = String::from_utf8_lossy(&output.stderr);
-                if stdio.trim().is_empty() {
-                    stdio = String::from_utf8_lossy(&output.stdout);
-                }
-                if stdio.contains("does not exist") {
-                    Ok(ServiceStatus::NotInstalled)
-                } else {
-                    Err(anyhow!(
-                        "Failed to get status of service {}: {}",
-                        service_id.to_service_name(),
-                        stdio
-                    ))
-                }
+        // Use rc_service_output (not rc_service) so that non-zero exit codes
+        // reach the match below -- they encode the service state, not errors.
+        let output = Self::rc_service_output("status", service_id).await?;
+        let status_text = {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.trim().is_empty() {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            } else {
+                stderr.trim().to_string()
             }
+        };
+        match output.status.code() {
             Some(0) => Ok(ServiceStatus::Running),
-            Some(3) => Ok(ServiceStatus::Stopped(None)),
+            // Exit code 3 is the POSIX standard for "stopped".
+            Some(3) => Ok(ServiceStatus::Stopped(Some(status_text))),
+            // Exit code 1: either "does not exist" or a crashed/unclear state.
+            Some(1) if status_text.contains("does not exist") => Ok(ServiceStatus::NotInstalled),
+            Some(1) => Ok(ServiceStatus::Stopped(Some(status_text))),
             _ => Err(anyhow!(
-                "Failed to get status of service {}: {}",
+                "Unexpected rc-service status exit code {} for {}: {}",
+                output.status.code().unwrap_or(-1),
                 service_id.to_service_name(),
-                String::from_utf8_lossy(&output.stderr)
+                status_text,
             )),
         }
     }

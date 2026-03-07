@@ -301,15 +301,30 @@ impl ServicePluginRepo {
             while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
                 // It takes a moment for the status to come up, also for service crashing.
                 sleep(Duration::from_secs(1)).await;
-                let status = service_manager.status(&service_id).await;
-                if status.is_ok_and(|status| status == ServiceStatus::Running) {
-                    break;
+                match service_manager.status(&service_id).await {
+                    Ok(ServiceStatus::Running) => {
+                        info!(
+                            "Plugin service {} is running.",
+                            service_id.to_service_name()
+                        );
+                        break;
+                    }
+                    Ok(status) => debug!(
+                        "Service {service_id} not yet running after {}s: {status:?}",
+                        wait_secs + 1
+                    ),
+                    Err(err) => debug!(
+                        "Service {service_id} status check failed after {}s: {err}",
+                        wait_secs + 1
+                    ),
                 }
                 wait_secs += 1;
             }
             if wait_secs == TIMEOUT_SERVICE_START_SECONDS {
+                let final_status = service_manager.status(&service_id).await;
                 error!(
-                    "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds. This service will be skipped."
+                    "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} \
+                     seconds (final status: {final_status:?}). This service will be skipped."
                 );
                 let _ = service_manager.remove(&service_id).await;
                 return;
@@ -392,7 +407,7 @@ impl ServicePluginRepo {
                         );
                     }
                     info!(
-                        "Plugin Service {} v{} successfully started and connected.",
+                        "Plugin Service {} v{} successfully connected.",
                         service_id.to_service_name(),
                         device_service_conn.version
                     );
@@ -437,7 +452,7 @@ impl ServicePluginRepo {
                 // The api_up_token will be canceld once the daemon's API is up, making sure
                 // that integration services connect at the proper time.
                 () = sleep(Duration::from_secs(TIMEOUT_API_UP_SECONDS)) => warn!("Timeout waiting for the daemon's API to come up. Will start integration services anyway."),
-                () = api_up_token.cancelled() => debug!("API startup complete, starting integration service: {service_id}"),
+                () = api_up_token.cancelled() => info!("API startup complete, starting integration service: {service_id}"),
             }
             if let Err(err) = service_manager.start(&service_id).await {
                 error!("Error starting plugin service: {err}");
@@ -446,15 +461,30 @@ impl ServicePluginRepo {
             let mut wait_secs = 0;
             while wait_secs < TIMEOUT_SERVICE_START_SECONDS {
                 sleep(Duration::from_secs(1)).await;
-                let status = service_manager.status(&service_id).await;
-                if status.is_ok_and(|status| status == ServiceStatus::Running) {
-                    break;
+                match service_manager.status(&service_id).await {
+                    Ok(ServiceStatus::Running) => {
+                        info!(
+                            "Integration service {} is running.",
+                            service_id.to_service_name()
+                        );
+                        break;
+                    }
+                    Ok(status) => debug!(
+                        "Integration service {service_id} not yet running after {}s: {status:?}",
+                        wait_secs + 1
+                    ),
+                    Err(err) => debug!(
+                        "Integration service {service_id} status check failed after {}s: {err}",
+                        wait_secs + 1
+                    ),
                 }
                 wait_secs += 1;
             }
             if wait_secs == TIMEOUT_SERVICE_START_SECONDS {
+                let final_status = service_manager.status(&service_id).await;
                 error!(
-                    "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds"
+                    "Integration service {service_id} did not start within \
+                     {TIMEOUT_SERVICE_START_SECONDS} seconds (final status: {final_status:?})"
                 );
             }
         });

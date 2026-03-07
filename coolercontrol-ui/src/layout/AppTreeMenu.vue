@@ -313,13 +313,13 @@ enum SubMenu {
 const createTreeMenu = (): void => {
     data.value.length = 0
     const result: Tree[] = []
+    result.push(...devicesTreeArray())
+    result.push(customSensorsTree())
     result.push(dashboardsTree())
     result.push(modesTree())
     result.push(profilesTree())
     result.push(functionsTree())
     result.push(alertsTree())
-    result.push(customSensorsTree())
-    result.push(...devicesTreeArray())
     if (settingsStore.menuOrder.length > 0) {
         // Sort main menu items
         const getRootIndex = (item: any) => {

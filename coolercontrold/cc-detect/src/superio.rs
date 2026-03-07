@@ -66,17 +66,20 @@ pub fn detect_superio(port_io: &mut dyn PortIo, db: &ChipDatabase) -> Vec<Detect
     for &(addr_reg, data_reg) in &SUPERIO_ADDRS {
         debug!("Probing Super-I/O at address 0x{addr_reg:02X}/0x{data_reg:02X}");
 
-        // Fast path: try reading ID without entering config mode
+        let mut unknown_id: Option<u16> = None;
+
+        // Fast path: try reading ID without entering config mode.
         match try_fast_path(port_io, addr_reg, data_reg, db) {
-            Ok(Some(chip)) => {
+            Ok((Some(chip), _)) => {
                 info!(
                     "Detected {} at 0x{:02X} id:0x{:04X} (driver: {}) (Fast path)",
                     chip.name, addr_reg, chip.device_id, chip.driver
                 );
                 detected.push(chip);
-                continue; // Skip fallback for this address
+                continue; // Skip fallback for this address.
             }
-            Ok(None) => {
+            Ok((None, id)) => {
+                unknown_id = id;
                 debug!("No chip detected at 0x{addr_reg:02X} (Fast path)");
             }
             Err(err) => {
@@ -84,21 +87,33 @@ pub fn detect_superio(port_io: &mut dyn PortIo, db: &ChipDatabase) -> Vec<Detect
             }
         }
 
-        // Fallback path: try each family with config mode entry
+        // Fallback path: try each family with config mode entry.
         match try_fallback_path(port_io, addr_reg, data_reg, db, &custom_chips) {
-            Ok(Some(chip)) => {
+            Ok((Some(chip), _)) => {
                 info!(
                     "Detected {} at 0x{:02X} id:0x{:04X} (driver: {}) (Fallback path)",
                     chip.name, addr_reg, chip.device_id, chip.driver
                 );
                 detected.push(chip);
+                unknown_id = None; // Chip found; clear any fast-path unknown.
             }
-            Ok(None) => {
+            Ok((None, id)) => {
+                if unknown_id.is_none() {
+                    unknown_id = id;
+                }
                 debug!("No chip detected at 0x{addr_reg:02X} (Fallback path)");
             }
             Err(err) => {
                 debug!("Error at 0x{addr_reg:02X} (Fallback path): {err}");
             }
+        }
+
+        // Single consolidated log per address for any unrecognized device ID.
+        if let Some(id) = unknown_id {
+            info!(
+                "Unrecognized Super-I/O chip at 0x{addr_reg:02X} id:0x{id:04X} \
+                 - please report for database inclusion"
+            );
         }
     }
 
@@ -106,69 +121,77 @@ pub fn detect_superio(port_io: &mut dyn PortIo, db: &ChipDatabase) -> Vec<Detect
 }
 
 /// Fast path: read chip ID without entering config mode (non-invasive).
+/// Returns the detected chip (if found) and any unrecognized device ID for consolidated logging.
 fn try_fast_path(
     port_io: &mut dyn PortIo,
     addr_reg: u16,
     data_reg: u16,
     db: &ChipDatabase,
-) -> Result<Option<DetectedChip>, PortIoError> {
+) -> Result<(Option<DetectedChip>, Option<u16>), PortIoError> {
     let id = read_device_id(port_io, addr_reg, data_reg)?;
     debug!("Fast path read ID at 0x{addr_reg:02X}: 0x{id:04X}");
 
     if id == 0x0000 || id == 0xFFFF {
-        // 0x0000/0xFFFF = no chip/not readable, config mode entry required
-        return Ok(None);
+        // 0x0000/0xFFFF = no chip/not readable, config mode entry required.
+        return Ok((None, None));
     }
 
-    // Check for ITE eSPI-to-LPC Bridge
+    // Check for ITE eSPI-to-LPC Bridge.
     if id == ITE_ESPI_BRIDGE_ID {
         warn!(
             "ITE eSPI-to-LPC Bridge detected at 0x{addr_reg:02X}. \
              The Super-I/O chip is behind an eSPI bus and may be \
              inaccessible until the next system restart."
         );
-        return Ok(None);
+        return Ok((None, None));
     }
 
-    // Try to match against the database
+    // Try to match against the database.
     if let Some((_, chip)) = db.find_chip(id) {
         if chip.has_driver() {
             let base_addr = read_base_address(port_io, addr_reg, data_reg, chip.logdev)?;
             let active = read_activation(port_io, addr_reg, data_reg, chip.logdev)?;
-            return Ok(Some(DetectedChip {
-                name: chip.name.clone(),
-                driver: chip.driver.clone(),
-                address: addr_reg,
-                base_address: base_addr,
-                device_id: id,
-                features: chip.features.clone(),
-                active,
-            }));
+            return Ok((
+                Some(DetectedChip {
+                    name: chip.name.clone(),
+                    driver: chip.driver.clone(),
+                    address: addr_reg,
+                    base_address: base_addr,
+                    device_id: id,
+                    features: chip.features.clone(),
+                    active,
+                }),
+                None,
+            ));
         }
         info!(
             "Detected {} at 0x{addr_reg:02X} id:0x{id:04X} (no driver) (Fast path)",
             chip.name
         );
-        return Ok(None);
+        return Ok((None, None));
     }
-    info!("Unknown chip at 0x{addr_reg:02X} id:0x{id:04X} (Fast path)");
+    debug!("Unrecognized chip at 0x{addr_reg:02X} id:0x{id:04X} (Fast path)");
 
-    Ok(None)
+    Ok((None, Some(id)))
 }
 
 /// Fallback path: try each chip family with config mode entry sequences.
+/// Returns the detected chip (if found) and the first unrecognized device ID seen across
+/// all families, for consolidated logging in the caller.
 fn try_fallback_path(
     port_io: &mut dyn PortIo,
     addr_reg: u16,
     data_reg: u16,
     db: &ChipDatabase,
     custom_chips: &[(usize, Vec<CustomChip>)],
-) -> Result<Option<DetectedChip>, PortIoError> {
-    // Ensure clean state before probing
+) -> Result<(Option<DetectedChip>, Option<u16>), PortIoError> {
+    // Ensure clean state before probing.
     exit_superio(port_io, addr_reg, data_reg)?;
 
+    let mut unknown_id: Option<u16> = None;
+
     for (family_idx, family) in db.families.iter().enumerate() {
-        // Get custom chips for this family, if any
+        // Get custom chips for this family, if any.
         let family_custom_chips: Vec<&CustomChip> = custom_chips
             .iter()
             .filter(|(idx, _)| *idx == family_idx)
@@ -176,15 +199,18 @@ fn try_fallback_path(
             .collect();
 
         match probe_family(port_io, addr_reg, data_reg, family, &family_custom_chips) {
-            Ok(Some(chip)) => {
+            Ok((Some(chip), _)) => {
                 exit_superio(port_io, addr_reg, data_reg)?;
-                return Ok(Some(chip));
+                return Ok((Some(chip), None));
             }
-            Ok(None) => {
+            Ok((None, id)) => {
+                if unknown_id.is_none() {
+                    unknown_id = id;
+                }
                 exit_superio(port_io, addr_reg, data_reg)?;
             }
             Err(err) => {
-                // Always try to exit config mode even on error
+                // Always try to exit config mode even on error.
                 let _ = exit_superio(port_io, addr_reg, data_reg);
                 debug!(
                     "Error probing family {} at 0x{:02X}: {}",
@@ -194,26 +220,16 @@ fn try_fallback_path(
         }
     }
 
-    Ok(None)
+    Ok((None, unknown_id))
 }
 
-/// Probe a single chip family at the given address.
-fn probe_family(
+/// Try detecting a chip using custom detection functions.
+fn try_custom_chip_detection(
     port_io: &mut dyn PortIo,
     addr_reg: u16,
     data_reg: u16,
-    family: &ChipFamily,
     custom_chips: &[&CustomChip],
 ) -> Result<Option<DetectedChip>, PortIoError> {
-    debug!("Probing family: {} at 0x{:02X}", family.name, addr_reg);
-
-    // Enter config mode with family-specific password sequence
-    let entry_seq = family.entry_sequence(addr_reg);
-    for &byte in entry_seq {
-        port_io.outb(addr_reg, byte)?;
-    }
-
-    // Try custom chip detection functions first
     for custom_chip in custom_chips {
         match (custom_chip.detect)(port_io, addr_reg, data_reg) {
             Ok(true) => {
@@ -241,16 +257,41 @@ fn probe_family(
             }
         }
     }
+    Ok(None)
+}
 
-    // Read the standard device ID
+/// Probe a single chip family at the given address.
+/// Returns the detected chip (if found) and any unrecognized device ID for consolidated logging.
+/// A driverless-but-recognized match returns `(None, None)` -- known chip, just unsupported.
+fn probe_family(
+    port_io: &mut dyn PortIo,
+    addr_reg: u16,
+    data_reg: u16,
+    family: &ChipFamily,
+    custom_chips: &[&CustomChip],
+) -> Result<(Option<DetectedChip>, Option<u16>), PortIoError> {
+    debug!("Probing family: {} at 0x{:02X}", family.name, addr_reg);
+
+    // Enter config mode with family-specific password sequence.
+    let entry_seq = family.entry_sequence(addr_reg);
+    for &byte in entry_seq {
+        port_io.outb(addr_reg, byte)?;
+    }
+
+    if let Some(chip) = try_custom_chip_detection(port_io, addr_reg, data_reg, custom_chips)? {
+        return Ok((Some(chip), None));
+    }
+
+    // Read the standard device ID.
     let id = read_device_id(port_io, addr_reg, data_reg)?;
     debug!("Family {}: read device ID 0x{:04X}", family.name, id);
 
     if id == 0x0000 || id == 0xFFFF {
-        return Ok(None);
+        return Ok((None, None));
     }
 
-    // Match against this family's TOML chips
+    // Match against this family's TOML chips.
+    let mut matched_no_driver = false;
     for chip in &family.chips {
         if chip.matches_id(id) {
             if !chip.has_driver() {
@@ -258,27 +299,36 @@ fn probe_family(
                     "Detected {} at 0x{addr_reg:02X} id:0x{id:04X} (no driver) (Family: {})",
                     chip.name, family.name
                 );
+                matched_no_driver = true;
                 continue;
             }
             debug!("Matched chip: {} (driver: {})", chip.name, chip.driver);
             let (base_addr, active) = read_chip_details(port_io, addr_reg, data_reg, chip)?;
-            return Ok(Some(DetectedChip {
-                name: chip.name.clone(),
-                driver: chip.driver.clone(),
-                address: addr_reg,
-                base_address: base_addr,
-                device_id: id,
-                features: chip.features.clone(),
-                active,
-            }));
+            return Ok((
+                Some(DetectedChip {
+                    name: chip.name.clone(),
+                    driver: chip.driver.clone(),
+                    address: addr_reg,
+                    base_address: base_addr,
+                    device_id: id,
+                    features: chip.features.clone(),
+                    active,
+                }),
+                None,
+            ));
         }
     }
 
-    info!(
-        "Unknown chip at 0x{addr_reg:02X} id:0x{id:04X} (Family: {})",
+    // A no-driver match means the chip is recognized -- don't report it as unknown.
+    if matched_no_driver {
+        return Ok((None, None));
+    }
+
+    debug!(
+        "Unrecognized chip at 0x{addr_reg:02X} id:0x{id:04X} (Family: {})",
         family.name
     );
-    Ok(None)
+    Ok((None, Some(id)))
 }
 
 /// Read the 16-bit device ID from registers 0x20 (high) and 0x21 (low).
