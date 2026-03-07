@@ -42,8 +42,7 @@ Powerful cooling control and monitoring for Linux 🐧
 
 [Install](https://coolercontrol.org/getting-started.html) &middot;
 [Hardware Support](https://coolercontrol.org/hardware-support.html) &middot;
-[Documentation](https://coolercontrol.org) &middot;
-[Discord](https://discord.gg/MbcgUFAfhV)
+[Documentation](https://coolercontrol.org) &middot; [Discord](https://discord.gg/MbcgUFAfhV)
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
 
@@ -52,9 +51,9 @@ Powerful cooling control and monitoring for Linux 🐧
 
 <br/>
 
-CoolerControl is an open-source application for monitoring and controlling supported cooling
-devices on Linux. It features a system daemon with a built-in Web UI, an optional desktop app, and
-a comprehensive REST API.
+CoolerControl is an open-source application for monitoring and controlling supported cooling devices
+on Linux. It features a system daemon with a built-in Web UI, an optional desktop app, and a
+comprehensive REST API.
 
 ## Features
 
@@ -69,7 +68,8 @@ a comprehensive REST API.
 - Headless and remote access support
 - Reapplies settings after sleep
 
-For the full feature set and configuration guides, see the [documentation](https://coolercontrol.org).
+For the full feature set and configuration guides, see the
+[documentation](https://coolercontrol.org).
 
 ## Installation
 
@@ -99,8 +99,10 @@ for details.
 ## Support
 
 <!-- trunk-ignore-begin(markdownlint)-->
+
 <a href="https://ko-fi.com/codifryed"><img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
 <a href="https://github.com/sponsors/codifryed"><img src="https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA"></a>
+
 <!-- trunk-ignore-end(markdownlint)-->
 
 ## Related Projects
