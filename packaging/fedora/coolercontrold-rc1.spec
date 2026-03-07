@@ -48,7 +48,9 @@ tar -xzf %{SOURCE1}
 %install
 install -Dpm 644 systemd/%{name}.service -t %{buildroot}%{_unitdir}
 install -Dpm 644 man/%{name}.8 -t %{buildroot}%{_mandir}/man8
+pushd daemon
 %cargo_install
+popd
 
 %if %{with check}
 %check
