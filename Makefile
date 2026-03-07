@@ -94,9 +94,12 @@ install:
 install-source: build-source install
 	@install -Dm644 packaging/metadata/$(ap_id).desktop -t $(DESTDIR)/usr/local/share/applications/
 	@install -Dm644 packaging/metadata/$(ap_id).metainfo.xml -t $(DESTDIR)/usr/share/metainfo/
-	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/pixmaps/
+	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/icons/hicolor/256x256/apps/
+	@install -Dm644 packaging/metadata/$(ap_id)-alert.png -t $(DESTDIR)/usr/share/icons/hicolor/256x256/apps/
 	@install -Dm644 packaging/metadata/$(ap_id).svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
+	@install -Dm644 packaging/metadata/$(ap_id)-alert.svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
 	@install -Dm644 packaging/metadata/$(ap_id)-symbolic.svg -t $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/
+	@install -Dm644 packaging/metadata/$(ap_id)-symbolic-alert.svg -t $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/
 	@install -Dm644 packaging/systemd/coolercontrold.service -t $(DESTDIR)/etc/systemd/system/
 
 uninstall:
@@ -105,8 +108,9 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
 	@-$(RM) -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
 	@-$(RM) -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
-	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
-	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/$(ap_id)-symbolic.svg
+	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/256x256/apps/$(ap_id)*
+	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id)*
+	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/symbolic/apps/$(ap_id)*
 	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
 
 # helpful std development & testing targets
