@@ -88,7 +88,6 @@ nextTick(async () => {
             toggle-mask
             required
             @keydown.enter="closeAndProcess"
-            autofocus
         />
         <label for="current-password">{{ t('common.currentPassword') }}</label>
     </FloatLabel>
@@ -103,7 +102,6 @@ nextTick(async () => {
             toggle-mask
             required
             @keydown.enter="closeAndProcess"
-            autofocus
             :prompt-label="t('common.passwordPrompt')"
             :weak-label="t('common.passwordWeak')"
             :medium-label="t('common.passwordMedium')"

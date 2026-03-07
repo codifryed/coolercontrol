@@ -991,7 +991,7 @@ export default {
         enterPassword: 'Enter Your Password',
         setNewPassword: 'Enter A New Password',
         changeDefaultPassword:
-            'CoolerControl is using the default password.\nPlease set a secure password before continuing.',
+            'CoolerControl is using the default password.\nTo secure your system from unintentional access or control, it is required that you set a secure password.\nThis password is specific to CoolerControl and separate from your system user account.',
         loginFailed: 'Login Failed',
         invalidPassword: 'Invalid Password',
         passwordSetFailed: 'Set Password Failed',
