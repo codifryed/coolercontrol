@@ -1017,7 +1017,7 @@ export default {
         enterPassword: 'Entrez Votre Mot de Passe',
         setNewPassword: 'Entrez Un Nouveau Mot de Passe',
         changeDefaultPassword:
-            'CoolerControl utilise le mot de passe par défaut.\nVeuillez définir un mot de passe sécurisé avant de continuer.',
+            'CoolerControl utilise le mot de passe par défaut.\nPour protéger votre système contre tout accès ou contrôle non intentionnel, il est nécessaire de définir un mot de passe sécurisé.\nCe mot de passe est spécifique à CoolerControl et distinct de votre compte utilisateur système.',
         loginFailed: 'Échec de Connexion',
         invalidPassword: 'Mot de Passe Invalide',
         passwordSetFailed: 'Échec de Définition du Mot de Passe',

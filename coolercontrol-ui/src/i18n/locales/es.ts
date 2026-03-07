@@ -1002,7 +1002,7 @@ export default {
         enterPassword: 'Introduzca Su Contraseña',
         setNewPassword: 'Introduzca Una Nueva Contraseña',
         changeDefaultPassword:
-            'CoolerControl está usando la contraseña predeterminada.\nPor favor, establezca una contraseña segura antes de continuar.',
+            'CoolerControl está usando la contraseña predeterminada.\nPara proteger su sistema de acceso o control no intencionado, es necesario que establezca una contraseña segura.\nEsta contraseña es específica de CoolerControl y es independiente de su cuenta de usuario del sistema.',
         loginFailed: 'Inicio de Sesión Fallido',
         invalidPassword: 'Contraseña Inválida',
         passwordSetFailed: 'Establecer Contraseña Falló',

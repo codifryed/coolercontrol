@@ -1020,7 +1020,7 @@ export default {
         enterPassword: 'Geben Sie Ihr Passwort ein',
         setNewPassword: 'Geben Sie ein neues Passwort ein',
         changeDefaultPassword:
-            'CoolerControl verwendet das Standardpasswort.\nBitte legen Sie ein sicheres Passwort fest, bevor Sie fortfahren.',
+            'CoolerControl verwendet das Standardpasswort.\nUm Ihr System vor unbeabsichtigtem Zugriff oder unbeabsichtigter Steuerung zu schützen, ist es erforderlich, ein sicheres Passwort festzulegen.\nDieses Passwort ist spezifisch für CoolerControl und von Ihrem Systembenutzerkonto getrennt.',
         loginFailed: 'Anmeldung fehlgeschlagen',
         invalidPassword: 'Ungültiges Passwort',
         passwordSetFailed: 'Passwort setzen fehlgeschlagen',

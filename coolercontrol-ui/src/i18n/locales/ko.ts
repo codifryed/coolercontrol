@@ -983,7 +983,7 @@ export default {
         enterPassword: '비밀번호 입력',
         setNewPassword: '새 비밀번호 입력',
         changeDefaultPassword:
-            'CoolerControl이 기본 비밀번호를 사용하고 있습니다.\n계속하기 전에 안전한 비밀번호를 설정해 주세요.',
+            'CoolerControl이 기본 비밀번호를 사용하고 있습니다.\n의도치 않은 접근이나 제어로부터 시스템을 보호하려면 안전한 비밀번호를 설정해야 합니다.\n이 비밀번호는 CoolerControl 전용이며 시스템 사용자 계정과 별개입니다.',
         loginFailed: '로그인 실패함',
         invalidPassword: '잘못된 비밀번호',
         passwordSetFailed: '비밀번호 설정 실패',

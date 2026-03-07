@@ -966,7 +966,8 @@ export default {
     auth: {
         enterPassword: '请输入您的密码',
         setNewPassword: '请输入新密码',
-        changeDefaultPassword: 'CoolerControl 正在使用默认密码。\n请在继续之前设置一个安全密码。',
+        changeDefaultPassword:
+            'CoolerControl 正在使用默认密码。\n为防止对您系统的意外访问或控制，需要您设置一个安全密码。\n此密码仅用于 CoolerControl，与您的系统用户账户分开。',
         loginFailed: '登录失败',
         invalidPassword: '密码无效',
         passwordSetFailed: '设置密码失败',

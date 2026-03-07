@@ -1004,7 +1004,7 @@ export default {
         enterPassword: 'パスワードを入力してください',
         setNewPassword: '新しいパスワードを入力してください',
         changeDefaultPassword:
-            'CoolerControlはデフォルトパスワードを使用しています。\n続行する前に安全なパスワードを設定してください。',
+            'CoolerControlはデフォルトパスワードを使用しています。\n意図しないアクセスや操作からシステムを保護するために、安全なパスワードの設定が必要です。\nこのパスワードはCoolerControl専用であり、システムユーザーアカウントとは別のものです。',
         loginFailed: 'ログイン失敗',
         invalidPassword: '無効なパスワード',
         passwordSetFailed: 'パスワード設定に失敗しました',
