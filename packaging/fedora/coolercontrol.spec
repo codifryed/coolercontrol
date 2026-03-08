@@ -3,7 +3,7 @@
 %{!?_metainfodir: %define _metainfodir %{_datadir}/metainfo}
 
 Name:           coolercontrol
-Version:        3.1.1
+Version:        4.0.0
 Release:        %{?autorelease}%{!?autorelease:0%{?dist}}
 Summary:        Powerful cooling control and monitoring
 ExclusiveArch:  x86_64 aarch64
@@ -68,6 +68,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc CHANGELOG.md
 
 %changelog
+* Sun Mar 08 2026 Guy Boldon <gb@guyboldon.com> - 4.0.0-1
+- 4.0.0 Release
+
 * Sat Jan 10 2026 Guy Boldon <gb@guyboldon.com> - 3.1.1-1
 - 3.1.1 Release
 

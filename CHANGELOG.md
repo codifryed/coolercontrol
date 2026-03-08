@@ -10,6 +10,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [4.0.0] - 2026-03-08
+
+### Security
+
+- TLS/SSL enabled by default for all new installs using auto-generated self-signed certificates
+  (!403)
+- Access Token Authorization support for API clients and integrations/plugins
+- Authentication is now required for almost all endpoints
+- Persistent sessions with 30-day expiry
+- Login attempt blocking after repeated failures
+- Password strength meter and requirement to provide existing password when changing it
+- Default password is no longer accepted; users are prompted to change it on first use
+- Web security headers added to all API responses
+- Restricted file permissions for TLS key and plugin config files
+- HTML escaping in the log viewer to prevent injection
+- Alert command inputs are now sanitized
+- CORS origin and related settings are now configurable
+- OpenAPI spec is only exposed in debug builds
+
+### Added
+
+- New `cc-detect` tool, improved sensors-detect for Super-IO hardware detection and diagnostics,
+  integrated into the project as a workspace crate (!424)
+- New Controls page with clickable, interactive Control Flow charts showing the full pipeline from
+  sensors through functions and profiles to device channels (!418)
+- LCD and Lighting channel nodes added to the Controls overview and Control Flow charts (!418)
+- Controls and minimap navigation for Control Flow charts (!418)
+- Animated time charts (toggleable via eye candy setting) (!422)
+- LCD shutdown image support: configure a custom image to display on LCD screens when the daemon
+  shuts down, with API endpoints and persistence (!417)
+- Sum Mix Function: combine multiple profile outputs by summing their values (#535, !421)
+- Mix Profiles now support a single-level parent-child relationship for more flexible composition
+  (#535, !421)
+- Points table overlay on the profile editor for precise numeric entry of curve points, including in
+  the wizard and on Overlay Profiles (#294, !412)
+- Plugin restart button in the plugin UI (!409)
+- OpenRC user-level services and permission handling (!425)
+- OpenRC support in Docker images (!423)
+- gRPC reflection support
+- Lian Li Uni Hub device fan control mode application (!405)
+- More liquidctl Aquacomputer sensors supported with improved handling and validation (#539, !419)
+- GPD_FAN device support (#547, #549, !420)
+- Increased hit area for clicking and adding points on profile lines
+- Lock icon in the UI indicating when the default password is still in use
+- Extended maximum sensor and channel name length limits
+- CLI option to force usage of NVIDIA CLI tools when NVML is not available
+- Environment variable overrides for TLS certificate and key paths
+- Extra Chromium flags can be passed to the Qt desktop app (!415)
+
+### Changed
+
+- Devices are now listed first in the navigation menu by default (!426)
+- API servers run on a dedicated thread (!411)
+- Hot hwmon sysfs paths are cached to reduce repeated string formatting overhead (!411)
+- Desktop app connection retry count increased; retries added for transient daemon unavailability at
+  startup
+- UI reloads immediately after the system resumes from suspension (!406)
+- Plugin version and URL are now shown in the plugin settings UI (!397)
+- Session expiry extended to 30 days
+- Various safety and minor performance improvements throughout the daemon (!426)
+- Log levels adjusted for various API errors and session store messages
+- Various dependency updates (npm and Cargo)
+
+### Fixed
+
+- 24-hour time format now respected throughout the UI (!416)
+- KDE persistent notifications fixed
+- GPD_FAN device pwm mode handling corrected when device is in auto mode (#547, #549, !420)
+- Live duty and RPM values now shown correctly for manually controlled fans without causing viewport
+  shift (!426)
+- UI no longer fails to reload after the system wakes from sleep (!408)
+- Negative zero no longer displayed in metric values in some cases
+- Copy to clipboard now works correctly in the Qt desktop app (#551, !413)
+- Plugin iframes from the same origin are now properly allowed (#551, !413)
+- Session validation correctly fails when the default password is in use (#551, !413)
+- Password change now triggers the UI window to appear when required (#551, !413)
+- Persistent cookies now correctly synchronized for the Qt network manager (#551, !413)
+- Custom sensor node names now use the user-defined name in Control Flow views (!418)
+- `Enter` key now saves for name-only entity dialogs
+- Lian Li Uni Sync channel names corrected (!405)
+
 ## [3.1.1] - 2026-01-10
 
 ### Changed

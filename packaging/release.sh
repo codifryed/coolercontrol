@@ -19,7 +19,9 @@
 
 # this is run AFTER version_bump.sh
 cd coolercontrold || exit
+pushd daemon
 eval RELEASE_VERSION="$(cargo get package.version)"
+popd
 cd ..
 git add CHANGELOG.md \
     coolercontrold/Cargo.toml \

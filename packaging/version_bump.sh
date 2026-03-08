@@ -26,11 +26,13 @@
 echo "Bumping version: $1"
 # coolercontrold and bump logic
 cd coolercontrold || exit
+pushd daemon
 cargo install cargo-edit
 cargo install cargo-get
 cargo set-version --offline --bump "$1"
 eval NEW_VER="$(cargo get package.version)"
 echo "Setting all application version to $NEW_VER"
+popd
 # ui-qt
 cd ../coolercontrol/ || exit
 sed -i -E 's|COOLER_CONTROL_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"|COOLER_CONTROL_VERSION = "'"$NEW_VER"'"|' constants.h
