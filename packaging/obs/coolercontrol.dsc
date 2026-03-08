@@ -2,7 +2,7 @@ Format: 3.0 (quilt)
 Source: coolercontrol
 Binary: coolercontrold, coolercontrol
 Architecture: amd64 arm64
-Version: 4.0.0
+Version: 4.0.1
 Maintainer: Guy Boldon <gb@guyboldon.com>
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
 Standards-Version: 4.6.2
@@ -11,11 +11,11 @@ Package-List:
  coolercontrol deb admin optional arch=amd64,arm64
  coolercontrold deb admin optional arch=amd64,arm64
 Checksums-Sha1:
- deadbeefdeadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.0.tar.gz
+ deadbeefdeadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.1.tar.gz
 Checksums-Sha256:
- deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.0.tar.gz
+ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.1.tar.gz
 Files:
- deadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.0.tar.gz
+ deadbeefdeadbeefdeadbeefdeadbeef 1433553 coolercontrol_4.0.1.tar.gz
 Debtransform-Files:  coolercontrold-vendor.tar.gz
 Debtransform-Files-Tar:  debian.tar.gz
-Debtransform-Tar:  coolercontrol-4.0.0.tar.gz
+Debtransform-Tar:  coolercontrol-4.0.1.tar.gz
