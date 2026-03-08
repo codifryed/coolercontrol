@@ -55,7 +55,8 @@ one.
    7. Merge any website changes to be made.
 
 5. Update OpenAPI specification
-   1. Update locally running daemon with a new version: `make dev-build && make dev-install`
+   1. Build and start a locally running daemon in debug mode with:
+      `sudo systemctl stop coolercontrold && make dev-run`
    2. Run `cd openapi;./update.sh`
    3. Commit a new file to repo.
    4. Update Website with new `openapi.spec` file.
