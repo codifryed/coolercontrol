@@ -40,8 +40,8 @@ Powerful cooling control and monitoring for Linux 🐧
 
 <!-- trunk-ignore-begin(markdownlint/MD051): links with emojis -->
 
-[Install](https://coolercontrol.org/getting-started.html) &middot;
-[Hardware Support](https://coolercontrol.org/hardware-support.html) &middot;
+[Install](https://docs.coolercontrol.org/getting-started.html) &middot;
+[Hardware Support](https://docs.coolercontrol.org/hardware-support.html) &middot;
 [Documentation](https://coolercontrol.org) &middot; [Discord](https://discord.gg/MbcgUFAfhV)
 
 <!-- trunk-ignore-end(markdownlint/MD051): links with emojis -->
@@ -73,13 +73,13 @@ For the full feature set and configuration guides, see the
 
 ## Installation
 
-See the [Getting Started](https://coolercontrol.org/getting-started.html) page for install
+See the [Getting Started](https://docs.coolercontrol.org/getting-started.html) page for install
 instructions for all supported distributions (Arch, Debian/Ubuntu, Fedora, openSUSE, Nix, Gentoo,
 Unraid, Docker, AppImage, and source builds).
 
 ## Hardware Support
 
-See the [Hardware Support](https://coolercontrol.org/hardware-support.html) page for details on
+See the [Hardware Support](https://docs.coolercontrol.org/hardware-support.html) page for details on
 motherboard fans, USB AIOs, GPU fan control, laptops, and HDDs.
 
 ## Problems and Questions
