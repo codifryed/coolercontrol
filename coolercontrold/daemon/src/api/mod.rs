@@ -25,6 +25,7 @@ mod detect;
 pub mod devices;
 mod dual_protocol;
 mod functions;
+mod metrics;
 pub mod modes;
 mod plugins;
 mod profiles;

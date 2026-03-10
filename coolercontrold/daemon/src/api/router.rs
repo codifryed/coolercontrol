@@ -17,8 +17,8 @@
  */
 
 use crate::api::{
-    alerts, auth, base, custom_sensors, detect, functions, modes, plugins, profiles, settings, sse,
-    status, tokens,
+    alerts, auth, base, custom_sensors, detect, functions, metrics, modes, plugins, profiles,
+    settings, sse, status, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -44,6 +44,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(plugins_routes())
         .merge(alert_routes())
         .merge(detect_routes())
+        .merge(metrics_routes())
         .merge(sse_routes());
     // Only add API doc route for debug builds (safer for production)
     #[cfg(debug_assertions)]
@@ -940,6 +941,20 @@ fn detect_routes() -> ApiRouter<AppState> {
             o.summary("Detect Hardware and Load Modules")
                 .description("Run Super-I/O hardware detection and optionally load kernel modules.")
                 .tag("detect")
+                .security_requirement("CookieAuth")
+                .security_requirement("BearerAuth")
+        })
+        .layer(axum::middleware::from_fn(auth::auth_middleware)),
+    )
+}
+
+fn metrics_routes() -> ApiRouter<AppState> {
+    ApiRouter::new().api_route(
+        "/metrics",
+        get_with(metrics::get_metrics, |o| {
+            o.summary("Prometheus Metrics")
+                .description("Returns device sensor data in Prometheus text exposition format.")
+                .tag("metrics")
                 .security_requirement("CookieAuth")
                 .security_requirement("BearerAuth")
         })
