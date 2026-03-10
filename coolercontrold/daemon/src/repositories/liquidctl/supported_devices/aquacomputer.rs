@@ -78,7 +78,11 @@ impl DeviceSupport for AquaComputerSupport {
 
     fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
         let mut temps = Vec::with_capacity(status_map.len());
+        // D5
+        self.add_liquid_temp(status_map, &mut temps);
+        // Farbwerk, Farbwerk 360, Octo, Quadro
         self.add_temp_sensors(status_map, &mut temps);
+        // D5, Farbwerk 360, Octo, Quadro
         self.add_software_temp_sensors(status_map, &mut temps);
         temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         temps
@@ -90,7 +94,12 @@ impl DeviceSupport for AquaComputerSupport {
         _device_index: u8,
     ) -> Vec<ChannelStatus> {
         let mut channel_statuses = Vec::with_capacity(status_map.len());
+        // D5
+        self.add_single_fan_status(status_map, &mut channel_statuses);
+        self.add_single_pump_status(status_map, &mut channel_statuses);
+        // Octo, Quadro
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        // Quadro
         self.add_flow_sensor_status(status_map, &mut channel_statuses);
         channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
         channel_statuses
