@@ -27,10 +27,10 @@ use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::plugin_controller::{
     secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
 };
+use crate::repositories::service_plugin::service_management::delete_plugin_user;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
-use crate::repositories::service_plugin::service_management::systemd::SystemdManager;
 use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
@@ -1224,8 +1224,7 @@ impl Repository for ServicePluginRepo {
 }
 
 /// This will delete the plugin user if it exists.
-/// This is used to clean up the original plugin user which was a non-system user.
-/// We can remove this after v3.1.1 is released.
+/// This is used to clean up the original plugin user should there be changes to it's setup.
 async fn remove_plugin_user() {
-    let _ = SystemdManager::delete_plugin_user(CC_PLUGIN_USER).await;
+    let _ = delete_plugin_user(CC_PLUGIN_USER).await;
 }

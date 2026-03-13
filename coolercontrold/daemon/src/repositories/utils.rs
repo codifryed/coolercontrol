@@ -16,6 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+//! Prefer [`ShellCommand`] for commands needing shell features (pipes, globs), and
+//! [`DirectCommand`] for direct binary execution. Avoid using `tokio::process::Command`
+//! directly except in `liqctld_service.rs` which requires stdin piping and process-group
+//! lifecycle management.
+
 use std::collections::HashMap;
 use std::ops::Add;
 use std::path::PathBuf;
@@ -158,6 +163,110 @@ impl ShellCommand {
             ShellCommandResult::Success { stdout, stderr }
         } else {
             ShellCommandResult::Error(stderr)
+        }
+    }
+}
+
+/// Runs a binary directly (no shell). Adds timeout protection and output capturing.
+pub struct DirectCommand {
+    binary: String,
+    args: Vec<String>,
+    timeout: Duration,
+}
+
+impl DirectCommand {
+    pub fn new(binary: &str, timeout: Duration) -> Self {
+        Self {
+            binary: binary.to_owned(),
+            args: Vec::new(),
+            timeout,
+        }
+    }
+
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    /// Run. Returns `ShellCommandResult::Success` on exit 0, `Error` otherwise.
+    pub async fn run(self) -> ShellCommandResult {
+        match self.execute().await {
+            Ok((0, stdout, stderr)) => ShellCommandResult::Success { stdout, stderr },
+            Ok((_, _, stderr)) => ShellCommandResult::Error(stderr),
+            Err(err) => ShellCommandResult::Error(err.to_string()),
+        }
+    }
+
+    /// Run and return `(exit_code, stdout, stderr)`.
+    /// `Err` only if the process could not be spawned or timed out.
+    pub async fn run_with_code(self) -> Result<(i32, String, String)> {
+        self.execute().await
+    }
+
+    async fn execute(self) -> Result<(i32, String, String)> {
+        let mut cmd = Command::new(&self.binary);
+        cmd.args(&self.args)
+            .kill_on_drop(true)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let timeout_time = Instant::now().add(self.timeout);
+        match cmd.spawn() {
+            Ok(mut child) => {
+                while Instant::now() < timeout_time {
+                    sleep(Duration::from_millis(50)).await;
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {}
+                        Err(err) => {
+                            error!(
+                                "Error checking process status for {}: {}",
+                                &self.binary, err
+                            );
+                            break;
+                        }
+                    }
+                }
+                let exit_code = match child.try_wait() {
+                    Ok(None) => {
+                        warn!(
+                            "DirectCommand did not complete within timeout: {:?} Killing: {}",
+                            self.timeout, self.binary
+                        );
+                        child.kill().await.ok();
+                        return Err(anyhow!(
+                            "Command {} timed out after {:?}",
+                            self.binary,
+                            self.timeout
+                        ));
+                    }
+                    Ok(Some(status)) => status.code().unwrap_or(-1),
+                    Err(err) => {
+                        return Err(anyhow!(
+                            "Error checking process status for {}: {}",
+                            self.binary,
+                            err
+                        ));
+                    }
+                };
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(mut child_err) = child.stderr.take() {
+                    if let Err(err) = child_err.read_to_string(&mut stderr).await {
+                        error!("Error reading stderr for {}: {}", &self.binary, err);
+                    }
+                    limit_output_length(&mut stderr);
+                    stderr = stderr.trim().to_string();
+                }
+                if let Some(mut child_out) = child.stdout.take() {
+                    if let Err(err) = child_out.read_to_string(&mut stdout).await {
+                        error!("Error reading stdout for {}: {}", &self.binary, err);
+                    }
+                    limit_output_length(&mut stdout);
+                    stdout = stdout.trim().to_string();
+                }
+                Ok((exit_code, stdout, stderr))
+            }
+            Err(err) => Err(anyhow!("Failed to spawn {}: {}", self.binary, err)),
         }
     }
 }

@@ -16,8 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::repositories::utils::{DirectCommand, ShellCommandResult};
+use anyhow::{anyhow, Result};
 use std::env;
 use std::path::PathBuf;
+use std::time::Duration;
 
 pub mod manager;
 mod openrc;
@@ -37,6 +40,33 @@ impl ServiceIdExt for ServiceId {
 
     fn to_description(&self) -> String {
         format!("CoolerControl Plugin {self}")
+    }
+}
+
+const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Deletes the plugin user if it exists.
+/// Tries `userdel` first (systemd distros, Gentoo, Artix, Void), then falls back
+/// to `deluser` for Alpine Linux (BusyBox).
+pub async fn delete_plugin_user(username: &str) -> Result<()> {
+    let userdel_ok = matches!(
+        DirectCommand::new("userdel", USER_CMD_TIMEOUT)
+            .arg(username)
+            .run()
+            .await,
+        ShellCommandResult::Success { .. }
+    );
+    if userdel_ok {
+        return Ok(());
+    }
+    // Fall back to `deluser` for Alpine Linux (BusyBox).
+    match DirectCommand::new("deluser", USER_CMD_TIMEOUT)
+        .arg(username)
+        .run()
+        .await
+    {
+        ShellCommandResult::Success { .. } => Ok(()),
+        ShellCommandResult::Error(err) => Err(anyhow!("Failed to delete user {username}: {err}")),
     }
 }
 

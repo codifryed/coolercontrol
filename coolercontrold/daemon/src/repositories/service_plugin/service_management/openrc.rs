@@ -22,16 +22,18 @@ use crate::repositories::service_plugin::service_management::manager::{
     ServiceDefinition, ServiceManager, ServiceStatus,
 };
 use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
+use crate::repositories::utils::DirectCommand;
 use anyhow::{anyhow, Result};
 use log::debug;
 use std::fmt::Write;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::{Output, Stdio};
-use tokio::process::Command;
+use std::time::Duration;
 
 const RC_SERVICE: &str = "rc-service";
+const RC_SERVICE_TIMEOUT: Duration = Duration::from_secs(10);
+const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o755;
 
 #[derive(Clone, Debug, Default)]
@@ -46,21 +48,21 @@ impl OpenRcManager {
     /// An error is also returned if the user already exists.
     async fn create_plugin_user(username: &str) -> Result<()> {
         // Try `useradd` first - works on Gentoo, Artix, and Void Linux.
-        let useradd_ok = Command::new("useradd")
+        let useradd_ok = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
             .arg("--system")
             .arg("--comment")
             .arg("CoolerControl unprivileged plugin user")
             .arg("--shell")
             .arg("/usr/sbin/nologin")
             .arg(username)
-            .status()
+            .run_with_code()
             .await
-            .is_ok_and(|s| s.success());
+            .is_ok_and(|(code, _, _)| code == 0);
         if useradd_ok {
             return Ok(());
         }
         // Fall back to `adduser` for Alpine Linux (BusyBox).
-        Command::new("adduser")
+        let (code, _, stderr) = DirectCommand::new("adduser", USER_CMD_TIMEOUT)
             .arg("-S") // system user
             .arg("-D") // no password
             .arg("-H") // no home directory
@@ -69,59 +71,22 @@ impl OpenRcManager {
             .arg("-s")
             .arg("/sbin/nologin")
             .arg(username)
-            .status()
-            .await
-            .map_err(Into::into)
-            .and_then(|status| {
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err(anyhow!(
-                        "Failed to create user {username} with exit code: {}",
-                        status.code().unwrap_or(-1)
-                    ))
-                }
-            })
+            .run_with_code()
+            .await?;
+        if code != 0 {
+            Err(anyhow!("Failed to create user {username}: {stderr}"))
+        } else {
+            Ok(())
+        }
     }
 
-    async fn rc_service(cmd: &str, service_id: &ServiceId) -> Result<Output> {
-        Command::new(RC_SERVICE)
-            .kill_on_drop(true)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+    /// Returns `(exit_code, stdout, stderr)`. `Err` only on spawn failure or timeout.
+    async fn rc_service(cmd: &str, service_id: &ServiceId) -> Result<(i32, String, String)> {
+        DirectCommand::new(RC_SERVICE, RC_SERVICE_TIMEOUT)
             .arg(service_id.to_service_name())
             .arg(cmd)
-            .output()
+            .run_with_code()
             .await
-            .map_err(Into::into)
-            .and_then(|output| {
-                if output.status.success() {
-                    Ok(output)
-                } else {
-                    let err = String::from_utf8_lossy(&output.stderr).to_string();
-                    let out = String::from_utf8_lossy(&output.stdout).to_string();
-                    Err(anyhow!(
-                        "rc-service {cmd} for {service_id} failed (code {}): {err} {out}",
-                        output.status.code().unwrap_or(-1)
-                    ))
-                }
-            })
-    }
-
-    /// Like `rc_service`, but returns the raw `Output` regardless of exit code.
-    /// Required for `status`, where the exit code itself carries the service state.
-    async fn rc_service_output(cmd: &str, service_id: &ServiceId) -> Result<Output> {
-        Command::new(RC_SERVICE)
-            .kill_on_drop(true)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .arg(service_id.to_service_name())
-            .arg(cmd)
-            .output()
-            .await
-            .map_err(Into::into)
     }
 }
 
@@ -154,35 +119,46 @@ impl ServiceManager for OpenRcManager {
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {
-        Self::rc_service("start", service_id).await.map(|_| ())
+        let (code, _, stderr) = Self::rc_service("start", service_id).await?;
+        if code != 0 {
+            Err(anyhow!(
+                "rc-service start {} failed: {stderr}",
+                service_id.to_service_name()
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     async fn stop(&self, service_id: &ServiceId) -> Result<()> {
-        Self::rc_service("stop", service_id).await.map(|_| ())
+        let (code, _, stderr) = Self::rc_service("stop", service_id).await?;
+        if code != 0 {
+            Err(anyhow!(
+                "rc-service stop {} failed: {stderr}",
+                service_id.to_service_name()
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     async fn status(&self, service_id: &ServiceId) -> Result<ServiceStatus> {
-        // Use rc_service_output (not rc_service) so that non-zero exit codes
-        // reach the match below -- they encode the service state, not errors.
-        let output = Self::rc_service_output("status", service_id).await?;
-        let status_text = {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.trim().is_empty() {
-                String::from_utf8_lossy(&output.stdout).trim().to_string()
-            } else {
-                stderr.trim().to_string()
-            }
+        let (code, stdout, stderr) = Self::rc_service("status", service_id).await?;
+        let status_text = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
         };
-        match output.status.code() {
-            Some(0) => Ok(ServiceStatus::Running),
+        match code {
+            0 => Ok(ServiceStatus::Running),
             // Exit code 3 is the POSIX standard for "stopped".
-            Some(3) => Ok(ServiceStatus::Stopped(Some(status_text))),
+            3 => Ok(ServiceStatus::Stopped(Some(status_text))),
             // Exit code 1: either "does not exist" or a crashed/unclear state.
-            Some(1) if status_text.contains("does not exist") => Ok(ServiceStatus::NotInstalled),
-            Some(1) => Ok(ServiceStatus::Stopped(Some(status_text))),
+            1 if status_text.contains("does not exist") => Ok(ServiceStatus::NotInstalled),
+            1 => Ok(ServiceStatus::Stopped(Some(status_text))),
             _ => Err(anyhow!(
                 "Unexpected rc-service status exit code {} for {}: {}",
-                output.status.code().unwrap_or(-1),
+                code,
                 service_id.to_service_name(),
                 status_text,
             )),

@@ -24,6 +24,7 @@ use crate::repositories::service_plugin::service_management::{
     find_on_path, ServiceId, ServiceIdExt,
 };
 use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
+use crate::repositories::utils::DirectCommand;
 use anyhow::{anyhow, Result};
 use derive_more::Display;
 use log::debug;
@@ -31,10 +32,11 @@ use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::Stdio;
-use tokio::process::Command;
+use std::time::Duration;
 
 const SYSTEMCTL: &str = "systemctl";
+const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(10);
+const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
 
 #[derive(Clone, Debug)]
@@ -73,72 +75,31 @@ impl SystemdManager {
         find_on_path(SYSTEMCTL).is_some()
     }
 
-    async fn systemctl(cmd: &str, service_id: &ServiceId) -> Result<i32> {
-        Command::new(SYSTEMCTL)
-            .kill_on_drop(true)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+    /// Returns `(exit_code, stdout, stderr)`. `Err` only on spawn failure or timeout.
+    async fn systemctl(cmd: &str, service_id: &ServiceId) -> Result<(i32, String, String)> {
+        DirectCommand::new(SYSTEMCTL, SYSTEMCTL_TIMEOUT)
             .arg(cmd)
             .arg(service_id.to_service_name())
-            .output()
+            .run_with_code()
             .await
-            .map_err(Into::into)
-            .and_then(|output| {
-                if output.status.success() {
-                    Ok(output.status.code().unwrap_or(-1))
-                } else {
-                    let err = String::from_utf8_lossy(&output.stderr).to_string();
-                    let out = String::from_utf8_lossy(&output.stdout).to_string();
-                    Err(anyhow!(
-                        "systemctl command {cmd} for service {service_id} failed with exit code {}: {err} {out}",
-                        output.status.code().unwrap_or(-1)
-                    ))
-                }
-            })
     }
 
     /// This will return an error if the user already exists.
     async fn create_plugin_user(username: &str) -> Result<()> {
-        Command::new("useradd")
+        let (code, _, stderr) = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
             .arg("--system") // no home dir and id < 1000
             .arg("--comment")
             .arg("CoolerControl unprivileged plugin user")
             .arg("--shell")
             .arg("/usr/sbin/nologin") // no login shell
             .arg(username)
-            .status()
-            .await
-            .map_err(Into::into)
-            .and_then(|status| {
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err(anyhow!(
-                        "Failed to create user {username} with exit code: {}",
-                        status.code().unwrap_or(-1)
-                    ))
-                }
-            })
-    }
-
-    /// This deletes the user if it exists.
-    pub async fn delete_plugin_user(username: &str) -> Result<()> {
-        Command::new("userdel")
-            .arg(username)
-            .status()
-            .await
-            .map_err(Into::into)
-            .and_then(|status| {
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err(anyhow!(
-                        "Failed to delete user {username} with exit code: {}",
-                        status.code().unwrap_or(-1)
-                    ))
-                }
-            })
+            .run_with_code()
+            .await?;
+        if code != 0 {
+            Err(anyhow!("Failed to create user {username}: {stderr}"))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -172,23 +133,37 @@ impl ServiceManager for SystemdManager {
     }
 
     async fn start(&self, service_id: &ServiceId) -> Result<()> {
-        Self::systemctl("start", service_id).await.map(|_| ())
+        let (code, _, stderr) = Self::systemctl("start", service_id).await?;
+        if code != 0 {
+            Err(anyhow!(
+                "systemctl start {} failed: {stderr}",
+                service_id.to_service_name()
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     async fn stop(&self, service_id: &ServiceId) -> Result<()> {
-        Self::systemctl("stop", service_id).await.map(|_| ())
+        let (code, _, stderr) = Self::systemctl("stop", service_id).await?;
+        if code != 0 {
+            Err(anyhow!(
+                "systemctl stop {} failed: {stderr}",
+                service_id.to_service_name()
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     /// See: `https://www.freedesktop.org/software/systemd/man/latest/systemctl.html#Exit%20status`
     async fn status(&self, service_id: &ServiceId) -> Result<ServiceStatus> {
-        let status_code = Self::systemctl("status", service_id).await?;
-        match status_code {
+        let (code, _, _) = Self::systemctl("status", service_id).await?;
+        match code {
             4 => Ok(ServiceStatus::NotInstalled),
             3 => Ok(ServiceStatus::Stopped(None)),
             0 => Ok(ServiceStatus::Running),
-            _ => Err(anyhow!(
-                "Unexpected systemctl command exit code: {status_code}"
-            )),
+            _ => Err(anyhow!("Unexpected systemctl status exit code: {code}")),
         }
     }
 }
