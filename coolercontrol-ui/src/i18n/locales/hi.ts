@@ -1025,6 +1025,9 @@ export default {
         created: 'बनाया गया',
         label: 'लेबल',
         actions: 'कार्रवाइयां',
+        writeAccess: 'लिखने की अनुमति',
+        writeAccessTooltip:
+            'सक्षम होने पर, यह टोकन परिवर्तन कर सकता है। अक्षम होने पर, टोकन केवल डेटा पढ़ सकता है।',
     },
     device: {
         processInterrupted: ' - प्रक्रिया बाधित हुई।',

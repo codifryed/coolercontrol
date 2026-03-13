@@ -1014,6 +1014,9 @@ export default {
         created: 'تاريخ الإنشاء',
         label: 'التسمية',
         actions: 'الإجراءات',
+        writeAccess: 'صلاحية الكتابة',
+        writeAccessTooltip:
+            'عند التفعيل، يمكن لهذا الرمز إجراء تغييرات. عند التعطيل، يمكن للرمز قراءة البيانات فقط.',
     },
     device_store: {
         unauthorized: {

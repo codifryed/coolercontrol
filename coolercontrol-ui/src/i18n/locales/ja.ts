@@ -1035,6 +1035,9 @@ export default {
         created: '作成日',
         label: 'ラベル',
         actions: '操作',
+        writeAccess: '書き込みアクセス',
+        writeAccessTooltip:
+            '有効にすると、このトークンで変更を行えます。無効にすると、トークンはデータの読み取りのみ可能です。',
     },
     device_store: {
         unauthorized: {

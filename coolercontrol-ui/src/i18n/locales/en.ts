@@ -1022,6 +1022,9 @@ export default {
         created: 'Created',
         label: 'Label',
         actions: 'Actions',
+        writeAccess: 'Write Access',
+        writeAccessTooltip:
+            'When enabled, this token can make changes. When disabled, the token can only read data.',
     },
     daemon: {
         status: {

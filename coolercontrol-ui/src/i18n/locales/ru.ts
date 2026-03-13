@@ -1032,6 +1032,9 @@ export default {
         created: 'Создан',
         label: 'Метка',
         actions: 'Действия',
+        writeAccess: 'Доступ на запись',
+        writeAccessTooltip:
+            'Когда включено, этот токен может вносить изменения. Когда выключено, токен может только читать данные.',
     },
     device_store: {
         unauthorized: {

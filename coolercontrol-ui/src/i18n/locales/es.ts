@@ -1033,6 +1033,9 @@ export default {
         created: 'Creado',
         label: 'Etiqueta',
         actions: 'Acciones',
+        writeAccess: 'Acceso de escritura',
+        writeAccessTooltip:
+            'Cuando está activado, este token puede realizar cambios. Cuando está desactivado, el token solo puede leer datos.',
     },
     daemon: {
         status: {

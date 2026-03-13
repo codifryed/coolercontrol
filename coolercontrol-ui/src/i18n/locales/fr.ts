@@ -1048,6 +1048,9 @@ export default {
         created: 'Créé',
         label: 'Libellé',
         actions: 'Actions',
+        writeAccess: 'Accès en écriture',
+        writeAccessTooltip:
+            "Lorsqu'activé, ce jeton peut effectuer des modifications. Lorsque désactivé, le jeton peut uniquement lire les données.",
     },
     daemon: {
         status: {

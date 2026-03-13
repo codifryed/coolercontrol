@@ -1014,6 +1014,9 @@ export default {
         created: '생성일',
         label: '레이블',
         actions: '작업',
+        writeAccess: '쓰기 권한',
+        writeAccessTooltip:
+            '활성화하면 이 토큰으로 변경할 수 있습니다. 비활성화하면 토큰은 데이터만 읽을 수 있습니다.',
     },
     daemon: {
         status: {

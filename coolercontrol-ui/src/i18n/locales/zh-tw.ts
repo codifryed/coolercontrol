@@ -995,6 +995,8 @@ export default {
         created: '建立時間',
         label: '標籤',
         actions: '操作',
+        writeAccess: '寫入權限',
+        writeAccessTooltip: '啟用後，此令牌可以進行更改。停用後，令牌只能讀取資料。',
     },
     daemon: {
         status: {

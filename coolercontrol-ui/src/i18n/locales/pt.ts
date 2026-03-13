@@ -1071,6 +1071,9 @@ export default {
         created: 'Criado',
         label: 'Rótulo',
         actions: 'Ações',
+        writeAccess: 'Acesso de escrita',
+        writeAccessTooltip:
+            'Quando ativado, este token pode fazer alterações. Quando desativado, o token pode apenas ler dados.',
     },
     device_store: {
         unauthorized: {

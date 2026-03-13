@@ -1051,6 +1051,9 @@ export default {
         created: 'Erstellt',
         label: 'Bezeichnung',
         actions: 'Aktionen',
+        writeAccess: 'Schreibzugriff',
+        writeAccessTooltip:
+            'Wenn aktiviert, kann dieses Token Änderungen vornehmen. Wenn deaktiviert, kann das Token nur Daten lesen.',
     },
     device_store: {
         unauthorized: {
