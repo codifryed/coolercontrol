@@ -776,6 +776,7 @@ export default {
             title: '输入您的密码',
             newPasswordTitle: '输入新密码',
             invalidPassword: '密码无效',
+            forgotPassword: '忘记密码？',
             passwordHelp:
                 '忘记密码？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然后刷新UI以设置新密码。',
         },

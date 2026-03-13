@@ -802,6 +802,7 @@ export default {
             title: 'Introduzca Su Contraseña',
             newPasswordTitle: 'Introduzca Una Nueva Contraseña',
             invalidPassword: 'Contraseña Inválida',
+            forgotPassword: '¿Olvidó su contraseña?',
             passwordHelp:
                 '¿Olvidó su contraseña? Restablézcala con:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Luego actualice la UI para establecer una nueva contraseña.',
         },

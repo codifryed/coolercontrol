@@ -816,6 +816,7 @@ export default {
             title: 'Insira Sua Senha',
             newPasswordTitle: 'Insira Uma Nova Senha',
             invalidPassword: 'Senha Inválida',
+            forgotPassword: 'Esqueceu sua senha?',
             passwordHelp:
                 'Esqueceu sua senha? Redefina-a com:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Em seguida, atualize a UI para definir uma nova senha.',
         },

@@ -807,6 +807,7 @@ export default {
             title: 'パスワードを入力してください',
             newPasswordTitle: '新しいパスワードを入力してください',
             invalidPassword: '無効なパスワード',
+            forgotPassword: 'パスワードをお忘れですか？',
             passwordHelp:
                 'パスワードをお忘れですか？以下のコマンドでリセットしてください：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>その後、UIを更新して新しいパスワードを設定してください。',
         },

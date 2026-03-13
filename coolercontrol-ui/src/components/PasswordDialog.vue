@@ -21,15 +21,10 @@ import { inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiHelpCircleOutline } from '@mdi/js'
 import FloatLabel from 'primevue/floatlabel'
-import { useDeviceStore } from '@/stores/DeviceStore'
 import { useI18n } from 'vue-i18n'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
-const deviceStore = useDeviceStore()
 const { t } = useI18n()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
@@ -111,10 +106,18 @@ nextTick(async () => {
             setPasswd ? t('common.newPassword') : t('common.password')
         }}</label>
     </FloatLabel>
-    <footer class="flex items-center place-content-between mt-4">
+    <footer class="flex flex-col items-center place-content-between mt-4">
         <Button
-            class="!p-0 rounded-lg w-8 h-8"
-            link
+            class="bg-accent/80 hover:!bg-accent/100 w-full"
+            label="Save"
+            @click="closeAndProcess"
+            :disabled="formIsInvalid()"
+        >
+            {{ setPasswd ? t('common.savePassword') : t('common.ok') }}
+        </Button>
+        <br />
+        <span
+            class="text-text-color-secondary text-sm underline underline-offset-2"
             v-tooltip.bottom="{
                 value: t('components.password.passwordHelp'),
                 autoHide: false,
@@ -122,21 +125,8 @@ nextTick(async () => {
                 hideDelay: 500,
             }"
         >
-            <svg-icon
-                class="text-text-color-secondary"
-                type="mdi"
-                :path="mdiHelpCircleOutline"
-                :size="deviceStore.getREMSize(1.1)"
-            />
-        </Button>
-        <Button
-            class="bg-accent/80 hover:!bg-accent/100"
-            label="Save"
-            @click="closeAndProcess"
-            :disabled="formIsInvalid()"
-        >
-            {{ setPasswd ? t('common.savePassword') : t('common.ok') }}
-        </Button>
+            {{ t('components.password.forgotPassword') }}
+        </span>
     </footer>
 </template>
 

@@ -788,6 +788,7 @@ export default {
             title: 'أدخل كلمة المرور الخاصة بك',
             newPasswordTitle: 'أدخل كلمة مرور جديدة',
             invalidPassword: 'كلمة مرور غير صالحة',
+            forgotPassword: 'هل نسيت كلمة المرور؟',
             passwordHelp:
                 'هل نسيت كلمة المرور؟ أعد تعيينها بتشغيل:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>ثم قم بتحديث واجهة المستخدم لتعيين كلمة مرور جديدة.',
         },
