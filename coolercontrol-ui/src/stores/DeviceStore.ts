@@ -586,8 +586,7 @@ export const useDeviceStore = defineStore('device', () => {
                 header: t('auth.accessTokens'),
                 position: 'center',
                 modal: true,
-                dismissableMask: true,
-                style: { width: '50rem' },
+                dismissableMask: false,
             },
         })
     }

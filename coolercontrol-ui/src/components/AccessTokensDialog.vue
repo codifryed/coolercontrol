@@ -188,6 +188,7 @@ onMounted(loadTokens)
                 class="w-full h-12"
                 :class="{ filled: newLabel.trim().length > 0 }"
                 @keydown.enter="createToken"
+                autofocus
             />
             <label for="token-label">{{ t('auth.tokenLabel') }}</label>
         </FloatLabel>
@@ -211,7 +212,7 @@ onMounted(loadTokens)
             <el-switch v-model="newWriteAccess" size="large" input-id="token-write-access" />
         </div>
         <Button
-            class="!bg-accent/80 hover:!bg-accent/100 h-12 min-w-44"
+            class="!bg-accent/80 hover:!bg-accent/100 h-12"
             :label="t('auth.createToken')"
             icon="pi pi-plus"
             @click="createToken"
