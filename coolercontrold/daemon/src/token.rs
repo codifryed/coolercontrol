@@ -34,6 +34,10 @@ use uuid::Uuid;
 const TOKENS_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.tokens");
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
+fn default_write_access() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StoredToken {
     pub id: String,
@@ -42,6 +46,8 @@ pub struct StoredToken {
     pub created_at: DateTime<Local>,
     pub expires_at: Option<DateTime<Local>>,
     pub last_used: Option<DateTime<Local>>,
+    #[serde(default = "default_write_access")]
+    pub write_access: bool,
 }
 
 pub fn generate_token() -> String {
@@ -93,7 +99,7 @@ pub async fn save_tokens(tokens: &[StoredToken]) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_token(raw_token: &str, tokens: &[StoredToken]) -> Option<String> {
+pub fn validate_token(raw_token: &str, tokens: &[StoredToken]) -> Option<(String, bool)> {
     let now = Local::now();
     for token in tokens {
         if let Some(expires_at) = token.expires_at {
@@ -102,7 +108,7 @@ pub fn validate_token(raw_token: &str, tokens: &[StoredToken]) -> Option<String>
             }
         }
         if verify_token(raw_token, &token.hash) {
-            return Some(token.id.clone());
+            return Some((token.id.clone(), token.write_access));
         }
     }
     None
@@ -156,9 +162,27 @@ mod tests {
             created_at: Local::now(),
             expires_at: None,
             last_used: None,
+            write_access: false,
         };
         let result = validate_token(&raw, &[stored]);
-        assert_eq!(result, Some("test-id".to_string()));
+        assert_eq!(result, Some(("test-id".to_string(), false)));
+    }
+
+    #[test]
+    fn test_validate_token_finds_match_with_write_access() {
+        let raw = generate_token();
+        let hash = hash_token(&raw).unwrap();
+        let stored = StoredToken {
+            id: "test-id".to_string(),
+            label: "Test Token".to_string(),
+            hash,
+            created_at: Local::now(),
+            expires_at: None,
+            last_used: None,
+            write_access: true,
+        };
+        let result = validate_token(&raw, &[stored]);
+        assert_eq!(result, Some(("test-id".to_string(), true)));
     }
 
     #[test]
@@ -172,6 +196,7 @@ mod tests {
             created_at: Local::now(),
             expires_at: Some(Local::now() - chrono::Duration::hours(1)),
             last_used: None,
+            write_access: true,
         };
         let result = validate_token(&raw, &[stored]);
         assert_eq!(result, None);
@@ -188,9 +213,10 @@ mod tests {
             created_at: Local::now(),
             expires_at: Some(Local::now() + chrono::Duration::hours(1)),
             last_used: None,
+            write_access: true,
         };
         let result = validate_token(&raw, &[stored]);
-        assert_eq!(result, Some("test-id".to_string()));
+        assert_eq!(result, Some(("test-id".to_string(), true)));
     }
 
     #[test]
@@ -205,6 +231,7 @@ mod tests {
             created_at: Local::now(),
             expires_at: None,
             last_used: None,
+            write_access: false,
         };
         let result = validate_token(&raw, &[stored]);
         assert_eq!(result, None);
@@ -225,6 +252,7 @@ mod tests {
                 created_at: Local::now(),
                 expires_at: None,
                 last_used: None,
+                write_access: true,
             }];
 
             let json = serde_json::to_string_pretty(&tokens).unwrap();
@@ -235,7 +263,23 @@ mod tests {
             assert_eq!(loaded.len(), 1);
             assert_eq!(loaded[0].id, "id1");
             assert_eq!(loaded[0].label, "Test");
+            assert!(loaded[0].write_access);
             assert!(verify_token(&raw, &loaded[0].hash));
         });
+    }
+
+    #[test]
+    fn test_deserialize_without_write_access_defaults_to_true() {
+        let json = r#"[{
+            "id": "old-id",
+            "label": "Old Token",
+            "hash": "$argon2id$v=19$m=19456,t=2,p=1$fake$fake",
+            "created_at": "2025-01-01T00:00:00+00:00",
+            "expires_at": null,
+            "last_used": null
+        }]"#;
+        let tokens: Vec<StoredToken> = serde_json::from_str(json).unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert!(tokens[0].write_access);
     }
 }

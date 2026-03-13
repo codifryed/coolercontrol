@@ -96,7 +96,7 @@ fn base_routes() -> ApiRouter<AppState> {
                     .tag("base")
                 .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
-            }).layer(axum::middleware::from_fn(auth::auth_middleware)),
+            }).layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/shutdown",
@@ -204,7 +204,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices",
@@ -243,7 +243,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/profile",
@@ -254,7 +254,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd",
@@ -265,7 +265,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd/images",
@@ -298,7 +298,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lcd/shutdown-image",
@@ -321,7 +321,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/lighting",
@@ -332,7 +332,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/pwm",
@@ -343,7 +343,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/settings/{channel_name}/reset",
@@ -356,7 +356,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/devices/{device_uid}/asetek690",
@@ -370,7 +370,7 @@ fn device_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
@@ -463,7 +463,7 @@ fn profile_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/profiles/{profile_uid}",
@@ -474,7 +474,7 @@ fn profile_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/profiles/order",
@@ -485,13 +485,12 @@ fn profile_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
 fn function_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
-        .layer(axum::middleware::from_fn(auth::auth_middleware))
         .api_route(
             "/functions",
             get_with(functions::get_all, |o| {
@@ -522,7 +521,7 @@ fn function_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/functions/{function_uid}",
@@ -533,7 +532,7 @@ fn function_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/functions/order",
@@ -544,7 +543,7 @@ fn function_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
@@ -580,7 +579,7 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/custom-sensors/{custom_sensor_id}",
@@ -602,7 +601,7 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/custom-sensors/order",
@@ -613,7 +612,7 @@ fn custom_sensor_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
@@ -647,7 +646,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/modes/{mode_uid}",
@@ -669,7 +668,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/modes/{mode_uid}/duplicate",
@@ -683,7 +682,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/modes/{mode_uid}/settings",
@@ -697,7 +696,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/modes-active",
@@ -724,7 +723,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/modes/order",
@@ -735,7 +734,7 @@ fn mode_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
@@ -750,14 +749,18 @@ fn settings_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .patch_with(settings::update_cc, |o| {
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/settings",
+            patch_with(settings::update_cc, |o| {
                 o.summary("Update CoolerControl Settings")
                     .description("Applies only the given properties.")
                     .tag("setting")
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/settings/devices",
@@ -790,7 +793,7 @@ fn settings_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/settings/ui",
@@ -909,7 +912,7 @@ fn alert_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
         .api_route(
             "/alerts/{alert_uid}",
@@ -920,31 +923,38 @@ fn alert_routes() -> ApiRouter<AppState> {
                     .security_requirement("CookieAuth")
                     .security_requirement("BearerAuth")
             })
-            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
         )
 }
 
 fn detect_routes() -> ApiRouter<AppState> {
-    ApiRouter::new().api_route(
-        "/detect",
-        get_with(detect::get_detect, |o| {
-            o.summary("Detect Hardware")
-                .description(
-                    "Run Super-I/O hardware detection and return results without loading modules.",
-                )
-                .tag("detect")
-                .security_requirement("CookieAuth")
-                .security_requirement("BearerAuth")
-        })
-        .post_with(detect::post_detect, |o| {
-            o.summary("Detect Hardware and Load Modules")
-                .description("Run Super-I/O hardware detection and optionally load kernel modules.")
-                .tag("detect")
-                .security_requirement("CookieAuth")
-                .security_requirement("BearerAuth")
-        })
-        .layer(axum::middleware::from_fn(auth::auth_middleware)),
-    )
+    ApiRouter::new()
+        .api_route(
+            "/detect",
+            get_with(detect::get_detect, |o| {
+                o.summary("Detect Hardware")
+                    .description(
+                        "Run Super-I/O hardware detection and return results without loading modules.",
+                    )
+                    .tag("detect")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
+        .api_route(
+            "/detect",
+            post_with(detect::post_detect, |o| {
+                o.summary("Detect Hardware and Load Modules")
+                    .description(
+                        "Run Super-I/O hardware detection and optionally load kernel modules.",
+                    )
+                    .tag("detect")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
 }
 
 fn sse_routes() -> ApiRouter<AppState> {
