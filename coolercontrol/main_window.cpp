@@ -26,6 +26,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMenu>
+#include <QMessageBox>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
 #include <QProcess>
@@ -470,6 +471,25 @@ void MainWindow::setTrayActionToShow() const { m_showAction->setText(tr("&Show")
 
 void MainWindow::setTrayActionToHide() const { m_showAction->setText(tr("&Hide")); }
 
+void MainWindow::showVersionMismatchDialog(const QString& daemonVersion) const {
+  const auto appVersion = QString::fromStdString(COOLER_CONTROL_VERSION);
+  QMessageBox dialog;
+  dialog.setWindowTitle(tr("Version Mismatch"));
+  dialog.setIcon(QMessageBox::Warning);
+  dialog.setText(tr("The desktop app version (%1) does not match the daemon version (%2).")
+                     .arg(appVersion, daemonVersion));
+  dialog.setInformativeText(
+      tr("Please restart the desktop app to load the correct interface version."));
+  const auto quitButton = dialog.addButton(tr("&Quit App"), QMessageBox::AcceptRole);
+  dialog.addButton(tr("Continue Anyway"), QMessageBox::RejectRole);
+  dialog.setDefaultButton(quitButton);
+  dialog.exec();
+  if (dialog.clickedButton() == quitButton) {
+    m_forceQuit = true;
+    QApplication::quit();
+  }
+}
+
 void MainWindow::notifyDaemonConnectionError() {
   // Qt has some issues around message icons, and we now use DBus notifications
   // now directly to handle the important ones better.
@@ -563,9 +583,15 @@ void MainWindow::requestDaemonErrors() const {
     const QString replyText = healthReply->readAll();
     qDebug() << "Health Endpoint Response Status: " << status << "; Body: " << replyText;
     const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
-    if (const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
-        daemonVersion.isEmpty()) {
+    const auto daemonVersion =
+        rootObj.value("details").toObject().value("version").toString();
+    if (daemonVersion.isEmpty()) {
       qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
+    } else {
+      const auto appVersion = QString::fromStdString(COOLER_CONTROL_VERSION);
+      if (daemonVersion != appVersion) {
+        showVersionMismatchDialog(daemonVersion);
+      }
     }
     if (const auto errors = rootObj.value("details").toObject().value("errors").toInt();
         errors > 0) {
