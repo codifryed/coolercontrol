@@ -211,7 +211,8 @@ pub fn udevadm_settle() {
             debug!("udevadm settle completed");
         }
         ShellCommandResult::Error(err) => {
-            info!("udevadm settle failed: {err}");
+            // silently fail. We tried, but isn't strickly necessary anyway.
+            debug!("udevadm settle failed: {err}");
         }
     }
 }
