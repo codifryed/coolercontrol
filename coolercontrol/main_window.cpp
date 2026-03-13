@@ -583,8 +583,7 @@ void MainWindow::requestDaemonErrors() const {
     const QString replyText = healthReply->readAll();
     qDebug() << "Health Endpoint Response Status: " << status << "; Body: " << replyText;
     const QJsonObject rootObj = QJsonDocument::fromJson(replyText.toUtf8()).object();
-    const auto daemonVersion =
-        rootObj.value("details").toObject().value("version").toString();
+    const auto daemonVersion = rootObj.value("details").toObject().value("version").toString();
     if (daemonVersion.isEmpty()) {
       qWarning() << "Health version response is empty - must NOT be connected to the daemon API.";
     } else {
