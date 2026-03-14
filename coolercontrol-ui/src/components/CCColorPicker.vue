@@ -164,14 +164,14 @@ const handleRedIssue = (newColor: Color): void => {
                         autofocus
                     />
                     <div class="text-right justify-end">
-                        <Button class="mr-4" label="Reset" @click="closeAndReset">
+                        <Button class="mr-4" label="Reset" @click.stop="closeAndReset">
                             {{ t('common.reset') }}
                         </Button>
                         <Button
                             ref="saveButton"
                             class="!bg-accent/80 hover:!bg-accent/100"
                             label="Save"
-                            @click="closeAndSave"
+                            @click.stop="closeAndSave"
                             :disabled="!colorStore.isValidHex(currentColor)"
                         >
                             {{ t('common.save') }}
