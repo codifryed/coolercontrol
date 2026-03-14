@@ -359,10 +359,12 @@ onMounted(async () => {
                         class="flex items-center gap-x-2 px-3 py-1.5 rounded cursor-pointer hover:bg-bg-one"
                         :class="{ 'bg-bg-one': selectedTags.includes(tag.name) }"
                         @click="
-                            selectedTags.includes(tag.name)
-                                ? selectedTags.splice(selectedTags.indexOf(tag.name), 1)
-                                : selectedTags.push(tag.name)
-                            applyTagSelection()
+                            () => {
+                                selectedTags.includes(tag.name)
+                                    ? selectedTags.splice(selectedTags.indexOf(tag.name), 1)
+                                    : selectedTags.push(tag.name)
+                                applyTagSelection()
+                            }
                         "
                     >
                         <span
