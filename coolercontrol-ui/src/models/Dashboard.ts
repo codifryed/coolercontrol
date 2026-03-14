@@ -54,6 +54,9 @@ export class Dashboard {
     // Selected data types to filter by
     dataTypes: Array<DataType> = []
 
+    // Selected tag names to filter by (resolved to channels at runtime)
+    selectedTags: Array<string> = []
+
     // Selected Raw deviceUID and channel names to filter by (not user-level names)
     @Type(() => DashboardDeviceChannel)
     deviceChannelNames: Array<DashboardDeviceChannel> = []

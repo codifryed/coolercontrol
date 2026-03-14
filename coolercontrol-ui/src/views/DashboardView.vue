@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
@@ -224,6 +224,103 @@ const updateDashboardSensorsFilter = (sensorSources: Array<AvailableSensor>): vo
     dashboard.deviceChannelNames = newSensorsFilter
 }
 
+// Tag filter options for MultiSelect
+interface TagOption {
+    name: string
+    color: string
+}
+const tagOptions = computed<Array<TagOption>>(() =>
+    Array.from(settingsStore.tags.entries()).map(([name, tag]) => ({
+        name,
+        color: tag.color,
+    })),
+)
+
+// Channels resolved from selected tags (computed reactively)
+const tagResolvedChannels = computed<Array<DashboardDeviceChannel>>(() => {
+    const channels: Array<DashboardDeviceChannel> = []
+    for (const tagName of dashboard.selectedTags) {
+        for (const { deviceUID, channelName } of settingsStore.getTagChannels(tagName)) {
+            if (!channels.some((c) => c.deviceUID === deviceUID && c.channelName === channelName)) {
+                channels.push(new DashboardDeviceChannel(deviceUID, channelName))
+            }
+        }
+    }
+    return channels
+})
+
+// Effective channels = tag channels union manual channels
+const effectiveChannels = computed<Array<DashboardDeviceChannel>>(() => {
+    const merged = [...tagResolvedChannels.value]
+    for (const ch of dashboard.deviceChannelNames) {
+        if (!merged.some((m) => m.deviceUID === ch.deviceUID && m.channelName === ch.channelName)) {
+            merged.push(ch)
+        }
+    }
+    return merged
+})
+
+// Filter channel MultiSelect options to exclude tag-covered channels
+const filteredSensorSources = computed<Array<AvailableSensorSource>>(() => {
+    if (tagResolvedChannels.value.length === 0) return sensorSources.value
+    return sensorSources.value
+        .map((source) => ({
+            ...source,
+            sensors: source.sensors.filter(
+                (s) =>
+                    !tagResolvedChannels.value.some(
+                        (tc) => tc.deviceUID === s.deviceUID && tc.channelName === s.name,
+                    ),
+            ),
+        }))
+        .filter((source) => source.sensors.length > 0)
+})
+
+const filteredControlSensorSources = computed<Array<AvailableSensorSource>>(() => {
+    if (tagResolvedChannels.value.length === 0) return controlSensorSources.value
+    return controlSensorSources.value
+        .map((source) => ({
+            ...source,
+            sensors: source.sensors.filter(
+                (s) =>
+                    !tagResolvedChannels.value.some(
+                        (tc) => tc.deviceUID === s.deviceUID && tc.channelName === s.name,
+                    ),
+            ),
+        }))
+        .filter((source) => source.sensors.length > 0)
+})
+
+// Remove stale tags that no longer exist from the dashboard's selection
+const cleanupStaleTags = (): void => {
+    const validTags = new Set(settingsStore.tags.keys())
+    dashboard.selectedTags = dashboard.selectedTags.filter((t) => validTags.has(t))
+}
+cleanupStaleTags()
+
+// When tags change, remove tag-covered channels from manual selection for clarity
+watch(
+    () => dashboard.selectedTags,
+    () => {
+        if (tagResolvedChannels.value.length === 0) return
+        // Remove from manual channel list any channels now covered by tags
+        dashboard.deviceChannelNames = dashboard.deviceChannelNames.filter(
+            (ch) =>
+                !tagResolvedChannels.value.some(
+                    (tc) => tc.deviceUID === ch.deviceUID && tc.channelName === ch.channelName,
+                ),
+        )
+        fillChosenSensorSources()
+    },
+    { deep: true },
+)
+
+// Dashboard view with effective channels (tag union manual) for chart/table components
+const viewDashboard = computed(() => ({
+    ...dashboard,
+    deviceChannelNames: effectiveChannels.value,
+}))
+
 const addScrollEventListener = (): void => {
     // @ts-ignore
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
@@ -300,13 +397,46 @@ onUnmounted(() => {
             >
                 <svg-icon type="mdi" :path="mdiOverscan" :size="deviceStore.getREMSize(1.25)" />
             </div>
+            <div v-if="settingsStore.tags.size > 0" class="p-2 pr-0 flex flex-row">
+                <MultiSelect
+                    v-model="dashboard.selectedTags"
+                    :options="tagOptions"
+                    class="w-36 h-[2.375rem]"
+                    :placeholder="t('views.dashboard.filterTags')"
+                    :dropdown-icon="
+                        dashboard.selectedTags.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
+                    "
+                    option-label="name"
+                    option-value="name"
+                    scroll-height="16rem"
+                    v-tooltip.bottom="t('views.dashboard.filterByTag')"
+                >
+                    <template #option="slotProps">
+                        <div class="flex items-center gap-x-2">
+                            <span
+                                class="w-3 h-3 rounded-full inline-block"
+                                :style="{ backgroundColor: slotProps.option.color }"
+                            />
+                            {{ slotProps.option.name }}
+                        </div>
+                    </template>
+                    <template #value="slotProps">
+                        <span v-if="slotProps.value?.length > 0">
+                            {{ slotProps.value.join(', ') }}
+                        </span>
+                        <span v-else>
+                            {{ slotProps.placeholder }}
+                        </span>
+                    </template>
+                </MultiSelect>
+            </div>
             <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
                     v-model="chosenSensorSources"
                     :options="
                         dashboard.chartType !== ChartType.CONTROLS
-                            ? sensorSources
-                            : controlSensorSources
+                            ? filteredSensorSources
+                            : filteredControlSensorSources
                     "
                     class="w-36 h-[2.375rem]"
                     :placeholder="t('views.dashboard.filterSensors')"
@@ -422,18 +552,18 @@ onUnmounted(() => {
             </div>
             <TimeChart
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
-                :dashboard="dashboard"
+                :dashboard="viewDashboard"
                 :key="chartKey"
             />
             <SensorTable
                 v-else-if="dashboard.chartType == ChartType.TABLE"
-                :dashboard="dashboard"
+                :dashboard="viewDashboard"
                 :key="'table' + chartKey"
             />
             <!--            todo: get rid on control dashboards-->
             <ControlsOverview
                 v-else-if="dashboard.chartType == ChartType.CONTROLS"
-                :dashboard="dashboard"
+                :dashboard="viewDashboard"
                 :key="'controls' + chartKey"
             />
         </div>
