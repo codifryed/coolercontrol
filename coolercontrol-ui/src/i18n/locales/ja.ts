@@ -807,6 +807,7 @@ export default {
             title: 'パスワードを入力してください',
             newPasswordTitle: '新しいパスワードを入力してください',
             invalidPassword: '無効なパスワード',
+            forgotPassword: 'パスワードをお忘れですか？',
             passwordHelp:
                 'パスワードをお忘れですか？以下のコマンドでリセットしてください：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>その後、UIを更新して新しいパスワードを設定してください。',
         },
@@ -1035,6 +1036,9 @@ export default {
         created: '作成日',
         label: 'ラベル',
         actions: '操作',
+        writeAccess: '書き込みアクセス',
+        writeAccessTooltip:
+            '有効にすると、このトークンで変更を行えます。無効にすると、トークンはデータの読み取りのみ可能です。',
     },
     device_store: {
         unauthorized: {

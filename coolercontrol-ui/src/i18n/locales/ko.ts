@@ -786,6 +786,7 @@ export default {
             title: '비밀번호 입력',
             newPasswordTitle: '새 비밀번호 입력',
             invalidPassword: '잘못된 비밀번호',
+            forgotPassword: '비밀번호를 잊으셨나요?',
             passwordHelp:
                 '비밀번호를 잊으셨나요? 다음 명령어로 재설정하세요:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>그런 다음 UI를 새로고침하여 새 비밀번호를 설정하세요.',
         },
@@ -1014,6 +1015,9 @@ export default {
         created: '생성일',
         label: '레이블',
         actions: '작업',
+        writeAccess: '쓰기 권한',
+        writeAccessTooltip:
+            '활성화하면 이 토큰으로 변경할 수 있습니다. 비활성화하면 토큰은 데이터만 읽을 수 있습니다.',
     },
     daemon: {
         status: {

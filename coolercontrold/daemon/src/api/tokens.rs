@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 pub struct CreateTokenRequest {
     pub label: String,
     pub expires_at: Option<DateTime<Local>>,
+    pub write_access: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -36,6 +37,7 @@ pub struct CreateTokenResponse {
     pub token: String,
     pub created_at: DateTime<Local>,
     pub expires_at: Option<DateTime<Local>>,
+    pub write_access: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -45,6 +47,7 @@ pub struct TokenInfo {
     pub created_at: DateTime<Local>,
     pub expires_at: Option<DateTime<Local>>,
     pub last_used: Option<DateTime<Local>>,
+    pub write_access: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -80,7 +83,7 @@ pub async fn create(
         }
     }
     let (stored, raw_token) = token_handle
-        .create(label, body.expires_at)
+        .create(label, body.expires_at, body.write_access)
         .await
         .map_err(handle_error)?;
     Ok(Json(CreateTokenResponse {
@@ -89,6 +92,7 @@ pub async fn create(
         token: raw_token,
         created_at: stored.created_at,
         expires_at: stored.expires_at,
+        write_access: stored.write_access,
     }))
 }
 
@@ -105,6 +109,7 @@ pub async fn list(
                 created_at: t.created_at,
                 expires_at: t.expires_at,
                 last_used: t.last_used,
+                write_access: t.write_access,
             })
             .collect(),
     }))

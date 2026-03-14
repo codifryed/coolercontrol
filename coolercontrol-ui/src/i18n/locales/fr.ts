@@ -815,6 +815,7 @@ export default {
             title: 'Entrez Votre Mot de Passe',
             newPasswordTitle: 'Entrez Un Nouveau Mot de Passe',
             invalidPassword: 'Mot de Passe Invalide',
+            forgotPassword: 'Mot de passe oublié ?',
             passwordHelp:
                 "Mot de passe oublié ? Réinitialisez-le avec :<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Puis actualisez l'UI pour définir un nouveau mot de passe.",
         },
@@ -1048,6 +1049,9 @@ export default {
         created: 'Créé',
         label: 'Libellé',
         actions: 'Actions',
+        writeAccess: 'Accès en écriture',
+        writeAccessTooltip:
+            "Lorsqu'activé, ce jeton peut effectuer des modifications. Lorsque désactivé, le jeton peut uniquement lire les données.",
     },
     daemon: {
         status: {

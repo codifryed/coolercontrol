@@ -150,6 +150,8 @@ class MainWindow final : public QMainWindow {
 
   void watchAlerts() const;
 
+  void showVersionMismatchDialog(const QString& daemonVersion) const;
+
   static void notifyDaemonConnectionError();
 
   static void notifyDaemonErrors();

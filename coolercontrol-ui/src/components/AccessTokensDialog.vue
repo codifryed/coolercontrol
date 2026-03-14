@@ -33,6 +33,8 @@ import Tag from 'primevue/tag'
 import FloatLabel from 'primevue/floatlabel'
 import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
+import { ElSwitch } from 'element-plus'
+import 'element-plus/es/components/switch/style/css'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -43,6 +45,7 @@ const { t } = useI18n()
 const tokens: Ref<AccessTokenInfo[]> = ref([])
 const newLabel: Ref<string> = ref('')
 const newExpiry: Ref<Date | null> = ref(null)
+const newWriteAccess: Ref<boolean> = ref(false)
 const createdToken: Ref<CreateTokenResponse | null> = ref(null)
 const loading: Ref<boolean> = ref(false)
 
@@ -66,7 +69,11 @@ async function createToken(): Promise<void> {
     const label = newLabel.value.trim()
     if (!label) return
     const expiresAt = newExpiry.value ? newExpiry.value.toISOString() : null
-    const result = await deviceStore.daemonClient.createToken(label, expiresAt)
+    const result = await deviceStore.daemonClient.createToken(
+        label,
+        expiresAt,
+        newWriteAccess.value,
+    )
     if (result instanceof ErrorResponse) {
         toast.add({
             severity: 'error',
@@ -79,6 +86,7 @@ async function createToken(): Promise<void> {
     createdToken.value = result
     newLabel.value = ''
     newExpiry.value = null
+    newWriteAccess.value = false
     await loadTokens()
 }
 
@@ -180,6 +188,7 @@ onMounted(loadTokens)
                 class="w-full h-12"
                 :class="{ filled: newLabel.trim().length > 0 }"
                 @keydown.enter="createToken"
+                autofocus
             />
             <label for="token-label">{{ t('auth.tokenLabel') }}</label>
         </FloatLabel>
@@ -196,6 +205,12 @@ onMounted(loadTokens)
             />
             <label for="token-expiry">{{ t('auth.tokenExpiry') }}</label>
         </FloatLabel>
+        <div class="flex items-center gap-2" v-tooltip.top="t('auth.writeAccessTooltip')">
+            <label for="token-write-access" class="whitespace-nowrap">
+                {{ t('auth.writeAccess') }}
+            </label>
+            <el-switch v-model="newWriteAccess" size="large" input-id="token-write-access" />
+        </div>
         <Button
             class="!bg-accent/80 hover:!bg-accent/100 h-12"
             :label="t('auth.createToken')"
@@ -228,6 +243,12 @@ onMounted(loadTokens)
                 </span>
             </template>
         </Column>
+        <Column field="write_access" :header="t('auth.writeAccess')">
+            <template #body="{ data }">
+                <Tag v-if="data.write_access" :value="t('common.yes')" severity="warn" />
+                <Tag v-else :value="t('common.no')" severity="success" />
+            </template>
+        </Column>
         <Column field="last_used" :header="t('auth.lastUsed')">
             <template #body="{ data }">
                 {{ data.last_used ? formatDate(data.last_used) : t('auth.neverUsed') }}
@@ -247,4 +268,10 @@ onMounted(loadTokens)
     </DataTable>
 </template>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.el-switch {
+    --el-switch-on-color: rgb(var(--colors-accent));
+    --el-switch-off-color: rgb(var(--colors-bg-one));
+    --el-color-white: rgb(var(--colors-bg-two));
+}
+</style>

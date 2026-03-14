@@ -25,7 +25,7 @@ use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-const MAX_FAILED_ATTEMPTS: u32 = 5;
+const MAX_FAILED_ATTEMPTS: u32 = 6;
 const BASE_LOCKOUT_SECS: u64 = 60;
 const MAX_LOCKOUT_SECS: u64 = 900; // 15 minutes
 const ATTEMPT_DECAY_SECS: u64 = 900; // 15 minutes

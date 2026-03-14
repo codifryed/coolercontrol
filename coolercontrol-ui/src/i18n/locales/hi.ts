@@ -797,6 +797,7 @@ export default {
             title: 'अपना पासवर्ड दर्ज करें',
             newPasswordTitle: 'एक नया पासवर्ड दर्ज करें',
             invalidPassword: 'अमान्य पासवर्ड',
+            forgotPassword: 'पासवर्ड भूल गए?',
             passwordHelp:
                 'पासवर्ड भूल गए? इसे रीसेट करें:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>फिर नया पासवर्ड सेट करने के लिए UI को रिफ्रेश करें।',
         },
@@ -1025,6 +1026,9 @@ export default {
         created: 'बनाया गया',
         label: 'लेबल',
         actions: 'कार्रवाइयां',
+        writeAccess: 'लिखने की अनुमति',
+        writeAccessTooltip:
+            'सक्षम होने पर, यह टोकन परिवर्तन कर सकता है। अक्षम होने पर, टोकन केवल डेटा पढ़ सकता है।',
     },
     device: {
         processInterrupted: ' - प्रक्रिया बाधित हुई।',

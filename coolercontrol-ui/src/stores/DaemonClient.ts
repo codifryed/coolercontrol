@@ -1336,9 +1336,14 @@ export default class DaemonClient {
     async createToken(
         label: string,
         expiresAt: string | null,
+        writeAccess: boolean,
     ): Promise<CreateTokenResponse | ErrorResponse> {
         try {
-            const body: CreateTokenRequest = { label, expires_at: expiresAt }
+            const body: CreateTokenRequest = {
+                label,
+                expires_at: expiresAt,
+                write_access: writeAccess,
+            }
             const response = await this.getClient().post('/tokens', body, {
                 'axios-retry': {
                     retries: 0,

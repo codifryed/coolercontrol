@@ -776,6 +776,7 @@ export default {
             title: '輸入您的密碼',
             newPasswordTitle: '輸入新密碼',
             invalidPassword: '密碼無效',
+            forgotPassword: '忘記密碼？',
             passwordHelp:
                 '忘記密碼？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然後刷新UI以設置新密碼。',
         },
@@ -995,6 +996,8 @@ export default {
         created: '建立時間',
         label: '標籤',
         actions: '操作',
+        writeAccess: '寫入權限',
+        writeAccessTooltip: '啟用後，此令牌可以進行更改。停用後，令牌只能讀取資料。',
     },
     daemon: {
         status: {

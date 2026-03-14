@@ -800,6 +800,7 @@ export default {
             title: 'Введите свой пароль',
             newPasswordTitle: 'Введите новый пароль',
             invalidPassword: 'Неверный пароль',
+            forgotPassword: 'Забыли пароль?',
             passwordHelp:
                 'Забыли пароль? Сбросьте его командой:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Затем обновите интерфейс, чтобы установить новый пароль.',
         },
@@ -1032,6 +1033,9 @@ export default {
         created: 'Создан',
         label: 'Метка',
         actions: 'Действия',
+        writeAccess: 'Доступ на запись',
+        writeAccessTooltip:
+            'Когда включено, этот токен может вносить изменения. Когда выключено, токен может только читать данные.',
     },
     device_store: {
         unauthorized: {

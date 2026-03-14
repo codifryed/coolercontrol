@@ -28,6 +28,13 @@ use uuid::Uuid;
 
 const FLUSH_INTERVAL_SECS: u64 = 300; // 5 minutes
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenValidation {
+    ValidReadWrite,
+    ValidReadOnly,
+    Invalid,
+}
+
 #[derive(Clone)]
 pub struct TokenHandle {
     tokens: Arc<RwLock<Vec<StoredToken>>>,
@@ -76,6 +83,7 @@ impl TokenHandle {
         &self,
         label: String,
         expires_at: Option<DateTime<Local>>,
+        write_access: bool,
     ) -> Result<(StoredToken, String)> {
         let raw_token = token::generate_token();
         let hash = token::hash_token(&raw_token)?;
@@ -87,6 +95,7 @@ impl TokenHandle {
             created_at: Local::now(),
             expires_at,
             last_used: None,
+            write_access,
         };
         let mut tokens = self.tokens.write().await;
         tokens.push(stored.clone());
@@ -124,18 +133,22 @@ impl TokenHandle {
         token::save_tokens(&tokens).await
     }
 
-    pub async fn validate(&self, raw_token: String) -> Result<bool> {
+    pub async fn validate(&self, raw_token: String) -> Result<TokenValidation> {
         let tokens = self.tokens.read().await;
         match token::validate_token(&raw_token, &tokens) {
-            Some(id) => {
+            Some((id, write_access)) => {
                 drop(tokens);
                 self.last_used_cache
                     .lock()
                     .expect("last_used_cache poisoned")
                     .insert(id, Local::now());
-                Ok(true)
+                if write_access {
+                    Ok(TokenValidation::ValidReadWrite)
+                } else {
+                    Ok(TokenValidation::ValidReadOnly)
+                }
             }
-            None => Ok(false),
+            None => Ok(TokenValidation::Invalid),
         }
     }
 
@@ -165,6 +178,10 @@ mod tests {
     use super::*;
 
     fn make_stored_token(raw: &str) -> (StoredToken, String) {
+        make_stored_token_with_write(raw, true)
+    }
+
+    fn make_stored_token_with_write(raw: &str, write_access: bool) -> (StoredToken, String) {
         let hash = token::hash_token(raw).unwrap();
         let stored = StoredToken {
             id: Uuid::new_v4().to_string(),
@@ -173,6 +190,7 @@ mod tests {
             created_at: Local::now(),
             expires_at: None,
             last_used: None,
+            write_access,
         };
         (stored, raw.to_string())
     }
@@ -185,13 +203,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_validate_valid_token() {
+    async fn test_validate_valid_token_read_write() {
         let raw = token::generate_token();
         let (stored, _) = make_stored_token(&raw);
         let handle = make_handle_with_tokens(vec![stored]);
 
         let result = handle.validate(raw).await.unwrap();
-        assert!(result);
+        assert_eq!(result, TokenValidation::ValidReadWrite);
+    }
+
+    #[tokio::test]
+    async fn test_validate_valid_token_read_only() {
+        let raw = token::generate_token();
+        let (stored, _) = make_stored_token_with_write(&raw, false);
+        let handle = make_handle_with_tokens(vec![stored]);
+
+        let result = handle.validate(raw).await.unwrap();
+        assert_eq!(result, TokenValidation::ValidReadOnly);
     }
 
     #[tokio::test]
@@ -202,7 +230,7 @@ mod tests {
 
         let wrong = token::generate_token();
         let result = handle.validate(wrong).await.unwrap();
-        assert!(!result);
+        assert_eq!(result, TokenValidation::Invalid);
     }
 
     #[tokio::test]
@@ -284,7 +312,7 @@ mod tests {
         }
 
         for jh in handles {
-            assert!(jh.await.unwrap());
+            assert_eq!(jh.await.unwrap(), TokenValidation::ValidReadWrite);
         }
     }
 

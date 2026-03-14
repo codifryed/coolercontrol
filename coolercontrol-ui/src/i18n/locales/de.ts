@@ -817,6 +817,7 @@ export default {
             title: 'Geben Sie Ihr Passwort ein',
             newPasswordTitle: 'Geben Sie ein neues Passwort ein',
             invalidPassword: 'Ungültiges Passwort',
+            forgotPassword: 'Passwort vergessen?',
             passwordHelp:
                 'Passwort vergessen? Setzen Sie es zurück mit:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Aktualisieren Sie dann die UI, um ein neues Passwort festzulegen.',
         },
@@ -1051,6 +1052,9 @@ export default {
         created: 'Erstellt',
         label: 'Bezeichnung',
         actions: 'Aktionen',
+        writeAccess: 'Schreibzugriff',
+        writeAccessTooltip:
+            'Wenn aktiviert, kann dieses Token Änderungen vornehmen. Wenn deaktiviert, kann das Token nur Daten lesen.',
     },
     device_store: {
         unauthorized: {

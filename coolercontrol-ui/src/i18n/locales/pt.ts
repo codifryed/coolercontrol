@@ -816,6 +816,7 @@ export default {
             title: 'Insira Sua Senha',
             newPasswordTitle: 'Insira Uma Nova Senha',
             invalidPassword: 'Senha Inválida',
+            forgotPassword: 'Esqueceu sua senha?',
             passwordHelp:
                 'Esqueceu sua senha? Redefina-a com:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Em seguida, atualize a UI para definir uma nova senha.',
         },
@@ -1071,6 +1072,9 @@ export default {
         created: 'Criado',
         label: 'Rótulo',
         actions: 'Ações',
+        writeAccess: 'Acesso de escrita',
+        writeAccessTooltip:
+            'Quando ativado, este token pode fazer alterações. Quando desativado, o token pode apenas ler dados.',
     },
     device_store: {
         unauthorized: {

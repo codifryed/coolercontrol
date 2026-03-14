@@ -17,7 +17,7 @@
  */
 
 use crate::admin;
-use crate::api::actor::TokenHandle;
+use crate::api::actor::{TokenHandle, TokenValidation};
 use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
@@ -41,23 +41,22 @@ const SESSION_USER_ID: &str = "CCAdmin";
 const SESSION_PERMISSIONS: &str = "permissions";
 const INVALID_MESSAGE: &str = "Invalid username or password.";
 
-/// This middleware function is used to verify if the user is logged in.
-/// It first checks for a Bearer token in the Authorization header,
-/// and if present, validates the token. If no Bearer token is present,
-/// it falls back to session cookie authentication.
+/// Read-access middleware. Validates Bearer tokens (any valid token) or
+/// session cookies. Used for read-only routes.
 pub async fn auth_middleware(
     Extension(token_handle): Extension<TokenHandle>,
     session: Session,
     request: Request,
     next: Next,
 ) -> impl IntoApiResponse {
-    // 1. Check for Bearer token
     if let Some(auth_value) = request.headers().get(header::AUTHORIZATION) {
         if let Ok(value) = auth_value.to_str() {
             if let Some(raw_token) = value.strip_prefix("Bearer ") {
                 return match token_handle.validate(raw_token.to_string()).await {
-                    Ok(true) => Ok(next.run(request).await),
-                    Ok(false) => Err(CCError::InvalidCredentials {
+                    Ok(TokenValidation::ValidReadWrite | TokenValidation::ValidReadOnly) => {
+                        Ok(next.run(request).await)
+                    }
+                    Ok(TokenValidation::Invalid) => Err(CCError::InvalidCredentials {
                         msg: "Invalid or expired access token.".to_string(),
                     }),
                     Err(_) => Err(CCError::InternalError {
@@ -67,7 +66,35 @@ pub async fn auth_middleware(
             }
         }
     }
-    // 2. Fall back to session cookie
+    check_session_permission(session, request, next).await
+}
+
+/// Write-access middleware. Validates Bearer tokens (requires write access)
+/// or session cookies. Used for write/mutating routes.
+pub async fn auth_write_middleware(
+    Extension(token_handle): Extension<TokenHandle>,
+    session: Session,
+    request: Request,
+    next: Next,
+) -> impl IntoApiResponse {
+    if let Some(auth_value) = request.headers().get(header::AUTHORIZATION) {
+        if let Ok(value) = auth_value.to_str() {
+            if let Some(raw_token) = value.strip_prefix("Bearer ") {
+                return match token_handle.validate(raw_token.to_string()).await {
+                    Ok(TokenValidation::ValidReadWrite) => Ok(next.run(request).await),
+                    Ok(TokenValidation::ValidReadOnly) => Err(CCError::InsufficientScope {
+                        msg: "This token does not have write access.".to_string(),
+                    }),
+                    Ok(TokenValidation::Invalid) => Err(CCError::InvalidCredentials {
+                        msg: "Invalid or expired access token.".to_string(),
+                    }),
+                    Err(_) => Err(CCError::InternalError {
+                        msg: "Token validation error.".to_string(),
+                    }),
+                };
+            }
+        }
+    }
     check_session_permission(session, request, next).await
 }
 
