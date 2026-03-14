@@ -344,6 +344,7 @@ export default {
                 pin: 'Épingler en Haut',
                 unpin: 'Désépingler',
                 profileApply: 'Appliquer le Profil aux ventilateurs',
+                tags: 'Gérer les Tags',
             },
         },
         add: {
@@ -451,6 +452,8 @@ export default {
             mouseActions:
                 "Actions de la souris sur le tableau de bord :\n- Mettre en surbrillance la sélection pour zoomer.\n- Faire défiler pour zoomer.\n- Cliquer avec le bouton droit pour faire glisser lorsque zoomé.\n- Double-cliquer pour réinitialiser et reprendre la mise à jour.\n- Ctrl+cliquer ou cliquer avec le bouton du milieu pour afficher tous les capteurs dans l'info-bulle.",
             fullPage: 'Pleine Page',
+            filterTags: 'Filtrer les Tags',
+            filterByTag: 'Filtrer par Tag',
             filterBySensor: 'Filtrer par Capteur',
             search: 'Rechercher',
             filterTypes: 'Filtrer les Types',
@@ -939,6 +942,14 @@ export default {
         },
         modeTable: {
             setting: 'Paramètre',
+        },
+        menuTagAssign: {
+            title: 'Attribuer des Tags',
+            noTags: 'Aucun tag pour le moment.',
+            newTag: 'Créer un Nouveau Tag',
+            tagName: 'Nom du tag',
+            editTag: 'Modifier le tag',
+            deleteTag: 'Supprimer le tag',
         },
         wizards: {
             fanControl: {

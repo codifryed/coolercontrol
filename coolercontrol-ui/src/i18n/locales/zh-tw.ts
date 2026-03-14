@@ -324,6 +324,7 @@ export default {
                 pin: '釘選至頂部',
                 unpin: '取消釘選',
                 profileApply: '將設定檔套用至風扇',
+                tags: '管理標籤',
             },
         },
         add: {
@@ -346,6 +347,8 @@ export default {
             mouseActions:
                 '儀表板滑鼠操作：\n- 選取區域以縮放。\n- 滾動以縮放。\n- 縮放時按右鍵拖曳。\n- 雙擊重置並繼續更新。\n- Ctrl+點擊或中鍵點擊在提示框中顯示所有感應器。',
             fullPage: '全屏模式',
+            filterTags: '篩選標籤',
+            filterByTag: '按標籤篩選',
             filterBySensor: '按傳感器篩選',
             search: '搜索',
             filterTypes: '篩選類型',
@@ -889,6 +892,14 @@ export default {
         },
         modeTable: {
             setting: '設置',
+        },
+        menuTagAssign: {
+            title: '分配標籤',
+            noTags: '尚無標籤。',
+            newTag: '建立新標籤',
+            tagName: '標籤名稱',
+            editTag: '編輯標籤',
+            deleteTag: '刪除標籤',
         },
         wizards: {
             fanControl: {

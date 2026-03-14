@@ -331,6 +331,7 @@ export default {
                 pin: '위에 고정',
                 unpin: '핀 해제',
                 profileApply: '팬들에 프로파일 적용',
+                tags: '태그 관리',
             },
         },
         add: {
@@ -432,6 +433,8 @@ export default {
             mouseActions:
                 '대시보드 마우스 동작:\n- 확대/축소하려면 강조 표시합니다.\n- 스크롤하여 확대/축소합니다.\n- 확대/축소 시 마우스 오른쪽 버튼을 클릭하여 화면 이동합니다.\n- 두 번 클릭하면 초기화되고 업데이트가 재개됩니다.\n- Ctrl+클릭 또는 가운데 버튼 클릭으로 모든 센서를 툴팁에 표시합니다.',
             fullPage: '전체 페이지',
+            filterTags: '태그 필터',
+            filterByTag: '태그별 필터링',
             filterBySensor: '센서별 필터링',
             search: '검색',
             filterTypes: '필터 유형',
@@ -906,6 +909,14 @@ export default {
         },
         modeTable: {
             setting: '설정',
+        },
+        menuTagAssign: {
+            title: '태그 할당',
+            noTags: '아직 태그가 없습니다.',
+            newTag: '새 태그 만들기',
+            tagName: '태그 이름',
+            editTag: '태그 편집',
+            deleteTag: '태그 삭제',
         },
         wizards: {
             fanControl: {

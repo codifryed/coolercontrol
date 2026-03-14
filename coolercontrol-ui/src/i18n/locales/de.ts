@@ -338,6 +338,7 @@ export default {
                 pin: 'An die Spitze anheften',
                 unpin: 'Loslassen',
                 profileApply: 'Profil auf Lüfter anwenden',
+                tags: 'Tags verwalten',
             },
         },
         add: {
@@ -444,6 +445,8 @@ export default {
             mouseActions:
                 'Dashboard-Mausaktionen:\n- Markieren zum Zoomen.\n- Scrollen zum Zoomen.\n- Rechtsklick zum Schwenken im gezoomten Zustand.\n- Doppelklick zum Zurücksetzen und fortsetzen der Aktualisierung.\n- Strg+Klick oder Mausklick in der Mitte, um alle Sensoren im Tooltip anzuzeigen.',
             fullPage: 'Vollseite',
+            filterTags: 'Tags filtern',
+            filterByTag: 'Nach Tag filtern',
             filterBySensor: 'Nach Sensor filtern',
             search: 'Suchen',
             filterTypes: 'Typen filtern',
@@ -941,6 +944,14 @@ export default {
         },
         modeTable: {
             setting: 'Einstellung',
+        },
+        menuTagAssign: {
+            title: 'Tags zuweisen',
+            noTags: 'Noch keine Tags.',
+            newTag: 'Neuen Tag erstellen',
+            tagName: 'Tag-Name',
+            editTag: 'Tag bearbeiten',
+            deleteTag: 'Tag löschen',
         },
         wizards: {
             fanControl: {
