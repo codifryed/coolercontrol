@@ -23,6 +23,7 @@ import {
     mdiAlertOutline,
     mdiContentSaveOutline,
     mdiInformationSlabCircleOutline,
+    mdiSitemapOutline,
     mdiTuneVerticalVariant,
 } from '@mdi/js'
 import Select from 'primevue/select'
@@ -61,7 +62,7 @@ import AxisOptions from '@/components/AxisOptions.vue'
 import ChannelExtensionSettings from '@/components/ChannelExtensionSettings.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useI18n } from 'vue-i18n'
 import { useDialog } from 'primevue/usedialog'
@@ -76,6 +77,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const { t } = useI18n()
+const router = useRouter()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
@@ -408,7 +410,27 @@ onUnmounted(() => {
     <div id="control-panel" class="flex border-b-4 border-border-one items-center justify-between">
         <entity-title-rename :current-name="channelLabel" :save-name-function="saveNameFunction" />
         <div class="flex flex-wrap gap-x-1 justify-end">
-            <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0">
+            <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0 flex gap-x-1">
+                <Button
+                    class="!p-2 w-12 h-[2.375rem]"
+                    v-tooltip.bottom="t('views.controls.controlFlow')"
+                    @click="
+                        router.push({
+                            name: 'channel-control-flow',
+                            params: {
+                                deviceUID: props.deviceUID,
+                                channelName: props.channelName,
+                            },
+                        })
+                    "
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiSitemapOutline"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                </Button>
                 <Button
                     class="!p-2 w-12 h-[2.375rem] bg-accent/80 hover:!bg-accent"
                     v-tooltip.bottom="t('components.wizards.fanControl.fanControlWizard')"

@@ -43,7 +43,7 @@ import {
     mdiPlus,
     mdiPlusBoxMultipleOutline,
     mdiPower,
-    mdiTuneVerticalVariant,
+    mdiSitemapOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -542,7 +542,7 @@ const addItems = computed(() => [
             >
                 <svg-icon
                     type="mdi"
-                    :path="mdiTuneVerticalVariant"
+                    :path="mdiSitemapOutline"
                     :size="getREMSize(1.75)"
                     :class="{ 'text-accent': isActive }"
                 />
