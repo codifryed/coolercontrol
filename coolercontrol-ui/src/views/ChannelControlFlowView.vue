@@ -33,6 +33,9 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
+import { useRouter } from 'vue-router'
+import { mdiArrowLeft } from '@mdi/js'
+import Button from 'primevue/button'
 
 const props = defineProps<{
     deviceUID: string
@@ -43,6 +46,7 @@ const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
+const router = useRouter()
 
 provide('flowViewMode', 'detail')
 
@@ -101,6 +105,15 @@ const channelLabel = computed(() => {
 <template>
     <div class="flex h-full flex-col">
         <div class="flex items-center gap-3 border-b-4 border-border-one px-4 py-2">
+            <Button
+                text
+                rounded
+                class="!p-1"
+                v-tooltip.bottom="t('views.controls.backToOverview')"
+                @click="router.push({ name: 'system-controls' })"
+            >
+                <svg-icon type="mdi" :path="mdiArrowLeft" :size="deviceStore.getREMSize(1.25)" />
+            </Button>
             <span class="text-2xl font-bold text-text-color">
                 {{ channelLabel }} - {{ t('views.controls.controlFlow') }}
             </span>
@@ -121,7 +134,7 @@ const channelLabel = computed(() => {
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
-            :pan-on-drag="false"
+            pan-on-drag
             pan-on-scroll
             :zoom-on-scroll="false"
             :zoom-on-double-click="false"

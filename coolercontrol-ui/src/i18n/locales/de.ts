@@ -592,6 +592,8 @@ export default {
             noControllableChannels: 'Keine steuerbaren Kanäle gefunden.',
             noControlChain: 'Keine Steuerungskette für diesen Kanal gefunden.',
             controlFlow: 'Steuerungsfluss',
+            backToOverview: 'Zurück zur Steuerungsübersicht',
+            viewControlFlow: 'Steuerungsfluss anzeigen',
         },
         modes: {
             createMode: 'Modus erstellen',

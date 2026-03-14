@@ -716,6 +716,8 @@ export default {
             noControllableChannels: '未找到可控通道。',
             noControlChain: '未找到此通道的控制链。',
             controlFlow: '控制流',
+            backToOverview: '返回控制概览',
+            viewControlFlow: '查看控制流程',
         },
         devices: {
             detectionIssues: '检测问题？请查看',

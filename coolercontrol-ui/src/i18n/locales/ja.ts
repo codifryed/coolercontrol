@@ -627,6 +627,8 @@ export default {
             noControllableChannels: '制御可能なチャンネルが見つかりません。',
             noControlChain: 'このチャンネルの制御チェーンが見つかりません。',
             controlFlow: '制御フロー',
+            backToOverview: 'コントロール概要に戻る',
+            viewControlFlow: '制御フローを表示',
         },
         modes: {
             createMode: 'モードを作成',

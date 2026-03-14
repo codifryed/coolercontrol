@@ -577,6 +577,8 @@ export default {
             noControllableChannels: 'لم يتم العثور على قنوات يمكن التحكم بها.',
             noControlChain: 'لم يتم العثور على سلسلة تحكم لهذه القناة.',
             controlFlow: 'تدفق التحكم',
+            backToOverview: 'العودة إلى نظرة عامة على التحكم',
+            viewControlFlow: 'عرض تدفق التحكم',
         },
         modes: {
             createMode: 'إنشاء وضع',

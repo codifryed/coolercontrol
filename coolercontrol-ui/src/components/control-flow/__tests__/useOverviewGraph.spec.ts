@@ -28,6 +28,7 @@ const mockDevices = new Map<string, any>()
 const mockUISettings = ref(new Map<string, any>())
 const mockDaemonSettings = ref(new Map<string, any>())
 const mockMenuOrder = ref<any[]>([])
+const mockProfiles = ref<any[]>([])
 
 vi.mock('@/stores/DeviceStore', () => ({
     useDeviceStore: () =>
@@ -44,6 +45,7 @@ vi.mock('@/stores/SettingsStore', () => ({
             allUIDeviceSettings: mockUISettings,
             allDaemonDeviceSettings: mockDaemonSettings,
             menuOrder: mockMenuOrder,
+            profiles: mockProfiles,
         }),
 }))
 
@@ -97,6 +99,7 @@ function clearMocks() {
     mockUISettings.value = new Map()
     mockDaemonSettings.value = new Map()
     mockMenuOrder.value = []
+    mockProfiles.value = []
 }
 
 // --- Tests ---
@@ -443,5 +446,133 @@ describe('useOverviewGraph', () => {
 
         expect(labelNode?.data.deviceColor).toBe('#568af2')
         expect(fanNode?.data.channelColor).toBe('#568af2')
+    })
+
+    it('populates chainSummary on fan nodes with a profile', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                fan1: { speed_options: { fixed_enabled: true } },
+            }),
+        )
+        mockDaemonSettings.value.set(
+            'dev1',
+            makeDaemonDeviceSettings({
+                fan1: { profile_uid: 'p1' },
+            }),
+        )
+        mockProfiles.value = [
+            {
+                uid: 'p1',
+                name: 'Graph Profile',
+                p_type: 'Graph',
+                speed_profile: [],
+                temp_source: { device_uid: 'dev1', temp_name: 'temp1' },
+                function_uid: '0',
+                member_profile_uids: [],
+                offset_profile: [],
+            },
+        ]
+        mockUISettings.value.set(
+            'dev1',
+            makeUIDeviceSettings('Device', {
+                fan1: { name: 'Fan 1', color: '#ff0000' },
+                temp1: { name: 'CPU Temp', color: '#00ff00' },
+            }),
+        )
+
+        const { nodes } = useOverviewGraph()
+        const fanNode = nodes.value.find((n) => n.type === 'fanChannel')
+
+        expect(fanNode?.data.chainSummary).toBeDefined()
+        expect(fanNode?.data.chainSummary.hasChain).toBe(true)
+        expect(fanNode?.data.chainSummary.steps).toHaveLength(2)
+        expect(fanNode?.data.chainSummary.steps[0].name).toBe('Graph Profile')
+        expect(fanNode?.data.chainSummary.steps[1].name).toBe('CPU Temp')
+    })
+
+    it('does not populate chainSummary on manual fans', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                fan1: { speed_options: { fixed_enabled: true } },
+            }),
+        )
+        mockDaemonSettings.value.set(
+            'dev1',
+            makeDaemonDeviceSettings({
+                fan1: { speed_fixed: 50 },
+            }),
+        )
+
+        const { nodes } = useOverviewGraph()
+        const fanNode = nodes.value.find((n) => n.type === 'fanChannel')
+
+        expect(fanNode?.data.chainSummary.hasChain).toBe(false)
+    })
+
+    it('adds extra row spacing when fan row has chain previews', () => {
+        // 4 fans in 2 columns: row 0 has a profile (preview), row 1 does not
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                fan1: { speed_options: { fixed_enabled: true } },
+                fan2: { speed_options: { fixed_enabled: true } },
+                fan3: { speed_options: { fixed_enabled: true } },
+                fan4: { speed_options: { fixed_enabled: true } },
+            }),
+        )
+        mockDaemonSettings.value.set(
+            'dev1',
+            makeDaemonDeviceSettings({
+                fan1: { profile_uid: 'p1' },
+                fan2: {},
+                fan3: {},
+                fan4: {},
+            }),
+        )
+        mockProfiles.value = [
+            {
+                uid: 'p1',
+                name: 'Graph Profile',
+                p_type: 'Graph',
+                speed_profile: [],
+                temp_source: { device_uid: 'dev1', temp_name: 'temp1' },
+                function_uid: '0',
+                member_profile_uids: [],
+                offset_profile: [],
+            },
+        ]
+
+        const cols = ref(2)
+        const { nodes } = useOverviewGraph(cols)
+        const fanNodes = nodes.value.filter((n) => n.type === 'fanChannel')
+
+        // ROW_GAP = 10 * 16 = 160, CHAIN_PREVIEW_EXTRA = 2 * 16 = 32
+        // Row 0 (fan1 has preview): gap to row 1 = 160 + 32 = 192
+        const row0Y = fanNodes[0].position.y
+        const row1Y = fanNodes[2].position.y
+        expect(row1Y - row0Y).toBe(192)
+    })
+
+    it('uses base row spacing when no fan has chain preview', () => {
+        mockDevices.set(
+            'dev1',
+            makeDevice('dev1', 'Device', DeviceType.HWMON, {
+                fan1: { speed_options: { fixed_enabled: true } },
+                fan2: { speed_options: { fixed_enabled: true } },
+                fan3: { speed_options: { fixed_enabled: true } },
+                fan4: { speed_options: { fixed_enabled: true } },
+            }),
+        )
+
+        const cols = ref(2)
+        const { nodes } = useOverviewGraph(cols)
+        const fanNodes = nodes.value.filter((n) => n.type === 'fanChannel')
+
+        // No previews: gap = ROW_GAP = 160
+        const row0Y = fanNodes[0].position.y
+        const row1Y = fanNodes[2].position.y
+        expect(row1Y - row0Y).toBe(160)
     })
 })

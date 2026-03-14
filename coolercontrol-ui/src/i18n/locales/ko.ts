@@ -576,6 +576,8 @@ export default {
             noControllableChannels: '제어 가능한 채널을 찾을 수 없습니다.',
             noControlChain: '이 채널에 대한 제어 체인을 찾을 수 없습니다.',
             controlFlow: '제어 흐름',
+            backToOverview: '제어 개요로 돌아가기',
+            viewControlFlow: '제어 흐름 보기',
         },
         modes: {
             createMode: '모드 생성',

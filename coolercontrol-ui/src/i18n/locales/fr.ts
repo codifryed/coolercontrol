@@ -598,6 +598,8 @@ export default {
             noControllableChannels: 'Aucun canal contrôlable trouvé.',
             noControlChain: 'Aucune chaîne de contrôle trouvée pour ce canal.',
             controlFlow: 'Flux de Contrôle',
+            backToOverview: 'Retour à la vue des contrôles',
+            viewControlFlow: 'Voir le flux de contrôle',
         },
         modes: {
             createMode: 'Créer un Mode',

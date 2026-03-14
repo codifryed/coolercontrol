@@ -23,6 +23,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceType, type UID } from '@/models/Device'
 import { ProfileType } from '@/models/Profile'
 import type { CustomSensor } from '@/models/CustomSensor'
+import type { ChainSummary } from './computeChainSummary'
 
 export interface FanOption {
     key: string
@@ -40,6 +41,7 @@ export interface FanNodeData {
     isManual: boolean
     manualDuty?: number
     profileUID?: string
+    chainSummary?: ChainSummary
 }
 
 export interface ProfileNodeData {
