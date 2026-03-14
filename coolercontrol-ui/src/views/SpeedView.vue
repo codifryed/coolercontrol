@@ -181,12 +181,15 @@ const singleDashboard = ref(
 if (singleDashboard.value.dataTypes.length > 0) {
     singleDashboard.value.dataTypes = []
 }
+// Migrate removed Controls chart type to Time Chart
+if ((singleDashboard.value.chartType as string) === 'Controls') {
+    singleDashboard.value.chartType = ChartType.TIME_CHART
+}
 
 // Create a mapping from enum values to i18n keys
 const chartTypeToKey = {
     [ChartType.TIME_CHART]: 'timeChart',
     [ChartType.TABLE]: 'table',
-    [ChartType.CONTROLS]: 'controls',
 }
 
 const chartTypes = [...$enum(ChartType).values()].map((type) => ({

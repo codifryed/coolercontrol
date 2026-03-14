@@ -1136,7 +1136,6 @@ export default {
         chartType: {
             timeChart: 'Gráfico de Tempo',
             table: 'Tabela',
-            controls: 'Controles',
         },
         dataType: {
             temp: 'Temp',

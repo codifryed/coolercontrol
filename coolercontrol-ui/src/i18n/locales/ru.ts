@@ -1096,7 +1096,6 @@ export default {
         chartType: {
             timeChart: 'Временной график',
             table: 'Таблица',
-            controls: 'Управление',
         },
         dataType: {
             temp: 'Темп',

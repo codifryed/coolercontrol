@@ -1067,7 +1067,6 @@ export default {
         chartType: {
             timeChart: '时间图表',
             table: '表格',
-            controls: '控制器',
         },
         dataType: {
             temp: '温度',

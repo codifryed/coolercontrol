@@ -77,7 +77,6 @@ export class Dashboard {
 export enum ChartType {
     TIME_CHART = 'Time Chart',
     TABLE = 'Table',
-    CONTROLS = 'Controls',
 }
 
 // Get localized chart type names
@@ -88,8 +87,6 @@ export function getLocalizedChartType(type: ChartType): string {
             return t('models.chartType.timeChart')
         case ChartType.TABLE:
             return t('models.chartType.table')
-        case ChartType.CONTROLS:
-            return t('models.chartType.controls')
         default:
             return type
     }

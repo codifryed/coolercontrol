@@ -1085,7 +1085,6 @@ export default {
         chartType: {
             timeChart: 'مخطط زمني',
             table: 'جدول',
-            controls: 'عناصر التحكم',
         },
         dataType: {
             temp: 'درجة الحرارة',

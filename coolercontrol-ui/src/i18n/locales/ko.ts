@@ -1085,7 +1085,6 @@ export default {
         chartType: {
             timeChart: '시간챠트',
             table: '표',
-            controls: '제어',
         },
         dataType: {
             temp: '온도',

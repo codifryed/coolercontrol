@@ -1120,7 +1120,6 @@ export default {
         chartType: {
             timeChart: 'Graphique Temporel',
             table: 'Tableau',
-            controls: 'Contrôles',
         },
         dataType: {
             temp: 'Temp',

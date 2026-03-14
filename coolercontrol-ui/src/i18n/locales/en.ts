@@ -1097,7 +1097,6 @@ export default {
         chartType: {
             timeChart: 'Time Chart',
             table: 'Table',
-            controls: 'Controls',
         },
         dataType: {
             temp: 'Temp',

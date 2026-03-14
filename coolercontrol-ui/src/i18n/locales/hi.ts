@@ -1096,7 +1096,6 @@ export default {
         chartType: {
             timeChart: 'समय चार्ट',
             table: 'तालिका',
-            controls: 'नियंत्रण',
         },
         dataType: {
             temp: 'तापमान',

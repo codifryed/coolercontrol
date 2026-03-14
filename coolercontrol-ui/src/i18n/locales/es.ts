@@ -1105,7 +1105,6 @@ export default {
         chartType: {
             timeChart: 'Gráfico de Tiempo',
             table: 'Tabla',
-            controls: 'Controles',
         },
         dataType: {
             temp: 'Temp',

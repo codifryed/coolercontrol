@@ -1116,7 +1116,6 @@ export default {
         chartType: {
             timeChart: 'Zeitdiagramm',
             table: 'Tabelle',
-            controls: 'Steuerungen',
         },
         dataType: {
             temp: 'Temp',

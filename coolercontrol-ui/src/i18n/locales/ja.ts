@@ -1099,7 +1099,6 @@ export default {
         chartType: {
             timeChart: '時間チャート',
             table: 'テーブル',
-            controls: 'コントロール',
         },
         dataType: {
             temp: '温度',
