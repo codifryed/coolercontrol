@@ -22,6 +22,16 @@ import type { UID } from '@/models/Device'
 import { Dashboard } from '@/models/Dashboard.ts'
 import i18n from '@/i18n'
 
+export class TagSettings {
+    name: string
+    color: Color
+
+    constructor(name: string, color: Color) {
+        this.name = name
+        this.color = color
+    }
+}
+
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
  * The Class-Transformer has issues with Maps, so we have to use Arrays to
@@ -57,6 +67,8 @@ export class UISettingsDTO {
     entityColors: Array<[string, string]> = []
     eyeCandy: boolean = false
     showOnboarding: boolean = true
+    tagNames: Array<string> = []
+    tagColors: Array<string> = []
 }
 
 export enum ThemeMode {
@@ -157,6 +169,7 @@ export class SensorAndChannelSettings {
     viewType: ChannelViewType = ChannelViewType.Control
     @Type(() => Dashboard)
     channelDashboard?: Dashboard
+    tags: Array<string> = []
 
     constructor(defaultColor: Color = '#568af2') {
         this.defaultColor = defaultColor
