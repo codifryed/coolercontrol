@@ -49,9 +49,11 @@ except ImportError:
     CommanderCore = None
     H1V2 = None
 try:  # >= 1.16.0
+    from liquidctl.driver.control_hub import ControlHub
     from liquidctl.driver.lianli_uni import LianLiUni
 except ImportError:
     LianLiUni = None
+    ControlHub = None
 from liquidctl.driver.asetek import Legacy690Lc, Modern690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
@@ -612,6 +614,11 @@ class DeviceService:
         led_count: Optional[int] = None
         lcd_resolution: Optional[Tuple[int, int]] = None
         if isinstance(lc_device, (SmartDevice2, SmartDevice)):
+            speed_channel_dict = getattr(lc_device, "_speed_channels", {})
+            speed_channels = list(speed_channel_dict.keys())
+            color_channel_dict = getattr(lc_device, "_color_channels", {})
+            color_channels = list(color_channel_dict.keys())
+        elif ControlHub is not None and isinstance(lc_device, ControlHub):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
             color_channel_dict = getattr(lc_device, "_color_channels", {})
