@@ -17,10 +17,10 @@
   -->
 
 <script setup lang="ts">
-import { provide, ref } from 'vue'
-import { VueFlow } from '@vue-flow/core'
+import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
+import { PanOnScrollMode, VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { useOverviewGraph } from '@/components/control-flow/useOverviewGraph'
+import { COL_GAP, NODE_WIDTH, useOverviewGraph } from '@/components/control-flow/useOverviewGraph'
 import FanChannelNode from '@/components/control-flow/FanChannelNode.vue'
 import LcdChannelNode from '@/components/control-flow/LcdChannelNode.vue'
 import LightingChannelNode from '@/components/control-flow/LightingChannelNode.vue'
@@ -38,14 +38,38 @@ const colorStore = useThemeColorsStore()
 
 provide('flowViewMode', 'overview')
 
-const { nodes } = useOverviewGraph()
-
 const lockedZoom = ref(1.2)
 const H_PADDING = deviceStore.getREMSize(1)
+
+const containerRef = ref<HTMLElement | null>(null)
+const containerWidth = ref(0)
+
+const columnsPerRow = computed(() => {
+    const availableFlowWidth = containerWidth.value / lockedZoom.value
+    if (availableFlowWidth <= 0) return 3
+    const cols = Math.floor((availableFlowWidth - 2 * H_PADDING - NODE_WIDTH) / COL_GAP) + 1
+    return Math.max(1, cols)
+})
+
+const { nodes } = useOverviewGraph(columnsPerRow)
+
+let resizeObserver: ResizeObserver | undefined
+onMounted(() => {
+    if (!containerRef.value) return
+    resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+            containerWidth.value = entry.contentRect.width
+        }
+    })
+    resizeObserver.observe(containerRef.value)
+})
+onUnmounted(() => {
+    resizeObserver?.disconnect()
+})
 </script>
 
 <template>
-    <div class="flex h-full flex-col">
+    <div ref="containerRef" class="flex h-full flex-col">
         <div class="flex items-center justify-between border-b-4 border-border-one px-4 py-2">
             <span class="text-2xl font-bold text-text-color">{{ t('views.controls.title') }}</span>
             <div class="flex items-center gap-x-1 text-sm text-text-color-secondary">
@@ -93,6 +117,7 @@ const H_PADDING = deviceStore.getREMSize(1)
             :elements-selectable="false"
             :pan-on-drag="false"
             pan-on-scroll
+            :pan-on-scroll-mode="PanOnScrollMode.Vertical"
             :zoom-on-scroll="false"
             :zoom-on-pinch="false"
             :zoom-on-double-click="false"

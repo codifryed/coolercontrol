@@ -282,7 +282,7 @@ describe('useOverviewGraph', () => {
         expect(availableFans.value[0].label).toBe('My Device - Fan 1')
     })
 
-    it('lays out fan nodes in rows of 3', () => {
+    it('lays out fan nodes in rows of 3 by default', () => {
         const channels: Record<string, any> = {}
         for (let i = 1; i <= 5; i++) {
             channels[`fan${i}`] = { speed_options: { fixed_enabled: true } }
@@ -302,6 +302,58 @@ describe('useOverviewGraph', () => {
         expect(fanNodes[4].position.x).toBe(320)
         // Row 2 should be lower than row 1
         expect(fanNodes[3].position.y).toBeGreaterThan(fanNodes[0].position.y)
+    })
+
+    it('respects custom columnsPerRow parameter', () => {
+        const channels: Record<string, any> = {}
+        for (let i = 1; i <= 5; i++) {
+            channels[`fan${i}`] = { speed_options: { fixed_enabled: true } }
+        }
+        mockDevices.set('dev1', makeDevice('dev1', 'Device', DeviceType.HWMON, channels))
+
+        const cols = ref(2)
+        const { nodes } = useOverviewGraph(cols)
+        const fanNodes = nodes.value.filter((n) => n.type === 'fanChannel')
+
+        expect(fanNodes).toHaveLength(5)
+        // First row: 2 fans at x=0, 320
+        expect(fanNodes[0].position.x).toBe(0)
+        expect(fanNodes[1].position.x).toBe(320)
+        // Second row starts at x=0
+        expect(fanNodes[2].position.x).toBe(0)
+        expect(fanNodes[3].position.x).toBe(320)
+        // Third row: 1 fan at x=0
+        expect(fanNodes[4].position.x).toBe(0)
+
+        // Label channelCount reflects 2 columns
+        const labelNode = nodes.value.find((n) => n.type === 'deviceLabel')
+        expect(labelNode?.data.channelCount).toBe(2)
+    })
+
+    it('reacts to columnsPerRow changes', () => {
+        const channels: Record<string, any> = {}
+        for (let i = 1; i <= 4; i++) {
+            channels[`fan${i}`] = { speed_options: { fixed_enabled: true } }
+        }
+        mockDevices.set('dev1', makeDevice('dev1', 'Device', DeviceType.HWMON, channels))
+
+        const cols = ref(2)
+        const { nodes } = useOverviewGraph(cols)
+
+        // With 2 columns: 2 rows of 2
+        let fanNodes = nodes.value.filter((n) => n.type === 'fanChannel')
+        expect(fanNodes[2].position.x).toBe(0)
+        expect(fanNodes[3].position.x).toBe(320)
+
+        // Change to 4 columns: all in one row
+        cols.value = 4
+        fanNodes = nodes.value.filter((n) => n.type === 'fanChannel')
+        expect(fanNodes[0].position.x).toBe(0)
+        expect(fanNodes[1].position.x).toBe(320)
+        expect(fanNodes[2].position.x).toBe(640)
+        expect(fanNodes[3].position.x).toBe(960)
+        // All same y
+        expect(fanNodes[0].position.y).toBe(fanNodes[3].position.y)
     })
 
     it('creates lcdChannel nodes for devices with lcd_modes', () => {
