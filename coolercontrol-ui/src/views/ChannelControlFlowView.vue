@@ -121,6 +121,10 @@ const channelLabel = computed(() => {
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
+            :pan-on-drag="false"
+            pan-on-scroll
+            :zoom-on-scroll="false"
+            :zoom-on-double-click="false"
             class="flex-1"
         >
             <template #node-fanChannel="fanProps">
