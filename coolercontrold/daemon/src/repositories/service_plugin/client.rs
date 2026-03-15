@@ -210,9 +210,12 @@ impl DeviceServiceClient {
             () = self.wait_till_all_clients_are_free() => {
                 let request = Request::new(ShutdownRequest{});
                 let mut service_client = self.service_client.lock().await;
-                service_client.shutdown(request).await
-                .map(|_| ())
-                .map_err(|s| anyhow!("Failed to shutdown service: {s}"))
+                match service_client.shutdown(request).await {
+                    Ok(_) => Ok(()),
+                    // Service already down (e.g. systemd shut it down before us).
+                    Err(s) if s.code() == tonic::Code::Unavailable => Ok(()),
+                    Err(s) => Err(anyhow!("Failed to shutdown service: {s}")),
+                }
             }
         }
     }
