@@ -17,9 +17,11 @@
   -->
 
 <script setup lang="ts">
+import { inject } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { ProfileNodeData } from './useControlFlowGraph'
+import type { NodeDrawerTarget } from './types'
 import { ProfileType } from '@/models/Profile'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -30,22 +32,33 @@ import { mdiFunction, mdiChartLine } from '@mdi/js'
 const props = defineProps<NodeProps<ProfileNodeData>>()
 const { t } = useI18n()
 const router = useRouter()
+const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
 
 function onClickProfile() {
     if (props.data.isDefault) return
-    router.push({
-        name: 'profiles',
+    const target = {
+        route: 'profiles',
         params: { profileUID: props.data.profileUID },
-    })
+    }
+    if (openNodeDrawer) {
+        openNodeDrawer(target)
+    } else {
+        router.push({ name: target.route, params: target.params })
+    }
 }
 
 function onClickFunction(e: Event) {
     e.stopPropagation()
     if (props.data.functionUID) {
-        router.push({
-            name: 'functions',
+        const target = {
+            route: 'functions',
             params: { functionUID: props.data.functionUID },
-        })
+        }
+        if (openNodeDrawer) {
+            openNodeDrawer(target)
+        } else {
+            router.push({ name: target.route, params: target.params })
+        }
     }
 }
 

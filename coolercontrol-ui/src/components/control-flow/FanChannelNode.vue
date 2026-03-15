@@ -22,6 +22,7 @@ import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { FanNodeData } from './useControlFlowGraph'
+import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useRouter } from 'vue-router'
@@ -35,6 +36,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
+const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
@@ -56,22 +58,29 @@ function stepIcon(type: string): string {
 }
 
 function onClick() {
+    const speedTarget = {
+        route: 'device-speed',
+        params: {
+            deviceUID: props.data.deviceUID,
+            channelName: props.data.channelName,
+        },
+    }
     if (flowViewMode === 'overview') {
-        router.push({
-            name: 'channel-control-flow',
-            params: {
-                deviceUID: props.data.deviceUID,
-                channelName: props.data.channelName,
-            },
-        })
+        if (props.data.isManual || !props.data.profileUID || props.data.profileUID === '0') {
+            router.push({ name: speedTarget.route, params: speedTarget.params })
+        } else {
+            router.push({
+                name: 'channel-control-flow',
+                params: {
+                    deviceUID: props.data.deviceUID,
+                    channelName: props.data.channelName,
+                },
+            })
+        }
+    } else if (openNodeDrawer) {
+        openNodeDrawer(speedTarget)
     } else {
-        router.push({
-            name: 'device-speed',
-            params: {
-                deviceUID: props.data.deviceUID,
-                channelName: props.data.channelName,
-            },
-        })
+        router.push({ name: speedTarget.route, params: speedTarget.params })
     }
 }
 </script>

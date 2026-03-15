@@ -45,7 +45,7 @@ export default {
 
             // Transitions
             'transition-transform',
-            'duration-300',
+            'duration-100',
 
             // Misc
             'pointer-events-auto',
@@ -59,7 +59,6 @@ export default {
 
             // Spacing
             'p-2',
-
             // Colors
             'bg-bg-two',
             'text-text-color',
@@ -131,13 +130,14 @@ export default {
         class: [
             // Transitions
             'transition-all',
-            'duration-300',
+            'duration-100',
             { 'p-5': !props.position === 'full' },
 
             // Background and Effects
             {
-                'has-[.mask-active]:bg-transparent bg-black/40': props.modal,
-                'has-[.mask-active]:backdrop-blur-none backdrop-blur-sm': props.modal,
+                'has-[.mask-active]:bg-transparent bg-black/75': props.modal,
+                // 'has-[.mask-active]:bg-transparent bg-black/40': props.modal,
+                // 'has-[.mask-active]:backdrop-blur-none backdrop-blur-sm': props.modal,
             },
         ],
     }),
