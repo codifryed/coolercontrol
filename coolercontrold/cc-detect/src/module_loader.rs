@@ -26,7 +26,7 @@ use log::{debug, info, warn};
 use crate::shell_command::{ShellCommand, ShellCommandResult};
 
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const UDEVADM_TIMEOUT: Duration = Duration::from_secs(5);
+const UDEVADM_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Driver conflict rules. If both drivers are detected, only load the preferred one.
 pub struct DriverConflict {
@@ -204,15 +204,15 @@ fn check_conflict<'a>(driver: &str, all_detected_drivers: &'a [String]) -> Optio
 /// Run `udevadm settle` to wait for udev events to be processed.
 /// This gives hwmon devices time to appear in sysfs after module loading.
 pub fn udevadm_settle() {
-    debug!("Running udevadm settle");
+    info!("Running udevadm settle");
     // silently fail. We try quickly, but don't want to wait forever
     let cmd = ShellCommand::new("udevadm settle --timeout 2", UDEVADM_TIMEOUT);
     match cmd.run() {
         ShellCommandResult::Success { .. } => {
-            info!("udevadm settle completed");
+            info!("udevadm settle completed successfully");
         }
         ShellCommandResult::Error(err) => {
-            debug!("udevadm settle failed: {err}");
+            info!("udevadm settle: {err}");
         }
     }
 }
