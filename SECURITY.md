@@ -16,9 +16,6 @@ Do **not** open a regular public issue.
 
 ### CVE Coordination
 
-After a fix is released, we wait **30 days** before publishing a public security advisory to give
-users and downstream repositories time to update.
-
 When filing a confidential issue for a CVE request, please fill in the following template as best
 you can. We will help with anything you are unsure of.
 
