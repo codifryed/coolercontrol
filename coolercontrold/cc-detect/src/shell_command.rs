@@ -24,7 +24,7 @@
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use log::{debug, error, warn};
+use log::{debug, warn};
 
 const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000;
 
@@ -66,9 +66,9 @@ impl ShellCommand {
         {
             Ok(child) => child,
             Err(err) => {
-                error!(
+                warn!(
                     "Failed to spawn process for command: {}, {err}",
-                    &self.command
+                    self.command
                 );
                 return ShellCommandResult::Error(err.to_string());
             }
@@ -80,7 +80,7 @@ impl ShellCommand {
                 Ok(Some(_)) => break,
                 Ok(None) => {
                     if start.elapsed() >= self.timeout {
-                        warn!(
+                        debug!(
                             "Shell command timed out after {:?}, killing: {}",
                             self.timeout, self.command
                         );
@@ -94,10 +94,7 @@ impl ShellCommand {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 Err(err) => {
-                    error!(
-                        "Error checking process status for: {}, {err}",
-                        &self.command
-                    );
+                    debug!("Error checking process status for: {}, {err}", self.command);
                     return ShellCommandResult::Error(err.to_string());
                 }
             }
@@ -106,7 +103,7 @@ impl ShellCommand {
         let output = match child.wait_with_output() {
             Ok(output) => output,
             Err(err) => {
-                error!("Error reading output for command: {}, {err}", &self.command);
+                debug!("Error reading output for command: {}, {err}", self.command);
                 return ShellCommandResult::Error(err.to_string());
             }
         };

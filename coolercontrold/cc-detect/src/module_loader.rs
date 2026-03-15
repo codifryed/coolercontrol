@@ -208,10 +208,10 @@ pub fn udevadm_settle() {
     let cmd = ShellCommand::new("udevadm settle", UDEVADM_TIMEOUT);
     match cmd.run() {
         ShellCommandResult::Success { .. } => {
-            debug!("udevadm settle completed");
+            info!("udevadm settle completed");
         }
         ShellCommandResult::Error(err) => {
-            // silently fail. We tried, but isn't strickly necessary anyway.
+            // silently fail. We tried, but isn't strickly necessary.
             debug!("udevadm settle failed: {err}");
         }
     }
