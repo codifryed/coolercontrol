@@ -205,13 +205,13 @@ fn check_conflict<'a>(driver: &str, all_detected_drivers: &'a [String]) -> Optio
 /// This gives hwmon devices time to appear in sysfs after module loading.
 pub fn udevadm_settle() {
     debug!("Running udevadm settle");
-    let cmd = ShellCommand::new("udevadm settle", UDEVADM_TIMEOUT);
+    // silently fail. We try quickly, but don't want to wait forever
+    let cmd = ShellCommand::new("udevadm settle --timeout 2", UDEVADM_TIMEOUT);
     match cmd.run() {
         ShellCommandResult::Success { .. } => {
             info!("udevadm settle completed");
         }
         ShellCommandResult::Error(err) => {
-            // silently fail. We tried, but isn't strickly necessary.
             debug!("udevadm settle failed: {err}");
         }
     }
