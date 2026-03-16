@@ -1013,7 +1013,7 @@ export default {
         enterPassword: 'Enter Your Password',
         setNewPassword: 'Enter A New Password',
         changeDefaultPassword:
-            'CoolerControl is using the default password.\nTo secure your system from unintentional access or control, it is required that you set a secure password.\nThis password is specific to CoolerControl and separate from your system user account.',
+            'Please set a password to prevent unauthorized access. This is separate from your system account.',
         loginFailed: 'Login Failed',
         invalidPassword: 'Invalid Password',
         passwordSetFailed: 'Set Password Failed',

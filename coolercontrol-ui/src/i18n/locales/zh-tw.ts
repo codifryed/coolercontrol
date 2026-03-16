@@ -988,7 +988,7 @@ export default {
         enterPassword: '請輸入您的密碼',
         setNewPassword: '請輸入新密碼',
         changeDefaultPassword:
-            'CoolerControl 正在使用預設密碼。\n為防止對您系統的意外存取或控制，需要您設定一個安全密碼。\n此密碼僅用於 CoolerControl，與您的系統使用者帳戶分開。',
+            '請設定密碼以防止未經授權的存取。此密碼與您的系統帳戶分開。',
         loginFailed: '登入失敗',
         invalidPassword: '無效密碼',
         passwordSetFailed: '設置密碼失敗',

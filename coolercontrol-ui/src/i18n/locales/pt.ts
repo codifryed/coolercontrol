@@ -1063,7 +1063,7 @@ export default {
         enterPassword: 'Insira Sua Senha',
         setNewPassword: 'Insira Uma Nova Senha',
         changeDefaultPassword:
-            'CoolerControl está usando a senha padrão.\nPara proteger seu sistema de acesso ou controle não intencional, é necessário definir uma senha segura.\nEsta senha é específica do CoolerControl e separada da sua conta de usuário do sistema.',
+            'Por favor, defina uma senha para impedir o acesso não autorizado. Esta é separada da sua conta do sistema.',
         loginFailed: 'Falha no Login',
         invalidPassword: 'Senha Inválida',
         passwordSetFailed: 'Falha ao Definir Senha',
