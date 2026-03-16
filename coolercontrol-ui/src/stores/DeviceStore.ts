@@ -549,6 +549,14 @@ export const useDeviceStore = defineStore('device', () => {
             },
             data: {
                 setPasswd: true,
+                onVerifyCurrentPassword: async (currentPasswd: string): Promise<string | null> => {
+                    const result = await daemonClient.setPasswd(currentPasswd, currentPasswd)
+                    if (result instanceof ErrorResponse) {
+                        return result.error
+                    }
+                    await daemonClient.login(currentPasswd)
+                    return null
+                },
                 onSubmit: async (currentPasswd: string, passwd: string): Promise<string | null> => {
                     const response = await daemonClient.setPasswd(currentPasswd, passwd)
                     if (response instanceof ErrorResponse) {

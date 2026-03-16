@@ -102,9 +102,22 @@ const currentPasswdInputArea = ref()
 const passwdInputArea = ref()
 const confirmPasswdInputArea = ref()
 
-const goNext = (): void => {
+const onVerifyCurrentPassword: ((currentPasswd: string) => Promise<string | null>) | undefined =
+    dialogRef.value.data.onVerifyCurrentPassword
+
+const goNext = async (): Promise<void> => {
     currentPasswdTouched.value = true
     if (passwordIsInvalid(currentPasswdInput.value)) return
+    if (onVerifyCurrentPassword) {
+        submitError.value = null
+        submitting.value = true
+        const error = await onVerifyCurrentPassword(currentPasswdInput.value)
+        submitting.value = false
+        if (error != null) {
+            submitError.value = error
+            return
+        }
+    }
     step.value = 2
     nextTick(() => passwdInputArea.value.$el.children[0].focus())
 }
@@ -245,7 +258,8 @@ nextTick(async () => {
                 v-if="step === 1"
                 class="bg-accent/80 hover:!bg-accent/100 w-full"
                 @click="goNext"
-                :disabled="passwordIsInvalid(currentPasswdInput)"
+                :disabled="passwordIsInvalid(currentPasswdInput) || submitting"
+                :loading="submitting"
             >
                 {{ t('components.password.continueButton') }}
             </Button>
