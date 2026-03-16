@@ -29,6 +29,7 @@ const { t } = useI18n()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
 const promptMessage: string | undefined = dialogRef.value.data.promptMessage
+const autoFilledCurrentPasswd: boolean = !!dialogRef.value.data.currentPasswd
 const currentPasswdInput: Ref<string> = ref(dialogRef.value.data.currentPasswd || '')
 const passwdInput: Ref<string> = ref('')
 
@@ -72,7 +73,7 @@ nextTick(async () => {
     <p v-if="promptMessage" class="mb-12 text-text-color whitespace-pre-line">
         {{ promptMessage }}
     </p>
-    <FloatLabel v-if="setPasswd" class="mt-6">
+    <FloatLabel v-if="setPasswd && !autoFilledCurrentPasswd" class="mt-6">
         <Password
             ref="currentPasswdInputArea"
             :class="{ filled: !passwordIsInvalid(currentPasswdInput) }"
