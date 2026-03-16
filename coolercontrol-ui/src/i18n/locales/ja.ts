@@ -54,6 +54,7 @@ export default {
         password: 'パスワード',
         currentPassword: '現在のパスワード',
         newPassword: '新しいパスワード',
+        confirmPassword: 'パスワードの確認',
         passwordPrompt: 'パスワードを入力',
         passwordWeak: '弱い',
         passwordMedium: '普通',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: '秒',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'モードが作成されました',
             modeDuplicated: 'モードが複製されました',
@@ -815,6 +817,9 @@ export default {
             forgotPassword: 'パスワードをお忘れですか？',
             passwordHelp:
                 'パスワードをお忘れですか？以下のコマンドでリセットしてください：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>その後、UIを更新して新しいパスワードを設定してください。',
+            continueButton: '続行',
+            backButton: '戻る',
+            passwordMismatch: 'パスワードが一致しません',
         },
         notFound: {
             message: '完璧なLinux 🐧 ディストリビューションのように、\nこのページは存在しません。',
@@ -981,6 +986,10 @@ export default {
                 channelsApply: 'プロファイルを適用するチャンネル',
                 selectChannels: 'チャンネルを選択',
                 channelsTooltip: 'プロファイルを適用するチャンネルを選択してください。',
+                selectByTag: 'タグで選択',
+                selectByChannel: 'チャンネルで選択',
+                tagFanCount: '{count} チャンネル',
+                noTags: 'タグが設定されていません。',
             },
             functionApply: {
                 applyFunction: '機能を適用',

@@ -54,6 +54,7 @@ export default {
         password: 'كلمة المرور',
         currentPassword: 'كلمة المرور الحالية',
         newPassword: 'كلمة المرور الجديدة',
+        confirmPassword: 'تأكيد كلمة المرور',
         passwordPrompt: 'أدخل كلمة المرور',
         passwordWeak: 'ضعيفة',
         passwordMedium: 'متوسطة',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°م',
         percentUnit: '%',
         secondAbbr: 'ث',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'تم إنشاء الوضع',
             modeDuplicated: 'تم نسخ الوضع',
@@ -796,6 +798,9 @@ export default {
             forgotPassword: 'هل نسيت كلمة المرور؟',
             passwordHelp:
                 'هل نسيت كلمة المرور؟ أعد تعيينها بتشغيل:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>ثم قم بتحديث واجهة المستخدم لتعيين كلمة مرور جديدة.',
+            continueButton: 'متابعة',
+            backButton: 'رجوع',
+            passwordMismatch: 'كلمات المرور غير متطابقة',
         },
         notFound: {
             message: 'تمامًا مثل التوزيعة المثالية لـ Linux 🐧،\nهذه الصفحة غير موجودة.',
@@ -960,6 +965,10 @@ export default {
                 channelsApply: 'القنوات لتطبيق الملف الشخصي عليها',
                 selectChannels: 'اختيار القنوات',
                 channelsTooltip: 'اختر قناة واحدة أو أكثر لتطبيق هذا الملف الشخصي عليها.',
+                selectByTag: 'اختيار حسب الوسم',
+                selectByChannel: 'اختيار حسب القناة',
+                tagFanCount: '{count} قناة | {count} قنوات',
+                noTags: 'لا توجد وسوم مهيأة.',
             },
             functionApply: {
                 applyFunction: 'تطبيق الوظيفة',

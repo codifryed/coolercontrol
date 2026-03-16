@@ -54,6 +54,7 @@ export default {
         password: 'Password',
         currentPassword: 'Current Password',
         newPassword: 'New Password',
+        confirmPassword: 'Confirm Password',
         passwordPrompt: 'Enter a password',
         passwordWeak: 'Weak',
         passwordMedium: 'Medium',
@@ -802,6 +803,9 @@ export default {
             forgotPassword: 'Forgot password?',
             passwordHelp:
                 'Forgot your password? Reset it with:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Then refresh the UI to set a new password.',
+            continueButton: 'Continue',
+            backButton: 'Back',
+            passwordMismatch: 'Passwords do not match',
         },
         notFound: {
             message: 'Just like the perfect Linux 🐧 distro,\nthis page does not exist.',
