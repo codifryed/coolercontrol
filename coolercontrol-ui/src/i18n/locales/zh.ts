@@ -989,8 +989,7 @@ export default {
     auth: {
         enterPassword: '请输入您的密码',
         setNewPassword: '请输入新密码',
-        changeDefaultPassword:
-            '请设置密码以防止未经授权的访问。此密码与您的系统账户分开。',
+        changeDefaultPassword: '请设置密码以防止未经授权的访问。此密码与您的系统账户分开。',
         loginFailed: '登录失败',
         invalidPassword: '密码无效',
         passwordSetFailed: '设置密码失败',
