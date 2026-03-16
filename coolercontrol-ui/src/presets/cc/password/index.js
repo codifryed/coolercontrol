@@ -31,6 +31,8 @@ export default {
         class: [
             // Spacing
             'p-5',
+            // for password change meter:
+            'mt-[4.5rem]',
 
             // Shape
             'border border-border-one',
@@ -68,9 +70,9 @@ export default {
 
             // Colors
             {
-                'bg-error': instance?.meter?.strength == 'weak',
-                'bg-warning': instance?.meter?.strength == 'medium',
-                'bg-green': instance?.meter?.strength == 'strong',
+                'bg-error': instance?.meter?.strength === 'weak',
+                'bg-warning': instance?.meter?.strength === 'medium',
+                'bg-green': instance?.meter?.strength === 'strong',
             },
 
             // Transitions
