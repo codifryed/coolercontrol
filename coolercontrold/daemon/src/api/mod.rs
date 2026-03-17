@@ -45,7 +45,7 @@ use crate::api::actor::{
     TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
-use crate::api::session_store::{FileSessionStore, MokaSessionStore};
+use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
@@ -105,7 +105,7 @@ const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 type Port = u16;
-type SessionStoreType = CachingSessionStore<MokaSessionStore, FileSessionStore>;
+type SessionStoreType = CachingSessionStore<MemorySessionStore, FileSessionStore>;
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_server<'s>(
@@ -169,9 +169,9 @@ pub async fn start_server<'s>(
     let session_key = admin::load_or_generate_session_key().await?;
     let sessions_dir = paths::sessions_dir().to_path_buf();
     let file_store = FileSessionStore::new(sessions_dir);
-    let moka_store = MokaSessionStore::new(Some(10));
+    let memory_store = MemorySessionStore::new(10);
     let expired_deletion_store = file_store.clone();
-    let caching_store = CachingSessionStore::new(moka_store, file_store);
+    let caching_store = CachingSessionStore::new(memory_store, file_store);
     let session_layer = SessionManagerLayer::new(caching_store)
         .with_name(SESSION_COOKIE_NAME)
         .with_private(session_key)

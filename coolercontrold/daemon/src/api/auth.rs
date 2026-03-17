@@ -269,7 +269,7 @@ pub async fn set_passwd(
         .await?;
 
     // Delete current session — flows through CachingSessionStore::delete() which
-    // calls both MokaSessionStore::delete() (invalidate_all) and
+    // calls both MemorySessionStore::delete() (clear all) and
     // FileSessionStore::delete() (delete all files).
     let _ = session.delete().await;
     Ok(())
