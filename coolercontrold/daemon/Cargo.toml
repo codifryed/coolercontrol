@@ -125,7 +125,6 @@ chrono = { version = "0.4.43", features = [
 strum = { version = "0.28.0", features = ["derive"] } # Enum -> String
 regex = "1.12.3"
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-const_format = "0.2.35" # allows combining string constants
 # nu-glob 0.108 requires >=1.86
 nu-glob = "=0.107"
 nvml-wrapper = "0.12.0"

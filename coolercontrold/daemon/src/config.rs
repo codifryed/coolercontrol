@@ -25,7 +25,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
@@ -43,11 +42,10 @@ use crate::setting::{
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
-const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
-const DEFAULT_BACKUP_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-bak.toml");
-const DEFAULT_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-ui.json");
-const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str =
-    concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
+const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config.toml";
+const DEFAULT_BACKUP_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config-bak.toml";
+const DEFAULT_UI_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config-ui.json";
+const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config-ui-bak.json";
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
 pub struct Config {
@@ -2446,5 +2444,16 @@ mod tests {
             // teardown:
             cc_fs::remove_file(path).await.unwrap();
         });
+    }
+
+    #[test]
+    fn config_path_constants_start_with_default_config_dir() {
+        // Goal: verify all inlined path constants are consistent with
+        // DEFAULT_CONFIG_DIR. If the base dir changes, these must too.
+        use super::*;
+        assert!(DEFAULT_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+        assert!(DEFAULT_BACKUP_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+        assert!(DEFAULT_UI_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+        assert!(DEFAULT_BACKUP_UI_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

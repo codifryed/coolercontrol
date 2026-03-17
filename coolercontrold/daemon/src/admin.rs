@@ -19,14 +19,12 @@
 use std::path::Path;
 
 use crate::cc_fs;
-use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use const_format::concatcp;
 use log::{debug, error, info};
 use sha2::{Digest, Sha512};
 use std::fs::Permissions;
@@ -35,9 +33,9 @@ use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
 use tower_sessions::cookie::Key;
 
-const PASSWD_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.passwd");
-const SESSION_KEY_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.session_key");
-const SESSIONS_DIR_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/sessions");
+const PASSWD_FILE_PATH: &str = "/etc/coolercontrol/.passwd";
+const SESSION_KEY_FILE_PATH: &str = "/etc/coolercontrol/.session_key";
+const SESSIONS_DIR_PATH: &str = "/etc/coolercontrol/sessions";
 pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
@@ -332,5 +330,15 @@ mod tests {
             let loaded_key = Key::from(&bytes);
             assert_eq!(key.master(), loaded_key.master());
         });
+    }
+
+    #[test]
+    fn path_constants_start_with_config_dir() {
+        // Goal: verify inlined path constants stay consistent with
+        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
+        use crate::config::DEFAULT_CONFIG_DIR;
+        assert!(PASSWD_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+        assert!(SESSION_KEY_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+        assert!(SESSIONS_DIR_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

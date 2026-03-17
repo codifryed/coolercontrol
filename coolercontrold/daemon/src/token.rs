@@ -17,13 +17,11 @@
  */
 
 use crate::cc_fs;
-use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{DateTime, Local};
-use const_format::concatcp;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fs::Permissions;
@@ -31,7 +29,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use uuid::Uuid;
 
-const TOKENS_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.tokens");
+const TOKENS_FILE_PATH: &str = "/etc/coolercontrol/.tokens";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 fn default_write_access() -> bool {
@@ -281,5 +279,13 @@ mod tests {
         let tokens: Vec<StoredToken> = serde_json::from_str(json).unwrap();
         assert_eq!(tokens.len(), 1);
         assert!(tokens[0].write_access);
+    }
+
+    #[test]
+    fn path_constants_start_with_config_dir() {
+        // Goal: verify inlined path constant stays consistent with
+        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
+        use crate::config::DEFAULT_CONFIG_DIR;
+        assert!(TOKENS_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

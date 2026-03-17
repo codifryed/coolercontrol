@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::config::{Config, DEFAULT_CONFIG_DIR};
+use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp,
     TempStatus, Watts, RPM, UID,
@@ -37,7 +37,6 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -51,7 +50,7 @@ use toml_edit::DocumentMut;
 
 pub type ServiceDeviceID = String;
 
-pub const DEFAULT_PLUGINS_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/plugins");
+pub const DEFAULT_PLUGINS_PATH: &str = "/etc/coolercontrol/plugins";
 const SERVICE_MANIFEST_FILE_NAME: &str = "manifest.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
@@ -1227,4 +1226,17 @@ impl Repository for ServicePluginRepo {
 /// This is used to clean up the original plugin user should there be changes to it's setup.
 async fn remove_plugin_user() {
     let _ = delete_plugin_user(CC_PLUGIN_USER).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_constants_start_with_config_dir() {
+        // Goal: verify inlined path constant stays consistent with
+        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
+        use crate::config::DEFAULT_CONFIG_DIR;
+        assert!(DEFAULT_PLUGINS_PATH.starts_with(DEFAULT_CONFIG_DIR));
+    }
 }

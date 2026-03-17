@@ -23,7 +23,6 @@ use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
@@ -38,7 +37,7 @@ use crate::engine::main::Engine;
 use crate::setting::{ProfileUID, Setting};
 use crate::{cc_fs, AllDevices};
 
-const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
+const DEFAULT_MODE_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/modes.json";
 
 /// The `ModeController` is responsible for managing mode snapshots of all the device settings and
 /// applying them when appropriate.
@@ -687,5 +686,17 @@ impl ActiveModes {
     fn clear(&mut self) {
         self.current = None;
         self.previous = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_constants_start_with_config_dir() {
+        // Goal: verify inlined path constant stays consistent with
+        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
+        assert!(DEFAULT_MODE_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

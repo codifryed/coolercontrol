@@ -26,7 +26,6 @@ use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
-use const_format::concatcp;
 use hashlink::LinkedHashMap;
 use log::{error, info, trace, warn};
 use moro_local::Scope;
@@ -44,7 +43,7 @@ use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio_util::sync::CancellationToken;
 
-const DEFAULT_ALERT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/alerts.json");
+const DEFAULT_ALERT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/alerts.json";
 const LOG_BUFFER_SIZE: usize = 20;
 const COMMAND_SHUTDOWN: &str =
     "shutdown +1 \"Critical CoolerControl Alert! System will shutdown in 1 minute.\"";
@@ -722,4 +721,16 @@ impl AlertController {
 struct AlertConfigFile {
     alerts: Vec<Alert>,
     logs: Vec<AlertLog>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_constants_start_with_config_dir() {
+        // Goal: verify inlined path constant stays consistent with
+        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
+        assert!(DEFAULT_ALERT_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
+    }
 }
