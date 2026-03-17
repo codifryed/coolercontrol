@@ -926,7 +926,6 @@ dependencies = [
  "tower-sessions",
  "tower-sessions-core",
  "uuid",
- "yata",
  "zbus",
 ]
 
@@ -4823,15 +4822,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
 dependencies = [
  "time",
-]
-
-[[package]]
-name = "yata"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b4ef8ddfa3ccd93454262c0e60a43a2bbf403d404174e1815f7581d5028229f"
-dependencies = [
- "serde",
 ]
 
 [[package]]
