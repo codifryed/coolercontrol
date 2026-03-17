@@ -19,14 +19,19 @@
 use crate::cc_fs;
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
-use cached::proc_macro::cached;
 use log::{debug, info, warn};
 use nu_glob::{glob, GlobResult, Uninterruptible};
 use pciid_parser::Database;
 use regex::Regex;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+
+thread_local! {
+    static UEVENT_CACHE: RefCell<HashMap<PathBuf, HashMap<String, String>>> =
+        RefCell::new(HashMap::new());
+}
 
 // controllable fans:
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
@@ -332,12 +337,11 @@ pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-#[cached(
-    key = "String",
-    convert = r#"{ format!("{:?}", base_path) }"#,
-    sync_writes = "default"
-)]
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
+    let cached = UEVENT_CACHE.with(|cache| cache.borrow().get(base_path).cloned());
+    if let Some(details) = cached {
+        return details;
+    }
     let mut device_details = HashMap::new();
     let mut uevent_content = cc_fs::read_txt(device_path(base_path).join("uevent")).await;
     if uevent_content.is_err() {
@@ -353,6 +357,11 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
             }
         }
     }
+    UEVENT_CACHE.with(|cache| {
+        cache
+            .borrow_mut()
+            .insert(base_path.to_path_buf(), device_details.clone());
+    });
     device_details
 }
 
