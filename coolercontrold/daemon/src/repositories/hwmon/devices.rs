@@ -16,12 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use super::pci_ids;
 use crate::cc_fs;
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use log::{debug, info, warn};
 use nu_glob::{glob, GlobResult, Uninterruptible};
-use pciid_parser::Database;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -284,22 +284,21 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     let uevents = get_device_uevent_details(base_path).await;
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
-    let db = Database::read()
-        .inspect_err(|err| {
-            info!("Could not read PCI ID database: {err}, device name information will be limited");
-        })
-        .ok()?;
-    let info = db.get_device_info(
+    let info = pci_ids::lookup_device(
         parse_hex_str_to_u16(vendor_id)?,
         parse_hex_str_to_u16(model_id)?,
         parse_hex_str_to_u16(subsys_vendor_id)?,
         parse_hex_str_to_u16(subsys_model_id)?,
-    );
+    )
+    .inspect_err(|err| {
+        info!("Could not read PCI ID database: {err}, device name information will be limited");
+    })
+    .ok()?;
     let pci_device_names = PciDeviceNames {
-        vendor_name: info.vendor_name.map(str::to_owned),
-        device_name: info.device_name.map(str::to_owned),
-        subvendor_name: info.subvendor_name.map(str::to_owned),
-        subdevice_name: info.subdevice_name.map(str::to_owned),
+        vendor_name: info.vendor_name,
+        device_name: info.device_name,
+        subvendor_name: info.subvendor_name,
+        subdevice_name: info.subdevice_name,
     };
     debug!("Found PCI Device Names: {pci_device_names:?}");
     Some(pci_device_names)

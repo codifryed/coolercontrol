@@ -135,7 +135,6 @@ nix = { version = "0.31.2", default-features = false, features = [
   "process",
   "sched",
 ] }
-pciid-parser = "0.8.0"
 libdrm_amdgpu_sys = { version = "0.8.11", default-features = false, features = [
   "dynamic_loading",
 ] }
