@@ -17,7 +17,7 @@
  */
 
 use crate::cc_fs;
-use crate::config::DEFAULT_CONFIG_DIR;
+use crate::paths;
 use anyhow::{anyhow, Context, Result};
 use log::info;
 use rcgen::{CertificateParams, CertifiedKey, DistinguishedName, DnType, KeyPair};
@@ -29,20 +29,20 @@ const DEFAULT_CERT_FILE: &str = "coolercontrol.crt";
 const DEFAULT_KEY_FILE: &str = "coolercontrol.key";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
-pub fn default_cert_path() -> String {
-    format!("{DEFAULT_CONFIG_DIR}/{DEFAULT_CERT_FILE}")
+pub fn default_cert_path() -> PathBuf {
+    paths::config_dir().join(DEFAULT_CERT_FILE)
 }
 
-pub fn default_key_path() -> String {
-    format!("{DEFAULT_CONFIG_DIR}/{DEFAULT_KEY_FILE}")
+pub fn default_key_path() -> PathBuf {
+    paths::config_dir().join(DEFAULT_KEY_FILE)
 }
 
 pub async fn ensure_certificates(
     cert_path: Option<String>,
     key_path: Option<String>,
 ) -> Result<(PathBuf, PathBuf)> {
-    let cert_path = PathBuf::from(cert_path.unwrap_or_else(default_cert_path));
-    let key_path = PathBuf::from(key_path.unwrap_or_else(default_key_path));
+    let cert_path = cert_path.map_or_else(default_cert_path, PathBuf::from);
+    let key_path = key_path.map_or_else(default_key_path, PathBuf::from);
     let cert_exists = cert_path.exists();
     let key_exists = key_path.exists();
     if cert_exists && key_exists {

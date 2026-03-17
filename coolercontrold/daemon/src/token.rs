@@ -26,10 +26,9 @@ use log::error;
 use serde::{Deserialize, Serialize};
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use uuid::Uuid;
 
-const TOKENS_FILE_PATH: &str = "/etc/coolercontrol/.tokens";
+use crate::paths;
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 fn default_write_access() -> bool {
@@ -73,7 +72,7 @@ pub fn verify_token(raw: &str, hash: &str) -> bool {
 }
 
 pub async fn load_tokens() -> Result<Vec<StoredToken>> {
-    let tokens_path = Path::new(TOKENS_FILE_PATH);
+    let tokens_path = paths::tokens_file();
     if tokens_path.exists() {
         let contents = cc_fs::read_txt(tokens_path).await?;
         let trimmed = contents.trim();
@@ -89,7 +88,7 @@ pub async fn load_tokens() -> Result<Vec<StoredToken>> {
 }
 
 pub async fn save_tokens(tokens: &[StoredToken]) -> Result<()> {
-    let tokens_path = Path::new(TOKENS_FILE_PATH);
+    let tokens_path = paths::tokens_file();
     let json = serde_json::to_string_pretty(tokens)?;
     let _ = cc_fs::remove_file(tokens_path).await;
     cc_fs::write_string(tokens_path, json).await?;
@@ -279,13 +278,5 @@ mod tests {
         let tokens: Vec<StoredToken> = serde_json::from_str(json).unwrap();
         assert_eq!(tokens.len(), 1);
         assert!(tokens[0].write_access);
-    }
-
-    #[test]
-    fn path_constants_start_with_config_dir() {
-        // Goal: verify inlined path constant stays consistent with
-        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
-        use crate::config::DEFAULT_CONFIG_DIR;
-        assert!(TOKENS_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

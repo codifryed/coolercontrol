@@ -33,9 +33,7 @@ use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
 use tower_sessions::cookie::Key;
 
-const PASSWD_FILE_PATH: &str = "/etc/coolercontrol/.passwd";
-const SESSION_KEY_FILE_PATH: &str = "/etc/coolercontrol/.session_key";
-const SESSIONS_DIR_PATH: &str = "/etc/coolercontrol/sessions";
+use crate::paths;
 pub const DEFAULT_PASS: &str = "coolAdmin";
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
@@ -74,7 +72,7 @@ pub async fn match_passwd(passwd: &str) -> bool {
 }
 
 pub async fn load_passwd() -> Result<String> {
-    let passwd_path = Path::new(PASSWD_FILE_PATH);
+    let passwd_path = paths::passwd_file();
     if passwd_path.exists() {
         if let Ok(contents) = cc_fs::read_txt(passwd_path).await {
             cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
@@ -87,7 +85,7 @@ pub async fn load_passwd() -> Result<String> {
 }
 
 pub async fn save_passwd(password: &str) -> Result<()> {
-    let passwd_path = Path::new(PASSWD_FILE_PATH);
+    let passwd_path = paths::passwd_file();
     let passwd = hash_password_argon2(password)?;
     let _ = cc_fs::remove_file(passwd_path).await;
     cc_fs::write_string(passwd_path, passwd).await?;
@@ -96,7 +94,7 @@ pub async fn save_passwd(password: &str) -> Result<()> {
 }
 
 pub async fn reset_passwd() -> Result<()> {
-    let passwd_path = Path::new(PASSWD_FILE_PATH);
+    let passwd_path = paths::passwd_file();
     let passwd = hash_password_argon2(DEFAULT_PASS)?;
     let _ = cc_fs::remove_file(passwd_path).await;
     cc_fs::write_string(passwd_path, passwd).await?;
@@ -108,7 +106,7 @@ pub async fn reset_passwd() -> Result<()> {
 /// Clears all persisted session files so that old sessions authenticated with
 /// the previous password are invalidated.
 async fn clear_sessions() {
-    clear_session_files(Path::new(SESSIONS_DIR_PATH)).await;
+    clear_session_files(paths::sessions_dir()).await;
 }
 
 pub async fn clear_session_files(sessions_dir: &Path) {
@@ -127,7 +125,7 @@ pub async fn clear_session_files(sessions_dir: &Path) {
 /// runs, the existing key is loaded. This ensures session cookies survive
 /// daemon restarts.
 pub async fn load_or_generate_session_key() -> Result<Key> {
-    let key_path = Path::new(SESSION_KEY_FILE_PATH);
+    let key_path = paths::session_key_file();
     if key_path.exists() {
         let encoded = cc_fs::read_txt(key_path).await?;
         let bytes = BASE64.decode(encoded.trim())?;
@@ -330,15 +328,5 @@ mod tests {
             let loaded_key = Key::from(&bytes);
             assert_eq!(key.master(), loaded_key.master());
         });
-    }
-
-    #[test]
-    fn path_constants_start_with_config_dir() {
-        // Goal: verify inlined path constants stay consistent with
-        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
-        use crate::config::DEFAULT_CONFIG_DIR;
-        assert!(PASSWD_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
-        assert!(SESSION_KEY_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
-        assert!(SESSIONS_DIR_PATH.starts_with(DEFAULT_CONFIG_DIR));
     }
 }

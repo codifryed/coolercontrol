@@ -17,12 +17,11 @@
  */
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
 use crate::alerts::AlertController;
-use crate::config::{Config, DEFAULT_CONFIG_DIR};
+use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::engine::main::Engine;
 use crate::modes::ModeController;
@@ -59,6 +58,7 @@ mod logger;
 mod main_loop;
 mod modes;
 mod notifier;
+mod paths;
 mod repositories;
 mod setting;
 mod sleep_listener;
@@ -164,6 +164,15 @@ const ENV_SERVICE_MANAGER: &str = "CC_SERVICE_MANAGER";
 /// CC_NVML=ON coolercontrold
 /// ```
 const ENV_NVML: &str = "CC_NVML";
+
+/// Environment Variable: Override the configuration directory path
+/// Takes a directory path string. Defaults to `/etc/coolercontrol`.
+///
+/// # Example
+/// ```
+/// CC_CONFIG_DIR=/opt/coolercontrol coolercontrold
+/// ```
+pub const ENV_CONFIG_DIR: &str = "CC_CONFIG_DIR";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
@@ -436,10 +445,7 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
 
 fn handle_detect_command(args: &Args) {
     if let Some(SubCommands::Detect { load }) = &args.command {
-        let results = cc_detect::run_detection(
-            *load,
-            Some(&Path::new(DEFAULT_CONFIG_DIR).join("detect.toml")),
-        );
+        let results = cc_detect::run_detection(*load, Some(paths::detect_override_file()));
         cc_detect::output_results(&results);
         exit_successfully()
     }
@@ -460,10 +466,7 @@ fn run_sensors_detection(config: &Rc<Config>) {
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             debug!("Running Super-I/O hardware detection");
-            let results = cc_detect::run_detection(
-                true,
-                Some(&Path::new(DEFAULT_CONFIG_DIR).join("detect.toml")),
-            );
+            let results = cc_detect::run_detection(true, Some(paths::detect_override_file()));
             for chip in &results.detected_chips {
                 info!(
                     "{} (driver: {}, status: {})",

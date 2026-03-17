@@ -21,7 +21,7 @@ use std::ops::Not;
 use std::rc::Rc;
 
 use crate::api::CCError;
-use crate::config::{Config, DEFAULT_CONFIG_DIR};
+use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID,
 };
@@ -30,6 +30,7 @@ use crate::engine::commanders::lcd::{LcdCommander, DEFAULT_LCD_SHUTDOWN_IMAGE};
 use crate::engine::commanders::mix::MixProfileCommander;
 use crate::engine::commanders::overlay::OverlayProfileCommander;
 use crate::engine::{processors, DeviceChannelProfileSetting};
+use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     ChannelExtensions, FunctionUID, LcdModeName, LcdSettings, LightingSettings, Profile,
@@ -558,9 +559,9 @@ impl Engine {
 
     pub async fn save_lcd_image(&self, content_type: &Mime, file_data: Vec<u8>) -> Result<String> {
         let image_path = if content_type == &mime::IMAGE_GIF {
-            std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_GIF)
+            paths::config_dir().join(IMAGE_FILENAME_GIF)
         } else {
-            std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_PNG)
+            paths::config_dir().join(IMAGE_FILENAME_PNG)
         };
         cc_fs::write(&image_path, file_data).await?;
         let image_location = image_path
@@ -581,7 +582,7 @@ impl Engine {
         content_type: &Mime,
         file_data: Vec<u8>,
     ) -> Result<String> {
-        let shutdown_dir = std::path::Path::new(DEFAULT_CONFIG_DIR).join(LCD_SHUTDOWN_IMAGE_DIR);
+        let shutdown_dir = paths::config_dir().join(LCD_SHUTDOWN_IMAGE_DIR);
         cc_fs::create_dir_all(&shutdown_dir).await?;
         let filename = if content_type == &mime::IMAGE_GIF {
             format!("{device_uid}-{channel_name}.gif")
@@ -796,9 +797,11 @@ impl Engine {
     /// used again on startup, since the currently applied image may not exist on restart.
     fn current_setting_is_externally_applied(settings_current: &Setting) -> bool {
         settings_current.lcd.as_ref().is_some_and(|lcd| {
-            lcd.image_file_processed
-                .as_ref()
-                .is_some_and(|path_image| path_image.starts_with(DEFAULT_CONFIG_DIR).not())
+            lcd.image_file_processed.as_ref().is_some_and(|path_image| {
+                std::path::Path::new(path_image)
+                    .starts_with(paths::config_dir())
+                    .not()
+            })
         })
     }
 
@@ -1313,11 +1316,14 @@ mod tests {
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
 
-    // Returns false when the image path starts with DEFAULT_CONFIG_DIR
+    // Returns false when the image path starts with config_dir
     // (i.e. the image was saved internally by the daemon).
     #[test]
     fn externally_applied_internal_image_path() {
-        let internal_path = format!("{DEFAULT_CONFIG_DIR}/lcd_image.png");
+        let internal_path = paths::config_dir()
+            .join("lcd_image.png")
+            .to_string_lossy()
+            .into_owned();
         let setting = Setting {
             lcd: Some(lcd_settings_with_image(Some(internal_path))),
             ..Default::default()
@@ -1325,7 +1331,7 @@ mod tests {
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
 
-    // Returns true when the image path does NOT start with DEFAULT_CONFIG_DIR
+    // Returns true when the image path does NOT start with config_dir
     // (i.e. the image was set by an external service).
     #[test]
     fn externally_applied_external_image_path() {

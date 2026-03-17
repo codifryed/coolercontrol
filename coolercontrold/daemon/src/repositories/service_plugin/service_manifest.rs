@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::repositories::service_plugin::service_plugin_repo::DEFAULT_PLUGINS_PATH;
+use crate::paths;
 use anyhow::{anyhow, Context, Result};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use strum::{Display, EnumString};
 use toml_edit::DocumentMut;
 
@@ -65,7 +65,7 @@ impl ServiceManifest {
                 }
                 let mut exe_path = PathBuf::from(exe);
                 if exe_path.is_relative() {
-                    exe_path = Path::new(DEFAULT_PLUGINS_PATH).join(&id).join(exe_path);
+                    exe_path = paths::plugins_dir().join(&id).join(exe_path);
                 }
                 Ok(exe_path)
             })

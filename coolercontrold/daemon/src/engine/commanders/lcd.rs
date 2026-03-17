@@ -22,7 +22,6 @@ use moro_local::Scope;
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 use tiny_skia::{
@@ -32,10 +31,10 @@ use tiny_skia::{
 use tokio::time::Instant;
 
 use crate::api::CCError;
-use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{ChannelName, DeviceUID, Temp, TempLabel, UID};
 use crate::engine::main::ReposByType;
 use crate::engine::processors;
+use crate::paths;
 use crate::setting::{LcdModeName, LcdSettings};
 use crate::AllDevices;
 
@@ -406,7 +405,7 @@ impl LcdCommander {
         trace!("Image text rasterized in: {:?}", now.elapsed());
         now = Instant::now();
 
-        let image_path = Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_SINGLE_TEMP);
+        let image_path = paths::config_dir().join(IMAGE_FILENAME_SINGLE_TEMP);
         // std blocking save being used here:
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
             return Err(anyhow!("{e}"));

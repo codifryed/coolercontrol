@@ -70,9 +70,7 @@ impl CpuPercentCollector {
     #[allow(clippy::cast_precision_loss)]
     pub fn cpu_percent_per_cpu(&mut self) -> Result<Vec<f32>> {
         let content = fs::read_to_string(&self.stat_path)
-            .with_context(|| {
-                format!("reading {}", self.stat_path.display())
-            })?;
+            .with_context(|| format!("reading {}", self.stat_path.display()))?;
         let curr = parse_stat_content(&content);
         let percents = compute_percents(&self.prev, &curr);
         self.prev = curr;
@@ -85,16 +83,13 @@ impl CpuPercentCollector {
 fn compute_percents(prev: &[CpuTimes], curr: &[CpuTimes]) -> Vec<f32> {
     let mut percents = Vec::with_capacity(curr.len());
     for (cur, prev) in curr.iter().zip(prev.iter()) {
-        let total_delta =
-            cur.total_jiffies.saturating_sub(prev.total_jiffies);
-        let idle_delta =
-            cur.idle_jiffies.saturating_sub(prev.idle_jiffies);
+        let total_delta = cur.total_jiffies.saturating_sub(prev.total_jiffies);
+        let idle_delta = cur.idle_jiffies.saturating_sub(prev.idle_jiffies);
         debug_assert!(idle_delta <= total_delta);
         let percent = if total_delta == 0 {
             0.0_f32
         } else {
-            ((total_delta - idle_delta) as f32 / total_delta as f32)
-                * 100.0
+            ((total_delta - idle_delta) as f32 / total_delta as f32) * 100.0
         };
         debug_assert!(
             (0.0..=100.0).contains(&percent),
@@ -169,10 +164,7 @@ fn num_cpus_hint() -> usize {
 mod tests {
     use super::*;
 
-    const TEST_DIR: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/tests/proc_stat"
-    );
+    const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/tests/proc_stat");
 
     // -- parse_cpu_line tests --
 
@@ -183,8 +175,7 @@ mod tests {
         let line = "cpu0 126499 1601 47200 4274964 14051 25757 18230 0 0 0";
         let times = parse_cpu_line(line).expect("should parse");
         assert_eq!(times.idle_jiffies, 4_274_964 + 14_051);
-        let expected_total: u64 =
-            126_499 + 1_601 + 47_200 + 4_274_964 + 14_051 + 25_757 + 18_230;
+        let expected_total: u64 = 126_499 + 1_601 + 47_200 + 4_274_964 + 14_051 + 25_757 + 18_230;
         assert_eq!(times.total_jiffies, expected_total);
         assert!(times.idle_jiffies <= times.total_jiffies);
     }
@@ -218,8 +209,7 @@ mod tests {
     #[test]
     fn parse_cpu_line_extra_fields_beyond_10_are_ignored() {
         // Goal: verify we cap at MAX_STAT_FIELDS and don't overflow.
-        let line =
-            "cpu0 1 2 3 4 5 6 7 8 9 10 11 12 13";
+        let line = "cpu0 1 2 3 4 5 6 7 8 9 10 11 12 13";
         let times = parse_cpu_line(line).expect("should parse");
         // Only first 10 fields are summed.
         assert_eq!(times.total_jiffies, 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10);
@@ -232,10 +222,7 @@ mod tests {
     fn parse_stat_content_8_cpu_fixture() {
         // Goal: verify the full 8-cpu fixture produces exactly 8
         // CpuTimes entries with correct values.
-        let content = fs::read_to_string(
-            format!("{TEST_DIR}/8_cpu_normal"),
-        )
-        .unwrap();
+        let content = fs::read_to_string(format!("{TEST_DIR}/8_cpu_normal")).unwrap();
         let cpus = parse_stat_content(&content);
         assert_eq!(cpus.len(), 8);
         // Spot-check cpu0.
@@ -247,10 +234,7 @@ mod tests {
     #[test]
     fn parse_stat_content_single_cpu() {
         // Goal: verify a single-cpu fixture produces 1 entry.
-        let content = fs::read_to_string(
-            format!("{TEST_DIR}/1_cpu_minimal"),
-        )
-        .unwrap();
+        let content = fs::read_to_string(format!("{TEST_DIR}/1_cpu_minimal")).unwrap();
         let cpus = parse_stat_content(&content);
         assert_eq!(cpus.len(), 1);
         assert_eq!(cpus[0].idle_jiffies, 1000 + 20);
@@ -260,10 +244,7 @@ mod tests {
     #[test]
     fn parse_stat_content_legacy_4_fields() {
         // Goal: verify 4-field-only format still parses correctly.
-        let content = fs::read_to_string(
-            format!("{TEST_DIR}/4_field_legacy"),
-        )
-        .unwrap();
+        let content = fs::read_to_string(format!("{TEST_DIR}/4_field_legacy")).unwrap();
         let cpus = parse_stat_content(&content);
         assert_eq!(cpus.len(), 2);
         assert_eq!(cpus[0].idle_jiffies, 1000);
@@ -274,10 +255,7 @@ mod tests {
     fn parse_stat_content_empty_returns_no_cpus() {
         // Goal: verify a /proc/stat with no cpu lines returns an
         // empty vec (caller decides whether that is an error).
-        let content = fs::read_to_string(
-            format!("{TEST_DIR}/empty_no_cpus"),
-        )
-        .unwrap();
+        let content = fs::read_to_string(format!("{TEST_DIR}/empty_no_cpus")).unwrap();
         let cpus = parse_stat_content(&content);
         assert!(cpus.is_empty());
     }
@@ -286,10 +264,7 @@ mod tests {
     fn parse_stat_content_malformed_skips_bad_lines() {
         // Goal: verify that lines with non-numeric or too-few fields
         // are skipped, while valid lines are still collected.
-        let content = fs::read_to_string(
-            format!("{TEST_DIR}/malformed_fields"),
-        )
-        .unwrap();
+        let content = fs::read_to_string(format!("{TEST_DIR}/malformed_fields")).unwrap();
         let cpus = parse_stat_content(&content);
         // cpu0 has "abc" → skipped, cpu1 is valid, cpu2 has too few → skipped.
         assert_eq!(cpus.len(), 1);
@@ -345,8 +320,14 @@ mod tests {
         // Goal: verify that if CPU count changes between snapshots,
         // zip uses the shorter (no panic, no out-of-bounds).
         let prev = vec![
-            CpuTimes { idle_jiffies: 0, total_jiffies: 0 },
-            CpuTimes { idle_jiffies: 0, total_jiffies: 0 },
+            CpuTimes {
+                idle_jiffies: 0,
+                total_jiffies: 0,
+            },
+            CpuTimes {
+                idle_jiffies: 0,
+                total_jiffies: 0,
+            },
         ];
         let curr = vec![CpuTimes {
             idle_jiffies: 500,
@@ -363,14 +344,8 @@ mod tests {
     fn percent_from_two_fixtures() {
         // Goal: verify end-to-end percent calculation using two
         // fixture files representing a before/after snapshot.
-        let content_before = fs::read_to_string(
-            format!("{TEST_DIR}/8_cpu_normal"),
-        )
-        .unwrap();
-        let content_after = fs::read_to_string(
-            format!("{TEST_DIR}/8_cpu_after_load"),
-        )
-        .unwrap();
+        let content_before = fs::read_to_string(format!("{TEST_DIR}/8_cpu_normal")).unwrap();
+        let content_after = fs::read_to_string(format!("{TEST_DIR}/8_cpu_after_load")).unwrap();
         let prev = parse_stat_content(&content_before);
         let curr = parse_stat_content(&content_after);
         assert_eq!(prev.len(), 8);
@@ -380,14 +355,8 @@ mod tests {
         // All CPUs should show some load (the "after" fixture has
         // higher user+system and slightly higher idle).
         for (i, pct) in percents.iter().enumerate() {
-            assert!(
-                *pct > 0.0,
-                "cpu{i} should have nonzero load, got {pct}"
-            );
-            assert!(
-                *pct <= 100.0,
-                "cpu{i} percent out of range: {pct}"
-            );
+            assert!(*pct > 0.0, "cpu{i} should have nonzero load, got {pct}");
+            assert!(*pct <= 100.0, "cpu{i} percent out of range: {pct}");
         }
         // cpu0: delta total = (127499+1601+48200+4275964+14051+25757+18230)
         //                    - (126499+1601+47200+4274964+14051+25757+18230)
@@ -405,8 +374,7 @@ mod tests {
         // Goal: verify CpuPercentCollector::with_path initializes
         // from a fixture without panicking.
         let path = format!("{TEST_DIR}/8_cpu_normal");
-        let collector =
-            CpuPercentCollector::with_path(Path::new(&path));
+        let collector = CpuPercentCollector::with_path(Path::new(&path));
         assert!(collector.is_ok());
     }
 
@@ -421,9 +389,7 @@ mod tests {
     #[test]
     fn collector_with_nonexistent_path_returns_error() {
         // Goal: verify a missing file returns an Err, not a panic.
-        let result = CpuPercentCollector::with_path(
-            Path::new("/tmp/does_not_exist_proc_stat"),
-        );
+        let result = CpuPercentCollector::with_path(Path::new("/tmp/does_not_exist_proc_stat"));
         assert!(result.is_err());
     }
 }

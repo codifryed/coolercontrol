@@ -18,9 +18,9 @@
 
 use crate::api::actor::AlertHandle;
 use crate::api::CCError;
-use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::UID;
 use crate::notifier::NotificationIcon;
+use crate::paths;
 use crate::repositories::utils::{sanitize_for_shell, ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
@@ -37,13 +37,12 @@ use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Display};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio_util::sync::CancellationToken;
 
-const DEFAULT_ALERT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/alerts.json";
 const LOG_BUFFER_SIZE: usize = 20;
 const COMMAND_SHUTDOWN: &str =
     "shutdown +1 \"Critical CoolerControl Alert! System will shutdown in 1 minute.\"";
@@ -260,12 +259,15 @@ impl AlertController {
 
     /// Reads the Alert configuration file and fills the Alert `HashMap`.
     async fn load_data_from_alert_config_file(&self) -> Result<()> {
-        let config_dir = Path::new(DEFAULT_CONFIG_DIR);
+        let config_dir = paths::config_dir();
         if !config_dir.exists() {
-            info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
+            info!(
+                "config directory doesn't exist. Attempting to create it: {}",
+                config_dir.display()
+            );
             cc_fs::create_dir_all(config_dir).await?;
         }
-        let path = Path::new(DEFAULT_ALERT_CONFIG_FILE_PATH).to_path_buf();
+        let path = paths::alert_config_file().to_path_buf();
         let config_contents = if let Ok(contents) = cc_fs::read_txt(&path).await {
             contents
         } else {
@@ -321,7 +323,7 @@ impl AlertController {
             logs: self.logs.borrow().iter().cloned().collect(),
         };
         let alert_config_json = serde_json::to_string(&alert_config)?;
-        cc_fs::write_string(DEFAULT_ALERT_CONFIG_FILE_PATH, alert_config_json)
+        cc_fs::write_string(paths::alert_config_file(), alert_config_json)
             .await
             .map_err(|err| anyhow!("Writing Alert Configuration File - {err}"))
     }
@@ -721,16 +723,4 @@ impl AlertController {
 struct AlertConfigFile {
     alerts: Vec<Alert>,
     logs: Vec<AlertLog>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn path_constants_start_with_config_dir() {
-        // Goal: verify inlined path constant stays consistent with
-        // DEFAULT_CONFIG_DIR. Catches stale paths if the base changes.
-        assert!(DEFAULT_ALERT_CONFIG_FILE_PATH.starts_with(DEFAULT_CONFIG_DIR));
-    }
 }
