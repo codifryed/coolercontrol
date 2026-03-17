@@ -71,7 +71,6 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
-use axum_extra::typed_header::TypedHeaderRejection;
 use axum_server::tls_rustls::RustlsConfig;
 use derive_more::{Display, Error};
 use log::{debug, info, warn};
@@ -992,14 +991,6 @@ impl From<JsonRejection> for CCError {
     fn from(jr: JsonRejection) -> Self {
         CCError::UserError {
             msg: jr.body_text(),
-        }
-    }
-}
-
-impl From<TypedHeaderRejection> for CCError {
-    fn from(thr: TypedHeaderRejection) -> Self {
-        CCError::InvalidCredentials {
-            msg: format!("Header: {}, Reason: {:?}", thr.name(), thr.reason()),
         }
     }
 }

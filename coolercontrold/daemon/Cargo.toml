@@ -52,7 +52,6 @@ moro-local = "0.4.0"
 async-trait = "0.1.89"
 bitflags = { version = "2.11.0", features = ["serde"] }
 axum = { version = "0.8.8", features = ["multipart", "macros", "query"] }
-axum-extra = { version = "0.12.5", features = ["typed-header"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.3" }
 tower-http = { version = "0.6.8", features = [
@@ -76,11 +75,9 @@ include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [
   "axum",
   "axum-json",
-  "axum-extra",
   "axum-query",
   "axum-multipart",
 ] }
-headers = "0.4.1"
 # this needs to follow the aide version above (currently 0.9.0)
 schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
