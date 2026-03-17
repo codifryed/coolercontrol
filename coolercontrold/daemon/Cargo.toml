@@ -139,7 +139,7 @@ pciid-parser = "0.8.0"
 libdrm_amdgpu_sys = { version = "0.8.11", default-features = false, features = [
   "dynamic_loading",
 ] }
-hashlink = "0.11.0" # pkg
+indexmap = "2"
 yata = "0.7.0" # moving averages
 tiny-skia = "0.12.0" # vector image creation
 ril = { version = "0.10.3", default-features = false, features = [

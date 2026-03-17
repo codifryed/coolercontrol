@@ -26,7 +26,7 @@ use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local};
-use hashlink::LinkedHashMap;
+use indexmap::IndexMap;
 use log::{error, info, trace, warn};
 use moro_local::Scope;
 use nix::unistd::Pid;
@@ -206,7 +206,7 @@ impl Default for AlertLog {
 
 pub struct AlertController {
     all_devices: AllDevices,
-    alerts: RefCell<LinkedHashMap<UID, Alert>>,
+    alerts: RefCell<IndexMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
     logs: RefCell<VecDeque<AlertLog>>,
     bin_path: String,
@@ -227,7 +227,7 @@ impl AlertController {
             .map_or_else(|| "coolercontrold".to_string(), |p| p.display().to_string());
         let alert_controller = Self {
             all_devices,
-            alerts: RefCell::new(LinkedHashMap::new()),
+            alerts: RefCell::new(IndexMap::new()),
             alert_handle: RefCell::new(None),
             logs: RefCell::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),
             bin_path,
@@ -359,7 +359,7 @@ impl AlertController {
             };
             // don't overwrite state:
             alert.state = existing_alert.state;
-            alerts_lock.replace(alert.uid.clone(), alert);
+            alerts_lock.insert(alert.uid.clone(), alert);
         }
         self.save_alert_data_to_config().await
     }
@@ -372,7 +372,7 @@ impl AlertController {
             }
             .into());
         }
-        self.alerts.borrow_mut().remove(&alert_uid);
+        self.alerts.borrow_mut().shift_remove(&alert_uid);
         self.save_alert_data_to_config().await
     }
 
@@ -723,4 +723,384 @@ impl AlertController {
 struct AlertConfigFile {
     alerts: Vec<Alert>,
     logs: Vec<AlertLog>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    /// Helper to create a minimal test alert with given uid, min, max, and state.
+    fn make_alert(uid: &str, min: f64, max: f64, state: AlertState) -> Alert {
+        assert!(min <= max, "min must be <= max for a valid alert range.");
+        Alert {
+            uid: uid.to_string(),
+            name: format!("Alert-{uid}"),
+            channel_source: ChannelSource {
+                device_uid: "dev1".to_string(),
+                channel_name: "temp1".to_string(),
+                channel_metric: ChannelMetric::Temp,
+            },
+            min,
+            max,
+            state,
+            warmup_duration: 0.0,
+            desktop_notify: true,
+            desktop_notify_recovery: true,
+            desktop_notify_audio: false,
+            shutdown_on_activation: false,
+        }
+    }
+
+    // -- IndexMap order-preservation tests --
+
+    #[test]
+    fn indexmap_preserves_insertion_order() {
+        // Goal: verify that IndexMap iterates values in insertion order,
+        // which is the invariant we rely on after replacing LinkedHashMap.
+        let mut map: IndexMap<String, Alert> = IndexMap::new();
+        let a1 = make_alert("uid-1", 10.0, 90.0, AlertState::Inactive);
+        let a2 = make_alert("uid-2", 20.0, 80.0, AlertState::Inactive);
+        let a3 = make_alert("uid-3", 30.0, 70.0, AlertState::Inactive);
+        map.insert(a1.uid.clone(), a1);
+        map.insert(a2.uid.clone(), a2);
+        map.insert(a3.uid.clone(), a3);
+
+        let uids: Vec<&str> = map.values().map(|a| a.uid.as_str()).collect();
+        assert_eq!(uids, vec!["uid-1", "uid-2", "uid-3"]);
+    }
+
+    #[test]
+    fn indexmap_shift_remove_preserves_remaining_order() {
+        // Goal: verify that shift_remove keeps the relative order of
+        // remaining entries intact (unlike swap_remove).
+        let mut map: IndexMap<String, Alert> = IndexMap::new();
+        let a1 = make_alert("uid-1", 10.0, 90.0, AlertState::Inactive);
+        let a2 = make_alert("uid-2", 20.0, 80.0, AlertState::Inactive);
+        let a3 = make_alert("uid-3", 30.0, 70.0, AlertState::Inactive);
+        map.insert(a1.uid.clone(), a1);
+        map.insert(a2.uid.clone(), a2);
+        map.insert(a3.uid.clone(), a3);
+        assert_eq!(map.len(), 3);
+
+        map.shift_remove("uid-2");
+        assert_eq!(map.len(), 2);
+
+        let uids: Vec<&str> = map.values().map(|a| a.uid.as_str()).collect();
+        assert_eq!(uids, vec!["uid-1", "uid-3"]);
+    }
+
+    #[test]
+    fn indexmap_insert_existing_key_replaces_in_place() {
+        // Goal: verify that insert() on an existing key updates the value
+        // without changing its position in iteration order.
+        let mut map: IndexMap<String, Alert> = IndexMap::new();
+        let a1 = make_alert("uid-1", 10.0, 90.0, AlertState::Inactive);
+        let a2 = make_alert("uid-2", 20.0, 80.0, AlertState::Inactive);
+        let a3 = make_alert("uid-3", 30.0, 70.0, AlertState::Inactive);
+        map.insert(a1.uid.clone(), a1);
+        map.insert(a2.uid.clone(), a2);
+        map.insert(a3.uid.clone(), a3);
+
+        // Update uid-2 with a different min/max.
+        let updated = make_alert("uid-2", 25.0, 75.0, AlertState::Active);
+        map.insert(updated.uid.clone(), updated);
+
+        // Order must be preserved.
+        let uids: Vec<&str> = map.values().map(|a| a.uid.as_str()).collect();
+        assert_eq!(uids, vec!["uid-1", "uid-2", "uid-3"]);
+        // Value must be updated.
+        assert_eq!(map["uid-2"].min, 25.0);
+        assert_eq!(map["uid-2"].max, 75.0);
+        assert_eq!(map["uid-2"].state, AlertState::Active);
+    }
+
+    // -- Alert::set_state tests (core state machine) --
+
+    #[test]
+    fn set_state_value_in_range_stays_inactive() {
+        // Goal: verify that a value within [min, max] keeps state Inactive.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        let changed = alert.set_state(50.0);
+        assert!(changed.is_none(), "State should not change.");
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_value_at_min_boundary_stays_inactive() {
+        // Goal: verify that value exactly at min is within range.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        let changed = alert.set_state(20.0);
+        assert!(changed.is_none());
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_value_at_max_boundary_stays_inactive() {
+        // Goal: verify that value exactly at max is within range.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        let changed = alert.set_state(80.0);
+        assert!(changed.is_none());
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_value_above_max_transitions_inactive_to_warmup() {
+        // Goal: verify out-of-range value from Inactive enters WarmUp.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        let old = alert.set_state(81.0);
+        assert_eq!(old, Some(AlertState::Inactive));
+        assert!(matches!(alert.state, AlertState::WarmUp(_)));
+    }
+
+    #[test]
+    fn set_state_value_below_min_transitions_inactive_to_warmup() {
+        // Goal: verify out-of-range below min from Inactive enters WarmUp.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        let old = alert.set_state(19.9);
+        assert_eq!(old, Some(AlertState::Inactive));
+        assert!(matches!(alert.state, AlertState::WarmUp(_)));
+    }
+
+    #[test]
+    fn set_state_warmup_to_active_after_duration() {
+        // Goal: verify that WarmUp transitions to Active once the warmup
+        // duration has elapsed.
+        let past = Local::now() - Duration::seconds(2);
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::WarmUp(past));
+        alert.warmup_duration = 1.0;
+        let old = alert.set_state(90.0);
+        assert!(matches!(old, Some(AlertState::WarmUp(_))));
+        assert_eq!(alert.state, AlertState::Active);
+    }
+
+    #[test]
+    fn set_state_warmup_stays_warmup_before_duration() {
+        // Goal: verify that WarmUp does NOT transition to Active before
+        // the warmup duration elapses.
+        let now = Local::now();
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::WarmUp(now));
+        alert.warmup_duration = 9999.0; // far in the future
+        let changed = alert.set_state(90.0);
+        assert!(changed.is_none(), "Should stay in WarmUp.");
+        assert!(matches!(alert.state, AlertState::WarmUp(_)));
+    }
+
+    #[test]
+    fn set_state_warmup_returns_to_inactive_when_value_in_range() {
+        // Goal: verify WarmUp -> Inactive when value comes back in range.
+        let past = Local::now() - Duration::seconds(1);
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::WarmUp(past));
+        let old = alert.set_state(50.0);
+        assert!(matches!(old, Some(AlertState::WarmUp(_))));
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_active_stays_active_when_still_out_of_range() {
+        // Goal: verify Active stays Active while value remains out of range.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
+        let changed = alert.set_state(90.0);
+        assert!(changed.is_none());
+        assert_eq!(alert.state, AlertState::Active);
+    }
+
+    #[test]
+    fn set_state_active_returns_to_inactive_when_value_in_range() {
+        // Goal: verify Active -> Inactive when value returns to range.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Active);
+        let old = alert.set_state(50.0);
+        assert_eq!(old, Some(AlertState::Active));
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_error_transitions_to_warmup_when_out_of_range() {
+        // Goal: verify Error -> WarmUp when a value arrives but is out of range.
+        // Error means the channel was missing; receiving a value means
+        // the error resolved but we still need to warm up.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Error);
+        let old = alert.set_state(90.0);
+        assert_eq!(old, Some(AlertState::Error));
+        assert!(matches!(alert.state, AlertState::WarmUp(_)));
+    }
+
+    #[test]
+    fn set_state_error_transitions_to_inactive_when_in_range() {
+        // Goal: verify Error -> Inactive when value is in range.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Error);
+        let old = alert.set_state(50.0);
+        assert_eq!(old, Some(AlertState::Error));
+        assert_eq!(alert.state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn set_state_zero_warmup_immediately_activates() {
+        // Goal: verify that warmup_duration=0 means the alert goes
+        // Inactive -> WarmUp -> Active in two consecutive out-of-range calls.
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+        alert.warmup_duration = 0.0;
+
+        // First call: Inactive -> WarmUp.
+        alert.set_state(90.0);
+        assert!(matches!(alert.state, AlertState::WarmUp(_)));
+
+        // Second call: WarmUp -> Active (0s duration already elapsed).
+        alert.set_state(90.0);
+        assert_eq!(alert.state, AlertState::Active);
+    }
+
+    // -- AlertState serialization/deserialization tests --
+
+    #[test]
+    fn alert_state_serialize_active() {
+        // Goal: verify Active serializes to the string "Active".
+        let json = serde_json::to_string(&AlertState::Active).unwrap();
+        assert_eq!(json, "\"Active\"");
+    }
+
+    #[test]
+    fn alert_state_serialize_inactive() {
+        // Goal: verify Inactive serializes to the string "Inactive".
+        let json = serde_json::to_string(&AlertState::Inactive).unwrap();
+        assert_eq!(json, "\"Inactive\"");
+    }
+
+    #[test]
+    fn alert_state_serialize_error() {
+        // Goal: verify Error serializes to the string "Error".
+        let json = serde_json::to_string(&AlertState::Error).unwrap();
+        assert_eq!(json, "\"Error\"");
+    }
+
+    #[test]
+    fn alert_state_serialize_warmup_as_inactive() {
+        // Goal: verify WarmUp serializes as "Inactive" — WarmUp is an
+        // internal state that should not be exposed in persisted data.
+        let json = serde_json::to_string(&AlertState::WarmUp(Local::now())).unwrap();
+        assert_eq!(json, "\"Inactive\"");
+    }
+
+    #[test]
+    fn alert_state_deserialize_active() {
+        // Goal: verify "Active" deserializes to Active.
+        let state: AlertState = serde_json::from_str("\"Active\"").unwrap();
+        assert_eq!(state, AlertState::Active);
+    }
+
+    #[test]
+    fn alert_state_deserialize_inactive() {
+        // Goal: verify "Inactive" deserializes to Inactive.
+        let state: AlertState = serde_json::from_str("\"Inactive\"").unwrap();
+        assert_eq!(state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn alert_state_deserialize_error() {
+        // Goal: verify "Error" deserializes to Error.
+        let state: AlertState = serde_json::from_str("\"Error\"").unwrap();
+        assert_eq!(state, AlertState::Error);
+    }
+
+    #[test]
+    fn alert_state_deserialize_warmup_maps_to_inactive() {
+        // Goal: verify "WarmUp" in JSON deserializes as Inactive,
+        // since WarmUp requires a timestamp that isn't persisted.
+        let state: AlertState = serde_json::from_str("\"WarmUp\"").unwrap();
+        assert_eq!(state, AlertState::Inactive);
+    }
+
+    #[test]
+    fn alert_state_deserialize_unknown_variant_fails() {
+        // Goal: verify unknown state strings are rejected.
+        let result = serde_json::from_str::<AlertState>("\"Unknown\"");
+        assert!(result.is_err());
+    }
+
+    // -- AlertConfigFile round-trip serde test --
+
+    #[test]
+    fn alert_config_file_serde_roundtrip() {
+        // Goal: verify alerts and logs survive a JSON round-trip,
+        // which is the persistence format used by the daemon.
+        let alerts = vec![
+            make_alert("uid-1", 10.0, 90.0, AlertState::Inactive),
+            make_alert("uid-2", 20.0, 80.0, AlertState::Active),
+        ];
+        let logs = vec![AlertLog {
+            uid: "uid-1".to_string(),
+            name: "Alert-uid-1".to_string(),
+            state: AlertState::Active,
+            message: "Over threshold".to_string(),
+            timestamp: Local::now(),
+        }];
+        let config = AlertConfigFile {
+            alerts: alerts.clone(),
+            logs: logs.clone(),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.is_empty());
+
+        let parsed: AlertConfigFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.alerts.len(), 2);
+        assert_eq!(parsed.logs.len(), 1);
+        assert_eq!(parsed.alerts[0].uid, "uid-1");
+        assert_eq!(parsed.alerts[1].uid, "uid-2");
+        assert_eq!(parsed.alerts[0].min, 10.0);
+        assert_eq!(parsed.alerts[1].state, AlertState::Active);
+        assert_eq!(parsed.logs[0].message, "Over threshold");
+    }
+
+    // -- Alert serde defaults test --
+
+    #[test]
+    fn alert_deserialize_with_missing_optional_fields() {
+        // Goal: verify that missing optional fields get their serde defaults,
+        // which is important for backwards compatibility with older configs.
+        let json = r#"{
+            "uid": "test-uid",
+            "name": "Test Alert",
+            "channel_source": {
+                "device_uid": "dev",
+                "channel_name": "ch",
+                "channel_metric": "Temp"
+            },
+            "min": 10.0,
+            "max": 90.0,
+            "state": "Inactive"
+        }"#;
+        let alert: Alert = serde_json::from_str(json).unwrap();
+        assert_eq!(alert.warmup_duration, 0.0);
+        assert!(alert.desktop_notify);
+        assert!(alert.desktop_notify_recovery);
+        assert!(!alert.desktop_notify_audio);
+        assert!(!alert.shutdown_on_activation);
+    }
+
+    // -- activate_alert_with_error tests --
+
+    #[test]
+    fn activate_alert_with_error_changes_state_once() {
+        // Goal: verify the error activation only fires on state change,
+        // not repeatedly for the same error condition.
+        let mut alerts_to_fire = Vec::new();
+        let mut alert = make_alert("a", 20.0, 80.0, AlertState::Inactive);
+
+        AlertController::activate_alert_with_error(
+            &mut alerts_to_fire,
+            &mut alert,
+            "Device not found",
+        );
+        assert_eq!(alert.state, AlertState::Error);
+        assert_eq!(alerts_to_fire.len(), 1);
+        assert_eq!(alerts_to_fire[0].1, "Device not found");
+
+        // Second call with Error state should not fire again.
+        AlertController::activate_alert_with_error(
+            &mut alerts_to_fire,
+            &mut alert,
+            "Device not found",
+        );
+        assert_eq!(alerts_to_fire.len(), 1, "Should not fire twice.");
+    }
 }
