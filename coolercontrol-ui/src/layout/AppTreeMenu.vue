@@ -98,6 +98,7 @@ import SubMenuPin from '@/components/menu/SubMenuPin.vue'
 import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuProfileApply from '@/components/menu/MenuProfileApply.vue'
 import MenuFunctionApply from '@/components/menu/MenuFunctionApply.vue'
+import SubMenuTagAssign from '@/components/menu/SubMenuTagAssign.vue'
 import SubMenuAlertDuplicate from '@/components/menu/SubMenuAlertDuplicate.vue'
 import SubMenuAlertAddFail from '@/components/menu/SubMenuAlertAddFail.vue'
 import SubMenuAlertAddTemp from '@/components/menu/SubMenuAlertAddTemp.vue'
@@ -307,6 +308,7 @@ enum SubMenu {
     ALERT_DELETE,
     ALERT_ADD_FAIL,
     ALERT_ADD_TEMP,
+    TAG,
     MOVE_BOTTOM,
 }
 
@@ -756,11 +758,18 @@ const devicesTreeArray = (): any[] => {
                             ? [
                                   SubMenu.MOVE_TOP,
                                   SubMenu.PIN,
+                                  SubMenu.TAG,
                                   SubMenu.ALERT_ADD_FAIL,
                                   SubMenu.DISABLE,
                                   SubMenu.MOVE_BOTTOM,
                               ]
-                            : [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
+                            : [
+                                  SubMenu.MOVE_TOP,
+                                  SubMenu.PIN,
+                                  SubMenu.TAG,
+                                  SubMenu.DISABLE,
+                                  SubMenu.MOVE_BOTTOM,
+                              ],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -1340,12 +1349,36 @@ onUnmounted(() => {
                                 >
                                     {{ childItem.label }}
                                 </div>
-                                <div v-if="childItem.isControllable" class="mt-0.5">
+                                <div
+                                    v-if="
+                                        childItem.isControllable ||
+                                        settingsStore.getChannelTags(
+                                            childItem.deviceUID,
+                                            childItem.name,
+                                        ).length > 0
+                                    "
+                                    class="mt-0.5 flex items-center gap-x-1"
+                                >
                                     <menu-control-view
+                                        v-if="childItem.isControllable"
                                         :device-u-i-d="childItem.deviceUID"
                                         :channel-name="childItem.name"
                                         :class="{ 'text-text-color-secondary': !isActive }"
                                     />
+                                    <span
+                                        v-for="tag in settingsStore.getChannelTags(
+                                            childItem.deviceUID,
+                                            childItem.name,
+                                        )"
+                                        :key="tag"
+                                        class="text-xs px-1 rounded leading-none py-0.5 border max-h-4 text-nowrap"
+                                        :style="{
+                                            color: settingsStore.tags.get(tag)?.color ?? '',
+                                            borderColor: settingsStore.tags.get(tag)?.color ?? '',
+                                        }"
+                                    >
+                                        {{ tag }}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1652,6 +1685,13 @@ onUnmounted(() => {
                                                     v-else-if="subMenu === SubMenu.ALERT_ADD_TEMP"
                                                     :device-u-i-d="childItem.deviceUID"
                                                     :channel-name="childItem.name"
+                                                    @close="childItem.subMenuRefPin.hide()"
+                                                />
+                                                <sub-menu-tag-assign
+                                                    v-else-if="subMenu === SubMenu.TAG"
+                                                    :device-u-i-d="childItem.deviceUID"
+                                                    :channel-name="childItem.name"
+                                                    @open="setHoverMenuStatus"
                                                     @close="childItem.subMenuRefPin.hide()"
                                                 />
                                             </li>
@@ -1966,12 +2006,37 @@ onUnmounted(() => {
                                     >
                                         {{ childItem.label }}
                                     </div>
-                                    <div v-if="childItem.isControllable" class="mt-0.5">
+                                    <div
+                                        v-if="
+                                            childItem.isControllable ||
+                                            settingsStore.getChannelTags(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            ).length > 0
+                                        "
+                                        class="mt-0.5 flex items-center gap-x-1"
+                                    >
                                         <menu-control-view
+                                            v-if="childItem.isControllable"
                                             :device-u-i-d="childItem.deviceUID"
                                             :channel-name="childItem.name"
                                             :class="{ 'text-text-color-secondary': !isActive }"
                                         />
+                                        <span
+                                            v-for="tag in settingsStore.getChannelTags(
+                                                childItem.deviceUID,
+                                                childItem.name,
+                                            )"
+                                            :key="tag"
+                                            class="text-xs px-1 rounded leading-none py-0.5 border max-h-4 text-nowrap"
+                                            :style="{
+                                                color: settingsStore.tags.get(tag)?.color ?? '',
+                                                borderColor:
+                                                    settingsStore.tags.get(tag)?.color ?? '',
+                                            }"
+                                        >
+                                            {{ tag }}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -2311,6 +2376,13 @@ onUnmounted(() => {
                                                         "
                                                         :device-u-i-d="childItem.deviceUID"
                                                         :channel-name="childItem.name"
+                                                        @close="childItem.subMenuRef.hide()"
+                                                    />
+                                                    <sub-menu-tag-assign
+                                                        v-else-if="subMenu === SubMenu.TAG"
+                                                        :device-u-i-d="childItem.deviceUID"
+                                                        :channel-name="childItem.name"
+                                                        @open="setHoverMenuStatus"
                                                         @close="childItem.subMenuRef.hide()"
                                                     />
                                                 </li>

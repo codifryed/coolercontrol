@@ -28,10 +28,11 @@ import {
     DeviceUISettingsDTO,
     MenuOrderIds,
     SensorAndChannelSettings,
+    TagSettings,
     ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
-import type { UID } from '@/models/Device'
+import type { Color, UID } from '@/models/Device'
 import { Device } from '@/models/Device'
 import setDefaultSensorAndChannelColors from '@/stores/DeviceColorCreator'
 import { useDeviceStore } from '@/stores/DeviceStore'
@@ -132,6 +133,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const entityColors: Ref<Array<[string, string]>> = ref([])
     const eyeCandy: Ref<boolean> = ref(false)
     const showOnboarding: Ref<boolean> = ref(true)
+    const tags: Ref<Map<string, TagSettings>> = ref(new Map<string, TagSettings>())
 
     async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         await loadCCSettings()
@@ -231,6 +233,12 @@ export const useSettingsStore = defineStore('settings', () => {
         entityColors.value = uiSettings.entityColors
         eyeCandy.value = uiSettings.eyeCandy
         showOnboarding.value = uiSettings.showOnboarding
+        tags.value.clear()
+        if (uiSettings.tagNames.length === uiSettings.tagColors.length) {
+            for (const [i, name] of uiSettings.tagNames.entries()) {
+                tags.value.set(name, new TagSettings(name, uiSettings.tagColors[i]))
+            }
+        }
         // const layout = useLayout()
         // layout.setScale(uiSettings.uiScale)
         if (
@@ -900,6 +908,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 entityColors.value,
                 eyeCandy,
                 showOnboarding,
+                tags.value,
             ],
             _.debounce(
                 // we debounce to not continuously save changes
@@ -954,6 +963,10 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.entityColors = entityColors.value
                     uiSettings.eyeCandy = eyeCandy.value
                     uiSettings.showOnboarding = showOnboarding.value
+                    tags.value.forEach((tagSettings, name) => {
+                        uiSettings.tagNames.push(name)
+                        uiSettings.tagColors.push(tagSettings.color)
+                    })
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
                 750,
@@ -1159,6 +1172,108 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
+    function createTag(name: string, color: Color): void {
+        if (!tags.value.has(name)) {
+            tags.value.set(name, new TagSettings(name, color))
+        }
+    }
+
+    function deleteTag(name: string): void {
+        tags.value.delete(name)
+        // remove from all channels
+        allUIDeviceSettings.value.forEach((deviceSettings) => {
+            deviceSettings.sensorsAndChannels.forEach((channelSettings) => {
+                const idx = channelSettings.tags.indexOf(name)
+                if (idx > -1) {
+                    channelSettings.tags.splice(idx, 1)
+                }
+            })
+        })
+    }
+
+    function reorderTags(orderedNames: Array<string>): void {
+        const entries: Array<[string, TagSettings]> = []
+        for (const name of orderedNames) {
+            const tag = tags.value.get(name)
+            if (tag != null) entries.push([name, tag])
+        }
+        tags.value.clear()
+        for (const [name, tag] of entries) {
+            tags.value.set(name, tag)
+        }
+    }
+
+    function updateTagColor(name: string, color: Color): void {
+        if (!tags.value.has(name)) return
+        tags.value.set(name, new TagSettings(name, color))
+    }
+
+    function renameTag(oldName: string, newName: string): void {
+        if (!tags.value.has(oldName) || tags.value.has(newName)) return
+        const tagSettings = tags.value.get(oldName)!
+        tagSettings.name = newName
+        // Rebuild the Map to preserve insertion order
+        const entries = Array.from(tags.value.entries())
+        tags.value.clear()
+        for (const [name, settings] of entries) {
+            if (name === oldName) {
+                tags.value.set(newName, tagSettings)
+            } else {
+                tags.value.set(name, settings)
+            }
+        }
+        allUIDeviceSettings.value.forEach((deviceSettings) => {
+            deviceSettings.sensorsAndChannels.forEach((channelSettings) => {
+                const idx = channelSettings.tags.indexOf(oldName)
+                if (idx > -1) {
+                    channelSettings.tags[idx] = newName
+                }
+            })
+        })
+    }
+
+    function assignTagToChannel(deviceUID: UID, channelName: string, tagName: string): void {
+        const channelSettings = allUIDeviceSettings.value
+            .get(deviceUID)
+            ?.sensorsAndChannels.get(channelName)
+        if (channelSettings == null) return
+        if (!channelSettings.tags.includes(tagName)) {
+            channelSettings.tags.push(tagName)
+        }
+    }
+
+    function removeTagFromChannel(deviceUID: UID, channelName: string, tagName: string): void {
+        const channelSettings = allUIDeviceSettings.value
+            .get(deviceUID)
+            ?.sensorsAndChannels.get(channelName)
+        if (channelSettings == null) return
+        const idx = channelSettings.tags.indexOf(tagName)
+        if (idx > -1) {
+            channelSettings.tags.splice(idx, 1)
+        }
+    }
+
+    function getChannelTags(deviceUID: UID, channelName: string): Array<string> {
+        const channelTags =
+            allUIDeviceSettings.value.get(deviceUID)?.sensorsAndChannels.get(channelName)?.tags ??
+            []
+        if (channelTags.length <= 1) return channelTags
+        const tagOrder = Array.from(tags.value.keys())
+        return [...channelTags].sort((a, b) => tagOrder.indexOf(a) - tagOrder.indexOf(b))
+    }
+
+    function getTagChannels(tagName: string): Array<{ deviceUID: string; channelName: string }> {
+        const result: Array<{ deviceUID: string; channelName: string }> = []
+        allUIDeviceSettings.value.forEach((deviceSettings, deviceUID) => {
+            deviceSettings.sensorsAndChannels.forEach((channelSettings, channelName) => {
+                if (channelSettings.tags.includes(tagName)) {
+                    result.push({ deviceUID, channelName })
+                }
+            })
+        })
+        return result
+    }
+
     console.debug(`Settings Store created`)
     return {
         initializeSettings,
@@ -1233,5 +1348,15 @@ export const useSettingsStore = defineStore('settings', () => {
         updateAlert,
         deleteAlert,
         applyThemeMode,
+        tags,
+        createTag,
+        deleteTag,
+        reorderTags,
+        updateTagColor,
+        renameTag,
+        assignTagToChannel,
+        removeTagFromChannel,
+        getChannelTags,
+        getTagChannels,
     }
 })

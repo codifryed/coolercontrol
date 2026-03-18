@@ -138,6 +138,7 @@ const handleRedIssue = (newColor: Color): void => {
         <Popover ref="popRef" @show="emit('open', true)" @hide="popoverClose">
             <div
                 class="mt-2 w-full bg-bg-two border border-border-one p-4 rounded-lg text-text-color"
+                @click.stop
             >
                 <div>
                     <ChromePicker
@@ -145,12 +146,14 @@ const handleRedIssue = (newColor: Color): void => {
                         disable-alpha
                         disable-fields
                         class="!w-[32rem]"
+                        @click.stop
                     />
                     <CompactPicker
                         v-model="currentColor"
                         class="!w-[32rem]"
                         :palette="settingsStore.predefinedColorOptions"
                         @update:modelValue="handleRedIssue"
+                        @click.stop
                     />
                 </div>
                 <div class="flex flex-row justify-between mt-4 w-full">
@@ -164,14 +167,14 @@ const handleRedIssue = (newColor: Color): void => {
                         autofocus
                     />
                     <div class="text-right justify-end">
-                        <Button class="mr-4" label="Reset" @click="closeAndReset">
+                        <Button class="mr-4" label="Reset" @click.stop="closeAndReset">
                             {{ t('common.reset') }}
                         </Button>
                         <Button
                             ref="saveButton"
                             class="!bg-accent/80 hover:!bg-accent/100"
                             label="Save"
-                            @click="closeAndSave"
+                            @click.stop="closeAndSave"
                             :disabled="!colorStore.isValidHex(currentColor)"
                         >
                             {{ t('common.save') }}

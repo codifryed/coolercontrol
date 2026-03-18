@@ -333,6 +333,7 @@ export default {
                 pin: 'Pin to Top',
                 unpin: 'Unpin',
                 profileApply: 'Apply Profile to fans',
+                tags: 'Manage Tags',
             },
         },
         add: {
@@ -437,6 +438,8 @@ export default {
             mouseActions:
                 'Dashboard Mouse actions:\n- Highlight selection to zoom.\n- Scroll to zoom.\n- Right-click to pan when zoomed.\n- Double-click to reset and resume updating.\n- Ctrl+click or middle-click to show all sensors in tooltip.',
             fullPage: 'Full Page',
+            filterTags: 'Filter Tags',
+            filterByTag: 'Filter by Tag',
             filterBySensor: 'Filter by Sensor',
             search: 'Search',
             filterTypes: 'Filter Types',
@@ -915,6 +918,14 @@ export default {
         modeTable: {
             setting: 'Setting',
         },
+        menuTagAssign: {
+            title: 'Assign Tags',
+            noTags: 'No tags yet.',
+            newTag: 'Create New Tag',
+            tagName: 'Tag name',
+            editTag: 'Edit tag',
+            deleteTag: 'Delete tag',
+        },
         wizards: {
             fanControl: {
                 fanControlWizard: 'Fan Control Wizard',
@@ -955,6 +966,10 @@ export default {
                 channelsApply: 'Channels to Apply Profile to',
                 selectChannels: 'Select Channels',
                 channelsTooltip: 'Select one or more channels to apply this Profile to.',
+                selectByTag: 'Select by Tag',
+                selectByChannel: 'Select by Channel',
+                tagFanCount: '{count} channel | {count} channels',
+                noTags: 'No tags configured.',
             },
             functionApply: {
                 applyFunction: 'Apply Function',

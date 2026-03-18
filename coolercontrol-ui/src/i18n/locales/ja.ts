@@ -349,6 +349,7 @@ export default {
                 pin: '上部にピン留め',
                 unpin: 'ピン留め解除',
                 profileApply: 'ファンにプロファイルを適用',
+                tags: 'タグを管理',
             },
         },
         add: {
@@ -481,6 +482,8 @@ export default {
             mouseActions:
                 'ダッシュボードのマウス操作:\n- 選択範囲をハイライトしてズーム。\n- スクロールでズーム。\n- ズーム時に右クリックでパン。\n- ダブルクリックでリセットして更新を再開。\n- Ctrl+クリックまたは中クリックでツールチップにすべてのセンサーを表示。',
             fullPage: 'フルページ',
+            filterTags: 'タグフィルター',
+            filterByTag: 'タグでフィルター',
             filterBySensor: 'センサーでフィルター',
             search: '検索',
             filterTypes: 'タイプをフィルター',
@@ -927,6 +930,14 @@ export default {
         },
         modeTable: {
             setting: '設定',
+        },
+        menuTagAssign: {
+            title: 'タグを割り当て',
+            noTags: 'タグはまだありません。',
+            newTag: '新しいタグを作成',
+            tagName: 'タグ名',
+            editTag: 'タグを編集',
+            deleteTag: 'タグを削除',
         },
         wizards: {
             fanControl: {

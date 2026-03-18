@@ -252,6 +252,7 @@ export default {
                 pin: 'Fixar no Topo',
                 unpin: 'Desfixar',
                 profileApply: 'Aplicar Perfil aos ventiladores',
+                tags: 'Gerir Tags',
             },
         },
         add: {
@@ -373,6 +374,8 @@ export default {
             mouseActions:
                 'Ações do mouse no painel:\n- Destacar seleção para zoom.\n- Deslizar para zoom.\n- Clicar com o botão direito para mover quando zoomado.\n- Clicar duas vezes para redefinir e retomar a atualização.\n- Ctrl+clicar ou clicar com o botão do meio para mostrar todos os sensores na dica de ferramenta.',
             fullPage: 'Tela Cheia',
+            filterTags: 'Filtrar Tags',
+            filterByTag: 'Filtrar por Tag',
             filterBySensor: 'Filtrar por Sensor',
             search: 'Pesquisar',
             filterTypes: 'Filtrar Tipos',
@@ -939,6 +942,14 @@ export default {
         },
         modeTable: {
             setting: 'Configuração',
+        },
+        menuTagAssign: {
+            title: 'Atribuir Tags',
+            noTags: 'Nenhuma tag ainda.',
+            newTag: 'Criar Nova Tag',
+            tagName: 'Nome da tag',
+            editTag: 'Editar tag',
+            deleteTag: 'Excluir tag',
         },
         singleDashboard: {
             minutes: 'min',

@@ -19,11 +19,11 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { onMounted, ref, Ref, toRaw, watch } from 'vue'
+import { computed, onMounted, ref, Ref, toRaw, watch } from 'vue'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
+import { mdiContentSaveOutline, mdiMemory, mdiTagOutline } from '@mdi/js'
 import Button from 'primevue/button'
 import { DeviceType, UID } from '@/models/Device.ts'
 import MultiSelect from 'primevue/multiselect'
@@ -65,6 +65,8 @@ const { t } = useI18n()
 
 const availableControlChannels: Ref<Array<AvailableChannelSources>> = ref([])
 const chosenChannels: Ref<Array<AvailableChannel>> = ref([])
+const selectionMode: Ref<'channel' | 'tag'> = ref('channel')
+const selectedTags: Ref<Array<string>> = ref([])
 const profileName =
     settingsStore.profiles.find((profile) => profile.uid === props.profileUID)?.name ?? 'unknown'
 
@@ -198,6 +200,53 @@ const applyProfileToChannels = async (): Promise<void> => {
     emit('close')
 }
 
+interface TagOption {
+    name: string
+    color: string
+    channelCount: number
+}
+
+const availableTags = computed((): Array<TagOption> => {
+    const result: Array<TagOption> = []
+    for (const [tagName, tagSettings] of settingsStore.tags) {
+        const channels = settingsStore.getTagChannels(tagName)
+        const controllableCount = channels.filter((ch) =>
+            availableControlChannels.value.some(
+                (src) =>
+                    src.deviceUID === ch.deviceUID &&
+                    src.channels.some((c) => c.channelName === ch.channelName),
+            ),
+        ).length
+        if (controllableCount > 0) {
+            result.push({
+                name: tagName,
+                color: tagSettings.color,
+                channelCount: controllableCount,
+            })
+        }
+    }
+    return result
+})
+
+const applyTagSelection = (): void => {
+    const newChannels: Array<AvailableChannel> = []
+    for (const tagName of selectedTags.value) {
+        const tagChannels = settingsStore.getTagChannels(tagName)
+        for (const { deviceUID, channelName } of tagChannels) {
+            const src = availableControlChannels.value.find((s) => s.deviceUID === deviceUID)
+            if (src == null) continue
+            const ch = src.channels.find((c) => c.channelName === channelName)
+            if (ch == null) continue
+            if (
+                !newChannels.some((c) => c.deviceUID === deviceUID && c.channelName === channelName)
+            ) {
+                newChannels.push(ch)
+            }
+        }
+    }
+    chosenChannels.value = newChannels
+}
+
 onMounted(async () => {
     watch(rawStore.currentDeviceStatus, () => {
         updateValues()
@@ -214,53 +263,135 @@ onMounted(async () => {
             <p class="my-2 text-center text-lg">
                 <span class="font-bold">{{ profileName }}</span>
             </p>
-            <small class="ml-3 font-light text-sm">
-                {{ t('components.wizards.profileApply.channelsApply') }}
-            </small>
-            <MultiSelect
-                v-model="chosenChannels"
-                :options="availableControlChannels"
-                class="w-full h-11 bg-bg-one items-center"
-                filter
-                checkmark
-                option-label="channelFrontendName"
-                option-group-label="deviceName"
-                option-group-children="channels"
-                :filter-placeholder="t('common.search')"
-                :invalid="chosenChannels.length === 0"
-                scroll-height="40rem"
-                dropdown-icon="pi pi-gauge"
-                :placeholder="t('components.wizards.profileApply.selectChannels')"
-                v-tooltip.bottom="{
-                    escape: false,
-                    value: t('components.wizards.profileApply.channelsTooltip'),
-                }"
-            >
-                <template #optiongroup="slotProps">
-                    <div class="flex items-center">
-                        <svg-icon
-                            type="mdi"
-                            :path="mdiMemory"
-                            :size="deviceStore.getREMSize(1.3)"
-                            class="mr-2"
+            <!-- Mode toggle -->
+            <div class="flex rounded-lg overflow-hidden border border-border-one self-start">
+                <button
+                    class="px-3 py-1 text-sm"
+                    :class="
+                        selectionMode === 'channel'
+                            ? 'bg-accent/80 text-text-color'
+                            : 'bg-bg-one text-text-color-secondary hover:text-text-color'
+                    "
+                    @click="selectionMode = 'channel'"
+                >
+                    {{ t('components.wizards.profileApply.selectByChannel') }}
+                </button>
+                <button
+                    class="px-3 py-1 text-sm flex items-center gap-x-1"
+                    :class="
+                        selectionMode === 'tag'
+                            ? 'bg-accent/80 text-text-color'
+                            : 'bg-bg-one text-text-color-secondary hover:text-text-color'
+                    "
+                    @click="selectionMode = 'tag'"
+                >
+                    <svg-icon type="mdi" :path="mdiTagOutline" :size="deviceStore.getREMSize(1)" />
+                    {{ t('components.wizards.profileApply.selectByTag') }}
+                </button>
+            </div>
+
+            <!-- Channel selection mode -->
+            <template v-if="selectionMode === 'channel'">
+                <small class="ml-3 font-light text-sm">
+                    {{ t('components.wizards.profileApply.channelsApply') }}
+                </small>
+                <MultiSelect
+                    v-model="chosenChannels"
+                    :options="availableControlChannels"
+                    class="w-full h-11 bg-bg-one items-center"
+                    filter
+                    checkmark
+                    option-label="channelFrontendName"
+                    option-group-label="deviceName"
+                    option-group-children="channels"
+                    :filter-placeholder="t('common.search')"
+                    :invalid="chosenChannels.length === 0"
+                    scroll-height="40rem"
+                    dropdown-icon="pi pi-gauge"
+                    :placeholder="t('components.wizards.profileApply.selectChannels')"
+                    v-tooltip.bottom="{
+                        escape: false,
+                        value: t('components.wizards.profileApply.channelsTooltip'),
+                    }"
+                >
+                    <template #optiongroup="slotProps">
+                        <div class="flex items-center">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiMemory"
+                                :size="deviceStore.getREMSize(1.3)"
+                                class="mr-2"
+                            />
+                            <div>{{ slotProps.option.deviceName }}</div>
+                        </div>
+                    </template>
+                    <template #option="slotProps">
+                        <div class="flex items-center w-full justify-between">
+                            <div>
+                                <span
+                                    class="pi pi-minus mr-2 ml-1"
+                                    :style="{ color: slotProps.option.lineColor }"
+                                />{{ slotProps.option.channelFrontendName }}
+                            </div>
+                            <div>
+                                {{ slotProps.option.value + valueSuffix(slotProps.option.metric) }}
+                            </div>
+                        </div>
+                    </template>
+                </MultiSelect>
+            </template>
+
+            <!-- Tag selection mode -->
+            <template v-else>
+                <small class="ml-3 font-light text-sm">
+                    {{ t('components.wizards.profileApply.channelsApply') }}
+                </small>
+                <div
+                    v-if="availableTags.length === 0"
+                    class="ml-3 text-text-color-secondary text-sm"
+                >
+                    {{ t('components.wizards.profileApply.noTags') }}
+                </div>
+                <div v-else class="flex flex-col gap-y-1">
+                    <div
+                        v-for="tag in availableTags"
+                        :key="tag.name"
+                        class="flex items-center gap-x-2 px-3 py-1.5 rounded cursor-pointer hover:bg-bg-one"
+                        :class="{ 'bg-bg-one': selectedTags.includes(tag.name) }"
+                        @click="
+                            () => {
+                                selectedTags.includes(tag.name)
+                                    ? selectedTags.splice(selectedTags.indexOf(tag.name), 1)
+                                    : selectedTags.push(tag.name)
+                                applyTagSelection()
+                            }
+                        "
+                    >
+                        <span
+                            class="pi"
+                            :class="selectedTags.includes(tag.name) ? 'pi-check-square' : 'pi-stop'"
+                            :style="{ color: tag.color }"
                         />
-                        <div>{{ slotProps.option.deviceName }}</div>
+                        <span
+                            class="w-3 h-3 rounded-full"
+                            :style="{ backgroundColor: tag.color }"
+                        />
+                        <span class="flex-1">{{ tag.name }}</span>
+                        <span class="text-text-color-secondary text-xs"
+                            >{{ tag.channelCount }}
+                            {{
+                                t('components.wizards.profileApply.tagFanCount', tag.channelCount)
+                            }}</span
+                        >
                     </div>
-                </template>
-                <template #option="slotProps">
-                    <div class="flex items-center w-full justify-between">
-                        <div>
-                            <span
-                                class="pi pi-minus mr-2 ml-1"
-                                :style="{ color: slotProps.option.lineColor }"
-                            />{{ slotProps.option.channelFrontendName }}
-                        </div>
-                        <div>
-                            {{ slotProps.option.value + valueSuffix(slotProps.option.metric) }}
-                        </div>
-                    </div>
-                </template>
-            </MultiSelect>
+                </div>
+                <!-- Summary of chosen channels -->
+                <div v-if="chosenChannels.length > 0" class="mt-2 ml-3">
+                    <small class="font-light text-sm text-text-color-secondary">
+                        {{ chosenChannels.map((c) => c.channelFrontendName).join(', ') }}
+                    </small>
+                </div>
+            </template>
         </div>
         <div class="flex flex-row justify-between mt-4">
             <Button class="w-24 bg-bg-one" :label="t('common.cancel')" @click="emit('close')" />

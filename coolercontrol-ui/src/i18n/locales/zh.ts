@@ -324,6 +324,7 @@ export default {
                 pin: '固定到顶部',
                 unpin: '取消固定',
                 profileApply: '将配置文件应用到风扇',
+                tags: '管理标签',
             },
         },
         add: {
@@ -346,6 +347,8 @@ export default {
             mouseActions:
                 '仪表盘鼠标操作:\n- 高亮选择以缩放.\n- 滚动以缩放.\n- 右键单击以平移.\n- 双击以重置并继续更新.\n- Ctrl+单击或中键单击以在工具提示中显示所有传感器.',
             fullPage: '全屏模式',
+            filterTags: '筛选标签',
+            filterByTag: '按标签筛选',
             filterBySensor: '按传感器筛选',
             search: '搜索',
             filterTypes: '筛选类型',
@@ -891,6 +894,14 @@ export default {
         },
         modeTable: {
             setting: '设置',
+        },
+        menuTagAssign: {
+            title: '分配标签',
+            noTags: '暂无标签。',
+            newTag: '创建新标签',
+            tagName: '标签名称',
+            editTag: '编辑标签',
+            deleteTag: '删除标签',
         },
         wizards: {
             fanControl: {

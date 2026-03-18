@@ -337,6 +337,7 @@ export default {
                 pin: 'Fijar al Inicio',
                 unpin: 'Desfijar',
                 profileApply: 'Aplicar Perfil a ventiladores',
+                tags: 'Gestionar Etiquetas',
             },
         },
         add: {
@@ -442,6 +443,8 @@ export default {
             mouseActions:
                 'Acciones del ratón en el panel:\n- Resaltar selección para hacer zoom.\n- Desplazar para hacer zoom.\n- Clic derecho para mover cuando se hace zoom.\n- Doble clic para restablecer y reanudar la actualización.\n- Ctrl+clic o clic medio para mostrar todos los sensores en la herramienta de ayuda.',
             fullPage: 'Página Completa',
+            filterTags: 'Filtrar Etiquetas',
+            filterByTag: 'Filtrar por Etiqueta',
             filterBySensor: 'Filtrar por Sensor',
             search: 'Buscar',
             filterTypes: 'Filtrar Tipos',
@@ -925,6 +928,14 @@ export default {
         },
         modeTable: {
             setting: 'Configuración',
+        },
+        menuTagAssign: {
+            title: 'Asignar Etiquetas',
+            noTags: 'No hay etiquetas aún.',
+            newTag: 'Crear Nueva Etiqueta',
+            tagName: 'Nombre de etiqueta',
+            editTag: 'Editar etiqueta',
+            deleteTag: 'Eliminar etiqueta',
         },
         wizards: {
             fanControl: {
