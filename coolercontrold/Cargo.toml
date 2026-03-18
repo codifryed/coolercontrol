@@ -8,5 +8,4 @@ debug = "line-tables-only"
 [profile.release]
 strip = "symbols"
 opt-level = 3
-lto = "fat"
-codegen-units = 1
+lto = "thin"
