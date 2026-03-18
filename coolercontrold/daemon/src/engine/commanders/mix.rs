@@ -281,7 +281,15 @@ impl MixProfileCommander {
                 // We need the last applied values as a backup from all member profiles when ANY
                 // profile produces output, so we can properly compare the results and apply the
                 // correct Duty.
-                last_applied_duties.get(member_profile_uid)?
+                let Some(last_duty) = last_applied_duties.get(member_profile_uid) else {
+                    error!(
+                        "Mix Profile {} skipped: member {} has no output \
+                         and no last applied duty fallback",
+                        mix_profile.profile_uid, member_profile_uid
+                    );
+                    return None;
+                };
+                last_duty
             };
             member_values.push(duty_value_for_calculation);
         }
