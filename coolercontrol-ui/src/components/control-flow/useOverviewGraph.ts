@@ -16,12 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { computed } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import type { Node } from '@vue-flow/core'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceType } from '@/models/Device'
 import type { FanNodeData, FanOption } from './useControlFlowGraph'
+import { computeChainSummary } from './computeChainSummary'
 
 export interface DeviceLabelNodeData {
     deviceName: string
@@ -48,14 +49,16 @@ export interface LightingChannelNodeData {
 }
 
 const deviceStore = useDeviceStore()
-const FANS_PER_ROW = 3
-const COL_GAP = deviceStore.getREMSize(20)
+export const NODE_WIDTH = 220
+export const COL_GAP = deviceStore.getREMSize(20)
 const ROW_GAP = deviceStore.getREMSize(10)
+const CHAIN_PREVIEW_EXTRA = deviceStore.getREMSize(2)
 const INTER_TYPE_GAP = deviceStore.getREMSize(8)
 const DEVICE_LABEL_HEIGHT = deviceStore.getREMSize(3.5)
 const GROUP_GAP = 0
 
-export function useOverviewGraph() {
+export function useOverviewGraph(columnsPerRow?: Ref<number>) {
+    const colsPerRow = columnsPerRow ?? ref(3)
     const deviceStore = useDeviceStore()
     const settingsStore = useSettingsStore()
 
@@ -129,9 +132,9 @@ export function useOverviewGraph() {
 
             // Label spans the widest row across all channel types
             const maxColsUsed = Math.max(
-                Math.min(fanChannels.length, FANS_PER_ROW),
-                Math.min(lcdChannels.length, FANS_PER_ROW),
-                Math.min(lightingChannels.length, FANS_PER_ROW),
+                Math.min(fanChannels.length, colsPerRow.value),
+                Math.min(lcdChannels.length, colsPerRow.value),
+                Math.min(lightingChannels.length, colsPerRow.value),
             )
             result.push({
                 id: `device-label::${device.uid}`,
@@ -145,38 +148,77 @@ export function useOverviewGraph() {
             })
             currentY += DEVICE_LABEL_HEIGHT
 
-            // Fan nodes
-            for (let i = 0; i < fanChannels.length; i++) {
-                const channelName = fanChannels[i]
+            // Fan nodes - build data first for responsive row heights
+            const allDevicesArray = [...deviceStore.allDevices()]
+            const fanEntries: { channelName: string; data: FanNodeData }[] = []
+            for (const channelName of fanChannels) {
                 const channelLabel =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.name ?? channelName
                 const channelColor =
                     deviceSettings?.sensorsAndChannels.get(channelName)?.color ?? '#568af2'
                 const channelSetting = daemonSettings?.settings.get(channelName)
-                result.push({
-                    id: `fan::${device.uid}::${channelName}`,
-                    type: 'fanChannel',
-                    position: {
-                        x: (i % FANS_PER_ROW) * COL_GAP,
-                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
-                    },
+                const isManual = channelSetting?.speed_fixed != null
+                const chainSummary = computeChainSummary(
+                    channelSetting?.profile_uid,
+                    isManual,
+                    settingsStore.profiles,
+                    settingsStore.allUIDeviceSettings,
+                    allDevicesArray,
+                )
+                fanEntries.push({
+                    channelName,
                     data: {
                         deviceUID: device.uid,
                         channelName,
                         channelLabel,
                         channelColor,
                         deviceLabel: deviceName,
-                        isManual: channelSetting?.speed_fixed != null,
+                        isManual,
                         manualDuty: channelSetting?.speed_fixed,
                         profileUID: channelSetting?.profile_uid,
-                    } satisfies FanNodeData,
+                        chainSummary,
+                    },
                 })
             }
-            if (fanChannels.length > 0) {
+
+            // Compute per-row Y offsets: rows with chain previews get extra height
+            const fanRowCount = Math.ceil(fanEntries.length / colsPerRow.value)
+            const fanRowYOffsets: number[] = [0]
+            for (let row = 1; row < fanRowCount; row++) {
+                const prevStart = (row - 1) * colsPerRow.value
+                const prevEnd = Math.min(row * colsPerRow.value, fanEntries.length)
+                const prevHasPreview = fanEntries
+                    .slice(prevStart, prevEnd)
+                    .some((e) => e.data.chainSummary?.hasChain)
+                fanRowYOffsets.push(
+                    fanRowYOffsets[row - 1] + ROW_GAP + (prevHasPreview ? CHAIN_PREVIEW_EXTRA : 0),
+                )
+            }
+
+            for (let i = 0; i < fanEntries.length; i++) {
+                const row = Math.floor(i / colsPerRow.value)
+                const col = i % colsPerRow.value
+                result.push({
+                    id: `fan::${device.uid}::${fanEntries[i].channelName}`,
+                    type: 'fanChannel',
+                    position: {
+                        x: col * COL_GAP,
+                        y: currentY + fanRowYOffsets[row],
+                    },
+                    data: fanEntries[i].data satisfies FanNodeData,
+                })
+            }
+            if (fanEntries.length > 0) {
                 const hasMore = lcdChannels.length > 0 || lightingChannels.length > 0
-                const lastRowGap = hasMore ? INTER_TYPE_GAP : ROW_GAP
-                currentY +=
-                    (Math.ceil(fanChannels.length / FANS_PER_ROW) - 1) * ROW_GAP + lastRowGap
+                const lastRowStart = (fanRowCount - 1) * colsPerRow.value
+                const lastRowHasPreview = fanEntries
+                    .slice(lastRowStart)
+                    .some((e) => e.data.chainSummary?.hasChain)
+                const lastRowExtra = lastRowHasPreview ? CHAIN_PREVIEW_EXTRA : 0
+                const afterLastRow = hasMore
+                    ? INTER_TYPE_GAP + lastRowExtra
+                    : ROW_GAP + lastRowExtra
+                currentY += fanRowYOffsets[fanRowCount - 1] + afterLastRow
             }
 
             // LCD nodes
@@ -197,8 +239,8 @@ export function useOverviewGraph() {
                     id: `lcd::${device.uid}::${channelName}`,
                     type: 'lcdChannel',
                     position: {
-                        x: (i % FANS_PER_ROW) * COL_GAP,
-                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
+                        x: (i % colsPerRow.value) * COL_GAP,
+                        y: currentY + Math.floor(i / colsPerRow.value) * ROW_GAP,
                     },
                     data: {
                         deviceUID: device.uid,
@@ -214,7 +256,7 @@ export function useOverviewGraph() {
                 const hasMore = lightingChannels.length > 0
                 const lastRowGap = hasMore ? INTER_TYPE_GAP : ROW_GAP
                 currentY +=
-                    (Math.ceil(lcdChannels.length / FANS_PER_ROW) - 1) * ROW_GAP + lastRowGap
+                    (Math.ceil(lcdChannels.length / colsPerRow.value) - 1) * ROW_GAP + lastRowGap
             }
 
             // Lighting nodes
@@ -235,8 +277,8 @@ export function useOverviewGraph() {
                     id: `lighting::${device.uid}::${channelName}`,
                     type: 'lightingChannel',
                     position: {
-                        x: (i % FANS_PER_ROW) * COL_GAP,
-                        y: currentY + Math.floor(i / FANS_PER_ROW) * ROW_GAP,
+                        x: (i % colsPerRow.value) * COL_GAP,
+                        y: currentY + Math.floor(i / colsPerRow.value) * ROW_GAP,
                     },
                     data: {
                         deviceUID: device.uid,
@@ -249,7 +291,7 @@ export function useOverviewGraph() {
                 })
             }
             if (lightingChannels.length > 0) {
-                currentY += Math.ceil(lightingChannels.length / FANS_PER_ROW) * ROW_GAP
+                currentY += Math.ceil(lightingChannels.length / colsPerRow.value) * ROW_GAP
             }
 
             currentY += GROUP_GAP

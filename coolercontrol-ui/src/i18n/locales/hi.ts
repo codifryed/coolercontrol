@@ -585,6 +585,8 @@ export default {
             noControllableChannels: 'कोई नियंत्रणीय चैनल नहीं मिला।',
             noControlChain: 'इस चैनल के लिए कोई नियंत्रण श्रृंखला नहीं मिली।',
             controlFlow: 'नियंत्रण प्रवाह',
+            backToOverview: 'नियंत्रण अवलोकन पर वापस जाएं',
+            viewControlFlow: 'नियंत्रण प्रवाह देखें',
         },
         modes: {
             createMode: 'मोड बनाएं',
@@ -1096,7 +1098,6 @@ export default {
         chartType: {
             timeChart: 'समय चार्ट',
             table: 'तालिका',
-            controls: 'नियंत्रण',
         },
         dataType: {
             temp: 'तापमान',

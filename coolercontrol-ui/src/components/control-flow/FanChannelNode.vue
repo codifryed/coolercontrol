@@ -22,12 +22,13 @@ import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { FanNodeData } from './useControlFlowGraph'
+import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFan } from '@mdi/js'
+import { mdiFan, mdiChartLine, mdiThermometer, mdiChevronRight } from '@mdi/js'
 
 const props = defineProps<NodeProps<FanNodeData>>()
 const { t } = useI18n()
@@ -35,6 +36,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
+const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
@@ -51,16 +53,21 @@ const liveValues = computed(() => {
     }
 })
 
+function stepIcon(type: string): string {
+    return type === 'tempSource' ? mdiThermometer : mdiChartLine
+}
+
 function onClick() {
+    const speedTarget = {
+        route: 'device-speed',
+        params: {
+            deviceUID: props.data.deviceUID,
+            channelName: props.data.channelName,
+        },
+    }
     if (flowViewMode === 'overview') {
         if (props.data.isManual || !props.data.profileUID || props.data.profileUID === '0') {
-            router.push({
-                name: 'device-speed',
-                params: {
-                    deviceUID: props.data.deviceUID,
-                    channelName: props.data.channelName,
-                },
-            })
+            router.push({ name: speedTarget.route, params: speedTarget.params })
         } else {
             router.push({
                 name: 'channel-control-flow',
@@ -70,14 +77,10 @@ function onClick() {
                 },
             })
         }
+    } else if (openNodeDrawer) {
+        openNodeDrawer(speedTarget)
     } else {
-        router.push({
-            name: 'device-speed',
-            params: {
-                deviceUID: props.data.deviceUID,
-                channelName: props.data.channelName,
-            },
-        })
+        router.push({ name: speedTarget.route, params: speedTarget.params })
     }
 }
 </script>
@@ -85,7 +88,7 @@ function onClick() {
 <template>
     <div
         class="cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
-        style="min-width: 220px"
+        :style="{ width: flowViewMode === 'overview' ? '220px' : undefined, minWidth: '220px' }"
         @click="onClick"
     >
         <div
@@ -130,6 +133,37 @@ function onClick() {
                     {{ liveValues.rpm }} {{ t('models.dataType.rpm') }}
                 </span>
             </div>
+        </div>
+        <div
+            v-if="flowViewMode === 'overview' && data.chainSummary?.hasChain"
+            class="flex items-center gap-1 overflow-hidden border-t border-border-one px-3 py-1.5"
+            v-tooltip.bottom="t('views.controls.viewControlFlow')"
+        >
+            <template v-for="(step, idx) in data.chainSummary.steps.slice(0, 3)" :key="idx">
+                <svg-icon
+                    v-if="idx > 0"
+                    type="mdi"
+                    :path="mdiChevronRight"
+                    class="size-3 shrink-0 text-text-color-secondary"
+                />
+                <svg-icon
+                    type="mdi"
+                    :path="stepIcon(step.type)"
+                    class="size-3 shrink-0"
+                    :class="step.type === 'profile' ? 'text-accent' : 'text-text-color-secondary'"
+                />
+                <span
+                    class="truncate text-[11px]"
+                    :class="step.type === 'profile' ? 'text-accent' : 'text-text-color-secondary'"
+                >
+                    {{ step.name }}
+                </span>
+            </template>
+            <svg-icon
+                type="mdi"
+                :path="mdiChevronRight"
+                class="ml-auto size-3.5 shrink-0 text-text-color-secondary"
+            />
         </div>
         <Handle type="target" :position="Position.Right" class="!bg-accent" />
     </div>

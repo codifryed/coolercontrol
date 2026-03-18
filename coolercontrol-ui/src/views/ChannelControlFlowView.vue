@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, provide, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -28,11 +28,16 @@ import TempSourceNode from '@/components/control-flow/TempSourceNode.vue'
 import CustomSensorNode from '@/components/control-flow/CustomSensorNode.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiArrowLeft } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
+import Button from 'primevue/button'
+import Drawer from 'primevue/drawer'
+import type { NodeDrawerTarget } from '@/components/control-flow/types'
+import { useRouter } from 'vue-router'
 
 const props = defineProps<{
     deviceUID: string
@@ -43,8 +48,33 @@ const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const colorStore = useThemeColorsStore()
+const router = useRouter()
 
 provide('flowViewMode', 'detail')
+
+const drawerVisible = ref(false)
+const drawerComponent = shallowRef<ReturnType<typeof defineAsyncComponent> | null>(null)
+const drawerProps = ref<Record<string, any>>({})
+const drawerKey = ref(0)
+
+const viewComponents: Record<string, ReturnType<typeof defineAsyncComponent>> = {
+    'device-speed': defineAsyncComponent(() => import('@/views/SpeedView.vue')),
+    profiles: defineAsyncComponent(() => import('@/views/ProfileView.vue')),
+    functions: defineAsyncComponent(() => import('@/views/FunctionView.vue')),
+    'custom-sensors': defineAsyncComponent(() => import('@/views/CustomSensorView.vue')),
+    'single-dashboard': defineAsyncComponent(() => import('@/views/SingleDashboardView.vue')),
+}
+
+function openNodeDrawer(target: NodeDrawerTarget) {
+    const comp = viewComponents[target.route]
+    if (!comp) return
+    drawerComponent.value = comp
+    drawerProps.value = target.params
+    drawerKey.value++
+    drawerVisible.value = true
+}
+
+provide('openNodeDrawer', openNodeDrawer)
 
 const MAX_ZOOM = 1.2
 const MIN_ZOOM = 1.0
@@ -101,6 +131,15 @@ const channelLabel = computed(() => {
 <template>
     <div class="flex h-full flex-col">
         <div class="flex items-center gap-3 border-b-4 border-border-one px-4 py-2">
+            <Button
+                text
+                rounded
+                class="!p-1"
+                v-tooltip.bottom="t('views.controls.backToOverview')"
+                @click="router.push({ name: 'system-controls' })"
+            >
+                <svg-icon type="mdi" :path="mdiArrowLeft" :size="deviceStore.getREMSize(1.25)" />
+            </Button>
             <span class="text-2xl font-bold text-text-color">
                 {{ channelLabel }} - {{ t('views.controls.controlFlow') }}
             </span>
@@ -121,6 +160,10 @@ const channelLabel = computed(() => {
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
+            pan-on-drag
+            pan-on-scroll
+            :zoom-on-scroll="false"
+            :zoom-on-double-click="false"
             class="flex-1"
         >
             <template #node-fanChannel="fanProps">
@@ -149,6 +192,40 @@ const channelLabel = computed(() => {
             />
             <Controls :show-interactive="false" class="!bg-bg-two" />
         </VueFlow>
+
+        <Drawer
+            v-model:visible="drawerVisible"
+            position="right"
+            class="!w-[78vw] !bg-bg-one"
+            :dismissable="true"
+            :modal="true"
+        >
+            <template #container="{ closeCallback }">
+                <div class="flex h-full flex-row">
+                    <div
+                        class="flex flex-col items-center border-r border-border-one bg-bg-two px-1 py-3"
+                    >
+                        <Button
+                            type="button"
+                            icon="pi pi-times"
+                            rounded
+                            text
+                            class="!text-text-color-secondary hover:!text-text-color hover:!bg-bg-two !w-10 !h-full !items-start"
+                            @click="closeCallback"
+                        />
+                    </div>
+                    <div class="flex-1 bg-bg-one">
+                        <Suspense v-if="drawerComponent">
+                            <component
+                                :is="drawerComponent"
+                                v-bind="drawerProps"
+                                :key="drawerKey"
+                            />
+                        </Suspense>
+                    </div>
+                </div>
+            </template>
+        </Drawer>
     </div>
 </template>
 

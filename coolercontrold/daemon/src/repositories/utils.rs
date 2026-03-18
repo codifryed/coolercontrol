@@ -94,9 +94,9 @@ impl ShellCommand {
                         Ok(Some(_)) => break,
                         Ok(None) => {} // loop
                         Err(err) => {
-                            error!(
-                                "Error checking process status for command: {}, {}",
-                                &self.command, err
+                            stderr = format!(
+                                "Error checking process status for command: {}, {err}",
+                                self.command
                             );
                             break;
                         }
@@ -113,39 +113,30 @@ impl ShellCommand {
                         match child.wait().await {
                             Ok(status) => status.success(),
                             Err(err) => {
-                                error!(
-                                    "Error waiting for killed process: {}, {}",
-                                    &self.command, err
-                                );
+                                warn!("Error waiting for killed process: {}, {err}", self.command);
                                 false
                             }
                         }
                     }
                     Ok(Some(status)) => status.success(),
                     Err(err) => {
-                        error!(
-                            "Error checking process status for command: {}, {}",
-                            &self.command, err
+                        warn!(
+                            "Error checking process status for command: {}, {err}",
+                            self.command
                         );
                         false
                     }
                 };
                 if let Some(mut child_err) = child.stderr.take() {
                     if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                        error!(
-                            "Error reading stderr for command: {}, {}",
-                            &self.command, err
-                        );
+                        warn!("Error reading stderr for command: {}, {err}", self.command);
                     }
                     limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_string();
                 }
                 if let Some(mut child_out) = child.stdout.take() {
                     if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                        error!(
-                            "Error reading stdout for command: {}, {}",
-                            &self.command, err
-                        );
+                        warn!("Error reading stdout for command: {}, {err}", self.command);
                     }
                     limit_output_length(&mut stdout);
                     stdout = stdout.trim().to_string();
@@ -153,8 +144,8 @@ impl ShellCommand {
             }
             Err(err) => {
                 error!(
-                    "Unexpected Error spawning process for command: {}, {}",
-                    &self.command, err
+                    "Unexpected Error spawning process for command: {}, {err}",
+                    self.command
                 );
                 stderr = err.to_string();
             }
@@ -218,17 +209,14 @@ impl DirectCommand {
                         Ok(Some(_)) => break,
                         Ok(None) => {}
                         Err(err) => {
-                            error!(
-                                "Error checking process status for {}: {}",
-                                &self.binary, err
-                            );
+                            warn!("Error checking process status for {}: {err}", self.binary);
                             break;
                         }
                     }
                 }
                 let exit_code = match child.try_wait() {
                     Ok(None) => {
-                        warn!(
+                        debug!(
                             "DirectCommand did not complete within timeout: {:?} Killing: {}",
                             self.timeout, self.binary
                         );
@@ -242,9 +230,8 @@ impl DirectCommand {
                     Ok(Some(status)) => status.code().unwrap_or(-1),
                     Err(err) => {
                         return Err(anyhow!(
-                            "Error checking process status for {}: {}",
-                            self.binary,
-                            err
+                            "Error checking process status for {}: {err}",
+                            self.binary
                         ));
                     }
                 };
@@ -252,21 +239,21 @@ impl DirectCommand {
                 let mut stderr = String::new();
                 if let Some(mut child_err) = child.stderr.take() {
                     if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                        error!("Error reading stderr for {}: {}", &self.binary, err);
+                        warn!("Error reading stderr for {}: {err}", &self.binary);
                     }
                     limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_string();
                 }
                 if let Some(mut child_out) = child.stdout.take() {
                     if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                        error!("Error reading stdout for {}: {}", &self.binary, err);
+                        warn!("Error reading stdout for {}: {err}", self.binary);
                     }
                     limit_output_length(&mut stdout);
                     stdout = stdout.trim().to_string();
                 }
                 Ok((exit_code, stdout, stderr))
             }
-            Err(err) => Err(anyhow!("Failed to spawn {}: {}", self.binary, err)),
+            Err(err) => Err(anyhow!("Failed to spawn {}: {err}", self.binary)),
         }
     }
 }

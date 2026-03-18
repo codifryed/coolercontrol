@@ -43,7 +43,6 @@ import SensorTable from '@/components/SensorTable.vue'
 import TimeChart from '@/components/TimeChart.vue'
 import { v4 as uuidV4 } from 'uuid'
 import _ from 'lodash'
-import ControlsOverview from '@/components/ControlsOverview.vue'
 import { component as Fullscreen } from 'vue-fullscreen'
 import { useI18n } from 'vue-i18n'
 import { Emitter, EventType } from 'mitt'
@@ -75,6 +74,11 @@ const dashboard: Dashboard =
     props.dashboardUID != null
         ? (settingsStore.dashboards.find((d) => d.uid === props.dashboardUID) ?? homeDashboard)
         : homeDashboard
+
+// Migrate removed Controls chart type to Time Chart
+if ((dashboard.chartType as string) === 'Controls') {
+    dashboard.chartType = ChartType.TIME_CHART
+}
 
 const chartTypes = [...$enum(ChartType).values()].map((type) => ({
     value: type,
@@ -117,7 +121,6 @@ interface AvailableSensorSource {
 
 const chosenSensorSources: Ref<Array<AvailableSensor>> = ref([])
 const sensorSources: Ref<Array<AvailableSensorSource>> = ref([])
-const controlSensorSources: Ref<Array<AvailableSensorSource>> = ref([])
 const fillSensorSources = (): void => {
     sensorSources.value.length = 0
     for (const device of deviceStore.allDevices()) {
@@ -154,39 +157,6 @@ const fillSensorSources = (): void => {
     }
 }
 fillSensorSources()
-const fillControlSensorSources = (): void => {
-    controlSensorSources.value.length = 0
-    for (const device of deviceStore.allDevices()) {
-        if (device.info == null) continue
-        if (device.info.channels.size === 0 && device.info.temps.size === 0) {
-            continue
-        }
-        const sensors: Array<AvailableSensor> = []
-        const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-        device.info.channels.forEach((value: ChannelInfo, key: string) => {
-            if (
-                value.speed_options == null &&
-                value.lcd_modes.length === 0 &&
-                value.lighting_modes.length === 0
-            )
-                return
-            const sensorSettings = deviceSettings.sensorsAndChannels.get(key)!
-            sensors.push({
-                name: key,
-                deviceUID: device.uid,
-                label: sensorSettings.name,
-                color: sensorSettings.color,
-            })
-        })
-        if (sensors.length === 0) continue
-        controlSensorSources.value.push({
-            deviceUID: device.uid,
-            deviceName: deviceSettings.name,
-            sensors: sensors,
-        })
-    }
-}
-fillControlSensorSources()
 const fillChosenSensorSources = (): void => {
     chosenSensorSources.value.length = 0
     const deviceChannelsMap: Map<UID, Array<string>> = new Map()
@@ -264,21 +234,6 @@ const effectiveChannels = computed<Array<DashboardDeviceChannel>>(() => {
 const filteredSensorSources = computed<Array<AvailableSensorSource>>(() => {
     if (tagResolvedChannels.value.length === 0) return sensorSources.value
     return sensorSources.value
-        .map((source) => ({
-            ...source,
-            sensors: source.sensors.filter(
-                (s) =>
-                    !tagResolvedChannels.value.some(
-                        (tc) => tc.deviceUID === s.deviceUID && tc.channelName === s.name,
-                    ),
-            ),
-        }))
-        .filter((source) => source.sensors.length > 0)
-})
-
-const filteredControlSensorSources = computed<Array<AvailableSensorSource>>(() => {
-    if (tagResolvedChannels.value.length === 0) return controlSensorSources.value
-    return controlSensorSources.value
         .map((source) => ({
             ...source,
             sensors: source.sensors.filter(
@@ -433,11 +388,7 @@ onUnmounted(() => {
             <div class="p-2 pr-0 flex flex-row">
                 <MultiSelect
                     v-model="chosenSensorSources"
-                    :options="
-                        dashboard.chartType !== ChartType.CONTROLS
-                            ? filteredSensorSources
-                            : filteredControlSensorSources
-                    "
+                    :options="filteredSensorSources"
                     class="w-36 h-[2.375rem]"
                     :placeholder="t('views.dashboard.filterSensors')"
                     :filter-placeholder="t('common.search')"
@@ -474,7 +425,6 @@ onUnmounted(() => {
                     </template>
                 </MultiSelect>
                 <MultiSelect
-                    v-if="dashboard.chartType != ChartType.CONTROLS"
                     v-model="dashboard.dataTypes"
                     :options="dataTypes"
                     class="ml-3 w-36 h-[2.375rem]"
@@ -559,12 +509,6 @@ onUnmounted(() => {
                 v-else-if="dashboard.chartType == ChartType.TABLE"
                 :dashboard="viewDashboard"
                 :key="'table' + chartKey"
-            />
-            <!--            todo: get rid on control dashboards-->
-            <ControlsOverview
-                v-else-if="dashboard.chartType == ChartType.CONTROLS"
-                :dashboard="viewDashboard"
-                :key="'controls' + chartKey"
             />
         </div>
     </Fullscreen>

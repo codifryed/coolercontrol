@@ -582,6 +582,8 @@ export default {
             noControllableChannels: 'No controllable channels found.',
             noControlChain: 'No control chain found for this channel.',
             controlFlow: 'Control Flow',
+            backToOverview: 'Back to Controls Overview',
+            viewControlFlow: 'View control flow',
         },
         modes: {
             createMode: 'Create Mode',
@@ -1097,7 +1099,6 @@ export default {
         chartType: {
             timeChart: 'Time Chart',
             table: 'Table',
-            controls: 'Controls',
         },
         dataType: {
             temp: 'Temp',

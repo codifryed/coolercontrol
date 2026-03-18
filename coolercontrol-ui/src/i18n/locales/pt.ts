@@ -532,6 +532,8 @@ export default {
             noControllableChannels: 'Nenhum canal controlável encontrado.',
             noControlChain: 'Nenhuma cadeia de controle encontrada para este canal.',
             controlFlow: 'Fluxo de Controle',
+            backToOverview: 'Voltar para visão geral dos controles',
+            viewControlFlow: 'Ver fluxo de controle',
         },
         modes: {
             createMode: 'Criar Modo',
@@ -1136,7 +1138,6 @@ export default {
         chartType: {
             timeChart: 'Gráfico de Tempo',
             table: 'Tabela',
-            controls: 'Controles',
         },
         dataType: {
             temp: 'Temp',

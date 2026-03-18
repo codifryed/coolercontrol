@@ -586,6 +586,8 @@ export default {
             noControllableChannels: 'Управляемые каналы не найдены.',
             noControlChain: 'Цепочка управления для этого канала не найдена.',
             controlFlow: 'Поток управления',
+            backToOverview: 'Вернуться к обзору управления',
+            viewControlFlow: 'Просмотр потока управления',
         },
         modes: {
             createMode: 'Создать режим',
@@ -1096,7 +1098,6 @@ export default {
         chartType: {
             timeChart: 'Временной график',
             table: 'Таблица',
-            controls: 'Управление',
         },
         dataType: {
             temp: 'Темп',

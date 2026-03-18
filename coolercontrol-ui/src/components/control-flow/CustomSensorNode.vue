@@ -17,11 +17,12 @@
   -->
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { CustomSensorNodeData } from './useControlFlowGraph'
+import type { NodeDrawerTarget } from './types'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useRouter } from 'vue-router'
 // @ts-ignore
@@ -32,6 +33,7 @@ const props = defineProps<NodeProps<CustomSensorNodeData>>()
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const router = useRouter()
+const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
 
 const liveTemp = computed(() => {
     const status = deviceStore.currentDeviceStatus.get(props.data.deviceUID)
@@ -39,10 +41,15 @@ const liveTemp = computed(() => {
 })
 
 function onClick() {
-    router.push({
-        name: 'custom-sensors',
+    const target = {
+        route: 'custom-sensors',
         params: { customSensorID: props.data.sensorId },
-    })
+    }
+    if (openNodeDrawer) {
+        openNodeDrawer(target)
+    } else {
+        router.push({ name: target.route, params: target.params })
+    }
 }
 
 const typeBadgeClass: Record<string, string> = {

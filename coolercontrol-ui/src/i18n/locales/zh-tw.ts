@@ -716,6 +716,8 @@ export default {
             noControllableChannels: '未找到可控通道。',
             noControlChain: '未找到此通道的控制鏈。',
             controlFlow: '控制流',
+            backToOverview: '返回控制總覽',
+            viewControlFlow: '查看控制流程',
         },
         devices: {
             detectionIssues: '檢測問題？請查看',
@@ -1065,7 +1067,6 @@ export default {
         chartType: {
             timeChart: '時間圖表',
             table: '表格',
-            controls: '控制器',
         },
         dataType: {
             temp: '溫度',

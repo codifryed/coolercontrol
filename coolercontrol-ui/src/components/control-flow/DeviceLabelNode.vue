@@ -20,21 +20,18 @@
 import { computed } from 'vue'
 import type { NodeProps } from '@vue-flow/core'
 import type { DeviceLabelNodeData } from './useOverviewGraph'
+import { COL_GAP, NODE_WIDTH } from './useOverviewGraph'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiChip } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 
-const FAN_NODE_WIDTH = 220
-// const COL_GAP = 320
-
 const props = defineProps<NodeProps<DeviceLabelNodeData>>()
 const deviceStore = useDeviceStore()
-const COL_GAP = deviceStore.getREMSize(20)
 
 const labelWidth = computed(() => {
-    const cols = Math.min(props.data.channelCount, 3)
-    return Math.max(FAN_NODE_WIDTH, (cols - 1) * COL_GAP + FAN_NODE_WIDTH)
+    const cols = props.data.channelCount
+    return Math.max(NODE_WIDTH, (cols - 1) * COL_GAP + NODE_WIDTH)
 })
 </script>
 
