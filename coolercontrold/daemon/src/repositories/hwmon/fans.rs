@@ -296,14 +296,22 @@ async fn get_pwm_duty(
     {
         Ok(duty) => Some(duty),
         Err(err) => {
-            let is_unsupported = err
-                .downcast_ref::<Error>()
-                .is_some_and(|io_err| io_err.kind() == ErrorKind::Unsupported);
-            if is_unsupported {
-                if devices::get_device_name(base_path).await == devices::DEVICE_NAME_GPD_FAN {
-                    // The GPD Fan driver doesn't support pwm reading in auto-mode; return 100%
-                    // as many other hwmon drivers do by default.
-                    return Some(100.0);
+            // Known drivers that refuse pwmX reads in auto mode:
+            //   - gpd_fan:  EOPNOTSUPP (io::ErrorKind::Unsupported)
+            //   - dell_smm: ENODATA    (raw os error 61)
+            let is_kernel_refusal = err.downcast_ref::<Error>().is_some_and(|io_err| {
+                io_err.raw_os_error().is_some() && io_err.kind() != ErrorKind::NotFound
+            });
+            if is_kernel_refusal {
+                if let Some(pwm_enable) = get_current_pwm_enable(base_path, channel_number).await {
+                    if pwm_enable >= PWM_ENABLE_AUTO_VALUE {
+                        debug!(
+                            "pwmX read refused by kernel driver in auto mode \
+                             (pwm_enable={pwm_enable}) at {}; returning 100% duty",
+                            pwm_path.display()
+                        );
+                        return Some(100.0);
+                    }
                 }
             }
             if log_error {
@@ -1136,50 +1144,108 @@ mod tests {
 
     #[test]
     #[serial]
-    fn get_pwm_duty_gpd_device_returns_duty_when_file_valid() {
-        // Verifies that a GPD device with a readable pwm file returns the correct duty via the
-        // normal path. The GPD special-case only activates on Unsupported errors; a successful
-        // read must not be affected.
+    fn get_pwm_duty_pwm_readable_in_auto_mode() {
+        // Verifies the happy path: when pwm is readable in auto mode, the normal duty value
+        // is returned without triggering the fallback.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
-            // given: device is gpdfan with a valid pwm file
-            cc_fs::write(ctx.test_base_path.join("name"), b"gpdfan".to_vec())
+            // given: pwm1 = 128, pwm1_enable = 2 (auto)
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
                 .await
                 .unwrap();
-            cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
+            cc_fs::write(ctx.test_base_path.join("pwm1_enable"), b"2".to_vec())
                 .await
                 .unwrap();
 
             // when:
             let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
 
-            // then:
+            // then: normal read succeeds, no fallback needed
             teardown(&ctx).await;
-            assert!(result.is_some());
             assert_eq!(result, Some(pwm_value_to_duty(128)));
         });
     }
 
     #[test]
     #[serial]
-    fn get_pwm_duty_gpd_device_returns_none_for_enoent_not_unsupported() {
-        // Verifies the negative space of the GPD auto-mode fallback: the 100% fallback is
-        // gated on io::ErrorKind::Unsupported (EOPNOTSUPP). A missing-file error (ENOENT) on
-        // a GPD device must still return None, not Some(100.0).
-        // Note: testing the Unsupported + gpdfan → Some(100.0) path requires the actual GPD
-        // fan kernel driver which returns EOPNOTSUPP on pwm reads in auto-mode; it cannot be
-        // reproduced with a regular filesystem and must be verified via integration testing.
+    fn get_pwm_duty_none_when_file_missing_with_auto_mode() {
+        // Verifies that ENOENT (file missing) is excluded from the auto-mode fallback.
+        // A missing pwm file means the channel doesn't exist, not a driver refusal.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
-            // given: device is gpdfan but there is no pwm file (ENOENT, not EOPNOTSUPP)
-            cc_fs::write(ctx.test_base_path.join("name"), b"gpdfan".to_vec())
+            // given: no pwm1 file, but pwm1_enable = 2 (auto)
+            cc_fs::write(ctx.test_base_path.join("pwm1_enable"), b"2".to_vec())
                 .await
                 .unwrap();
 
             // when:
             let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
 
-            // then: ENOENT is not Unsupported, so the GPD fallback must not fire
+            // then: ENOENT is not a kernel refusal — must return None
+            teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_none_when_file_missing_no_pwm_enable() {
+        // Verifies that ENOENT returns None even when pwm_enable doesn't exist.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: no pwm1 file, no pwm1_enable file
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_none_when_parse_error_and_auto_mode() {
+        // Verifies that parse errors (InvalidData) are excluded from the auto-mode fallback.
+        // A garbled file is not a kernel driver refusal.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: pwm1 has non-numeric content, pwm1_enable = 2 (auto)
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"bad".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(ctx.test_base_path.join("pwm1_enable"), b"2".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then: parse error has no raw_os_error — must return None
+            teardown(&ctx).await;
+            assert_eq!(result, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn get_pwm_duty_none_when_parse_error_and_manual_mode() {
+        // Verifies that parse errors return None regardless of pwm_enable value.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: pwm1 has non-numeric content, pwm1_enable = 1 (manual)
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"bad".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(ctx.test_base_path.join("pwm1_enable"), b"1".to_vec())
+                .await
+                .unwrap();
+
+            // when:
+            let result = get_pwm_duty(&ctx.test_base_path, &1, None, false).await;
+
+            // then: parse error + manual mode = no fallback
             teardown(&ctx).await;
             assert_eq!(result, None);
         });
