@@ -281,7 +281,15 @@ impl MixProfileCommander {
                 // We need the last applied values as a backup from all member profiles when ANY
                 // profile produces output, so we can properly compare the results and apply the
                 // correct Duty.
-                last_applied_duties.get(member_profile_uid)?
+                let Some(last_duty) = last_applied_duties.get(member_profile_uid) else {
+                    error!(
+                        "Mix Profile {} skipped: member {} has no output \
+                         and no last applied duty fallback",
+                        mix_profile.profile_uid, member_profile_uid
+                    );
+                    return None;
+                };
+                last_duty
             };
             member_values.push(duty_value_for_calculation);
         }
@@ -339,30 +347,48 @@ impl MixProfileCommander {
     }
 
     /// Collects the duties to apply for all scheduled Mix Profiles from the output cache.
-    /// Child Mix profiles (those referenced by a parent's `member_mix_profile_uids`) are
-    /// skipped — their duty feeds into the parent, not directly to hardware.
     fn collect_duties_to_apply(&self) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
+        Self::collect_duties_from_scheduled(
+            &self.scheduled_settings.borrow(),
+            &self.process_output_cache.borrow(),
+        )
+    }
+
+    /// For child Mix profiles (those referenced by a parent's `member_mix_profile_uids`),
+    /// only device channels owned by the parent are skipped. The child's own directly
+    /// assigned channels are still applied. This allows a Mix Profile to be both directly
+    /// applied to a channel AND used as a member of another Mix Profile.
+    fn collect_duties_from_scheduled(
+        scheduled: &HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>,
+        output_cache: &HashMap<ProfileUID, Option<Duty>>,
+    ) -> HashMap<DeviceUID, Vec<(ChannelName, Duty)>> {
         let mut output_to_apply = HashMap::new();
-        let output_cache_lock = self.process_output_cache.borrow();
-        let scheduled = self.scheduled_settings.borrow();
-        // Collect UIDs of child Mix profiles referenced by any parent
-        let child_mix_uids: HashSet<&ProfileUID> = scheduled
-            .keys()
-            .flat_map(|mp| mp.member_mix_profile_uids.iter())
-            .collect();
-        for (mix_profile, device_channels) in scheduled.iter() {
-            // Skip child Mix profiles — their duty is consumed by the parent Mix,
-            // not applied directly to hardware.
-            if child_mix_uids.contains(&mix_profile.profile_uid) {
-                continue;
+        // For each child Mix profile, collect the device channels that belong to its
+        // parent(s). These channels should not be applied by the child directly.
+        let mut parent_owned_channels: HashMap<&ProfileUID, HashSet<&DeviceChannelProfileSetting>> =
+            HashMap::new();
+        for (mix_profile, parent_device_channels) in scheduled.iter() {
+            for child_uid in &mix_profile.member_mix_profile_uids {
+                parent_owned_channels
+                    .entry(child_uid)
+                    .or_default()
+                    .extend(parent_device_channels);
             }
-            let optional_duty_to_set = output_cache_lock[&mix_profile.profile_uid]
-                .as_ref()
-                .copied();
+        }
+        for (mix_profile, device_channels) in scheduled.iter() {
+            let optional_duty_to_set = output_cache[&mix_profile.profile_uid].as_ref().copied();
             let Some(duty_to_set) = optional_duty_to_set else {
                 continue;
             };
+            let skip_channels = parent_owned_channels.get(&mix_profile.profile_uid);
             for device_channel in device_channels {
+                // Skip channels owned by a parent Mix - the parent applies its own
+                // calculated duty to those channels.
+                if let Some(channels) = skip_channels {
+                    if channels.contains(device_channel) {
+                        continue;
+                    }
+                }
                 // We only apply Mix Profiles directly applied to fan channels, as we
                 // can also schedule Overlay Member Profiles,
                 // which need to be handled properly upstream.
@@ -463,9 +489,11 @@ impl Hash for NormalizedMixProfile {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
+    use std::rc::Rc;
 
     use crate::engine::commanders::mix::{MixProfileCommander, NormalizedMixProfile};
+    use crate::engine::DeviceChannelProfileSetting;
     use crate::setting::ProfileMixFunctionType;
 
     #[test]
@@ -729,5 +757,184 @@ mod tests {
             &last_applied,
         );
         assert_eq!(result, Some(70)); // Max of 70, 40
+    }
+
+    /// Verify that missing last_applied_duties for a member returns None (not silent).
+    #[test]
+    fn missing_last_applied_duty_returns_none() {
+        // Member graph_b has no output and no last_applied fallback.
+        let mix_profile = NormalizedMixProfile {
+            profile_uid: "mix".to_string(),
+            mix_function: ProfileMixFunctionType::Max,
+            member_profile_uids: vec!["graph_a".to_string(), "graph_b".to_string()],
+            member_mix_profile_uids: vec![],
+        };
+        let graph_duties = HashMap::from([
+            ("graph_a".to_string(), Some(70u8)),
+            ("graph_b".to_string(), None),
+        ]);
+        let last_applied = HashMap::new(); // graph_b missing
+        let result = MixProfileCommander::process_single_mix_profile(
+            &mix_profile,
+            &graph_duties,
+            &HashMap::new(),
+            &last_applied,
+        );
+        assert_eq!(result, None);
+    }
+
+    // -- collect_duties_from_scheduled tests --
+
+    /// Helper to build a scheduled settings map entry.
+    fn make_scheduled(
+        entries: Vec<(NormalizedMixProfile, Vec<DeviceChannelProfileSetting>)>,
+    ) -> HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>> {
+        entries
+            .into_iter()
+            .map(|(profile, channels)| (Rc::new(profile), channels.into_iter().collect()))
+            .collect()
+    }
+
+    fn mix_channel(device_uid: &str, channel_name: &str) -> DeviceChannelProfileSetting {
+        DeviceChannelProfileSetting::Mix {
+            device_uid: device_uid.to_string(),
+            channel_name: channel_name.to_string(),
+        }
+    }
+
+    /// A simple top-level Mix profile applies to its channel.
+    #[test]
+    fn collect_duties_simple_mix() {
+        let scheduled = make_scheduled(vec![(
+            NormalizedMixProfile {
+                profile_uid: "mix_a".to_string(),
+                mix_function: ProfileMixFunctionType::Max,
+                member_profile_uids: vec!["g1".to_string()],
+                member_mix_profile_uids: vec![],
+            },
+            vec![mix_channel("dev1", "fan1")],
+        )]);
+        let output_cache = HashMap::from([("mix_a".to_string(), Some(55u8))]);
+        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result["dev1"], vec![("fan1".to_string(), 55)]);
+    }
+
+    /// A child Mix profile used by a parent should NOT apply to the parent's channel,
+    /// but SHOULD still apply to its own directly assigned channel.
+    #[test]
+    fn collect_duties_child_mix_keeps_own_channel() {
+        // child_mix is directly applied to dev1/fan1
+        // parent_mix uses child_mix as a member, applied to dev2/fan2
+        // child_mix's device_channels include BOTH (from scheduling).
+        let scheduled = make_scheduled(vec![
+            (
+                NormalizedMixProfile {
+                    profile_uid: "child_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Max,
+                    member_profile_uids: vec!["g1".to_string(), "g2".to_string()],
+                    member_mix_profile_uids: vec![],
+                },
+                // child_mix has both its own channel and the parent's channel
+                vec![mix_channel("dev1", "fan1"), mix_channel("dev2", "fan2")],
+            ),
+            (
+                NormalizedMixProfile {
+                    profile_uid: "parent_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Avg,
+                    member_profile_uids: vec!["child_mix".to_string(), "g3".to_string()],
+                    member_mix_profile_uids: vec!["child_mix".to_string()],
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+        ]);
+        let output_cache = HashMap::from([
+            ("child_mix".to_string(), Some(60u8)),
+            ("parent_mix".to_string(), Some(70u8)),
+        ]);
+        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        // child_mix should apply to dev1/fan1 (its own) but NOT dev2/fan2 (parent's)
+        assert!(result.contains_key("dev1"));
+        let dev1_duties = &result["dev1"];
+        assert_eq!(dev1_duties.len(), 1);
+        assert_eq!(dev1_duties[0], ("fan1".to_string(), 60));
+        // parent_mix should apply to dev2/fan2
+        assert!(result.contains_key("dev2"));
+        let dev2_duties = &result["dev2"];
+        assert_eq!(dev2_duties.len(), 1);
+        assert_eq!(dev2_duties[0], ("fan2".to_string(), 70));
+    }
+
+    /// A child Mix with only parent-owned channels should not produce any output.
+    #[test]
+    fn collect_duties_child_only_channels_skipped() {
+        // child_mix only has channels from the parent, no direct assignment.
+        let scheduled = make_scheduled(vec![
+            (
+                NormalizedMixProfile {
+                    profile_uid: "child_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Max,
+                    member_profile_uids: vec!["g1".to_string()],
+                    member_mix_profile_uids: vec![],
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+            (
+                NormalizedMixProfile {
+                    profile_uid: "parent_mix".to_string(),
+                    mix_function: ProfileMixFunctionType::Avg,
+                    member_profile_uids: vec!["child_mix".to_string(), "g2".to_string()],
+                    member_mix_profile_uids: vec!["child_mix".to_string()],
+                },
+                vec![mix_channel("dev2", "fan2")],
+            ),
+        ]);
+        let output_cache = HashMap::from([
+            ("child_mix".to_string(), Some(40u8)),
+            ("parent_mix".to_string(), Some(50u8)),
+        ]);
+        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        // Only parent_mix applies to dev2/fan2. child_mix is fully skipped.
+        assert_eq!(result.len(), 1);
+        let dev2_duties = &result["dev2"];
+        assert_eq!(dev2_duties.len(), 1);
+        assert_eq!(dev2_duties[0], ("fan2".to_string(), 50));
+    }
+
+    /// A Mix profile with None output should not produce any duties.
+    #[test]
+    fn collect_duties_none_output_skipped() {
+        let scheduled = make_scheduled(vec![(
+            NormalizedMixProfile {
+                profile_uid: "mix_a".to_string(),
+                mix_function: ProfileMixFunctionType::Max,
+                member_profile_uids: vec!["g1".to_string()],
+                member_mix_profile_uids: vec![],
+            },
+            vec![mix_channel("dev1", "fan1")],
+        )]);
+        let output_cache = HashMap::from([("mix_a".to_string(), None)]);
+        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        assert!(result.is_empty());
+    }
+
+    /// Overlay device channels (non-Mix variant) should not be collected.
+    #[test]
+    fn collect_duties_overlay_channels_ignored() {
+        let scheduled = make_scheduled(vec![(
+            NormalizedMixProfile {
+                profile_uid: "mix_a".to_string(),
+                mix_function: ProfileMixFunctionType::Max,
+                member_profile_uids: vec!["g1".to_string()],
+                member_mix_profile_uids: vec![],
+            },
+            vec![DeviceChannelProfileSetting::Overlay {
+                device_uid: "dev1".to_string(),
+                channel_name: "fan1".to_string(),
+            }],
+        )]);
+        let output_cache = HashMap::from([("mix_a".to_string(), Some(80u8))]);
+        let result = MixProfileCommander::collect_duties_from_scheduled(&scheduled, &output_cache);
+        assert!(result.is_empty());
     }
 }
