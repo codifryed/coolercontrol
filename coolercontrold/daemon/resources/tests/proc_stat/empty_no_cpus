@@ -1,0 +1,4 @@
+intr 1000 0 0
+ctxt 5000
+btime 1773174727
+processes 100

@@ -45,13 +45,13 @@ use crate::api::actor::{
     TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
-use crate::api::session_store::{FileSessionStore, MokaSessionStore};
+use crate::api::session_store::{FileSessionStore, MemorySessionStore};
 use crate::config::Config;
-use crate::config::DEFAULT_CONFIG_DIR;
 use crate::engine::main::Engine;
 use crate::grpc_api::create_grpc_api_server;
 use crate::logger::LogBufHandle;
 use crate::modes::ModeController;
+use crate::paths;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::setting::CoolerControlSettings;
@@ -71,7 +71,6 @@ use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, ServiceExt};
-use axum_extra::typed_header::TypedHeaderRejection;
 use axum_server::tls_rustls::RustlsConfig;
 use derive_more::{Display, Error};
 use log::{debug, info, warn};
@@ -81,7 +80,6 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::Not;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -107,7 +105,7 @@ const API_TIMEOUT_SECS: u64 = 30;
 const API_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 type Port = u16;
-type SessionStoreType = CachingSessionStore<MokaSessionStore, FileSessionStore>;
+type SessionStoreType = CachingSessionStore<MemorySessionStore, FileSessionStore>;
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_server<'s>(
@@ -169,11 +167,11 @@ pub async fn start_server<'s>(
     .await;
     let tls_config = tls_config(&settings).await;
     let session_key = admin::load_or_generate_session_key().await?;
-    let sessions_dir = std::path::PathBuf::from(DEFAULT_CONFIG_DIR).join("sessions");
+    let sessions_dir = paths::sessions_dir().to_path_buf();
     let file_store = FileSessionStore::new(sessions_dir);
-    let moka_store = MokaSessionStore::new(Some(10));
+    let memory_store = MemorySessionStore::new(10);
     let expired_deletion_store = file_store.clone();
-    let caching_store = CachingSessionStore::new(moka_store, file_store);
+    let caching_store = CachingSessionStore::new(memory_store, file_store);
     let session_layer = SessionManagerLayer::new(caching_store)
         .with_name(SESSION_COOKIE_NAME)
         .with_private(session_key)
@@ -571,7 +569,7 @@ async fn create_app_state<'s>(
 ) -> AppState {
     let health = HealthHandle::new(repos, cancel_token.clone(), main_scope);
     let detect_handle = DetectHandle::new(
-        Path::new(DEFAULT_CONFIG_DIR).join("detect.toml"),
+        paths::detect_override_file().to_path_buf(),
         cancel_token.clone(),
         main_scope,
     );
@@ -993,14 +991,6 @@ impl From<JsonRejection> for CCError {
     fn from(jr: JsonRejection) -> Self {
         CCError::UserError {
             msg: jr.body_text(),
-        }
-    }
-}
-
-impl From<TypedHeaderRejection> for CCError {
-    fn from(thr: TypedHeaderRejection) -> Self {
-        CCError::InvalidCredentials {
-            msg: format!("Header: {}, Reason: {:?}", thr.name(), thr.reason()),
         }
     }
 }

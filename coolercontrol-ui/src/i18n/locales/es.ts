@@ -54,6 +54,7 @@ export default {
         password: 'Contraseña',
         currentPassword: 'Contraseña actual',
         newPassword: 'Nueva contraseña',
+        confirmPassword: 'Confirmar contraseña',
         passwordPrompt: 'Ingrese una contraseña',
         passwordWeak: 'Débil',
         passwordMedium: 'Medio',
@@ -82,6 +83,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Modo Creado',
             modeDuplicated: 'Modo Duplicado',
@@ -810,6 +812,9 @@ export default {
             forgotPassword: '¿Olvidó su contraseña?',
             passwordHelp:
                 '¿Olvidó su contraseña? Restablézcala con:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Luego actualice la UI para establecer una nueva contraseña.',
+            continueButton: 'Continuar',
+            backButton: 'Atrás',
+            passwordMismatch: 'Las contraseñas no coinciden',
         },
         notFound: {
             message: 'Al igual que la distribución perfecta de Linux 🐧,\nesta página no existe.',
@@ -979,6 +984,10 @@ export default {
                 channelsApply: 'Canales para Aplicar Perfil',
                 selectChannels: 'Seleccionar Canales',
                 channelsTooltip: 'Seleccione uno o más canales para aplicar este Perfil.',
+                selectByTag: 'Seleccionar por etiqueta',
+                selectByChannel: 'Seleccionar por canal',
+                tagFanCount: '{count} canal | {count} canales',
+                noTags: 'No hay etiquetas configuradas.',
             },
             functionApply: {
                 applyFunction: 'Aplicar Función',
@@ -1016,7 +1025,7 @@ export default {
         enterPassword: 'Introduzca Su Contraseña',
         setNewPassword: 'Introduzca Una Nueva Contraseña',
         changeDefaultPassword:
-            'CoolerControl está usando la contraseña predeterminada.\nPara proteger su sistema de acceso o control no intencionado, es necesario que establezca una contraseña segura.\nEsta contraseña es específica de CoolerControl y es independiente de su cuenta de usuario del sistema.',
+            'Por favor, establezca una contraseña para prevenir el acceso no autorizado. Esta es independiente de su cuenta del sistema.',
         loginFailed: 'Inicio de Sesión Fallido',
         invalidPassword: 'Contraseña Inválida',
         passwordSetFailed: 'Establecer Contraseña Falló',

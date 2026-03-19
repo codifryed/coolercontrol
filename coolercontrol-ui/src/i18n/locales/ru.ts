@@ -54,6 +54,7 @@ export default {
         password: 'Пароль',
         currentPassword: 'Текущий пароль',
         newPassword: 'Новый пароль',
+        confirmPassword: 'Подтвердите пароль',
         passwordPrompt: 'Введите пароль',
         passwordWeak: 'Слабый',
         passwordMedium: 'Средний',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 'с',
+        wattAbbr: 'Вт',
         toast: {
             modeCreated: 'Режим создан',
             modeDuplicated: 'Режим дублирован',
@@ -808,6 +810,9 @@ export default {
             forgotPassword: 'Забыли пароль?',
             passwordHelp:
                 'Забыли пароль? Сбросьте его командой:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Затем обновите интерфейс, чтобы установить новый пароль.',
+            continueButton: 'Продолжить',
+            backButton: 'Назад',
+            passwordMismatch: 'Пароли не совпадают',
         },
         notFound: {
             message: 'Как и идеальный Linux 🐧 дистрибутив,\nэта страница не существует.',
@@ -977,6 +982,10 @@ export default {
                 selectChannels: 'Выбрать каналы',
                 channelsTooltip:
                     'Выберите один или несколько каналов для применения этого профиля.',
+                selectByTag: 'Выбрать по тегу',
+                selectByChannel: 'Выбрать по каналу',
+                tagFanCount: '{count} канал | {count} каналов',
+                noTags: 'Теги не настроены.',
             },
             functionApply: {
                 applyFunction: 'Применить функцию',
@@ -1015,7 +1024,7 @@ export default {
         enterPassword: 'Введите Ваш Пароль',
         setNewPassword: 'Введите Новый Пароль',
         changeDefaultPassword:
-            'CoolerControl использует пароль по умолчанию.\nДля защиты системы от непреднамеренного доступа или управления необходимо установить надёжный пароль.\nЭтот пароль относится только к CoolerControl и не связан с вашей учётной записью пользователя системы.',
+            'Пожалуйста, установите пароль для предотвращения несанкционированного доступа. Он не связан с вашей системной учётной записью.',
         loginFailed: 'Ошибка входа',
         invalidPassword: 'Неверный пароль',
         passwordSetFailed: 'Ошибка установки пароля',

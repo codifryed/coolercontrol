@@ -52,7 +52,6 @@ moro-local = "0.4.0"
 async-trait = "0.1.89"
 bitflags = { version = "2.11.0", features = ["serde"] }
 axum = { version = "0.8.8", features = ["multipart", "macros", "query"] }
-axum-extra = { version = "0.12.5", features = ["typed-header"] }
 # This should follow the dependencies of axum version as well
 tower = { version = "0.5.3" }
 tower-http = { version = "0.6.8", features = [
@@ -67,7 +66,6 @@ tower-http = { version = "0.6.8", features = [
 ] }
 tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-core = { version = "0.15.0", features = ["deletion-task"] }
-moka = { version = "0.12", features = ["future"] }
 base64 = "0.22"
 # time > 0.3.45 requires rust >=1.88
 time = "=0.3.45"
@@ -76,11 +74,9 @@ include_dir = "0.7.4"
 aide = { version = "0.15.1", features = [
   "axum",
   "axum-json",
-  "axum-extra",
   "axum-query",
   "axum-multipart",
 ] }
-headers = "0.4.1"
 # this needs to follow the aide version above (currently 0.9.0)
 schemars = { version = "=0.9.0", features = ["chrono04"] }
 mime = "0.3.17"
@@ -124,17 +120,7 @@ chrono = { version = "0.4.43", features = [
 ] } # We use timestamps in our status history
 strum = { version = "0.28.0", features = ["derive"] } # Enum -> String
 regex = "1.12.3"
-cached = { version = "0.56.0", default-features = false, features = [
-  "proc_macro",
-  "ahash",
-  "async",
-] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
-const_format = "0.2.35" # allows combining string constants
-psutil = { version = "5.4.0", default-features = false, features = [
-  "cpu",
-  "sensors",
-] } # for cpu stats
 # nu-glob 0.108 requires >=1.86
 nu-glob = "=0.107"
 nvml-wrapper = "0.12.0"
@@ -148,12 +134,10 @@ nix = { version = "0.31.2", default-features = false, features = [
   "process",
   "sched",
 ] }
-pciid-parser = "0.8.0"
 libdrm_amdgpu_sys = { version = "0.8.11", default-features = false, features = [
   "dynamic_loading",
 ] }
-hashlink = "0.11.0" # pkg
-yata = "0.7.0" # moving averages
+indexmap = "2"
 tiny-skia = "0.12.0" # vector image creation
 ril = { version = "0.10.3", default-features = false, features = [
   "png",

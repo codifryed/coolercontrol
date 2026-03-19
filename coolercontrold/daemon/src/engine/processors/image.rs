@@ -25,8 +25,8 @@ use std::str::FromStr;
 
 use crate::api::CCError;
 use crate::cc_fs;
-use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::LcdInfo;
+use crate::paths;
 use anyhow::{bail, Result};
 use image::codecs::gif::GifDecoder;
 use image::imageops::FilterType;
@@ -322,7 +322,7 @@ fn verify_images(images_path: &Path) -> Result<Vec<PathBuf>> {
 
 /// Creates the directory for storing processed carousel images if it doesn't already exist.
 async fn create_carousel_processed_image_directory() -> Result<()> {
-    let carousel_processed_image_dir = Path::new(DEFAULT_CONFIG_DIR).join(CAROUSEL_IMAGE_DIRECTORY);
+    let carousel_processed_image_dir = paths::config_dir().join(CAROUSEL_IMAGE_DIRECTORY);
     if carousel_processed_image_dir.exists().not() {
         cc_fs::create_dir_all(&carousel_processed_image_dir)
             .await
@@ -348,11 +348,11 @@ async fn create_carousel_processed_image_directory() -> Result<()> {
 /// A `PathBuf` representing the path to the processed image.
 fn create_carousel_lcd_image_path(content_type: &Mime, image_hash: String) -> PathBuf {
     if content_type == &mime::IMAGE_GIF {
-        Path::new(DEFAULT_CONFIG_DIR)
+        paths::config_dir()
             .join(CAROUSEL_IMAGE_DIRECTORY)
             .join(image_hash + ".gif")
     } else {
-        Path::new(DEFAULT_CONFIG_DIR)
+        paths::config_dir()
             .join(CAROUSEL_IMAGE_DIRECTORY)
             .join(image_hash + ".png")
     }

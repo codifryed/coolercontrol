@@ -54,6 +54,7 @@ export default {
         password: 'Senha',
         currentPassword: 'Senha atual',
         newPassword: 'Nova senha',
+        confirmPassword: 'Confirmar senha',
         passwordPrompt: 'Digite uma senha',
         passwordWeak: 'Fraca',
         passwordMedium: 'Média',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Modo Criado',
             modeDuplicated: 'Modo Duplicado',
@@ -824,6 +826,9 @@ export default {
             forgotPassword: 'Esqueceu sua senha?',
             passwordHelp:
                 'Esqueceu sua senha? Redefina-a com:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Em seguida, atualize a UI para definir uma nova senha.',
+            continueButton: 'Continuar',
+            backButton: 'Voltar',
+            passwordMismatch: 'As senhas não coincidem',
         },
         notFound: {
             message: 'Assim como a distribuição Linux perfeita 🐧,\nesta página não existe.',
@@ -1017,6 +1022,10 @@ export default {
                 channelsApply: 'Canais para Aplicar Perfil',
                 selectChannels: 'Selecionar Canais',
                 channelsTooltip: 'Selecione um ou mais canais para aplicar este Perfil.',
+                selectByTag: 'Selecionar por tag',
+                selectByChannel: 'Selecionar por canal',
+                tagFanCount: '{count} canal | {count} canais',
+                noTags: 'Nenhuma tag configurada.',
             },
             functionApply: {
                 applyFunction: 'Aplicar Função',
@@ -1054,7 +1063,7 @@ export default {
         enterPassword: 'Insira Sua Senha',
         setNewPassword: 'Insira Uma Nova Senha',
         changeDefaultPassword:
-            'CoolerControl está usando a senha padrão.\nPara proteger seu sistema de acesso ou controle não intencional, é necessário definir uma senha segura.\nEsta senha é específica do CoolerControl e separada da sua conta de usuário do sistema.',
+            'Por favor, defina uma senha para impedir o acesso não autorizado. Esta é separada da sua conta do sistema.',
         loginFailed: 'Falha no Login',
         invalidPassword: 'Senha Inválida',
         passwordSetFailed: 'Falha ao Definir Senha',

@@ -54,6 +54,7 @@ export default {
         password: '密碼',
         currentPassword: '目前密碼',
         newPassword: '新密碼',
+        confirmPassword: '確認密碼',
         passwordPrompt: '輸入密碼',
         passwordWeak: '弱',
         passwordMedium: '中',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: '秒',
+        wattAbbr: 'W',
         toast: {
             modeCreated: '模式已建立',
             modeDuplicated: '模式已複製',
@@ -784,6 +786,9 @@ export default {
             forgotPassword: '忘記密碼？',
             passwordHelp:
                 '忘記密碼？使用以下命令重置：<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>然後刷新UI以設置新密碼。',
+            continueButton: '繼續',
+            backButton: '返回',
+            passwordMismatch: '密碼不匹配',
         },
         notFound: {
             message: '就像完美的Linux系統一樣，\n這個頁面並不存在。',
@@ -942,6 +947,10 @@ export default {
                 channelsApply: '要套用設定檔的通道',
                 selectChannels: '選擇通道',
                 channelsTooltip: '選擇一個或多個通道來套用此設定檔。',
+                selectByTag: '按標籤選擇',
+                selectByChannel: '按通道選擇',
+                tagFanCount: '{count} 個通道',
+                noTags: '未設定標籤。',
             },
             functionApply: {
                 applyFunction: '套用功能',
@@ -978,8 +987,7 @@ export default {
     auth: {
         enterPassword: '請輸入您的密碼',
         setNewPassword: '請輸入新密碼',
-        changeDefaultPassword:
-            'CoolerControl 正在使用預設密碼。\n為防止對您系統的意外存取或控制，需要您設定一個安全密碼。\n此密碼僅用於 CoolerControl，與您的系統使用者帳戶分開。',
+        changeDefaultPassword: '請設定密碼以防止未經授權的存取。此密碼與您的系統帳戶分開。',
         loginFailed: '登入失敗',
         invalidPassword: '無效密碼',
         passwordSetFailed: '設置密碼失敗',

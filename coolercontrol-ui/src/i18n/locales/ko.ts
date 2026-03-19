@@ -54,6 +54,7 @@ export default {
         password: '비밀번호',
         currentPassword: '현재 비밀번호',
         newPassword: '새 비밀번호',
+        confirmPassword: '비밀번호 확인',
         passwordPrompt: '비밀번호를 입력하세요',
         passwordWeak: '약함',
         passwordMedium: '보통',
@@ -794,6 +795,9 @@ export default {
             forgotPassword: '비밀번호를 잊으셨나요?',
             passwordHelp:
                 '비밀번호를 잊으셨나요? 다음 명령어로 재설정하세요:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>그런 다음 UI를 새로고침하여 새 비밀번호를 설정하세요.',
+            continueButton: '계속',
+            backButton: '뒤로',
+            passwordMismatch: '비밀번호가 일치하지 않습니다',
         },
         notFound: {
             message: '완벽한 리눅스 🐧 배포판처럼,\n이 페이지는 존재하지 않습니다.',
@@ -960,6 +964,10 @@ export default {
                 channelsApply: '프로파일을 적용할 채널',
                 selectChannels: '채널 선택',
                 channelsTooltip: '이 프로파일을 적용할 채널을 하나 이상 선택하세요.',
+                selectByTag: '태그로 선택',
+                selectByChannel: '채널로 선택',
+                tagFanCount: '{count}개 채널',
+                noTags: '구성된 태그가 없습니다.',
             },
             functionApply: {
                 applyFunction: '기능 적용',
@@ -997,7 +1005,7 @@ export default {
         enterPassword: '비밀번호 입력',
         setNewPassword: '새 비밀번호 입력',
         changeDefaultPassword:
-            'CoolerControl이 기본 비밀번호를 사용하고 있습니다.\n의도치 않은 접근이나 제어로부터 시스템을 보호하려면 안전한 비밀번호를 설정해야 합니다.\n이 비밀번호는 CoolerControl 전용이며 시스템 사용자 계정과 별개입니다.',
+            '무단 접근을 방지하기 위해 비밀번호를 설정해 주세요. 이것은 시스템 계정과 별개입니다.',
         loginFailed: '로그인 실패함',
         invalidPassword: '잘못된 비밀번호',
         passwordSetFailed: '비밀번호 설정 실패',

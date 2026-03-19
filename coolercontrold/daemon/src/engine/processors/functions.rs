@@ -20,16 +20,13 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
-use log::{error, trace};
-use serde::{Deserialize, Serialize};
-use yata::methods::TMA;
-use yata::prelude::Method;
-
 use crate::device::{Duty, Temp};
 use crate::engine::{NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{Function, FunctionType, ProfileUID};
 use crate::AllDevices;
+use log::{error, trace};
+use serde::{Deserialize, Serialize};
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
@@ -39,6 +36,30 @@ const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
+
+/// Triple Exponential Moving Average (EMA of EMA of EMA).
+///
+/// Each EMA layer uses `alpha = 2 / (period + 1)` and is initialized with the first data value.
+/// The triple smoothing provides strong noise reduction while still
+/// tracking trends — used to smooth temperature readings for fan control.
+fn tma_last(data: &[f64], period: usize) -> f64 {
+    assert!(!data.is_empty(), "TMA input must not be empty.");
+    assert!(period >= 1, "TMA period must be >= 1.");
+    #[allow(clippy::cast_precision_loss)]
+    let alpha = 2.0 / (period as f64 + 1.0);
+    debug_assert!(alpha > 0.0);
+    debug_assert!(alpha <= 1.0);
+    let initial = data[0];
+    let mut ema1 = initial;
+    let mut ema2 = initial;
+    let mut ema3 = initial;
+    for &value in data {
+        ema1 = (value - ema1).mul_add(alpha, ema1);
+        ema2 = (ema1 - ema2).mul_add(alpha, ema2);
+        ema3 = (ema2 - ema3).mul_add(alpha, ema3);
+    }
+    ema3
+}
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
@@ -354,23 +375,15 @@ impl FunctionEMAPreProcessor {
         all_temps: &[f64],
         window_size: Option<u8>,
     ) -> f64 {
-        (TMA::new_over(
-            window_size.unwrap_or(TMA_DEFAULT_WINDOW_SIZE),
-            Self::get_temps_slice(all_temps),
-        )
-        .unwrap()
-        .last()
-        .unwrap()
-            * 100.)
-            .round()
-            / 100.
+        let period = usize::from(window_size.unwrap_or(TMA_DEFAULT_WINDOW_SIZE));
+        (tma_last(Self::get_temps_slice(all_temps), period) * 100.).round() / 100.
     }
 
     #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
     fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
         // keeping the sample size low allows the average to be more forward-aggressive,
         // otherwise the actual reading and the EMA take quite a while before they are the same value
-        // todo: we could auto-size the sample size, if the window is larger than the default sample size,
+        // note: we could auto-size the sample size, if the window is larger than the default sample size,
         //  but should test what the actual outcome with be and if that's a realistic value for users.
         let sample_delta = all_temps.len() as isize - TEMP_SAMPLE_SIZE;
         if sample_delta > 0 {
@@ -1130,5 +1143,170 @@ mod tests {
             Some(55),
             "exact fixed step size match should return duty"
         );
+    }
+
+    // ==================== tma_last (Triple EMA) tests ====================
+
+    use super::tma_last;
+
+    /// Round to nearest hundredth, matching the production rounding.
+    fn round_hundredths(v: f64) -> f64 {
+        (v * 100.0).round() / 100.0
+    }
+
+    #[test]
+    fn tma_single_value_returns_that_value() {
+        // Goal: a single data point should pass through all three EMA
+        // layers unchanged (each initialized to the same value).
+        let result = tma_last(&[42.0], 8);
+        assert!((result - 42.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn tma_constant_series_returns_constant() {
+        // Goal: a constant series should produce the same constant,
+        // regardless of period, because EMA of a constant is that constant.
+        let data = [30.0; 20];
+        for period in [1, 4, 8, 16] {
+            let result = tma_last(&data, period);
+            assert!(
+                (result - 30.0).abs() < 1e-10,
+                "Constant series with period {period} gave {result}"
+            );
+        }
+    }
+
+    #[test]
+    fn tma_period_one_returns_last_value() {
+        // Goal: with period=1, alpha=1.0 so each EMA becomes the input.
+        // The triple EMA degenerates to identity.
+        let data = [10.0, 20.0, 30.0, 40.0, 50.0];
+        let result = tma_last(&data, 1);
+        assert!(
+            (result - 50.0).abs() < 1e-10,
+            "Period 1 should return last value, got {result}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn tma_matches_yata_known_values() {
+        // Goal: verify our TMA matches the exact values from the yata crate
+        // that were validated against real hardware behavior.
+        // These are the values from the existing production test.
+        let cases: &[(&[f64], f64)] = &[
+            (&[20., 25.], 20.05),
+            (&[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.], 35.86),
+            (&[30., 30., 30., 30.], 30.),
+        ];
+        for &(data, expected) in cases {
+            let raw = tma_last(data, 8);
+            let rounded = round_hundredths(raw);
+            assert_eq!(
+                rounded, expected,
+                "TMA mismatch for {data:?}: raw={raw}, rounded={rounded}"
+            );
+        }
+    }
+
+    #[test]
+    fn tma_smooths_spike() {
+        // Goal: a single spike in otherwise constant data should be
+        // heavily dampened by triple smoothing. The result should be
+        // much closer to the baseline than to the spike.
+        let mut data = [50.0; 10];
+        data[5] = 100.0; // spike at position 5
+        let result = tma_last(&data, 8);
+        assert!(
+            result > 50.0,
+            "Spike should pull the average above baseline."
+        );
+        assert!(
+            result < 60.0,
+            "Triple EMA should dampen spike significantly, got {result}"
+        );
+    }
+
+    #[test]
+    fn tma_tracks_rising_trend() {
+        // Goal: for a steadily rising series, the TMA should lag behind
+        // the actual values (triple smoothing introduces lag) but should
+        // be above the midpoint of the series, showing it tracks the trend.
+        let data: Vec<f64> = (0..20).map(|i| 20.0 + f64::from(i)).collect();
+        let result = tma_last(&data, 4);
+        let last = *data.last().unwrap();
+        let first = data[0];
+        let midpoint = f64::midpoint(first, last);
+        assert!(
+            result > midpoint,
+            "TMA should track above midpoint for rising data: {result} vs {midpoint}"
+        );
+        assert!(
+            result < last,
+            "TMA should lag behind the latest value: {result} vs {last}"
+        );
+    }
+
+    #[test]
+    fn tma_higher_period_smooths_more() {
+        // Goal: a larger period should produce a value closer to the
+        // initial baseline, since it smooths more aggressively.
+        let data = [20.0, 25.0, 30.0, 90.0, 90.0, 90.0, 30.0, 30.0, 30.0, 30.0];
+        let result_small = tma_last(&data, 4);
+        let result_large = tma_last(&data, 16);
+        // With period 4 (faster response): should be further from initial.
+        // With period 16 (slower response): should be closer to initial (20).
+        assert!(
+            result_large < result_small,
+            "Higher period should smooth more: p16={result_large} vs p4={result_small}"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "TMA input must not be empty")]
+    fn tma_panics_on_empty_input() {
+        // Goal: verify the precondition assertion fires for empty data.
+        tma_last(&[], 8);
+    }
+
+    #[test]
+    #[should_panic(expected = "TMA period must be >= 1")]
+    fn tma_panics_on_zero_period() {
+        // Goal: verify the precondition assertion fires for period 0.
+        tma_last(&[1.0], 0);
+    }
+
+    #[test]
+    fn tma_two_values_short_data() {
+        // Goal: verify TMA handles very short data (2 values) gracefully.
+        // The triple smoothing should still produce a reasonable value
+        // between the two inputs, biased toward the first.
+        let result = tma_last(&[20.0, 80.0], 8);
+        assert!(result > 20.0, "Should be above first value.");
+        assert!(
+            result < 30.0,
+            "Triple EMA heavily weights early values for short data: {result}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn tma_get_temps_slice_limits_sample_size() {
+        // Goal: verify get_temps_slice returns at most TEMP_SAMPLE_SIZE
+        // elements from the end of the array.
+        let all_temps: Vec<f64> = (0..30).map(f64::from).collect();
+        let slice = FunctionEMAPreProcessor::get_temps_slice(&all_temps);
+        assert_eq!(slice.len(), super::TEMP_SAMPLE_SIZE as usize);
+        assert_eq!(*slice.first().unwrap(), 14.0);
+        assert_eq!(*slice.last().unwrap(), 29.0);
+    }
+
+    #[test]
+    fn tma_get_temps_slice_short_data_returns_all() {
+        // Goal: verify get_temps_slice returns the full array when
+        // data is shorter than TEMP_SAMPLE_SIZE.
+        let all_temps = vec![10.0, 20.0, 30.0];
+        let slice = FunctionEMAPreProcessor::get_temps_slice(&all_temps);
+        assert_eq!(slice.len(), 3);
     }
 }

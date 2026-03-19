@@ -549,34 +549,32 @@ export const useDeviceStore = defineStore('device', () => {
             },
             data: {
                 setPasswd: true,
-            },
-            onClose: async (options: any) => {
-                if (options.data && options.data.passwd) {
-                    const response = await daemonClient.setPasswd(
-                        options.data.currentPasswd,
-                        options.data.passwd,
-                    )
-                    if (response instanceof ErrorResponse) {
-                        toast.add({
-                            severity: 'error',
-                            summary: t('device_store.password.set_failed.summary'),
-                            detail: response.error,
-                            life: 5000,
-                        })
-                    } else {
-                        isDefaultPasswd.value = false
-                        localStorage.setItem('isDefaultPasswd', 'false')
-                        // Re-login with new password to refresh the session cookie
-                        await daemonClient.login(options.data.passwd)
-                        toast.add({
-                            severity: 'success',
-                            summary: t('device_store.password.set_success.summary'),
-                            detail: t('device_store.password.set_success.detail'),
-                            life: 3000,
-                        })
+                onVerifyCurrentPassword: async (currentPasswd: string): Promise<string | null> => {
+                    const result = await daemonClient.setPasswd(currentPasswd, currentPasswd)
+                    if (result instanceof ErrorResponse) {
+                        return result.error
                     }
-                }
+                    await daemonClient.login(currentPasswd)
+                    return null
+                },
+                onSubmit: async (currentPasswd: string, passwd: string): Promise<string | null> => {
+                    const response = await daemonClient.setPasswd(currentPasswd, passwd)
+                    if (response instanceof ErrorResponse) {
+                        return response.error
+                    }
+                    isDefaultPasswd.value = false
+                    localStorage.setItem('isDefaultPasswd', 'false')
+                    await daemonClient.login(passwd)
+                    toast.add({
+                        severity: 'success',
+                        summary: t('device_store.password.set_success.summary'),
+                        detail: t('device_store.password.set_success.detail'),
+                        life: 3000,
+                    })
+                    return null
+                },
             },
+            onClose: async (_options: any) => {},
         })
     }
 
@@ -613,40 +611,28 @@ export const useDeviceStore = defineStore('device', () => {
                     setPasswd: true,
                     currentPasswd: daemonClient.defaultPasswd,
                     promptMessage: t('auth.changeDefaultPassword'),
-                },
-                onClose: (options: any) => {
-                    setTimeout(async () => {
-                        if (options?.data && options.data.passwd) {
-                            const response = await daemonClient.setPasswd(
-                                options.data.currentPasswd,
-                                options.data.passwd,
-                            )
-                            if (response instanceof ErrorResponse) {
-                                toast.add({
-                                    severity: 'error',
-                                    summary: t('device_store.password.set_failed.summary'),
-                                    detail: response.error,
-                                    life: 5000,
-                                })
-                                await promptDefaultPasswdChange()
-                                resolve()
-                            } else {
-                                isDefaultPasswd.value = false
-                                localStorage.setItem('isDefaultPasswd', 'false')
-                                await daemonClient.login(options.data.passwd)
-                                toast.add({
-                                    severity: 'success',
-                                    summary: t('device_store.password.set_success.summary'),
-                                    detail: t('device_store.password.set_success.detail'),
-                                    life: 3000,
-                                })
-                                resolve()
-                            }
-                        } else {
-                            await promptDefaultPasswdChange()
-                            resolve()
+                    onSubmit: async (
+                        currentPasswd: string,
+                        passwd: string,
+                    ): Promise<string | null> => {
+                        const response = await daemonClient.setPasswd(currentPasswd, passwd)
+                        if (response instanceof ErrorResponse) {
+                            return response.error
                         }
-                    }, 0)
+                        isDefaultPasswd.value = false
+                        localStorage.setItem('isDefaultPasswd', 'false')
+                        await daemonClient.login(passwd)
+                        toast.add({
+                            severity: 'success',
+                            summary: t('device_store.password.set_success.summary'),
+                            detail: t('device_store.password.set_success.detail'),
+                            life: 3000,
+                        })
+                        return null
+                    },
+                },
+                onClose: (_options: any) => {
+                    resolve()
                 },
             })
         })

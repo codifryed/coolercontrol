@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::config::{Config, DEFAULT_CONFIG_DIR};
+use crate::config::Config;
 use crate::device::{
     ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp,
     TempStatus, Watts, RPM, UID,
@@ -37,12 +37,10 @@ use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource
 use crate::{cc_fs, ENV_CC_LOG};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn, LevelFilter};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
-use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
@@ -51,7 +49,7 @@ use toml_edit::DocumentMut;
 
 pub type ServiceDeviceID = String;
 
-pub const DEFAULT_PLUGINS_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/plugins");
+use crate::paths;
 const SERVICE_MANIFEST_FILE_NAME: &str = "manifest.toml";
 pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
@@ -113,12 +111,15 @@ impl ServicePluginRepo {
     }
 
     async fn find_service_manifests() -> HashMap<ServiceId, ServiceManifest> {
-        let plugins_dir = Path::new(DEFAULT_PLUGINS_PATH);
+        let plugins_dir = paths::plugins_dir();
         let mut services = HashMap::new();
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
-            debug!("Error reading plugins directory: {DEFAULT_PLUGINS_PATH}");
+            debug!("Error reading plugins directory: {}", plugins_dir.display());
             if let Err(err) = cc_fs::create_dir_all(plugins_dir).await {
-                error!("Error creating plugins directory: {DEFAULT_PLUGINS_PATH} Reason: {err}");
+                error!(
+                    "Error creating plugins directory: {} Reason: {err}",
+                    plugins_dir.display()
+                );
             }
             return services;
         };

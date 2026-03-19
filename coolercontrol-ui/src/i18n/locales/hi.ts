@@ -54,6 +54,7 @@ export default {
         password: 'पासवर्ड',
         currentPassword: 'वर्तमान पासवर्ड',
         newPassword: 'नया पासवर्ड',
+        confirmPassword: 'पासवर्ड की पुष्टि करें',
         passwordPrompt: 'पासवर्ड दर्ज करें',
         passwordWeak: 'कमज़ोर',
         passwordMedium: 'मध्यम',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 'सेकंड',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'मोड बनाया गया',
             modeDuplicated: 'मोड डुप्लिकेट किया गया',
@@ -805,6 +807,9 @@ export default {
             forgotPassword: 'पासवर्ड भूल गए?',
             passwordHelp:
                 'पासवर्ड भूल गए? इसे रीसेट करें:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>फिर नया पासवर्ड सेट करने के लिए UI को रिफ्रेश करें।',
+            continueButton: 'जारी रखें',
+            backButton: 'वापस',
+            passwordMismatch: 'पासवर्ड मेल नहीं खाते',
         },
         notFound: {
             message: 'बिल्कुल परफेक्ट Linux 🐧 डिस्ट्रो की तरह,\nयह पृष्ठ मौजूद नहीं है।',
@@ -971,6 +976,10 @@ export default {
                 channelsApply: 'प्रोफाइल लागू करने के लिए चैनल',
                 selectChannels: 'चैनल चुनें',
                 channelsTooltip: 'इस प्रोफाइल को लागू करने के लिए एक या अधिक चैनल चुनें।',
+                selectByTag: 'टैग द्वारा चुनें',
+                selectByChannel: 'चैनल द्वारा चुनें',
+                tagFanCount: '{count} चैनल',
+                noTags: 'कोई टैग कॉन्फ़िगर नहीं किया गया।',
             },
             functionApply: {
                 applyFunction: 'फंक्शन लागू करें',
@@ -1008,7 +1017,7 @@ export default {
         enterPassword: 'अपना पासवर्ड दर्ज करें',
         setNewPassword: 'एक नया पासवर्ड दर्ज करें',
         changeDefaultPassword:
-            'CoolerControl डिफ़ॉल्ट पासवर्ड का उपयोग कर रहा है।\nअनजाने में पहुंच या नियंत्रण से सिस्टम को सुरक्षित रखने के लिए एक सुरक्षित पासवर्ड सेट करना आवश्यक है।\nयह पासवर्ड केवल CoolerControl के लिए है और आपके सिस्टम उपयोगकर्ता खाते से अलग है।',
+            'कृपया अनधिकृत पहुंच को रोकने के लिए पासवर्ड सेट करें। यह आपके सिस्टम खाते से अलग है।',
         loginFailed: 'लॉगिन विफल',
         invalidPassword: 'अमान्य पासवर्ड',
         passwordSetFailed: 'पासवर्ड सेट करना विफल',

@@ -54,6 +54,7 @@ export default {
         password: 'Passwort',
         currentPassword: 'Aktuelles Passwort',
         newPassword: 'Neues Passwort',
+        confirmPassword: 'Passwort bestätigen',
         passwordPrompt: 'Passwort eingeben',
         passwordWeak: 'Schwach',
         passwordMedium: 'Mittel',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Modus erstellt',
             modeDuplicated: 'Modus dupliziert',
@@ -825,6 +827,9 @@ export default {
             forgotPassword: 'Passwort vergessen?',
             passwordHelp:
                 'Passwort vergessen? Setzen Sie es zurück mit:<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Aktualisieren Sie dann die UI, um ein neues Passwort festzulegen.',
+            continueButton: 'Weiter',
+            backButton: 'Zurück',
+            passwordMismatch: 'Passwörter stimmen nicht überein',
         },
         notFound: {
             message: 'Genau wie die perfekte Linux 🐧 Distribution\nexistiert diese Seite nicht.',
@@ -996,6 +1001,10 @@ export default {
                 selectChannels: 'Kanäle auswählen',
                 channelsTooltip:
                     'Wählen Sie einen oder mehrere Kanäle aus, auf die dieses Profil angewendet werden soll.',
+                selectByTag: 'Nach Tag auswählen',
+                selectByChannel: 'Nach Kanal auswählen',
+                tagFanCount: '{count} Kanal | {count} Kanäle',
+                noTags: 'Keine Tags konfiguriert.',
             },
             functionApply: {
                 applyFunction: 'Funktion anwenden',
@@ -1034,7 +1043,7 @@ export default {
         enterPassword: 'Geben Sie Ihr Passwort ein',
         setNewPassword: 'Geben Sie ein neues Passwort ein',
         changeDefaultPassword:
-            'CoolerControl verwendet das Standardpasswort.\nUm Ihr System vor unbeabsichtigtem Zugriff oder unbeabsichtigter Steuerung zu schützen, ist es erforderlich, ein sicheres Passwort festzulegen.\nDieses Passwort ist spezifisch für CoolerControl und von Ihrem Systembenutzerkonto getrennt.',
+            'Bitte legen Sie ein Passwort fest, um unbefugten Zugriff zu verhindern. Dieses ist von Ihrem Systemkonto getrennt.',
         loginFailed: 'Anmeldung fehlgeschlagen',
         invalidPassword: 'Ungültiges Passwort',
         passwordSetFailed: 'Passwort setzen fehlgeschlagen',

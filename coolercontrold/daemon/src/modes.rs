@@ -19,11 +19,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Not;
-use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
 use serde::{Deserialize, Serialize};
@@ -32,13 +30,12 @@ use uuid::Uuid;
 use crate::api::actor::ModeHandle;
 use crate::api::modes::ActiveModesDto;
 use crate::api::CCError;
-use crate::config::{Config, DEFAULT_CONFIG_DIR};
+use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, UID};
 use crate::engine::main::Engine;
+use crate::paths;
 use crate::setting::{ProfileUID, Setting};
 use crate::{cc_fs, AllDevices};
-
-const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
 
 /// The `ModeController` is responsible for managing mode snapshots of all the device settings and
 /// applying them when appropriate.
@@ -122,12 +119,15 @@ impl ModeController {
 
     /// Reads the Mode configuration file and fills the Modes `HashMap` and Mode Order Vec.
     async fn fill_data_from_mode_config_file(&self) -> Result<()> {
-        let config_dir = Path::new(DEFAULT_CONFIG_DIR);
+        let config_dir = paths::config_dir();
         if !config_dir.exists() {
-            info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
+            info!(
+                "config directory doesn't exist. Attempting to create it: {}",
+                config_dir.display()
+            );
             cc_fs::create_dir_all(config_dir).await?;
         }
-        let path = Path::new(DEFAULT_MODE_CONFIG_FILE_PATH).to_path_buf();
+        let path = paths::mode_config_file().to_path_buf();
         let config_contents = if let Ok(contents) = cc_fs::read_txt(&path).await {
             contents
         } else {
@@ -536,7 +536,7 @@ impl ModeController {
             previous_active_mode: self.active_modes.borrow().previous.clone(),
         };
         let mode_config_json = serde_json::to_string(&mode_config)?;
-        cc_fs::write_string(DEFAULT_MODE_CONFIG_FILE_PATH, mode_config_json)
+        cc_fs::write_string(paths::mode_config_file(), mode_config_json)
             .await
             .with_context(|| "Writing Modes Configuration File")?;
         Ok(())

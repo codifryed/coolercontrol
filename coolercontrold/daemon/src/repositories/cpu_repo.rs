@@ -28,6 +28,7 @@ use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
     Status, TempInfo, TempStatus, Watts, UID,
 };
+use crate::repositories::cpu_percent::CpuPercentCollector;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, power_cap, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -36,7 +37,6 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
-use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::time::Instant;
 
@@ -329,7 +329,7 @@ impl CpuRepo {
         let percents = self
             .cpu_percent_collector
             .borrow_mut()
-            .cpu_percent_percpu()
+            .cpu_percent_per_cpu()
             .unwrap_or_default();
         let num_percents = percents.len();
         let num_processors = self.cpu_infos.get(&physical_id)?.get() as usize;

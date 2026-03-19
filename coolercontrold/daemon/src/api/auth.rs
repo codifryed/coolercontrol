@@ -22,24 +22,101 @@ use crate::api::{AppState, CCError};
 use aide::axum::IntoApiResponse;
 use aide::NoApi;
 use anyhow::Result;
-use axum::extract::Request;
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header;
+use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::{Extension, Json};
-use axum_extra::TypedHeader;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use derive_more::Display;
-use headers::authorization::Basic;
-use headers::Authorization;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tower_sessions::Session;
 
-use axum::extract::State;
-
 const SESSION_USER_ID: &str = "CCAdmin";
 const SESSION_PERMISSIONS: &str = "permissions";
 const INVALID_MESSAGE: &str = "Invalid username or password.";
+
+/// Maximum length of a decoded `Authorization: Basic` value.
+/// Base64-decoded "user:password" should never exceed this.
+const MAX_BASIC_AUTH_DECODED_BYTES: usize = 1024;
+
+/// Credentials extracted from an `Authorization: Basic` header.
+///
+/// Replaces the `headers` crate's `Authorization<Basic>` extractor.
+/// Format: `Authorization: Basic base64(username:password)`
+#[derive(Debug, Clone)]
+pub struct BasicAuth {
+    username: String,
+    password: String,
+}
+
+impl BasicAuth {
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn password(&self) -> &str {
+        &self.password
+    }
+
+    /// Parse a raw header value into `BasicAuth` credentials.
+    fn parse_header_value(value: &str) -> Result<Self, CCError> {
+        let encoded = value
+            .strip_prefix("Basic ")
+            .ok_or_else(|| CCError::InvalidCredentials {
+                msg: "Authorization header must use Basic scheme.".to_string(),
+            })?;
+        assert!(!encoded.is_empty(), "Base64 payload must not be empty.");
+        let decoded_bytes = BASE64
+            .decode(encoded)
+            .map_err(|_| CCError::InvalidCredentials {
+                msg: "Invalid base64 in Authorization header.".to_string(),
+            })?;
+        assert!(
+            decoded_bytes.len() <= MAX_BASIC_AUTH_DECODED_BYTES,
+            "Decoded Basic auth exceeds maximum length."
+        );
+        let decoded =
+            String::from_utf8(decoded_bytes).map_err(|_| CCError::InvalidCredentials {
+                msg: "Authorization header contains invalid UTF-8.".to_string(),
+            })?;
+        let (username, password) =
+            decoded
+                .split_once(':')
+                .ok_or_else(|| CCError::InvalidCredentials {
+                    msg: "Authorization header missing ':' separator.".to_string(),
+                })?;
+        assert!(
+            !username.is_empty(),
+            "Username in Basic auth must not be empty."
+        );
+        Ok(Self {
+            username: username.to_string(),
+            password: password.to_string(),
+        })
+    }
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for BasicAuth {
+    type Rejection = CCError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let auth_value = parts.headers.get(header::AUTHORIZATION).ok_or_else(|| {
+            CCError::InvalidCredentials {
+                msg: "Missing Authorization header.".to_string(),
+            }
+        })?;
+        let value = auth_value
+            .to_str()
+            .map_err(|_| CCError::InvalidCredentials {
+                msg: "Authorization header contains invalid characters.".to_string(),
+            })?;
+        Self::parse_header_value(value)
+    }
+}
 
 /// Read-access middleware. Validates Bearer tokens (any valid token) or
 /// session cookies. Used for read-only routes.
@@ -128,11 +205,10 @@ async fn check_session_permission(
 }
 
 pub async fn login(
-    NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
+    NoApi(auth_header): NoApi<BasicAuth>,
     NoApi(session): NoApi<Session>,
     State(AppState { auth_handle, .. }): State<AppState>,
 ) -> Result<(), CCError> {
-    // if the headers aren't present, then `TypedHeaderRejection` is used. (Like JsonRejection)
     if auth_header.username() == SESSION_USER_ID
         && auth_handle
             .match_passwd(auth_header.password().to_string())
@@ -168,7 +244,7 @@ pub struct SetPasswdRequest {
 }
 
 pub async fn set_passwd(
-    NoApi(TypedHeader(auth_header)): NoApi<TypedHeader<Authorization<Basic>>>,
+    NoApi(auth_header): NoApi<BasicAuth>,
     NoApi(session): NoApi<Session>,
     State(AppState { auth_handle, .. }): State<AppState>,
     Json(body): Json<SetPasswdRequest>,
@@ -193,7 +269,7 @@ pub async fn set_passwd(
         .await?;
 
     // Delete current session — flows through CachingSessionStore::delete() which
-    // calls both MokaSessionStore::delete() (invalidate_all) and
+    // calls both MemorySessionStore::delete() (clear all) and
     // FileSessionStore::delete() (delete all files).
     let _ = session.delete().await;
     Ok(())
@@ -207,4 +283,110 @@ pub async fn logout(NoApi(session): NoApi<Session>) -> impl IntoApiResponse {
 pub enum Permission {
     Admin,
     Guest,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encode_basic(username: &str, password: &str) -> String {
+        format!("Basic {}", BASE64.encode(format!("{username}:{password}")))
+    }
+
+    #[test]
+    fn parse_valid_basic_auth() {
+        // Goal: verify standard Basic auth header is parsed correctly.
+        let header = encode_basic("CCAdmin", "mypassword");
+        let auth = BasicAuth::parse_header_value(&header).unwrap();
+        assert_eq!(auth.username(), "CCAdmin");
+        assert_eq!(auth.password(), "mypassword");
+    }
+
+    #[test]
+    fn parse_empty_password() {
+        // Goal: verify that an empty password is accepted (valid per RFC 7617).
+        let header = encode_basic("CCAdmin", "");
+        let auth = BasicAuth::parse_header_value(&header).unwrap();
+        assert_eq!(auth.username(), "CCAdmin");
+        assert_eq!(auth.password(), "");
+    }
+
+    #[test]
+    fn parse_password_with_colon() {
+        // Goal: verify passwords containing ':' are not split incorrectly.
+        // Only the first ':' separates username from password.
+        let header = encode_basic("CCAdmin", "pass:with:colons");
+        let auth = BasicAuth::parse_header_value(&header).unwrap();
+        assert_eq!(auth.username(), "CCAdmin");
+        assert_eq!(auth.password(), "pass:with:colons");
+    }
+
+    #[test]
+    fn parse_unicode_password() {
+        // Goal: verify UTF-8 passwords are handled correctly.
+        let header = encode_basic("CCAdmin", "pässwörd🔒");
+        let auth = BasicAuth::parse_header_value(&header).unwrap();
+        assert_eq!(auth.username(), "CCAdmin");
+        assert_eq!(auth.password(), "pässwörd🔒");
+    }
+
+    #[test]
+    fn reject_non_basic_scheme() {
+        // Goal: verify non-Basic schemes are rejected.
+        let header = "Bearer some_token";
+        let err = BasicAuth::parse_header_value(header).unwrap_err();
+        assert!(
+            matches!(err, CCError::InvalidCredentials { .. }),
+            "Expected InvalidCredentials, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn reject_invalid_base64() {
+        // Goal: verify corrupted base64 is rejected.
+        let header = "Basic !!!not-valid-base64!!!";
+        let err = BasicAuth::parse_header_value(header).unwrap_err();
+        assert!(matches!(err, CCError::InvalidCredentials { .. }));
+    }
+
+    #[test]
+    fn reject_missing_colon_separator() {
+        // Goal: verify that a decoded value without ':' is rejected.
+        let header = format!("Basic {}", BASE64.encode("nocolon"));
+        let err = BasicAuth::parse_header_value(&header).unwrap_err();
+        assert!(matches!(err, CCError::InvalidCredentials { .. }));
+    }
+
+    #[test]
+    fn reject_empty_username() {
+        // Goal: verify that an empty username triggers an assertion panic.
+        let header = encode_basic("", "password");
+        let result = std::panic::catch_unwind(|| BasicAuth::parse_header_value(&header));
+        assert!(result.is_err(), "Expected panic for empty username.");
+    }
+
+    #[test]
+    fn reject_bearer_scheme() {
+        // Goal: verify "Bearer" prefix is not confused with "Basic".
+        let header = "Bearer eyJhbGciOiJIUzI1NiJ9";
+        let err = BasicAuth::parse_header_value(header).unwrap_err();
+        assert!(matches!(err, CCError::InvalidCredentials { .. }));
+    }
+
+    #[test]
+    fn reject_no_scheme() {
+        // Goal: verify a raw value without any scheme prefix is rejected.
+        let header = "dXNlcjpwYXNz"; // base64("user:pass") without "Basic " prefix
+        let err = BasicAuth::parse_header_value(header).unwrap_err();
+        assert!(matches!(err, CCError::InvalidCredentials { .. }));
+    }
+
+    #[test]
+    fn accessors_return_correct_values() {
+        // Goal: verify username() and password() accessors match parsed values.
+        let header = encode_basic("admin", "secret");
+        let auth = BasicAuth::parse_header_value(&header).unwrap();
+        assert_eq!(auth.username(), "admin");
+        assert_eq!(auth.password(), "secret");
+    }
 }

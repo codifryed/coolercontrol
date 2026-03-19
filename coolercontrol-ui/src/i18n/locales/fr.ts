@@ -54,6 +54,7 @@ export default {
         password: 'Mot de passe',
         currentPassword: 'Mot de passe actuel',
         newPassword: 'Nouveau mot de passe',
+        confirmPassword: 'Confirmer le mot de passe',
         passwordPrompt: 'Entrez un mot de passe',
         passwordWeak: 'Faible',
         passwordMedium: 'Moyen',
@@ -81,6 +82,7 @@ export default {
         tempUnit: '°C',
         percentUnit: '%',
         secondAbbr: 's',
+        wattAbbr: 'W',
         toast: {
             modeCreated: 'Mode Créé',
             modeDuplicated: 'Mode Dupliqué',
@@ -823,6 +825,9 @@ export default {
             forgotPassword: 'Mot de passe oublié ?',
             passwordHelp:
                 "Mot de passe oublié ? Réinitialisez-le avec :<br/><br/><code>sudo coolercontrold --reset-password</code><br/><br/>Puis actualisez l'UI pour définir un nouveau mot de passe.",
+            continueButton: 'Continuer',
+            backButton: 'Retour',
+            passwordMismatch: 'Les mots de passe ne correspondent pas',
         },
         notFound: {
             message: "Tout comme la distribution Linux 🐧 parfaite,\ncette page n'existe pas.",
@@ -993,6 +998,10 @@ export default {
                 channelsApply: 'Canaux pour Appliquer le Profil',
                 selectChannels: 'Sélectionner les Canaux',
                 channelsTooltip: 'Sélectionnez un ou plusieurs canaux pour appliquer ce Profil.',
+                selectByTag: 'Sélectionner par tag',
+                selectByChannel: 'Sélectionner par canal',
+                tagFanCount: '{count} canal | {count} canaux',
+                noTags: 'Aucun tag configuré.',
             },
             functionApply: {
                 applyFunction: 'Appliquer la Fonction',
@@ -1031,7 +1040,7 @@ export default {
         enterPassword: 'Entrez Votre Mot de Passe',
         setNewPassword: 'Entrez Un Nouveau Mot de Passe',
         changeDefaultPassword:
-            'CoolerControl utilise le mot de passe par défaut.\nPour protéger votre système contre tout accès ou contrôle non intentionnel, il est nécessaire de définir un mot de passe sécurisé.\nCe mot de passe est spécifique à CoolerControl et distinct de votre compte utilisateur système.',
+            'Veuillez définir un mot de passe pour empêcher tout accès non autorisé. Celui-ci est distinct de votre compte système.',
         loginFailed: 'Échec de Connexion',
         invalidPassword: 'Mot de Passe Invalide',
         passwordSetFailed: 'Échec de Définition du Mot de Passe',

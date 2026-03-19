@@ -25,7 +25,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
@@ -42,12 +41,6 @@ use crate::setting::{
     DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
-pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
-const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
-const DEFAULT_BACKUP_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-bak.toml");
-const DEFAULT_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-ui.json");
-const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str =
-    concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
 pub struct Config {
@@ -59,13 +52,16 @@ pub struct Config {
 impl Config {
     /// loads the configuration file data into memory
     pub async fn load_config_file() -> Result<Self> {
-        let config_dir = Path::new(DEFAULT_CONFIG_DIR);
+        let config_dir = crate::paths::config_dir();
         if !config_dir.exists() {
-            info!("config directory doesn't exist. Attempting to create it: {DEFAULT_CONFIG_DIR}");
+            info!(
+                "config directory doesn't exist. Attempting to create it: {}",
+                config_dir.display()
+            );
             cc_fs::create_dir_all(config_dir).await?;
         }
-        let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
-        let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
+        let path = crate::paths::config_file().to_path_buf();
+        let path_ui = crate::paths::ui_config_file().to_path_buf();
         let config_content = match cc_fs::read_txt(&path).await {
             Ok(content) => {
                 if content.trim().is_empty() {
@@ -192,7 +188,7 @@ impl Config {
 
     /// saves a backup of the daemon config file
     pub async fn save_backup_config_file(&self) -> Result<()> {
-        let backup_path = Path::new(DEFAULT_BACKUP_CONFIG_FILE_PATH).to_path_buf();
+        let backup_path = crate::paths::config_backup().to_path_buf();
         let doc_content = self.document.borrow().to_string();
         cc_fs::write_string(&backup_path, doc_content)
             .await
@@ -211,7 +207,7 @@ impl Config {
     }
 
     pub async fn save_backup_ui_config_file(&self, ui_settings: String) -> Result<()> {
-        let backup_path = Path::new(DEFAULT_BACKUP_UI_CONFIG_FILE_PATH).to_path_buf();
+        let backup_path = crate::paths::ui_config_backup().to_path_buf();
         cc_fs::write_string(&backup_path, ui_settings)
             .await
             .with_context(|| {

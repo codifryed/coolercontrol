@@ -17,21 +17,18 @@
  */
 
 use crate::cc_fs;
-use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::{anyhow, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{DateTime, Local};
-use const_format::concatcp;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use uuid::Uuid;
 
-const TOKENS_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/.tokens");
+use crate::paths;
 const DEFAULT_PERMISSIONS: u32 = 0o600;
 
 fn default_write_access() -> bool {
@@ -75,7 +72,7 @@ pub fn verify_token(raw: &str, hash: &str) -> bool {
 }
 
 pub async fn load_tokens() -> Result<Vec<StoredToken>> {
-    let tokens_path = Path::new(TOKENS_FILE_PATH);
+    let tokens_path = paths::tokens_file();
     if tokens_path.exists() {
         let contents = cc_fs::read_txt(tokens_path).await?;
         let trimmed = contents.trim();
@@ -91,7 +88,7 @@ pub async fn load_tokens() -> Result<Vec<StoredToken>> {
 }
 
 pub async fn save_tokens(tokens: &[StoredToken]) -> Result<()> {
-    let tokens_path = Path::new(TOKENS_FILE_PATH);
+    let tokens_path = paths::tokens_file();
     let json = serde_json::to_string_pretty(tokens)?;
     let _ = cc_fs::remove_file(tokens_path).await;
     cc_fs::write_string(tokens_path, json).await?;
