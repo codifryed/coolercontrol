@@ -27,7 +27,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFunction, mdiChartLine } from '@mdi/js'
+import { mdiFunction, mdiChartLine, mdiInformationSlabCircleOutline } from '@mdi/js'
 
 const props = defineProps<NodeProps<ProfileNodeData>>()
 const { t } = useI18n()
@@ -89,6 +89,17 @@ const typeBadgeClass: Record<string, string> = {
             >
                 {{ data.profileType }}
             </span>
+        </div>
+        <div
+            v-if="data.isDefault"
+            class="px-3 pb-1 pt-0.5"
+            v-tooltip.bottom="{ value: t('views.speed.defaultProfileInfo'), escape: false }"
+        >
+            <svg-icon
+                type="mdi"
+                class="size-4 text-warning"
+                :path="mdiInformationSlabCircleOutline"
+            />
         </div>
         <div class="space-y-1 px-3 pb-2">
             <div

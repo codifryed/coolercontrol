@@ -528,7 +528,7 @@ export default {
             controlOrView: '控制或查看',
             applySetting: '應用設置',
             defaultProfileInfo:
-                '預設設定檔將裝置恢復到其原始驅動程式設定。<br/>某些驅動程式包含內建的自動風扇控制模式，但<i>許多</i>驅動程式沒有。<br/>對於沒有自動控制的裝置，套用預設設定檔將使<br/>風扇保持在其最後配置的速度，CoolerControl將放棄控制。',
+                '預設設定檔指示CoolerControl停止管理此風扇<br/>並恢復原始驅動程式設定。<br/><br/><b>警告：</b>許多驅動程式<i>沒有</i>自動風扇控制功能。<br/>在這些裝置上，風扇將保持在其最後設定的速度，<br/>沒有主動管理。',
         },
         modes: {
             createMode: '創建模式',

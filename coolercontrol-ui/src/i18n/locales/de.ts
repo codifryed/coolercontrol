@@ -400,7 +400,7 @@ export default {
             controlOrView: 'Steuern oder Anzeigen',
             applySetting: 'Einstellung anwenden',
             defaultProfileInfo:
-                'Das Standardprofil stellt das Gerät auf seine ursprünglichen Treibereinstellungen zurück.<br/>Einige Treiber enthalten einen integrierten automatischen Lüftersteuerungsmodus, aber <i>viele</i> nicht.<br/>Bei Geräten ohne automatische Steuerung bleibt der Lüfter bei Anwendung des Standardprofils<br/>auf seiner zuletzt konfigurierten Geschwindigkeit und CoolerControl gibt die Steuerung ab.',
+                'Das Standardprofil weist CoolerControl an, die Steuerung dieses Lüfters<br/>zu beenden und die ursprünglichen Treibereinstellungen wiederherzustellen.<br/><br/><b>Warnung:</b> Viele Treiber verfügen <i>nicht</i> über eine automatische Lüftersteuerung.<br/>Bei diesen Geräten bleibt der Lüfter auf seiner zuletzt eingestellten Geschwindigkeit<br/>ohne aktive Steuerung.',
         },
         customSensors: {
             newSensor: 'Neuer Sensor',

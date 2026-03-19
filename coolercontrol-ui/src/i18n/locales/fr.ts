@@ -407,7 +407,7 @@ export default {
             controlOrView: 'Contrôler ou Afficher',
             applySetting: 'Appliquer le Paramètre',
             defaultProfileInfo:
-                "Le profil par défaut restaure l'appareil à ses paramètres de pilote d'origine.<br/>Certains pilotes incluent un mode de contrôle automatique du ventilateur intégré, mais <i>beaucoup</i> ne le font pas.<br/>Pour les appareils sans contrôle automatique, l'application du profil par défaut laissera<br/>le ventilateur à sa dernière vitesse configurée et CoolerControl abandonnera le contrôle.",
+                "Le Profil par défaut indique à CoolerControl d'arrêter de gérer<br/>ce ventilateur et de restaurer les paramètres d'origine du pilote.<br/><br/><b>Attention :</b> De nombreux pilotes ne disposent <i>pas</i> d'un contrôle<br/>automatique du ventilateur. Sur ces appareils, le ventilateur restera<br/>à sa dernière vitesse définie sans gestion active.",
         },
         customSensors: {
             newSensor: 'Nouveau Capteur',
