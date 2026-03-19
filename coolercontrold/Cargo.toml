@@ -10,3 +10,10 @@ strip = "symbols"
 opt-level = 3
 lto = "thin"
 codegen-units = 6
+
+# Backported fix for CVE-2026-25727 / RUSTSEC-2026-0009 (stack exhaustion in
+# RFC 2822 comment parsing). Upstream fix is in time 0.3.47 which requires
+# Rust 1.88, above our current MSRV of 1.85. The patch adds a depth limit to the
+# recursive comment parser - identical to the upstream fix.
+[patch.crates-io]
+time = { path = "patches/time" }

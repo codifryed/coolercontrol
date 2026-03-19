@@ -67,7 +67,7 @@ tower-http = { version = "0.6.8", features = [
 tower-sessions = { version = "0.15.0", features = ["private"] }
 tower-sessions-core = { version = "0.15.0", features = ["deletion-task"] }
 base64 = "0.22"
-# time > 0.3.45 requires rust >=1.88
+# time > 0.3.45 requires rust >=1.88; patched locally for CVE-2026-25727
 time = "=0.3.45"
 tower-serve-static = "0.1.1"
 include_dir = "0.7.4"
