@@ -66,17 +66,13 @@ function onClick() {
         },
     }
     if (flowViewMode === 'overview') {
-        if (props.data.isManual || !props.data.profileUID || props.data.profileUID === '0') {
-            router.push({ name: speedTarget.route, params: speedTarget.params })
-        } else {
-            router.push({
-                name: 'channel-control-flow',
-                params: {
-                    deviceUID: props.data.deviceUID,
-                    channelName: props.data.channelName,
-                },
-            })
-        }
+        router.push({
+            name: 'channel-control-flow',
+            params: {
+                deviceUID: props.data.deviceUID,
+                channelName: props.data.channelName,
+            },
+        })
     } else if (openNodeDrawer) {
         openNodeDrawer(speedTarget)
     } else {
