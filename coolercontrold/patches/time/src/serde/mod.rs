@@ -104,7 +104,7 @@ use serde_core::{Deserialize, Deserializer, Serialize, Serializer};
 ///     maybe_dt: Option<OffsetDateTime>,
 /// }
 /// ```
-/// 
+///
 /// Define the format separately to be used in multiple places:
 /// ```rust,no_run
 /// # use time::OffsetDateTime;
@@ -155,7 +155,7 @@ use serde_core::{Deserialize, Deserializer, Serialize, Serializer};
 ///     let str_ts = OffsetDateTime::now_utc().format(DATE_TIME_FORMAT).unwrap();
 /// }
 /// ```
-/// 
+///
 /// Customize the configuration of ISO 8601 formatting/parsing:
 /// ```rust,no_run
 /// # use time::OffsetDateTime;
@@ -205,7 +205,7 @@ use serde_core::{Deserialize, Deserializer, Serialize, Serializer};
 /// }
 /// # fn main() {}
 /// ```
-/// 
+///
 /// [`format_description::parse()`]: crate::format_description::parse()
 #[cfg(all(feature = "macros", any(feature = "formatting", feature = "parsing")))]
 pub use time_macros::serde_format_description as format_description;

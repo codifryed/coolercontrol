@@ -14,16 +14,9 @@ edition = "2021"
 rust-version = "1.83.0"
 name = "time"
 version = "0.3.45"
-authors = [
-    "Jacob Pratt <open-source@jhpratt.dev>",
-    "Time contributors",
-]
+authors = ["Jacob Pratt <open-source@jhpratt.dev>", "Time contributors"]
 build = false
-include = [
-    "{src,tests,benchmarks}/**/*",
-    "LICENSE-*",
-    "README.md",
-]
+include = ["{src,tests,benchmarks}/**/*", "LICENSE-*", "README.md"]
 autolib = false
 autobins = false
 autoexamples = false
@@ -32,17 +25,12 @@ autobenches = false
 description = "Date and time library. Fully interoperable with the standard library. Mostly compatible with #![no_std]."
 homepage = "https://time-rs.github.io"
 readme = "README.md"
-keywords = [
-    "date",
-    "time",
-    "calendar",
-    "duration",
-]
+keywords = ["date", "time", "calendar", "duration"]
 categories = [
-    "date-and-time",
-    "no-std",
-    "parser-implementations",
-    "value-formatting",
+  "date-and-time",
+  "no-std",
+  "parser-implementations",
+  "value-formatting",
 ]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/time-rs/time"
@@ -55,51 +43,18 @@ rustdoc-args = ["--generate-link-to-definition"]
 [features]
 alloc = ["serde_core?/alloc"]
 default = ["std"]
-formatting = [
-    "dep:itoa",
-    "std",
-    "time-macros?/formatting",
-]
+formatting = ["dep:itoa", "std", "time-macros?/formatting"]
 large-dates = ["time-macros?/large-dates"]
-local-offset = [
-    "std",
-    "dep:libc",
-    "dep:num_threads",
-]
+local-offset = ["std", "dep:libc", "dep:num_threads"]
 macros = ["dep:time-macros"]
 parsing = ["time-macros?/parsing"]
-quickcheck = [
-    "dep:quickcheck",
-    "alloc",
-    "deranged/quickcheck",
-]
-rand = [
-    "rand08",
-    "rand09",
-]
-rand08 = [
-    "dep:rand08",
-    "deranged/rand08",
-]
-rand09 = [
-    "dep:rand09",
-    "deranged/rand09",
-]
-serde = [
-    "dep:serde_core",
-    "time-macros?/serde",
-    "deranged/serde",
-]
-serde-human-readable = [
-    "serde",
-    "formatting",
-    "parsing",
-]
-serde-well-known = [
-    "serde",
-    "formatting",
-    "parsing",
-]
+quickcheck = ["dep:quickcheck", "alloc", "deranged/quickcheck"]
+rand = ["rand08", "rand09"]
+rand08 = ["dep:rand08", "deranged/rand08"]
+rand09 = ["dep:rand09", "deranged/rand09"]
+serde = ["dep:serde_core", "time-macros?/serde", "deranged/serde"]
+serde-human-readable = ["serde", "formatting", "parsing"]
+serde-well-known = ["serde", "formatting", "parsing"]
 std = ["alloc"]
 wasm-bindgen = ["dep:js-sys"]
 
@@ -168,7 +123,4 @@ optional = true
 [lints.rust.unexpected_cfgs]
 level = "allow"
 priority = 0
-check-cfg = [
-    "cfg(__ui_tests)",
-    "cfg(bench)",
-]
+check-cfg = ["cfg(__ui_tests)", "cfg(bench)"]
