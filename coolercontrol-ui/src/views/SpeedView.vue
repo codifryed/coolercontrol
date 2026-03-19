@@ -79,6 +79,7 @@ const props = defineProps<Props>()
 const { t } = useI18n()
 const router = useRouter()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+const isInsideControlFlow = inject('flowViewMode', null) != null
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const componentKey: Ref<number> = ref(0)
@@ -412,6 +413,7 @@ onUnmounted(() => {
         <div class="flex flex-wrap gap-x-1 justify-end">
             <div v-if="chosenViewType === ChannelViewType.Control" class="p-2 pr-0 flex gap-x-1">
                 <Button
+                    v-if="!isInsideControlFlow"
                     class="!p-2 w-12 h-[2.375rem]"
                     v-tooltip.bottom="t('views.controls.controlFlow')"
                     @click="
