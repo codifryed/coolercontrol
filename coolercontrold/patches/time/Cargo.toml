@@ -124,3 +124,7 @@ optional = true
 level = "allow"
 priority = 0
 check-cfg = ["cfg(__ui_tests)", "cfg(bench)"]
+
+[lints.rust.unstable-name-collisions]
+level = "allow"
+priority = 1
