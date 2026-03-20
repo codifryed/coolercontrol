@@ -47,7 +47,7 @@ const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Deletes the plugin user if it exists.
 /// Tries `userdel` first (systemd distros, Gentoo, Artix, Void), then falls back
-/// to `deluser` for Alpine Linux (BusyBox).
+/// to `deluser` for Alpine Linux (`BusyBox`).
 pub async fn delete_plugin_user(username: &str) -> Result<()> {
     let userdel_ok = matches!(
         DirectCommand::new("userdel", USER_CMD_TIMEOUT)

@@ -19,9 +19,10 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
+use std::rc::Rc;
 
 use crate::device::{Duty, Temp};
-use crate::engine::{NormalizedGraphProfile, Processor, SpeedProfileData};
+use crate::engine::{utils, NormalizedGraphProfile, Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{Function, FunctionType, ProfileUID};
 use crate::AllDevices;
@@ -115,14 +116,21 @@ impl Processor for FunctionIdentityPreProcessor {
 /// The standard Function with Hysteresis control
 pub struct FunctionStandardPreProcessor {
     all_devices: AllDevices,
-    channel_settings_metadata: RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>,
+    channel_settings_metadata: Rc<RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>>,
 }
 
 impl FunctionStandardPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
         Self {
             all_devices,
-            channel_settings_metadata: RefCell::new(HashMap::new()),
+            channel_settings_metadata: Rc::new(RefCell::new(HashMap::new())),
+        }
+    }
+
+    /// Returns a post-processor that shares metadata with this pre-processor.
+    pub fn create_post_processor(&self) -> FunctionStandardPostProcessor {
+        FunctionStandardPostProcessor {
+            channel_settings_metadata: Rc::clone(&self.channel_settings_metadata),
         }
     }
 
@@ -259,27 +267,32 @@ impl FunctionStandardPreProcessor {
         }
     }
 
-    /// Bypasses the hysteresis stack when temp is rising and `only_downward` is set.
-    /// Does NOT update `last_applied_temp` so that subsequent cycles continue
-    /// bypassing as long as the newest temp is still above the baseline. This
-    /// allows the step limiter to gradually climb toward the target duty across
-    /// multiple cycles. `last_applied_temp` only advances through the normal
-    /// hysteresis path (when temp eventually drops and ages through the stack).
+    /// Bypasses the hysteresis stack when the target duty is higher than the
+    /// actual current fan duty and `only_downward` is set. This correctly
+    /// detects "upward" fan movement regardless of temp fluctuations, and
+    /// allows the step limiter to gradually climb toward the target.
     fn should_bypass_for_upward_temp(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
     ) -> bool {
+        debug_assert!(
+            data.profile.speed_profile.is_empty().not(),
+            "speed profile must not be empty for interpolation"
+        );
         let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
             return false;
         };
-        if newest_temp_celsius > metadata.last_applied_temp {
+        let Some(last_applied_duty) = metadata.last_applied_duty else {
+            return false; // No duty history yet, let normal path handle it.
+        };
+        debug_assert!(last_applied_duty <= 100, "duty must be in valid range");
+        let target_duty =
+            utils::interpolate_profile(&data.profile.speed_profile, newest_temp_celsius);
+        if target_duty > last_applied_duty {
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.push_back(newest_temp_celsius);
+            metadata.last_applied_temp = newest_temp_celsius;
             data.temp = Some(newest_temp_celsius);
-            // Intentionally do NOT update last_applied_temp here.
-            // This ensures the bypass keeps firing on subsequent cycles,
-            // allowing the step limiter to gradually reach the target duty.
-            // metadata.last_applied_temp = newest_temp_celsius;
             return true;
         }
         false
@@ -306,7 +319,6 @@ impl FunctionStandardPreProcessor {
 impl Processor for FunctionStandardPreProcessor {
     fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
-        // preprocessor only
     }
 
     fn init_state(&self, profile_uid: &ProfileUID) {
@@ -364,6 +376,7 @@ pub struct ChannelSettingMetadata {
     pub temp_hist_stack: VecDeque<f64>,
     pub ideal_stack_size: usize,
     pub last_applied_temp: f64,
+    pub last_applied_duty: Option<Duty>,
 }
 
 impl ChannelSettingMetadata {
@@ -372,7 +385,44 @@ impl ChannelSettingMetadata {
             temp_hist_stack: VecDeque::new(),
             ideal_stack_size: 0,
             last_applied_temp: 0.,
+            last_applied_duty: None,
         }
+    }
+}
+
+/// Records the applied duty back into the Standard function's metadata
+/// so that `only_downward` bypass decisions use the actual fan duty.
+pub struct FunctionStandardPostProcessor {
+    channel_settings_metadata: Rc<RefCell<HashMap<ProfileUID, ChannelSettingMetadata>>>,
+}
+
+impl Processor for FunctionStandardPostProcessor {
+    fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+        data.profile.function.f_type == FunctionType::Standard && data.duty.is_some()
+    }
+
+    fn init_state(&self, _profile_uid: &ProfileUID) {
+        // State is managed by the pre-processor.
+    }
+
+    fn clear_state(&self, _profile_uid: &ProfileUID) {
+        // State is managed by the pre-processor.
+    }
+
+    fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let Some(duty) = data.duty else {
+            // is_applicable guarantees duty.is_some(); this is unreachable.
+            debug_assert!(false, "process called with duty=None");
+            return data;
+        };
+        debug_assert!(duty <= 100, "duty must be in valid range");
+        let mut metadata_lock = self.channel_settings_metadata.borrow_mut();
+        let Some(metadata) = metadata_lock.get_mut(&data.profile.profile_uid) else {
+            error!("Missing metadata for profile: {}", data.profile.profile_uid);
+            return data;
+        };
+        metadata.last_applied_duty = Some(duty);
+        data
     }
 }
 

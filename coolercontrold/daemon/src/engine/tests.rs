@@ -52,7 +52,7 @@ mod engine_tests {
     #[async_trait(?Send)]
     impl Repository for MockRepository {
         fn device_type(&self) -> DeviceType {
-            self.device_type.clone()
+            self.device_type
         }
 
         async fn initialize_devices(&mut self) -> Result<()> {
@@ -1064,11 +1064,113 @@ mod engine_tests {
             let speeds = set_speeds.borrow().clone();
             assert!(!speeds.is_empty(), "at least one speed should be applied");
             let final_duty = *speeds.last().unwrap();
-            // At 58C, curve interpolates to ~73%. Fan should reach near that
-            // after enough step cycles (15 cycles * 5%/cycle = 75% headroom).
+            // At 58C, curve interpolates to ~73%. With the first cycle applying
+            // 75% (at 60C), duty stays at 75% since target (73) < current (75).
             assert!(
                 final_duty >= 70,
                 "fan should reach near target duty (~73%), got {final_duty}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_only_downward_delays_decrease() {
+        cc_fs::test_runtime(async {
+            // Goal: verify that when temp drops with only_downward=true,
+            // hysteresis delay IS respected and fan duty does NOT drop
+            // immediately. The duty-based bypass should NOT fire because
+            // the target duty is lower than the current duty.
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
+            let device_uid = device.borrow().uid.clone();
+
+            // response_delay=5 gives ideal_stack_size=5 (5s / 1s poll_rate)
+            let function_uid = create_standard_function_with_steps(&config, 5, 2.0, true, 2, 100);
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                vec![(20.0, 25), (50.0, 50), (90.0, 100)],
+                TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                },
+                &function_uid,
+            );
+
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // Warm up at 80C: first cycle applies immediately (first-run path),
+            // subsequent cycles fill the hysteresis stack.
+            for _ in 0..7 {
+                set_temp_status(&device, &temp_channel_name, 80.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let warmup_speeds = set_speeds.borrow().clone();
+            assert!(
+                !warmup_speeds.is_empty(),
+                "warmup should apply at least one speed"
+            );
+            let warmup_duty = *warmup_speeds.last().unwrap();
+            let warmup_speed_count = warmup_speeds.len();
+
+            // Drop temp to 50C. Run 3 cycles (fewer than response_delay=5).
+            // The hysteresis stack still has 80C entries at the front,
+            // so duty should NOT change yet.
+            for _ in 0..3 {
+                set_temp_status(&device, &temp_channel_name, 50.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let after_partial_drop = set_speeds.borrow().clone();
+            // No new speeds should have been applied during the partial drop.
+            assert_eq!(
+                after_partial_drop.len(),
+                warmup_speed_count,
+                "no new speeds should be applied before delay elapses"
+            );
+            assert_eq!(
+                *after_partial_drop.last().unwrap(),
+                warmup_duty,
+                "duty should NOT have dropped yet (hysteresis delay not elapsed)"
+            );
+
+            // Run 2 more cycles at 50C (total 5 since drop).
+            // Now the stack is fully flushed with 50C and duty should change.
+            for _ in 0..2 {
+                set_temp_status(&device, &temp_channel_name, 50.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let final_speeds = set_speeds.borrow().clone();
+            let final_duty = *final_speeds.last().unwrap();
+            assert!(
+                final_duty < warmup_duty,
+                "duty should have dropped after hysteresis delay elapsed, \
+                 warmup={warmup_duty}, final={final_duty}"
+            );
+            assert_eq!(
+                final_duty, 50,
+                "duty should match the profile target at 50C"
             );
         });
     }
