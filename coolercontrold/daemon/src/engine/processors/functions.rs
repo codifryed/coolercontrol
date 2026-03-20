@@ -260,6 +260,11 @@ impl FunctionStandardPreProcessor {
     }
 
     /// Bypasses the hysteresis stack when temp is rising and `only_downward` is set.
+    /// Does NOT update `last_applied_temp` so that subsequent cycles continue
+    /// bypassing as long as the newest temp is still above the baseline. This
+    /// allows the step limiter to gradually climb toward the target duty across
+    /// multiple cycles. `last_applied_temp` only advances through the normal
+    /// hysteresis path (when temp eventually drops and ages through the stack).
     fn should_bypass_for_upward_temp(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
@@ -271,7 +276,10 @@ impl FunctionStandardPreProcessor {
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.push_back(newest_temp_celsius);
             data.temp = Some(newest_temp_celsius);
-            metadata.last_applied_temp = newest_temp_celsius;
+            // Intentionally do NOT update last_applied_temp here.
+            // This ensures the bypass keeps firing on subsequent cycles,
+            // allowing the step limiter to gradually reach the target duty.
+            // metadata.last_applied_temp = newest_temp_celsius;
             return true;
         }
         false

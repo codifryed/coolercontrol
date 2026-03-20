@@ -308,6 +308,30 @@ mod engine_tests {
         function_uid
     }
 
+    fn create_standard_function_with_steps(
+        config: &Config,
+        response_delay: u8,
+        deviance: f64,
+        only_downward: bool,
+        step_size_min: Duty,
+        step_size_max: Duty,
+    ) -> FunctionUID {
+        let function_uid = Uuid::new_v4().to_string();
+        let function = Function {
+            uid: function_uid.clone(),
+            name: "StandardFunction".to_string(),
+            f_type: FunctionType::Standard,
+            step_size_min,
+            step_size_max,
+            response_delay: Some(response_delay),
+            deviance: Some(deviance),
+            only_downward: Some(only_downward),
+            ..Default::default()
+        };
+        config.set_function(function).unwrap();
+        function_uid
+    }
+
     fn set_temp_status(device: &DeviceLock, temp_name: &TempName, temp: Temp) {
         let mut status = Status::default();
         status.temps.push(TempStatus {
@@ -983,6 +1007,69 @@ mod engine_tests {
             .await;
 
             assert!(scope_result.is_ok());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_only_downward_continues_climbing_with_small_steps() {
+        cc_fs::test_runtime(async {
+            // Goal: verify that with only_downward=true and a small step_size_max,
+            // the fan continues stepping up toward the target even when the temp
+            // dips slightly below its peak. The duty-based comparison should keep
+            // bypassing hysteresis as long as the curve demands a higher duty.
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
+            let device_uid = device.borrow().uid.clone();
+
+            // step_size_max=5 so the fan can only climb 5% per cycle.
+            // step_size_min=2 so small changes are still applied.
+            let function_uid = create_standard_function_with_steps(&config, 0, 2.0, true, 2, 5);
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
+                TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                },
+                &function_uid,
+            );
+
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // Process cycles with separate scopes so spawned speed tasks complete.
+            // Jump to 60C, then dip to 58C. The fan should keep climbing.
+            set_temp_status(&device, &temp_channel_name, 60.);
+            moro_local::async_scope!(|scope| {
+                engine.process_scheduled_speeds(scope);
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+            for _ in 0..15 {
+                set_temp_status(&device, &temp_channel_name, 58.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let speeds = set_speeds.borrow().clone();
+            assert!(!speeds.is_empty(), "at least one speed should be applied");
+            let final_duty = *speeds.last().unwrap();
+            // At 58C, curve interpolates to ~73%. Fan should reach near that
+            // after enough step cycles (15 cycles * 5%/cycle = 75% headroom).
+            assert!(
+                final_duty >= 70,
+                "fan should reach near target duty (~73%), got {final_duty}"
+            );
         });
     }
 }
