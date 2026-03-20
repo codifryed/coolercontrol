@@ -88,6 +88,7 @@ import MenuAlertAdd from '@/components/menu/MenuAlertAdd.vue'
 import SubMenuAlertDelete from '@/components/menu/SubMenuAlertDelete.vue'
 import MenuDashboardHome from '@/components/menu/MenuDashboardHome.vue'
 import MenuControlView from '@/components/menu/MenuControlView.vue'
+import MenuModeView from '@/components/menu/MenuModeView.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useI18n } from 'vue-i18n'
 import SubMenuMoveTop from '@/components/menu/SubMenuMoveTop.vue'
@@ -323,10 +324,10 @@ const createTreeMenu = (): void => {
     result.push(functionsTree())
     result.push(alertsTree())
     if (settingsStore.menuOrder.length > 0) {
-        // Sort main menu items
+        // Sort main menu items (new items get sorted to top)
         const getRootIndex = (item: any) => {
             const index = settingsStore.menuOrder.findIndex((menuItem) => menuItem.id === item.id)
-            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            return index >= 0 ? index : Number.MIN_SAFE_INTEGER
         }
         result.sort((a, b) => getRootIndex(a) - getRootIndex(b))
 
@@ -788,6 +789,7 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
+                    hasMode: true,
                     menus: [Menu.RENAME],
                     subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
@@ -808,6 +810,7 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
+                    hasMode: true,
                     menus: [Menu.RENAME],
                     subMenus: [SubMenu.MOVE_TOP, SubMenu.PIN, SubMenu.DISABLE, SubMenu.MOVE_BOTTOM],
                 })
@@ -1286,7 +1289,7 @@ onUnmounted(() => {
                     <router-link
                         class="flex h-10 group items-center justify-between outline-none rounded-lg"
                         :class="{
-                            'h-12': childItem.isControllable,
+                            'h-12': childItem.isControllable || childItem.hasMode,
                             'hover:bg-bg-two': hoverMenusAreClosed,
                             'pointer-events-none': !hoverMenusAreClosed,
                             'text-accent':
@@ -1305,7 +1308,7 @@ onUnmounted(() => {
                             <div class="w-2 min-w-2 whitespace-pre" />
                             <div
                                 class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
-                                :class="{ 'h-12': childItem.isControllable }"
+                                :class="{ 'h-12': childItem.isControllable || childItem.hasMode }"
                             />
                             <svg-icon
                                 v-if="childItem.icon"
@@ -1352,6 +1355,7 @@ onUnmounted(() => {
                                 <div
                                     v-if="
                                         childItem.isControllable ||
+                                        childItem.hasMode ||
                                         settingsStore.getChannelTags(
                                             childItem.deviceUID,
                                             childItem.name,
@@ -1361,6 +1365,12 @@ onUnmounted(() => {
                                 >
                                     <menu-control-view
                                         v-if="childItem.isControllable"
+                                        :device-u-i-d="childItem.deviceUID"
+                                        :channel-name="childItem.name"
+                                        :class="{ 'text-text-color-secondary': !isActive }"
+                                    />
+                                    <menu-mode-view
+                                        v-if="childItem.hasMode"
                                         :device-u-i-d="childItem.deviceUID"
                                         :channel-name="childItem.name"
                                         :class="{ 'text-text-color-secondary': !isActive }"
@@ -1935,7 +1945,7 @@ onUnmounted(() => {
                         <router-link
                             class="flex h-10 group items-center justify-between outline-none rounded-lg"
                             :class="{
-                                'h-12': childItem.isControllable,
+                                'h-12': childItem.isControllable || childItem.hasMode,
                                 'hover:bg-bg-two': hoverMenusAreClosed,
                                 'pointer-events-none': !hoverMenusAreClosed,
                                 'text-accent':
@@ -1956,7 +1966,9 @@ onUnmounted(() => {
                                 <div class="w-2 min-w-2 whitespace-pre" />
                                 <div
                                     class="w-3 min-w-3 h-10 border-l border-border-one/80 whitespace-pre"
-                                    :class="{ 'h-12': childItem.isControllable }"
+                                    :class="{
+                                        'h-12': childItem.isControllable || childItem.hasMode,
+                                    }"
                                     :style="{ 'border-color': getSideBorderColor(item) }"
                                 />
                                 <svg-icon
@@ -2009,6 +2021,7 @@ onUnmounted(() => {
                                     <div
                                         v-if="
                                             childItem.isControllable ||
+                                            childItem.hasMode ||
                                             settingsStore.getChannelTags(
                                                 childItem.deviceUID,
                                                 childItem.name,
@@ -2018,6 +2031,12 @@ onUnmounted(() => {
                                     >
                                         <menu-control-view
                                             v-if="childItem.isControllable"
+                                            :device-u-i-d="childItem.deviceUID"
+                                            :channel-name="childItem.name"
+                                            :class="{ 'text-text-color-secondary': !isActive }"
+                                        />
+                                        <menu-mode-view
+                                            v-if="childItem.hasMode"
                                             :device-u-i-d="childItem.deviceUID"
                                             :channel-name="childItem.name"
                                             :class="{ 'text-text-color-secondary': !isActive }"

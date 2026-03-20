@@ -1170,17 +1170,15 @@ const nextStep = () => {
                         <tr
                             v-for="(point, idx) in data"
                             :key="`${tableDataKey}-${idx}`"
-                            class="group"
+                            class="group cursor-pointer"
                             :class="{
                                 'bg-accent/30': idx === selectedPointIndex,
                                 'hover:bg-bg-one/20': idx !== selectedPointIndex,
                             }"
+                            @click="selectPointFromTable(idx)"
                         >
                             <!-- Point Index -->
-                            <td
-                                class="px-2 py-0.5 text-text-color-secondary cursor-pointer"
-                                @click="selectPointFromTable(idx)"
-                            >
+                            <td class="px-2 py-0.5 text-text-color-secondary">
                                 {{ idx + 1 }}
                             </td>
 
