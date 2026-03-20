@@ -36,6 +36,8 @@ const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
+const RAPID_CHANGE_DEVIANCE_FACTOR: f64 = 3.;
+const RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS: f64 = 5.;
 
 /// Triple Exponential Moving Average (EMA of EMA of EMA).
 ///
@@ -214,14 +216,12 @@ impl FunctionStandardPreProcessor {
         debug_assert!(deviance >= 0.0, "deviance must not be negative");
 
         if only_downward {
-            let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
+            if Self::should_bypass_for_upward_temp(metadata, data) {
                 return data;
-            };
-            if newest_temp_celsius > metadata.last_applied_temp {
-                metadata.temp_hist_stack.clear();
-                metadata.temp_hist_stack.push_back(newest_temp_celsius);
-                data.temp = Some(newest_temp_celsius);
-                metadata.last_applied_temp = newest_temp_celsius;
+            }
+        }
+        if data.profile.function.rapid_change {
+            if Self::should_bypass_for_rapid_change(metadata, data, deviance) {
                 return data;
             }
         }
@@ -230,39 +230,113 @@ impl FunctionStandardPreProcessor {
         };
         let oldest_temp_within_tolerance =
             Self::temp_within_tolerance(oldest_temp_celsius, metadata.last_applied_temp, deviance);
-        if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
-            let newest_temp_within_tolerance = metadata.temp_hist_stack.back().is_some_and(|&t| {
-                Self::temp_within_tolerance(t, metadata.last_applied_temp, deviance)
-            });
-            if oldest_temp_within_tolerance && newest_temp_within_tolerance {
-                // normalize the stack to skip spikes within the delay period
-                let adjust_count = metadata.temp_hist_stack.len() - 1; // we leave the newest temp as is
-                metadata
-                    .temp_hist_stack
-                    .iter_mut()
-                    .take(adjust_count)
-                    .for_each(|temp| *temp = oldest_temp_celsius);
-            }
-        }
+        Self::normalize_spikes_if_needed(metadata, oldest_temp_celsius, deviance);
         if data.safety_latch_triggered {
             if data.profile.function.threshold_hopping {
-                // bypass thresholds
+                // Bypass thresholds.
                 data.temp = Some(oldest_temp_celsius);
                 metadata.last_applied_temp = oldest_temp_celsius;
                 data
             } else {
-                // If hopping is disabled, we want to re-apply the last applied temp NOT the
-                // oldest temp, which would bypass the hysteresis thresholds.
+                // Re-apply the last applied temp, not the oldest temp,
+                // which would bypass the hysteresis thresholds.
                 data.temp = Some(metadata.last_applied_temp);
                 data
             }
         } else if oldest_temp_within_tolerance {
-            data // nothing to apply
+            data // Nothing to apply.
         } else {
-            // should use temp from hysteresis stack
+            // Should use temp from hysteresis stack.
             data.temp = Some(oldest_temp_celsius);
             metadata.last_applied_temp = oldest_temp_celsius;
             data
+        }
+    }
+
+    /// Bypasses the hysteresis stack when temp is rising and `only_downward` is set.
+    fn should_bypass_for_upward_temp(
+        metadata: &mut ChannelSettingMetadata,
+        data: &mut SpeedProfileData,
+    ) -> bool {
+        let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
+            return false;
+        };
+        if newest_temp_celsius > metadata.last_applied_temp {
+            metadata.temp_hist_stack.clear();
+            metadata.temp_hist_stack.push_back(newest_temp_celsius);
+            data.temp = Some(newest_temp_celsius);
+            metadata.last_applied_temp = newest_temp_celsius;
+            return true;
+        }
+        false
+    }
+
+    /// Bypasses the hysteresis delay when the newest temp deviates from the last applied
+    /// temp by more than 3x deviance (with a 5.0C floor). This ensures large thermal
+    /// events are acted on immediately rather than waiting for the delay to expire.
+    fn should_bypass_for_rapid_change(
+        metadata: &mut ChannelSettingMetadata,
+        data: &mut SpeedProfileData,
+        deviance: f64,
+    ) -> bool {
+        let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
+            return false;
+        };
+        let rapid_change_threshold_celsius =
+            (deviance * RAPID_CHANGE_DEVIANCE_FACTOR).max(RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS);
+        debug_assert!(
+            rapid_change_threshold_celsius >= RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS,
+            "rapid change threshold must be at least {RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS}C",
+        );
+        let temp_delta_celsius = (newest_temp_celsius - metadata.last_applied_temp).abs();
+        if temp_delta_celsius > rapid_change_threshold_celsius {
+            metadata.temp_hist_stack.clear();
+            metadata.temp_hist_stack.push_back(newest_temp_celsius);
+            data.temp = Some(newest_temp_celsius);
+            metadata.last_applied_temp = newest_temp_celsius;
+            return true;
+        }
+        false
+    }
+
+    /// Normalizes transient spikes in the temp history stack. Only flattens intermediate
+    /// values when they actually spiked outside tolerance -- a true transient that returned
+    /// to baseline. Gradual drift within tolerance is preserved.
+    fn normalize_spikes_if_needed(
+        metadata: &mut ChannelSettingMetadata,
+        oldest_temp_celsius: f64,
+        deviance: f64,
+    ) {
+        if metadata.temp_hist_stack.len() <= MIN_TEMP_HIST_STACK_SIZE as usize {
+            return;
+        }
+        let oldest_within =
+            Self::temp_within_tolerance(oldest_temp_celsius, metadata.last_applied_temp, deviance);
+        if oldest_within.not() {
+            return;
+        }
+        let newest_within = metadata
+            .temp_hist_stack
+            .back()
+            .is_some_and(|&t| Self::temp_within_tolerance(t, metadata.last_applied_temp, deviance));
+        if newest_within.not() {
+            return;
+        }
+        // Both ends are within tolerance. Only flatten if intermediates actually spiked.
+        let has_intermediate_spike = metadata
+            .temp_hist_stack
+            .iter()
+            .skip(1)
+            .rev()
+            .skip(1)
+            .any(|&temp| !Self::temp_within_tolerance(temp, metadata.last_applied_temp, deviance));
+        if has_intermediate_spike {
+            let adjust_count = metadata.temp_hist_stack.len() - 1;
+            metadata
+                .temp_hist_stack
+                .iter_mut()
+                .take(adjust_count)
+                .for_each(|temp| *temp = oldest_temp_celsius);
         }
     }
 

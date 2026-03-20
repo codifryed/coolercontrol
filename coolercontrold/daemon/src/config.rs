@@ -1869,6 +1869,15 @@ impl Config {
                 } else {
                     true
                 };
+                let rapid_change =
+                    if let Some(rapid_change_value) = function_table.get("rapid_change") {
+                        let rc: bool = rapid_change_value
+                            .as_bool()
+                            .with_context(|| "rapid_change should be a boolean value")?;
+                        rc
+                    } else {
+                        false
+                    };
                 let function = Function {
                     uid,
                     name,
@@ -1882,6 +1891,7 @@ impl Config {
                     only_downward,
                     sample_window,
                     threshold_hopping,
+                    rapid_change,
                 };
                 functions.push(function);
             }
@@ -2048,6 +2058,8 @@ impl Config {
         }
         function_table["threshold_hopping"] =
             Item::Value(Value::Boolean(Formatted::new(function.threshold_hopping)));
+        function_table["rapid_change"] =
+            Item::Value(Value::Boolean(Formatted::new(function.rapid_change)));
     }
 
     /*

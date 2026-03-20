@@ -374,6 +374,9 @@ pub struct Function {
 
     /// Whether to temporarily bypass thresholds when fan speed remains unchanged for 30+ seconds to meet curve target.
     pub threshold_hopping: bool,
+
+    /// Whether to immediately respond to large temperature changes that exceed 3x the threshold.
+    pub rapid_change: bool,
 }
 
 impl Default for Function {
@@ -391,6 +394,7 @@ impl Default for Function {
             only_downward: None,
             sample_window: None,
             threshold_hopping: true,
+            rapid_change: false,
         }
     }
 }
