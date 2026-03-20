@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
-const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
+const MIN_TEMP_HIST_STACK_SIZE: u8 = 1;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
 const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
@@ -211,6 +211,7 @@ impl FunctionStandardPreProcessor {
     ) -> &'a mut SpeedProfileData {
         let only_downward = data.profile.function.only_downward.unwrap_or(false);
         let deviance = data.profile.function.deviance.unwrap_or(2.0);
+        debug_assert!(deviance >= 0.0, "deviance must not be negative");
 
         if only_downward {
             let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
@@ -271,14 +272,15 @@ impl FunctionStandardPreProcessor {
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
+    pub fn calc_ideal_stack_size(profile: &NormalizedGraphProfile) -> u8 {
+        debug_assert!(profile.poll_rate > 0.0, "poll_rate must be positive");
         let response_delay_secs = f64::from(
             profile
                 .function
                 .response_delay
                 .unwrap_or(DEFAULT_MAX_NO_DUTY_SET_SECONDS as u8),
         );
-        (response_delay_secs / profile.poll_rate).ceil() as u8 + 1
+        (response_delay_secs / profile.poll_rate).ceil() as u8
     }
 }
 
@@ -741,7 +743,7 @@ fn log_missing_temp_sensor(data: &SpeedProfileData) {
 #[cfg(test)]
 mod tests {
     use crate::engine::processors::functions::{
-        FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor,
+        FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionStandardPreProcessor,
     };
     use crate::engine::{NormalizedGraphProfile, SpeedProfileData, TempSource};
     use crate::setting::Function;
@@ -1308,5 +1310,56 @@ mod tests {
         let all_temps = vec![10.0, 20.0, 30.0];
         let slice = FunctionEMAPreProcessor::get_temps_slice(&all_temps);
         assert_eq!(slice.len(), 3);
+    }
+
+    // ==================== calc_ideal_stack_size tests ====================
+
+    #[test]
+    fn test_calc_ideal_stack_size_zero_delay() {
+        // Goal: verify that zero response_delay produces a raw stack size of 0.
+        // The MIN clamp is applied at the call site, not inside calc_ideal_stack_size.
+        let function = Function {
+            response_delay: Some(0),
+            ..Default::default()
+        };
+        let profile = create_test_profile(function);
+        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
+        assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn test_calc_ideal_stack_size_exact() {
+        // Goal: verify that response_delay=5 with poll_rate=1.0 gives exactly 5,
+        // not 6 (the old off-by-one behavior).
+        let function = Function {
+            response_delay: Some(5),
+            ..Default::default()
+        };
+        let profile = create_test_profile(function);
+        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
+        assert_eq!(size, 5);
+    }
+
+    #[test]
+    fn test_calc_ideal_stack_size_fractional_poll() {
+        // Goal: verify ceiling division with a sub-second poll rate.
+        // response_delay=3 / poll_rate=0.5 = 6.0 (exact, no rounding needed).
+        let function = Function {
+            response_delay: Some(3),
+            ..Default::default()
+        };
+        let profile = std::rc::Rc::new(NormalizedGraphProfile {
+            profile_uid: "test-profile".to_string(),
+            profile_name: "Test Profile".to_string(),
+            speed_profile: vec![],
+            temp_source: TempSource {
+                device_uid: "test-device".to_string(),
+                temp_name: "test-temp".to_string(),
+            },
+            function,
+            poll_rate: 0.5,
+        });
+        let size = FunctionStandardPreProcessor::calc_ideal_stack_size(&profile);
+        assert_eq!(size, 6);
     }
 }
