@@ -223,7 +223,20 @@ impl FunctionStandardPreProcessor {
         };
         let oldest_temp_within_tolerance =
             Self::temp_within_tolerance(oldest_temp_celsius, metadata.last_applied_temp, deviance);
-        Self::normalize_spikes_if_needed(metadata, oldest_temp_celsius, deviance);
+        if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
+            let newest_temp_within_tolerance = metadata.temp_hist_stack.back().is_some_and(|&t| {
+                Self::temp_within_tolerance(t, metadata.last_applied_temp, deviance)
+            });
+            if oldest_temp_within_tolerance && newest_temp_within_tolerance {
+                // Normalize the stack to skip spikes within the delay period.
+                let adjust_count = metadata.temp_hist_stack.len() - 1;
+                metadata
+                    .temp_hist_stack
+                    .iter_mut()
+                    .take(adjust_count)
+                    .for_each(|temp| *temp = oldest_temp_celsius);
+            }
+        }
         if data.safety_latch_triggered {
             if data.profile.function.threshold_hopping {
                 // Bypass thresholds.
@@ -262,47 +275,6 @@ impl FunctionStandardPreProcessor {
             return true;
         }
         false
-    }
-
-    /// Normalizes transient spikes in the temp history stack. Only flattens intermediate
-    /// values when they actually spiked outside tolerance -- a true transient that returned
-    /// to baseline. Gradual drift within tolerance is preserved.
-    fn normalize_spikes_if_needed(
-        metadata: &mut ChannelSettingMetadata,
-        oldest_temp_celsius: f64,
-        deviance: f64,
-    ) {
-        if metadata.temp_hist_stack.len() <= MIN_TEMP_HIST_STACK_SIZE as usize {
-            return;
-        }
-        let oldest_within =
-            Self::temp_within_tolerance(oldest_temp_celsius, metadata.last_applied_temp, deviance);
-        if oldest_within.not() {
-            return;
-        }
-        let newest_within = metadata
-            .temp_hist_stack
-            .back()
-            .is_some_and(|&t| Self::temp_within_tolerance(t, metadata.last_applied_temp, deviance));
-        if newest_within.not() {
-            return;
-        }
-        // Both ends are within tolerance. Only flatten if intermediates actually spiked.
-        let has_intermediate_spike = metadata
-            .temp_hist_stack
-            .iter()
-            .skip(1)
-            .rev()
-            .skip(1)
-            .any(|&temp| !Self::temp_within_tolerance(temp, metadata.last_applied_temp, deviance));
-        if has_intermediate_spike {
-            let adjust_count = metadata.temp_hist_stack.len() - 1;
-            metadata
-                .temp_hist_stack
-                .iter_mut()
-                .take(adjust_count)
-                .for_each(|temp| *temp = oldest_temp_celsius);
-        }
     }
 
     fn temp_within_tolerance(temp_to_verify: f64, last_applied_temp: f64, deviance: f64) -> bool {
