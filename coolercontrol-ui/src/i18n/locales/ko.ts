@@ -648,8 +648,7 @@ export default {
             onlyDownward: '하향할 때만',
             onlyDownwardTooltip: '온도가 감소할 때만 이력 현상 설정을 적용합니다.',
             rapidChange: '급속 변화',
-            rapidChangeTooltip:
-                '온도가 임계값의 3배 이상 변할 때 이력 현상 지연을 건너뜁니다.',
+            rapidChangeTooltip: '온도가 임계값의 3배 이상 변할 때 이력 현상 지연을 건너뜁니다.',
             general: '일반',
             thresholdHopping: '임계값 도약',
             thresholdHoppingTooltip:

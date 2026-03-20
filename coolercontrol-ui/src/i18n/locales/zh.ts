@@ -648,8 +648,7 @@ export default {
             onlyDownward: '仅下降时',
             onlyDownwardTooltip: '仅在温度下降时应用滞后设置。',
             rapidChange: '快速变化',
-            rapidChangeTooltip:
-                '当温度变化超过阈值的3倍时，跳过滞后延迟。',
+            rapidChangeTooltip: '当温度变化超过阈值的3倍时，跳过滞后延迟。',
             general: '常规',
             thresholdHopping: '阈值跳跃',
             thresholdHoppingTooltip:
