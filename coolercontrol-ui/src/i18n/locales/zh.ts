@@ -528,7 +528,7 @@ export default {
             controlOrView: '控制或查看',
             applySetting: '应用设置',
             defaultProfileInfo:
-                '默认配置文件将设备恢复到其原始驱动程序设置。<br/>某些驱动程序包含内置的自动风扇控制模式，但<i>许多</i>驱动程序没有。<br/>对于没有自动控制的设备，应用默认配置文件将使<br/>风扇保持在其最后配置的速度，CoolerControl将放弃控制。',
+                '默认配置文件指示CoolerControl停止管理此风扇<br/>并恢复原始驱动程序设置。<br/><br/><b>警告：</b>许多驱动程序<i>没有</i>自动风扇控制功能。<br/>在这些设备上，风扇将保持在其最后设定的速度，<br/>没有主动管理。',
         },
         modes: {
             createMode: '创建模式',

@@ -666,7 +666,7 @@ export default {
             controlOrView: 'Controlar ou Visualizar',
             applySetting: 'Aplicar Configuração',
             defaultProfileInfo:
-                'O Perfil Padrão restaura o dispositivo para suas configurações originais do driver.<br/>Alguns drivers incluem um modo de controle automático de ventilador integrado, mas <i>muitos</i> não incluem.<br/>Para dispositivos sem controle automático, aplicar o Perfil Padrão deixará<br/>o ventilador em sua última velocidade configurada e o CoolerControl abandonará o controle.',
+                'O Perfil Padrão instrui o CoolerControl a parar de gerenciar<br/>este ventilador e restaurar as configurações originais do driver.<br/><br/><b>Aviso:</b> Muitos drivers <i>não</i> possuem controle automático de ventilador.<br/>Nesses dispositivos, o ventilador permanecerá em sua última velocidade<br/>definida sem gerenciamento ativo.',
         },
         customSensors: {
             newSensor: 'Novo Sensor',

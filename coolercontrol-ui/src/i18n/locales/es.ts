@@ -399,7 +399,7 @@ export default {
             controlOrView: 'Controlar o Ver',
             applySetting: 'Aplicar Configuración',
             defaultProfileInfo:
-                'El Perfil Predeterminado restaura el dispositivo a su configuración original del controlador.<br/>Algunos controladores incluyen un modo de control automático de ventilador integrado, pero <i>muchos</i> no lo tienen.<br/>Para dispositivos sin control automático, aplicar el Perfil Predeterminado dejará<br/>el ventilador a su última velocidad configurada y CoolerControl cederá el control.',
+                'El Perfil Predeterminado indica a CoolerControl que deje de gestionar<br/>este ventilador y restaure la configuración original del controlador.<br/><br/><b>Advertencia:</b> Muchos controladores <i>no</i> tienen control automático<br/>de ventilador. En esos dispositivos, el ventilador permanecerá<br/>a su última velocidad configurada sin gestión activa.',
         },
         customSensors: {
             newSensor: 'Nuevo Sensor',

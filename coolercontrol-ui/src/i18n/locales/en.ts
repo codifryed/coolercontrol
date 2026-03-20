@@ -393,7 +393,7 @@ export default {
             controlOrView: 'Control or View',
             applySetting: 'Apply Setting',
             defaultProfileInfo:
-                'The Default Profile restores the device to its original driver settings.<br/>Some drivers include a built-in automatic fan control mode, but <i>many</i> do not.<br/>For devices without automatic control, applying the Default Profile will leave<br/>the fan at its last configured speed and CoolerControl will relinquish control.',
+                'The Default Profile tells CoolerControl to stop managing this fan<br/>and restore the original driver settings.<br/><br/><b>Warning:</b> Many drivers do <i>not</i> have automatic fan control.<br/>On those devices, the fan will stay at its last set speed<br/>with no active management.',
         },
         customSensors: {
             newSensor: 'New Sensor',
