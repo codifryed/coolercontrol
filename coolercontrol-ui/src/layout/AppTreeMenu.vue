@@ -323,10 +323,10 @@ const createTreeMenu = (): void => {
     result.push(functionsTree())
     result.push(alertsTree())
     if (settingsStore.menuOrder.length > 0) {
-        // Sort main menu items
+        // Sort main menu items (new items get sorted to top)
         const getRootIndex = (item: any) => {
             const index = settingsStore.menuOrder.findIndex((menuItem) => menuItem.id === item.id)
-            return index >= 0 ? index : Number.MAX_SAFE_INTEGER
+            return index >= 0 ? index : Number.MIN_SAFE_INTEGER
         }
         result.sort((a, b) => getRootIndex(a) - getRootIndex(b))
 
