@@ -1174,4 +1174,91 @@ mod engine_tests {
             );
         });
     }
+
+    #[test]
+    #[serial]
+    fn test_only_downward_no_oscillation_with_temp_noise() {
+        cc_fs::test_runtime(async {
+            // Goal: verify that after a downward duty step, small temperature
+            // fluctuations do NOT cause the fan to oscillate up and down.
+            // The bypass requires target_duty >= last_duty + step_min, so
+            // noise that creates duty diffs below step_min is filtered out.
+            // Profile slope at 50C: (100-50)/(90-50) = 1.25 duty/degree.
+            // Noise of ±2C = ~2.5% duty change, below step_min=5.
+            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
+            let fan_channel_name = create_controllable_fan(&device, "fan1");
+            let temp_channel_name = create_temp(&device, "temp1");
+            let device_uid = device.borrow().uid.clone();
+
+            // step_size_min=5 so bypass needs >= 5% duty diff to fire.
+            // ±2C noise creates ~2.5% duty diff, well below threshold.
+            let function_uid = create_standard_function_with_steps(&config, 3, 2.0, true, 5, 100);
+            let profile_uid = create_graph_profile_with_temp_source_and_function(
+                &config,
+                vec![(20.0, 25), (50.0, 50), (90.0, 100)],
+                TempSource {
+                    device_uid: device_uid.clone(),
+                    temp_name: temp_channel_name.clone(),
+                },
+                &function_uid,
+            );
+
+            engine
+                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
+                .await
+                .unwrap();
+
+            // Warm up at 80C.
+            for _ in 0..5 {
+                set_temp_status(&device, &temp_channel_name, 80.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            // Wait for delay to elapse at 50C so duty drops.
+            for _ in 0..5 {
+                set_temp_status(&device, &temp_channel_name, 50.);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let duty_after_drop = *set_speeds.borrow().last().unwrap();
+            let count_after_drop = set_speeds.borrow().len();
+
+            // Simulate 10 cycles of small temp noise around 50C (±2C).
+            // With deviance=2.0, these are within tolerance. The bypass
+            // threshold (step_min=5) prevents bypass for the ~2.5% duty
+            // differences this noise creates.
+            let noise_temps = [51., 49., 52., 48., 50., 51., 49., 50., 52., 50.];
+            for &temp in &noise_temps {
+                set_temp_status(&device, &temp_channel_name, temp);
+                moro_local::async_scope!(|scope| {
+                    engine.process_scheduled_speeds(scope);
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+
+            let final_count = set_speeds.borrow().len();
+            // No new speeds should have been applied during noise period.
+            assert_eq!(
+                final_count, count_after_drop,
+                "temp noise should not cause any duty changes"
+            );
+            assert_eq!(
+                *set_speeds.borrow().last().unwrap(),
+                duty_after_drop,
+                "duty should remain stable despite temp noise"
+            );
+        });
+    }
 }

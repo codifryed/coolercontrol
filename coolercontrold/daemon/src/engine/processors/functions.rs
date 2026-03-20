@@ -267,10 +267,13 @@ impl FunctionStandardPreProcessor {
         }
     }
 
-    /// Bypasses the hysteresis stack when the target duty is higher than the
-    /// actual current fan duty and `only_downward` is set. This correctly
-    /// detects "upward" fan movement regardless of temp fluctuations, and
-    /// allows the step limiter to gradually climb toward the target.
+    /// Bypasses the hysteresis stack when the target duty is significantly
+    /// higher than the actual current fan duty and `only_downward` is set.
+    /// Uses `step_size_min` as the minimum threshold to prevent bypass from
+    /// firing for tiny duty differences caused by temperature noise.
+    /// Without this threshold, the bypass would fire for noise-level changes,
+    /// clearing the stack (which resets the response_delay) on every noisy
+    /// cycle and causing oscillation.
     fn should_bypass_for_upward_temp(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
@@ -288,7 +291,8 @@ impl FunctionStandardPreProcessor {
         debug_assert!(last_applied_duty <= 100, "duty must be in valid range");
         let target_duty =
             utils::interpolate_profile(&data.profile.speed_profile, newest_temp_celsius);
-        if target_duty > last_applied_duty {
+        let step_increase_min = data.profile.function.step_size_min;
+        if target_duty >= last_applied_duty.saturating_add(step_increase_min) {
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.push_back(newest_temp_celsius);
             metadata.last_applied_temp = newest_temp_celsius;
