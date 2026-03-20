@@ -665,6 +665,9 @@ export default {
                 'Reaktionsverzögerung (Sekunden) vor der Anwendung von Lüftergeschwindigkeitsänderungen.\nTemporäre Temperaturspitzen innerhalb dieser Verzögerung werden ignoriert, um Schwankungen zu glätten.',
             onlyDownward: 'Nur Abwärts',
             onlyDownwardTooltip: 'Hysterese-Einstellungen nur anwenden, wenn die Temperatur sinkt.',
+            rapidChange: 'Schnelle Änderung',
+            rapidChangeTooltip:
+                'Hysterese-Verzögerung überspringen, wenn die Temperatur um mehr als das 3-fache des Schwellenwerts springt.',
             general: 'Allgemein',
             thresholdHopping: 'Schwellenwert-Überspringen',
             thresholdHoppingTooltip:

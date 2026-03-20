@@ -699,6 +699,9 @@ export default {
                 'ファン速度変更を適用する前の応答遅延（秒）。\nこの遅延内の一時的な温度スパイクは無視され、変動が平滑化されます。',
             onlyDownward: '下降時のみ',
             onlyDownwardTooltip: '温度が下降しているときのみヒステリシス設定を適用します。',
+            rapidChange: '急速変化',
+            rapidChangeTooltip:
+                '温度がしきい値の3倍以上変化した場合、ヒステリシス遅延をスキップします。',
             general: '一般',
             thresholdHopping: 'しきい値ホッピング',
             thresholdHoppingTooltip:

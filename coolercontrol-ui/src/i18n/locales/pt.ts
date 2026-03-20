@@ -606,6 +606,9 @@ export default {
             onlyDownward: 'Apenas Descendente',
             onlyDownwardTooltip:
                 'Aplicar configurações de histerese apenas quando a temperatura estiver diminuindo.',
+            rapidChange: 'Mudança rápida',
+            rapidChangeTooltip:
+                'Ignorar o atraso de histerese quando a temperatura varia mais de 3x o limite.',
             general: 'Geral',
             thresholdHopping: 'Salto de Limite',
             thresholdHoppingTooltip:
