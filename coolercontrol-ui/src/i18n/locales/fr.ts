@@ -672,9 +672,6 @@ export default {
             onlyDownward: 'Seulement Descendant',
             onlyDownwardTooltip:
                 "Appliquer les paramètres d'hystérésis uniquement lorsque la température diminue.",
-            rapidChange: 'Changement rapide',
-            rapidChangeTooltip:
-                "Ignorer le délai d'hystérésis lorsque la température varie de plus de 3x le seuil.",
             general: 'Général',
             thresholdHopping: 'Saut de Seuil',
             thresholdHoppingTooltip:

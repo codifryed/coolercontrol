@@ -274,11 +274,6 @@ export class Function {
      */
     threshold_hopping: boolean = true
 
-    /**
-     * Whether to immediately respond to large temperature changes that exceed 3x the threshold.
-     */
-    rapid_change: boolean = true
-
     constructor(
         name: string,
         f_type: FunctionType = FunctionType.Identity,

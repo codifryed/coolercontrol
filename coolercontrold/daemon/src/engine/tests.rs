@@ -291,7 +291,6 @@ mod engine_tests {
         response_delay: u8,
         deviance: f64,
         only_downward: bool,
-        rapid_change: bool,
     ) -> FunctionUID {
         let function_uid = Uuid::new_v4().to_string();
         let function = Function {
@@ -303,7 +302,6 @@ mod engine_tests {
             response_delay: Some(response_delay),
             deviance: Some(deviance),
             only_downward: Some(only_downward),
-            rapid_change,
             ..Default::default()
         };
         config.set_function(function).unwrap();
@@ -832,7 +830,7 @@ mod engine_tests {
             let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
-            let function_uid = create_standard_function(&config, 0, 2.0, false, false);
+            let function_uid = create_standard_function(&config, 0, 2.0, false);
             let profile_uid = create_graph_profile_with_temp_source_and_function(
                 &config,
                 vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
@@ -877,7 +875,7 @@ mod engine_tests {
             let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
-            let function_uid = create_standard_function(&config, 3, 2.0, false, false);
+            let function_uid = create_standard_function(&config, 3, 2.0, false);
             let profile_uid = create_graph_profile_with_temp_source_and_function(
                 &config,
                 vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
@@ -928,125 +926,6 @@ mod engine_tests {
 
     #[test]
     #[serial]
-    fn test_standard_function_rapid_change_bypasses_delay() {
-        cc_fs::test_runtime(async {
-            // Goal: verify that rapid_change=true causes immediate speed application
-            // when temperature jumps by more than 3x deviance, despite response_delay=5.
-            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
-            let fan_channel_name = create_controllable_fan(&device, "fan1");
-            let temp_channel_name = create_temp(&device, "temp1");
-            let device_uid = device.borrow().uid.clone();
-
-            let function_uid = create_standard_function(&config, 5, 2.0, false, true);
-            let profile_uid = create_graph_profile_with_temp_source_and_function(
-                &config,
-                vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
-                TempSource {
-                    device_uid: device_uid.clone(),
-                    temp_name: temp_channel_name.clone(),
-                },
-                &function_uid,
-            );
-
-            engine
-                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
-                .await
-                .unwrap();
-
-            // When: establish baseline at 40C, then large jump to 55C (delta=15 > threshold=6)
-            let scope_result = moro_local::async_scope!(|scope| {
-                // First run applies initial temp (20C from create_temp)
-                set_temp_status(&device, &temp_channel_name, 40.);
-                engine.process_scheduled_speeds(scope);
-
-                // Fill stack to establish 40C as baseline
-                for _ in 0..5 {
-                    set_temp_status(&device, &temp_channel_name, 40.);
-                    engine.process_scheduled_speeds(scope);
-                }
-
-                // Large temp jump: should bypass delay
-                set_temp_status(&device, &temp_channel_name, 55.);
-                engine.process_scheduled_speeds(scope);
-                Ok(())
-            })
-            .await;
-
-            // Then: speed should change immediately despite delay=5.
-            assert!(scope_result.is_ok());
-            let speeds = set_speeds.borrow().clone();
-            let last_speed = *speeds.last().unwrap();
-            // At 55C, interpolated between (40,50) and (60,75).
-            assert!(
-                last_speed > 50,
-                "rapid change should apply a speed above baseline 50, got {last_speed}"
-            );
-            assert!(
-                last_speed <= 70,
-                "rapid change speed at 55C should not exceed 70, got {last_speed}"
-            );
-        });
-    }
-
-    #[test]
-    #[serial]
-    fn test_standard_function_rapid_change_disabled() {
-        cc_fs::test_runtime(async {
-            // Goal: verify that rapid_change=false preserves normal delay behavior,
-            // even for large temperature jumps that would otherwise trigger rapid change.
-            let (device, engine, config, set_speeds, _should_fail) = setup_single_device();
-            let fan_channel_name = create_controllable_fan(&device, "fan1");
-            let temp_channel_name = create_temp(&device, "temp1");
-            let device_uid = device.borrow().uid.clone();
-
-            let function_uid = create_standard_function(&config, 5, 2.0, false, false);
-            let profile_uid = create_graph_profile_with_temp_source_and_function(
-                &config,
-                vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],
-                TempSource {
-                    device_uid: device_uid.clone(),
-                    temp_name: temp_channel_name.clone(),
-                },
-                &function_uid,
-            );
-
-            engine
-                .set_profile(&device_uid, &fan_channel_name, &profile_uid)
-                .await
-                .unwrap();
-
-            // When: establish baseline at 40C, then large jump
-            let scope_result = moro_local::async_scope!(|scope| {
-                // First run applies initial temp (20C from create_temp)
-                set_temp_status(&device, &temp_channel_name, 40.);
-                engine.process_scheduled_speeds(scope);
-
-                // Fill stack to establish 40C as baseline
-                for _ in 0..5 {
-                    set_temp_status(&device, &temp_channel_name, 40.);
-                    engine.process_scheduled_speeds(scope);
-                }
-                let speeds_before_jump = set_speeds.borrow().len();
-
-                // Large temp jump: should NOT bypass delay because rapid_change=false
-                set_temp_status(&device, &temp_channel_name, 55.);
-                engine.process_scheduled_speeds(scope);
-
-                let speeds_after_jump = set_speeds.borrow().len();
-                assert_eq!(
-                    speeds_before_jump, speeds_after_jump,
-                    "rapid_change=false: speed should not change immediately after jump"
-                );
-                Ok(())
-            })
-            .await;
-
-            assert!(scope_result.is_ok());
-        });
-    }
-
-    #[test]
-    #[serial]
     fn test_standard_function_spike_normalization() {
         cc_fs::test_runtime(async {
             // Goal: verify that a transient spike (outside tolerance) followed by a return
@@ -1056,7 +935,7 @@ mod engine_tests {
             let temp_channel_name = create_temp(&device, "temp1");
             let device_uid = device.borrow().uid.clone();
 
-            let function_uid = create_standard_function(&config, 3, 2.0, false, false);
+            let function_uid = create_standard_function(&config, 3, 2.0, false);
             let profile_uid = create_graph_profile_with_temp_source_and_function(
                 &config,
                 vec![(20.0, 25), (40.0, 50), (60.0, 75), (80.0, 100)],

@@ -654,9 +654,6 @@ export default {
                 'Response delay (seconds) before applying fan speed changes.\nTemporary temperature spikes within this delay are ignored, smoothing out fluctuations.',
             onlyDownward: 'Only Downward',
             onlyDownwardTooltip: 'Only apply hysteresis settings when temperature is decreasing.',
-            rapidChange: 'Rapid Change',
-            rapidChangeTooltip:
-                'Skip the hysteresis delay when temperature jumps by more than 3x the threshold.',
             general: 'General',
             thresholdHopping: 'Threshold Hopping',
             thresholdHoppingTooltip:

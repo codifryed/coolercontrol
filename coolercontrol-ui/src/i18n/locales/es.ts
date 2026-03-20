@@ -662,9 +662,6 @@ export default {
             onlyDownward: 'Solo Descendente',
             onlyDownwardTooltip:
                 'Solo aplicar configuración de histéresis cuando la temperatura está disminuyendo.',
-            rapidChange: 'Cambio rápido',
-            rapidChangeTooltip:
-                'Omitir el retardo de histéresis cuando la temperatura cambia más de 3 veces el umbral.',
             general: 'General',
             thresholdHopping: 'Salto de Umbral',
             thresholdHoppingTooltip:

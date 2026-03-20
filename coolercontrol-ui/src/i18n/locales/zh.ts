@@ -647,8 +647,6 @@ export default {
                 '应用风扇速度变化前的响应延迟（秒）。\n此延迟内的临时温度峰值将被忽略，从而平滑波动。',
             onlyDownward: '仅下降时',
             onlyDownwardTooltip: '仅在温度下降时应用滞后设置。',
-            rapidChange: '快速变化',
-            rapidChangeTooltip: '当温度变化超过阈值的3倍时，跳过滞后延迟。',
             general: '常规',
             thresholdHopping: '阈值跳跃',
             thresholdHoppingTooltip:

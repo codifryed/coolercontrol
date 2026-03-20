@@ -647,8 +647,6 @@ export default {
                 '팬 속도 변경을 적용하기 전 응답 지연 시간(초)입니다.\n이 지연 시간 내의 일시적인 온도 급변은 무시되어 변동이 완화됩니다.',
             onlyDownward: '하향할 때만',
             onlyDownwardTooltip: '온도가 감소할 때만 이력 현상 설정을 적용합니다.',
-            rapidChange: '급속 변화',
-            rapidChangeTooltip: '온도가 임계값의 3배 이상 변할 때 이력 현상 지연을 건너뜁니다.',
             general: '일반',
             thresholdHopping: '임계값 도약',
             thresholdHoppingTooltip:

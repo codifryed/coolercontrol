@@ -36,8 +36,6 @@ const DEFAULT_MAX_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MIN_NO_DUTY_SET_SECONDS: f64 = 30.;
 const MAX_NO_DUTY_SET_SECONDS: f64 = 60.;
 const EMERGENCY_MISSING_TEMP: Temp = 100.;
-const RAPID_CHANGE_DEVIANCE_FACTOR: f64 = 3.;
-const RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS: f64 = 5.;
 
 /// Triple Exponential Moving Average (EMA of EMA of EMA).
 ///
@@ -220,11 +218,6 @@ impl FunctionStandardPreProcessor {
                 return data;
             }
         }
-        if data.profile.function.rapid_change {
-            if Self::should_bypass_for_rapid_change(metadata, data, deviance) {
-                return data;
-            }
-        }
         let Some(&oldest_temp_celsius) = metadata.temp_hist_stack.front() else {
             return data;
         };
@@ -262,34 +255,6 @@ impl FunctionStandardPreProcessor {
             return false;
         };
         if newest_temp_celsius > metadata.last_applied_temp {
-            metadata.temp_hist_stack.clear();
-            metadata.temp_hist_stack.push_back(newest_temp_celsius);
-            data.temp = Some(newest_temp_celsius);
-            metadata.last_applied_temp = newest_temp_celsius;
-            return true;
-        }
-        false
-    }
-
-    /// Bypasses the hysteresis delay when the newest temp deviates from the last applied
-    /// temp by more than 3x deviance (with a 5.0C floor). This ensures large thermal
-    /// events are acted on immediately rather than waiting for the delay to expire.
-    fn should_bypass_for_rapid_change(
-        metadata: &mut ChannelSettingMetadata,
-        data: &mut SpeedProfileData,
-        deviance: f64,
-    ) -> bool {
-        let Some(&newest_temp_celsius) = metadata.temp_hist_stack.back() else {
-            return false;
-        };
-        let rapid_change_threshold_celsius =
-            (deviance * RAPID_CHANGE_DEVIANCE_FACTOR).max(RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS);
-        debug_assert!(
-            rapid_change_threshold_celsius >= RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS,
-            "rapid change threshold must be at least {RAPID_CHANGE_DEVIANCE_THRESHOLD_CELSIUS}C",
-        );
-        let temp_delta_celsius = (newest_temp_celsius - metadata.last_applied_temp).abs();
-        if temp_delta_celsius > rapid_change_threshold_celsius {
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.push_back(newest_temp_celsius);
             data.temp = Some(newest_temp_celsius);
