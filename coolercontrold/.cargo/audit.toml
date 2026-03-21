@@ -1,0 +1,3 @@
+[advisories]
+# time 0.3.45 is vendored with a local patch that fixes the stack exhaustion issue (RUSTSEC-2026-0009)
+ignore = ["RUSTSEC-2026-0009"]

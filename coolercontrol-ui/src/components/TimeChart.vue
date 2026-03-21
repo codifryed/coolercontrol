@@ -710,6 +710,7 @@ const uOptions: uPlot.Options = {
                 if (scaleSpan >= dataSpan * 0.99) {
                     userZoomed = false
                     rafPaused = false
+                    initUSeriesData() // re-sync data skipped while zoomed
                     startRaf()
                 } else if (!userZoomed) {
                     // First scale change that is a real zoom-in (drag or wheel).
@@ -770,6 +771,7 @@ onMounted(async () => {
             setTimeout(() => {
                 if (rafPaused && !userZoomed) {
                     rafPaused = false
+                    initUSeriesData() // re-sync data skipped while paused
                     startRaf()
                 }
             }, 0)
@@ -801,6 +803,12 @@ onMounted(async () => {
                     }
                 }
                 if (onlyRecentStatus) {
+                    if (settingsStore.eyeCandy && rafId === null) {
+                        // eyeCandy with rAF paused (user zoomed): do not shift data,
+                        // as it causes the viewport contents to drift under the
+                        // fixed zoom scale.
+                        return
+                    }
                     updateUSeriesData()
                 } else {
                     initUSeriesData() // reinit everything

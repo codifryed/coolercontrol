@@ -33,14 +33,14 @@ dev-run:
 # requires minor dependency patch to pass rh checks
 # See: https://bugzilla.redhat.com/show_bug.cgi?id=1541318#c13
 vendor:
-	@mkdir .cargo
+	@mkdir -p .cargo
 	@$(CARGO) vendor --locked > .cargo/config.toml
 	@-chmod -x vendor/brotli-decompressor/src/*.rs
 
 clean: clean-app
 	@-$(RM) -rf target
 	@-$(RM) -rf vendor
-	@-$(RM) -rf .cargo
+	@-$(RM) -f .cargo/config.toml
 
 clean-app:
 	@-$(RM) -rf resources/app/*

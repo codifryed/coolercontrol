@@ -26,7 +26,7 @@ use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::engine::main::ReposByType;
 use crate::engine::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
-    FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
+    FunctionSafetyLatchProcessor, FunctionStandardPostProcessor, FunctionStandardPreProcessor,
 };
 use crate::engine::processors::profiles::GraphProcessor;
 use crate::engine::{
@@ -45,6 +45,7 @@ struct ProcessorCollection {
     fun_std_pre: FunctionStandardPreProcessor,
     graph_proc: GraphProcessor,
     fun_duty_thresh_post: FunctionDutyThresholdPostProcessor,
+    fun_std_post: FunctionStandardPostProcessor,
 }
 
 /// This is the commander for Graph Profile Processing.
@@ -70,13 +71,18 @@ impl GraphProfileCommander {
             repos,
             scheduled_settings: RefCell::new(HashMap::new()),
             config,
-            processors: ProcessorCollection {
-                fun_safety_latch: FunctionSafetyLatchProcessor::new(),
-                fun_identity_pre: FunctionIdentityPreProcessor::new(all_devices.clone()),
-                fun_ema_pre: FunctionEMAPreProcessor::new(all_devices.clone()),
-                fun_std_pre: FunctionStandardPreProcessor::new(all_devices.clone()),
-                graph_proc: GraphProcessor::new(),
-                fun_duty_thresh_post: FunctionDutyThresholdPostProcessor::new(),
+            processors: {
+                let fun_std_pre = FunctionStandardPreProcessor::new(all_devices.clone());
+                let fun_std_post = fun_std_pre.create_post_processor();
+                ProcessorCollection {
+                    fun_safety_latch: FunctionSafetyLatchProcessor::new(),
+                    fun_identity_pre: FunctionIdentityPreProcessor::new(all_devices.clone()),
+                    fun_ema_pre: FunctionEMAPreProcessor::new(all_devices.clone()),
+                    fun_std_pre,
+                    graph_proc: GraphProcessor::new(),
+                    fun_duty_thresh_post: FunctionDutyThresholdPostProcessor::new(),
+                    fun_std_post,
+                }
             },
             all_devices,
             process_output_cache: RefCell::new(HashMap::new()),
@@ -234,6 +240,7 @@ impl GraphProfileCommander {
         .apply(&self.processors.fun_std_pre)
         .apply(&self.processors.graph_proc)
         .apply(&self.processors.fun_duty_thresh_post)
+        .apply(&self.processors.fun_std_post)
         .apply(&self.processors.fun_safety_latch)
         .return_processed_duty()
     }

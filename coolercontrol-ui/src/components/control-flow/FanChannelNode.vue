@@ -36,7 +36,10 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const flowViewMode = inject<string>('flowViewMode', 'detail')
-const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
+const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
+    'openNodeDrawer',
+    undefined,
+)
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
