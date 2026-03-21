@@ -28,7 +28,11 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 /// Known filesystem locations for the pci.ids database file.
-const DB_PATHS: &[&str] = &["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids"];
+const DB_PATHS: &[&str] = &[
+    "/usr/share/hwdata/pci.ids",
+    "/usr/share/misc/pci.ids",
+    "@hwdata@/share/hwdata/pci.ids",
+];
 
 /// Result of looking up a PCI device in the pci.ids database.
 /// All four fields are human-readable names from the pci.ids file.
