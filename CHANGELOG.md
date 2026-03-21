@@ -10,6 +10,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [4.1.0] - 2026-03-21
+
+### Added
+
+- Tags for fans, displayed in the main menu and used for applying profiles/filters (#295, !436)
+- Prometheus metrics endpoint (#366, !431)
+- Access Token write access toggle (!434)
+- Support for liquidctl ControlHub driver (#559, !433)
+- Qt App and daemon version comparison dialog, helping with system package updates (!434)
+- Auto-responsive Controls view (!437)
+- Control Flow button and icon in the navigation (!437)
+- Fast drawer for changing Control Flow node settings (!437)
+- Mode name display in main menu on LCD and lighting channels (!443)
+- Handling for more pwm auto no-read cases (dell_smm) (#557, !440)
+- New password dialog flow with improved UX (!438)
+
+### Changed
+
+- Control Flow charts now shown for manual and default settings (!441)
+- Channel Control Flow pans on scroll instead of zooming, consistent with other pages (!437)
+- Improved default profile info message (!441)
+- Improved Command usage in the Qt desktop app (!434)
+- Consolidated config file paths with environment variable override support (!438)
+- Replaced some dependencies with a custom implementation (!438)
+- Improved triple EMA smoothing algorithm for fan control stability (!438)
+- Improved temperature and duty-based function processing to reduce oscillation (!444)
+- Tweaked release profile: use thin LTO for faster builds with minimal performance difference (!438)
+- Build codegen-units set to an optimized in-between value (!438)
+- Adjusted udevadm settle timeout and logging (!437)
+- Improved shell command logging, de-escalating non-critical errors (!437)
+- Make forgot password tooltip more obvious (!434)
+- Token dialog styling improvements (!434)
+- Small bump in allowed password attempts in short period (!434)
+- Various dependency updates (!438)
+
+### Fixed
+
+- Stall issue with function small fan steps and downward_only settings (!444)
+- Duty comparison used with temps in standard function processing to prevent edge cases bypassing
+  downward hysteresis settings (!444)
+- Eye candy animation dashboard bug when zoomed in, where underlying data kept updating (!444)
+- Console warnings about not found component (!444)
+- Stack size sometimes off by one, which could introduce a delay in fan application (!444)
+- Entire point entry in points table is now clickable for easier selection (!443)
+- New devices now appear at the top of the menu (!443)
+- Issue when Mix profiles are assigned to channels and members of other mix profiles (#565, !439)
+- Plugin shutdown error on system shutdown when systemd has already stopped it (!437)
+- Click propagation issue with sub-popovers (!436)
+- Missing status readings for the Aquacomputer D5 (#560, !432)
+
+### Security
+
+- Local patch applied for time crate stack exhaustion vulnerability (RUSTSEC-2026-0009) (!442)
+
 ## [4.0.1] - 2026-03-08
 
 ### Fixed
