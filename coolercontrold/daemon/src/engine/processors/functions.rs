@@ -267,13 +267,11 @@ impl FunctionStandardPreProcessor {
         }
     }
 
-    /// Bypasses the hysteresis stack when the target duty is significantly
-    /// higher than the actual current fan duty and `only_downward` is set.
-    /// Uses `step_size_min` as the minimum threshold to prevent bypass from
-    /// firing for tiny duty differences caused by temperature noise.
-    /// Without this threshold, the bypass would fire for noise-level changes,
-    /// clearing the stack (which resets the response_delay) on every noisy
-    /// cycle and causing oscillation.
+    /// Bypasses the hysteresis stack when `only_downward` is set and
+    /// either the temperature is rising or the target duty has not dropped
+    /// meaningfully (within `step_decrease_min` of the last applied duty).
+    /// This prevents the stack from allowing an unwanted duty drop when
+    /// temps dip and then slowly rise again.
     fn should_bypass_for_upward_temp(
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
@@ -289,10 +287,18 @@ impl FunctionStandardPreProcessor {
             return false; // No duty history yet, let normal path handle it.
         };
         debug_assert!(last_applied_duty <= 100, "duty must be in valid range");
-        let target_duty =
-            utils::interpolate_profile(&data.profile.speed_profile, newest_temp_celsius);
-        let step_increase_min = data.profile.function.step_size_min;
-        if target_duty >= last_applied_duty.saturating_add(step_increase_min) {
+        let temp_rising = newest_temp_celsius > metadata.last_applied_temp;
+        let duty_not_dropping = || {
+            let target_duty =
+                utils::interpolate_profile(&data.profile.speed_profile, newest_temp_celsius);
+            let step_decrease_min = if data.profile.function.step_size_min_decreasing == 0 {
+                data.profile.function.step_size_min
+            } else {
+                data.profile.function.step_size_min_decreasing
+            };
+            target_duty >= last_applied_duty.saturating_sub(step_decrease_min)
+        };
+        if temp_rising || duty_not_dropping() {
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.push_back(newest_temp_celsius);
             metadata.last_applied_temp = newest_temp_celsius;
@@ -1383,6 +1389,214 @@ mod tests {
         let all_temps = vec![10.0, 20.0, 30.0];
         let slice = FunctionEMAPreProcessor::get_temps_slice(&all_temps);
         assert_eq!(slice.len(), 3);
+    }
+
+    // ==================== should_bypass_for_upward_temp tests ====================
+
+    fn create_bypass_test_data(
+        speed_profile: Vec<(f64, u8)>,
+        step_size_min: u8,
+    ) -> SpeedProfileData {
+        let function = Function {
+            step_size_min,
+            only_downward: Some(true),
+            response_delay: Some(5),
+            deviance: Some(2.0),
+            ..Default::default()
+        };
+        SpeedProfileData {
+            profile: std::rc::Rc::new(NormalizedGraphProfile {
+                profile_uid: "test-profile".to_string(),
+                profile_name: "Test Profile".to_string(),
+                speed_profile,
+                temp_source: TempSource {
+                    device_uid: "test-device".to_string(),
+                    temp_name: "test-temp".to_string(),
+                },
+                function,
+                poll_rate: 1.0,
+            }),
+            temp: None,
+            duty: None,
+            processing_started: true,
+            safety_latch_triggered: false,
+        }
+    }
+
+    #[test]
+    fn bypass_returns_false_when_temp_steady_and_duty_dropping_beyond_step() {
+        // Temp unchanged AND target duty drops beyond step_decrease_min.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(80);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // step_size_min=2 (symmetric), so threshold = 80-2 = 78.
+        // 60 < 78, so neither condition fires.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            !FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should not bypass when duty drops beyond step_decrease_min"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_true_when_temp_steady_and_duty_within_step() {
+        // Temp unchanged but duty drop is within step_decrease_min tolerance.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(62);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // step_size_min=5 (symmetric), so threshold = 62-5 = 57.
+        // 60 >= 57, so duty condition fires.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 5);
+
+        assert!(
+            FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should bypass when duty drop is within step_decrease_min"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_true_when_temp_steady_and_duty_equal() {
+        // Temp unchanged but target duty equals last applied duty.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(60);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // 60 >= 60-2 = 58, so duty condition fires.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should bypass when target duty equals last applied duty"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_false_when_temp_decreasing_and_duty_dropping_beyond_step() {
+        // Temp decreasing AND target duty drops beyond step_decrease_min.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(80);
+        metadata.temp_hist_stack.push_back(45.0);
+        // At 45C with profile (20,20)-(80,100), target duty = 53.
+        // step_size_min=2 (symmetric), so threshold = 80-2 = 78.
+        // 53 < 78, so neither condition fires.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            !FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should not bypass when temp decreasing and duty drops beyond step"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_true_when_temp_rising_even_if_duty_dropping() {
+        // Temp is rising - bypass fires regardless of duty.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 49.0;
+        metadata.last_applied_duty = Some(80);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // 60 < 80-2 = 78 (duty drops beyond step), but temp is rising
+        // so bypass fires anyway.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should bypass when temp is rising even if duty would drop"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_true_when_duty_above_last_even_if_temp_steady() {
+        // Temp unchanged but target duty above last applied duty.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(20);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // 60 >= 20-2 = 18, so duty condition fires.
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should bypass when target duty exceeds last applied even if temp steady"
+        );
+    }
+
+    #[test]
+    fn bypass_uses_asymmetric_step_decrease_min() {
+        // Asymmetric steps: step_size_min_decreasing differs from step_size_min.
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 50.0;
+        metadata.last_applied_duty = Some(65);
+        metadata.temp_hist_stack.push_back(50.0);
+        // At 50C with profile (20,20)-(80,100), target duty = 60.
+        // step_size_min_decreasing=10, so threshold = 65-10 = 55.
+        // 60 >= 55, so duty condition fires.
+        let function = Function {
+            step_size_min: 2,
+            step_size_min_decreasing: 10,
+            only_downward: Some(true),
+            response_delay: Some(5),
+            deviance: Some(2.0),
+            ..Default::default()
+        };
+        let mut data = SpeedProfileData {
+            profile: std::rc::Rc::new(NormalizedGraphProfile {
+                profile_uid: "test-profile".to_string(),
+                profile_name: "Test Profile".to_string(),
+                speed_profile: vec![(20.0, 20), (80.0, 100)],
+                temp_source: TempSource {
+                    device_uid: "test-device".to_string(),
+                    temp_name: "test-temp".to_string(),
+                },
+                function,
+                poll_rate: 1.0,
+            }),
+            temp: None,
+            duty: None,
+            processing_started: true,
+            safety_latch_triggered: false,
+        };
+
+        assert!(
+            FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should use asymmetric step_size_min_decreasing"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_false_when_no_duty_history() {
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 30.0;
+        // last_applied_duty is None
+        metadata.temp_hist_stack.push_back(50.0);
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            !FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should not bypass when there is no duty history"
+        );
+    }
+
+    #[test]
+    fn bypass_returns_false_when_no_temp_history() {
+        let mut metadata = super::ChannelSettingMetadata::new();
+        metadata.last_applied_temp = 30.0;
+        metadata.last_applied_duty = Some(20);
+        // temp_hist_stack is empty
+        let mut data = create_bypass_test_data(vec![(20.0, 20), (80.0, 100)], 2);
+
+        assert!(
+            !FunctionStandardPreProcessor::should_bypass_for_upward_temp(&mut metadata, &mut data),
+            "should not bypass when there is no temp history"
+        );
     }
 
     // ==================== calc_ideal_stack_size tests ====================
