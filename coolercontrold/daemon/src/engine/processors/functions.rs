@@ -296,7 +296,7 @@ impl FunctionStandardPreProcessor {
             } else {
                 data.profile.function.step_size_min_decreasing
             };
-            target_duty >= last_applied_duty.saturating_sub(step_decrease_min)
+            target_duty > last_applied_duty.saturating_sub(step_decrease_min)
         };
         if temp_rising || duty_not_dropping() {
             metadata.temp_hist_stack.clear();
