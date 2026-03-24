@@ -178,14 +178,17 @@ build_source_assets:
   script:
     - packaging/release-source.sh ${CI_PROJECT_URL} ${CI_COMMIT_REF_NAME}
     - make vendor
+    - cp coolercontrold-vendor.tar.gz coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz"
   artifacts:
     name: 'coolercontrol-${CI_COMMIT_REF_NAME} Source'
     paths:
       - coolercontrol-${CI_COMMIT_REF_NAME}.tar.gz
       - coolercontrold-vendor.tar.gz
+      - coolercontrold-vendor-${CI_COMMIT_REF_NAME}.tar.gz
     expire_in: 14 days
 
 ############################################################################################
@@ -1137,6 +1140,10 @@ create_release:
         - name: Daemon Vendored Cargo Dependencies
           filepath: '/packages/coolercontrold-vendor.tar.gz'
           url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tar.gz'
+          link_type: other
+        - name: Daemon Vendored Cargo Dependencies (versioned)
+          filepath: '/packages/coolercontrold-vendor-${CI_COMMIT_TAG}.tar.gz'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor-${CI_COMMIT_TAG}.tar.gz'
           link_type: other
         - name: UI Build Assets x86_64
           filepath: '/packages/coolercontrol-ui-vendor.tar.gz'
