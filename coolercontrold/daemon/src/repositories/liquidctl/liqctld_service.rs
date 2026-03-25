@@ -199,6 +199,11 @@ async fn process_log_output(
                 stripped = "Corsair PSU kernel driver conflict detected. \
                 Solution: Use the HWMon kernel driver (no fan control) \
                 OR enable liquidctl 'Direct Access' in advanced device settings.";
+            } else if stripped
+                .starts_with("required PWM functionality is not available in aquacomputer_d5next")
+            {
+                // Aquacomputer warning that is info level for us
+                lvl = log::Level::Info;
             }
             stripped
         } else if let Some(mut stripped) = line.strip_prefix("ERROR") {
