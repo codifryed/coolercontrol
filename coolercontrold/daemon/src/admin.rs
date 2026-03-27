@@ -156,7 +156,7 @@ fn is_legacy_hash(stored: &str) -> bool {
 fn hash_passwd_sha512(passwd: &[u8]) -> String {
     let mut hasher = Sha512::new();
     hasher.update(passwd);
-    format!("{:x}", hasher.finalize())
+    crate::hashutil::to_lower_hex(&hasher.finalize())
 }
 
 async fn migrate_to_argon2(passwd: &str) -> Result<()> {
