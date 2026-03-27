@@ -16,17 +16,57 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import svgLoader from 'vite-svg-loader'
 import loadVersion from 'vite-plugin-package-version'
 import legacy from '@vitejs/plugin-legacy'
 // https://vitejs.dev/config/
 
+// Emits reflect-metadata as a separate asset and loads it via script src
+// before the module entry, so decorator metadata APIs are available before
+// any bundled code runs. A src tag (not inline) is required by the Qt app's CSP.
+function reflectMetadataPlugin(): Plugin {
+    const fileName = 'assets/Reflect.js'
+    const reflectPath = fileURLToPath(
+        new URL('./node_modules/reflect-metadata/Reflect.js', import.meta.url),
+    )
+    return {
+        name: 'reflect-metadata-inject',
+        configureServer(server) {
+            server.middlewares.use(`/${fileName}`, (_req, res) => {
+                res.setHeader('Content-Type', 'application/javascript')
+                res.end(readFileSync(reflectPath, 'utf-8'))
+            })
+        },
+        generateBundle() {
+            this.emitFile({
+                type: 'asset',
+                fileName,
+                source: readFileSync(reflectPath, 'utf-8'),
+            })
+        },
+        transformIndexHtml: {
+            order: 'pre',
+            handler() {
+                return [
+                    {
+                        tag: 'script',
+                        attrs: { src: `/${fileName}` },
+                        injectTo: 'head',
+                    },
+                ]
+            },
+        },
+    }
+}
+
 export default defineConfig({
     base: '/',
     plugins: [
+        reflectMetadataPlugin(),
         vue(),
         svgLoader(),
         loadVersion(),
