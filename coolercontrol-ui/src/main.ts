@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import 'reflect-metadata'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './style.css'

@@ -22,7 +22,6 @@
 
         /* App specific Options */
         "composite": true,
-        "baseUrl": ".",
         "experimentalDecorators": true,
         "emitDecoratorMetadata": true,
         "allowJs": true,

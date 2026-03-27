@@ -42,8 +42,8 @@ export default defineConfig({
         },
     },
     build: {
-        minify: 'esbuild',
-        cssMinify: 'esbuild',
+        minify: 'oxc',
+        cssMinify: 'lightningcss',
         assetsInlineLimit: 10_240_000,
         cssCodeSplit: false,
         chunkSizeWarningLimit: 2_500,

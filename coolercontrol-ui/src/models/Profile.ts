@@ -22,6 +22,19 @@ import type { UID } from '@/models/Device'
 import { v4 as uuidV4 } from 'uuid'
 import i18n from '@/i18n'
 
+export class ProfileTempSource {
+    constructor(
+        /**
+         * The internal name for this Temperature Source. Not the frontend_name or external_name
+         */
+        readonly temp_name: string,
+        /**
+         * The associated device uid containing current temp values
+         */
+        readonly device_uid: UID,
+    ) {}
+}
+
 /**
  * This is currently an internal model that will be also used externally by daemon at some point. The existing external
  * model will be transformed into this one until then.
@@ -167,19 +180,6 @@ export function getProfileTypeDisplayName(type: ProfileType): string {
         default:
             return type
     }
-}
-
-export class ProfileTempSource {
-    constructor(
-        /**
-         * The internal name for this Temperature Source. Not the frontend_name or external_name
-         */
-        readonly temp_name: string,
-        /**
-         * The associated device uid containing current temp values
-         */
-        readonly device_uid: UID,
-    ) {}
 }
 
 export class ProfilesDTO {

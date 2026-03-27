@@ -19,6 +19,131 @@
 import { Transform, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
 
+export class TempSource {
+    /**
+     * The internal name for this Temperature Source. Not the frontend_name or external_name
+     */
+    temp_name: string
+
+    /**
+     * The associated device uid containing current temp values
+     */
+    device_uid: UID
+
+    constructor(deviceUid: UID, tempName: string) {
+        this.device_uid = deviceUid
+        this.temp_name = tempName
+    }
+}
+
+export class LightingSettings {
+    /**
+     * The lighting mode name
+     */
+    mode: string
+
+    /**
+     * The speed to set
+     */
+    speed?: string
+
+    /**
+     * run backwards or not
+     */
+    backward?: boolean
+
+    /**
+     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
+     */
+    colors: Array<[number, number, number]> = []
+
+    constructor(mode: string) {
+        this.mode = mode
+    }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteLightingDTO extends LightingSettings {}
+
+/**
+ * Settings for the LCD Carousel.
+ *
+ * This can be used to have a carousel of images (static or gif), of sensor data,
+ * or a combination of both.
+ */
+export class LcdCarouselSettings {
+    /**
+     * The interval in seconds (2-900) in which to change images in the carousel.
+     */
+    interval: number
+
+    /**
+     * The absolute path directory location for images for the carousel. All applicable images
+     * present are processed when the setting is applied.
+     */
+    images_path?: string
+
+    constructor(interval: number, images_path?: string) {
+        this.interval = interval
+        this.images_path = images_path
+    }
+}
+
+export class LcdSettings {
+    /**
+     * The Lcd mode name
+     */
+    mode: string
+
+    /**
+     * The LCD brightness (0-100%)
+     */
+    brightness?: number
+
+    /**
+     * The LCD Image orientation (0,90,180,270)
+     */
+    orientation?: number
+
+    /**
+     * The LCD Source Image file path location
+     */
+    image_file_src?: string
+
+    /**
+     * The LCD Image tmp file path location, where the preprocessed image is located
+     */
+    image_file_processed?: string
+
+    /**
+     * Settings for the Carousel LCD Mode.
+     */
+    @Type(() => LcdCarouselSettings)
+    carousel?: LcdCarouselSettings
+
+    /**
+     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
+     */
+    colors: Array<[number, number, number]> = []
+
+    /**
+     * A temp source for displaying a temperature.
+     */
+    @Type(() => TempSource)
+    temp_source?: TempSource
+
+    constructor(mode: string) {
+        this.mode = mode
+    }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteLcdDTO extends LcdSettings {}
+
 /**
  * Our internal representation of the DeviceSettingsDTO data
  */
@@ -111,128 +236,3 @@ export class DeviceSettingWritePWMModeDTO {
         this.pwm_mode = pwm_mode
     }
 }
-
-export class TempSource {
-    /**
-     * The internal name for this Temperature Source. Not the frontend_name or external_name
-     */
-    temp_name: string
-
-    /**
-     * The associated device uid containing current temp values
-     */
-    device_uid: UID
-
-    constructor(deviceUid: UID, tempName: string) {
-        this.device_uid = deviceUid
-        this.temp_name = tempName
-    }
-}
-
-export class LightingSettings {
-    /**
-     * The lighting mode name
-     */
-    mode: string
-
-    /**
-     * The speed to set
-     */
-    speed?: string
-
-    /**
-     * run backwards or not
-     */
-    backward?: boolean
-
-    /**
-     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-     */
-    colors: Array<[number, number, number]> = []
-
-    constructor(mode: string) {
-        this.mode = mode
-    }
-}
-
-/**
- * This DTO is used to write the specific configuration to the daemon.
- */
-export class DeviceSettingWriteLightingDTO extends LightingSettings {}
-
-export class LcdSettings {
-    /**
-     * The Lcd mode name
-     */
-    mode: string
-
-    /**
-     * The LCD brightness (0-100%)
-     */
-    brightness?: number
-
-    /**
-     * The LCD Image orientation (0,90,180,270)
-     */
-    orientation?: number
-
-    /**
-     * The LCD Source Image file path location
-     */
-    image_file_src?: string
-
-    /**
-     * The LCD Image tmp file path location, where the preprocessed image is located
-     */
-    image_file_processed?: string
-
-    /**
-     * Settings for the Carousel LCD Mode.
-     */
-    @Type(() => LcdCarouselSettings)
-    carousel?: LcdCarouselSettings
-
-    /**
-     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-     */
-    colors: Array<[number, number, number]> = []
-
-    /**
-     * A temp source for displaying a temperature.
-     */
-    @Type(() => TempSource)
-    temp_source?: TempSource
-
-    constructor(mode: string) {
-        this.mode = mode
-    }
-}
-
-/**
- * Settings for the LCD Carousel.
- *
- * This can be used to have a carousel of images (static or gif), of sensor data,
- * or a combination of both.
- */
-export class LcdCarouselSettings {
-    /**
-     * The interval in seconds (2-900) in which to change images in the carousel.
-     */
-    interval: number
-
-    /**
-     * The absolute path directory location for images for the carousel. All applicable images
-     * present are processed when the setting is applied.
-     */
-    images_path?: string
-
-    constructor(interval: number, images_path?: string) {
-        this.interval = interval
-        this.images_path = images_path
-    }
-}
-
-/**
- * This DTO is used to write the specific configuration to the daemon.
- */
-export class DeviceSettingWriteLcdDTO extends LcdSettings {}

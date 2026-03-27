@@ -21,6 +21,22 @@ import { plainToInstance, Transform, Type } from 'class-transformer'
 import { TempInfo } from '@/models/TempInfo.ts'
 import i18n from '@/i18n'
 
+export enum DriverType {
+    KERNEL = 'Kernel',
+    LIQUIDCTL = 'Liquidctl',
+    NVML = 'NVML',
+    NVIDIA_CLI = 'NvidiaCLI',
+    COOLERCONTROL = 'CoolerControl', // For things like CustomSensors
+    EXTERNAL = 'External', // For external device services
+}
+
+export class DriverInfo {
+    readonly drv_type: DriverType = DriverType.COOLERCONTROL
+    readonly name?: string
+    readonly version?: string
+    readonly locations: string[] = []
+}
+
 export class DeviceInfo {
     // We need a special transformer for this collection mapping to work
     @Transform(
@@ -81,22 +97,6 @@ export class DeviceInfo {
         this.thinkpad_fan_control = thinkpad_fan_control
         this.driver_info = driver_info
     }
-}
-
-export class DriverInfo {
-    readonly drv_type: DriverType = DriverType.COOLERCONTROL
-    readonly name?: string
-    readonly version?: string
-    readonly locations: string[] = []
-}
-
-export enum DriverType {
-    KERNEL = 'Kernel',
-    LIQUIDCTL = 'Liquidctl',
-    NVML = 'NVML',
-    NVIDIA_CLI = 'NvidiaCLI',
-    COOLERCONTROL = 'CoolerControl', // For things like CustomSensors
-    EXTERNAL = 'External', // For external device services
 }
 
 /**
