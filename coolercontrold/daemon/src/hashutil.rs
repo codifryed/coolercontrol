@@ -20,13 +20,12 @@ use std::fmt::Write;
 
 /// Encode a byte slice as a lowercase hex string.
 pub fn to_lower_hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(
-        String::with_capacity(bytes.len() * 2),
-        |mut acc, byte| {
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut acc, byte| {
             write!(acc, "{byte:02x}").unwrap();
             acc
-        },
-    )
+        })
 }
 
 #[cfg(test)]
