@@ -34,7 +34,6 @@ pub struct DetectRequest {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct DetectResponse {
     pub detected_chips: Vec<DetectedChipDto>,
-    pub skipped: Vec<SkippedDriverDto>,
     pub blacklisted: Vec<String>,
     pub environment: EnvironmentDto,
 }
@@ -47,13 +46,6 @@ pub struct DetectedChipDto {
     pub base_address: String,
     pub features: Vec<String>,
     pub module_status: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct SkippedDriverDto {
-    pub driver: String,
-    pub reason: String,
-    pub preferred: String,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -75,15 +67,6 @@ impl From<cc_detect::DetectionResults> for DetectResponse {
                     base_address: c.base_address,
                     features: c.features,
                     module_status: c.module_status,
-                })
-                .collect(),
-            skipped: results
-                .skipped
-                .into_iter()
-                .map(|s| SkippedDriverDto {
-                    driver: s.driver,
-                    reason: s.reason,
-                    preferred: s.preferred,
                 })
                 .collect(),
             blacklisted: results.blacklisted,
