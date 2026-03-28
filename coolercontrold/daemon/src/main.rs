@@ -54,6 +54,7 @@ mod config;
 mod device;
 mod engine;
 mod grpc_api;
+mod hashutil;
 mod logger;
 mod main_loop;
 mod modes;

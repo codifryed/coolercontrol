@@ -32,45 +32,6 @@ export class TagSettings {
     }
 }
 
-/**
- * A DTO Class to hold all the UI settings to be persisted by the daemon.
- * The Class-Transformer has issues with Maps, so we have to use Arrays to
- * store that data and do the transformation.
- */
-export class UISettingsDTO {
-    devices?: Array<UID> = []
-
-    @Type(() => DeviceUISettingsDTO)
-    deviceSettings?: Array<DeviceUISettingsDTO> = []
-
-    @Type(() => Dashboard)
-    dashboards: Array<Dashboard> = []
-    homeDashboard?: UID
-    themeMode: ThemeMode = ThemeMode.SYSTEM
-    chartLineScale: number = 1.5
-    time24: boolean = false
-    menuOrder: Array<MenuOrderIds> = []
-    expandedMenuIds: Array<string> | undefined
-    pinnedIds: Array<string> = []
-    collapsedMainMenu: boolean = false
-    hideMenuCollapseIcon: boolean = false
-    mainMenuWidthRem: number = 24
-    frequencyPrecision: number = 1
-    customTheme: CustomThemeSettings = {
-        accent: defaultCustomTheme.accent,
-        bgOne: defaultCustomTheme.bgOne,
-        bgTwo: defaultCustomTheme.bgTwo,
-        borderOne: defaultCustomTheme.borderOne,
-        textColor: defaultCustomTheme.textColor,
-        textColorSecondary: defaultCustomTheme.textColorSecondary,
-    }
-    entityColors: Array<[string, string]> = []
-    eyeCandy: boolean = false
-    showOnboarding: boolean = true
-    tagNames: Array<string> = []
-    tagColors: Array<string> = []
-}
-
 export enum ThemeMode {
     SYSTEM = 'system',
     DARK = 'dark',
@@ -123,6 +84,55 @@ export const defaultCustomTheme: CustomThemeSettings = {
     textColorSecondary: '138 149 170', //'#8a95aa'
 }
 
+export enum ChannelViewType {
+    Control = 'Control',
+    Dashboard = 'Dashboard',
+}
+
+/**
+ * 获取ChannelViewType的本地化显示名称
+ * @param type ChannelViewType枚举值
+ * @returns 本地化的显示名称
+ */
+export function getChannelViewTypeDisplayName(type: ChannelViewType): string {
+    const { t } = i18n.global
+    switch (type) {
+        case ChannelViewType.Control:
+            return t('models.channelViewType.control')
+        case ChannelViewType.Dashboard:
+            return t('models.channelViewType.dashboard')
+        default:
+            return String(type)
+    }
+}
+
+export class SensorAndChannelSettings {
+    @Exclude() // we don't want to persist this, it should be generated anew on each start
+    defaultColor: Color
+    userColor?: Color
+
+    @Exclude() // we don't want to persist this
+    channelLabel: string = ''
+    userName?: string
+
+    viewType: ChannelViewType = ChannelViewType.Control
+    @Type(() => Dashboard)
+    channelDashboard?: Dashboard
+    tags: Array<string> = []
+
+    constructor(defaultColor: Color = '#568af2') {
+        this.defaultColor = defaultColor
+    }
+
+    get color(): Color {
+        return this.userColor != null ? this.userColor : this.defaultColor
+    }
+
+    get name(): string {
+        return this.userName != null ? this.userName : this.channelLabel
+    }
+}
+
 export class DeviceUISettingsDTO {
     userName?: string
     userColor?: Color
@@ -157,51 +167,41 @@ export class DeviceUISettings {
     }
 }
 
-export class SensorAndChannelSettings {
-    @Exclude() // we don't want to persist this, it should be generated anew on each start
-    defaultColor: Color
-    userColor?: Color
-
-    @Exclude() // we don't want to persist this
-    channelLabel: string = ''
-    userName?: string
-
-    viewType: ChannelViewType = ChannelViewType.Control
-    @Type(() => Dashboard)
-    channelDashboard?: Dashboard
-    tags: Array<string> = []
-
-    constructor(defaultColor: Color = '#568af2') {
-        this.defaultColor = defaultColor
-    }
-
-    get color(): Color {
-        return this.userColor != null ? this.userColor : this.defaultColor
-    }
-
-    get name(): string {
-        return this.userName != null ? this.userName : this.channelLabel
-    }
-}
-
-export enum ChannelViewType {
-    Control = 'Control',
-    Dashboard = 'Dashboard',
-}
-
 /**
- * 获取ChannelViewType的本地化显示名称
- * @param type ChannelViewType枚举值
- * @returns 本地化的显示名称
+ * A DTO Class to hold all the UI settings to be persisted by the daemon.
+ * The Class-Transformer has issues with Maps, so we have to use Arrays to
+ * store that data and do the transformation.
  */
-export function getChannelViewTypeDisplayName(type: ChannelViewType): string {
-    const { t } = i18n.global
-    switch (type) {
-        case ChannelViewType.Control:
-            return t('models.channelViewType.control')
-        case ChannelViewType.Dashboard:
-            return t('models.channelViewType.dashboard')
-        default:
-            return String(type)
+export class UISettingsDTO {
+    devices?: Array<UID> = []
+
+    @Type(() => DeviceUISettingsDTO)
+    deviceSettings?: Array<DeviceUISettingsDTO> = []
+
+    @Type(() => Dashboard)
+    dashboards: Array<Dashboard> = []
+    homeDashboard?: UID
+    themeMode: ThemeMode = ThemeMode.SYSTEM
+    chartLineScale: number = 1.5
+    time24: boolean = false
+    menuOrder: Array<MenuOrderIds> = []
+    expandedMenuIds: Array<string> | undefined
+    pinnedIds: Array<string> = []
+    collapsedMainMenu: boolean = false
+    hideMenuCollapseIcon: boolean = false
+    mainMenuWidthRem: number = 24
+    frequencyPrecision: number = 1
+    customTheme: CustomThemeSettings = {
+        accent: defaultCustomTheme.accent,
+        bgOne: defaultCustomTheme.bgOne,
+        bgTwo: defaultCustomTheme.bgTwo,
+        borderOne: defaultCustomTheme.borderOne,
+        textColor: defaultCustomTheme.textColor,
+        textColorSecondary: defaultCustomTheme.textColorSecondary,
     }
+    entityColors: Array<[string, string]> = []
+    eyeCandy: boolean = false
+    showOnboarding: boolean = true
+    tagNames: Array<string> = []
+    tagColors: Array<string> = []
 }

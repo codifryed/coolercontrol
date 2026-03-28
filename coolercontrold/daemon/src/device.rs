@@ -155,7 +155,7 @@ impl Device {
             hasher.update(name);
             hasher.update([type_index]);
         }
-        format!("{:x}", hasher.finalize())
+        crate::hashutil::to_lower_hex(&hasher.finalize())
     }
 
     /// Returns the most recent status in the status history, if it exists.

@@ -89,13 +89,6 @@ export function getAlertStateIcon(state: AlertState): string {
     }
 }
 
-export class AlertsDTO {
-    @Type(() => Alert)
-    alerts: Array<Alert> = []
-    @Type(() => AlertLog)
-    logs: Array<AlertLog> = []
-}
-
 export class AlertLog {
     uid: UID
     name: string
@@ -110,4 +103,11 @@ export class AlertLog {
         this.message = message
         this.timestamp = timestamp
     }
+}
+
+export class AlertsDTO {
+    @Type(() => Alert)
+    alerts: Array<Alert> = []
+    @Type(() => AlertLog)
+    logs: Array<AlertLog> = []
 }

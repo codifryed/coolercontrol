@@ -17,7 +17,6 @@
   -->
 
 <script setup lang="ts">
-import 'reflect-metadata'
 import { RouterView } from 'vue-router'
 import { Ref, onMounted, ref, inject } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'

@@ -21,59 +21,6 @@ import { v4 as uuidV4 } from 'uuid'
 import { Type } from 'class-transformer'
 import i18n from '@/i18n'
 
-export class Dashboard {
-    uid: UID = uuidV4()
-    name: string
-
-    // Type of chart this dashboard has
-    chartType: ChartType = ChartType.TIME_CHART
-
-    // time range for chart, if time-chart
-    timeRangeSeconds: number = 60
-
-    // Left-side duty/temp scale we call the Degree Scale.
-    // Right-side rpm/mhz scale we call the Frequency Scale.
-
-    // auto-scale or static scale...
-    autoScaleDegree: boolean = false
-    autoScaleFrequency: boolean = true
-    autoScaleWatts: boolean = true
-
-    // These are the scale min & maxes used when using a static Degree Axis Scale
-    degreeMax: number = 100
-    degreeMin: number = 0
-
-    // These are the scale min & maxes used when using a static Frequency Axis Scale
-    // These values stay in Mhz/rpms units and are not affected by frequency precision
-    frequencyMax: number = 10_000
-    frequencyMin: number = 0
-
-    wattsMax: number = 800
-    wattsMin: number = 0
-
-    // Selected data types to filter by
-    dataTypes: Array<DataType> = []
-
-    // Selected tag names to filter by (resolved to channels at runtime)
-    selectedTags: Array<string> = []
-
-    // Selected Raw deviceUID and channel names to filter by (not user-level names)
-    @Type(() => DashboardDeviceChannel)
-    deviceChannelNames: Array<DashboardDeviceChannel> = []
-
-    constructor(dashboardName: string) {
-        this.name = dashboardName
-    }
-
-    // Dashboards build by default when there are none (first-run)
-    static default(): Array<Dashboard> {
-        const newDashboard = new Dashboard('System')
-        // very first default dashbaord to have these filters for initial UX (not overloaded)
-        newDashboard.dataTypes = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
-        return [newDashboard]
-    }
-}
-
 export enum ChartType {
     TIME_CHART = 'Time Chart',
     TABLE = 'Table',
@@ -129,5 +76,58 @@ export class DashboardDeviceChannel {
     constructor(deviceUID: UID, channelName: string) {
         this.deviceUID = deviceUID
         this.channelName = channelName
+    }
+}
+
+export class Dashboard {
+    uid: UID = uuidV4()
+    name: string
+
+    // Type of chart this dashboard has
+    chartType: ChartType = ChartType.TIME_CHART
+
+    // time range for chart, if time-chart
+    timeRangeSeconds: number = 60
+
+    // Left-side duty/temp scale we call the Degree Scale.
+    // Right-side rpm/mhz scale we call the Frequency Scale.
+
+    // auto-scale or static scale...
+    autoScaleDegree: boolean = false
+    autoScaleFrequency: boolean = true
+    autoScaleWatts: boolean = true
+
+    // These are the scale min & maxes used when using a static Degree Axis Scale
+    degreeMax: number = 100
+    degreeMin: number = 0
+
+    // These are the scale min & maxes used when using a static Frequency Axis Scale
+    // These values stay in Mhz/rpms units and are not affected by frequency precision
+    frequencyMax: number = 10_000
+    frequencyMin: number = 0
+
+    wattsMax: number = 800
+    wattsMin: number = 0
+
+    // Selected data types to filter by
+    dataTypes: Array<DataType> = []
+
+    // Selected tag names to filter by (resolved to channels at runtime)
+    selectedTags: Array<string> = []
+
+    // Selected Raw deviceUID and channel names to filter by (not user-level names)
+    @Type(() => DashboardDeviceChannel)
+    deviceChannelNames: Array<DashboardDeviceChannel> = []
+
+    constructor(dashboardName: string) {
+        this.name = dashboardName
+    }
+
+    // Dashboards build by default when there are none (first-run)
+    static default(): Array<Dashboard> {
+        const newDashboard = new Dashboard('System')
+        // very first default dashbaord to have these filters for initial UX (not overloaded)
+        newDashboard.dataTypes = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
+        return [newDashboard]
     }
 }

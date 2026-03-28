@@ -386,5 +386,5 @@ async fn image_digest(path: &Path) -> Result<String> {
         }
         hasher.finalize()
     };
-    Ok(format!("{sha256_hash:x}"))
+    Ok(crate::hashutil::to_lower_hex(&sha256_hash))
 }

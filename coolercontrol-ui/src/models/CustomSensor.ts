@@ -20,36 +20,6 @@ import type { UID } from './Device'
 import { Type } from 'class-transformer'
 import i18n from '@/i18n'
 
-export class CustomSensor {
-    id: string
-
-    cs_type: CustomSensorType
-    mix_function: CustomSensorMixFunctionType
-    offset?: number
-
-    @Type(() => CustomTempSourceData)
-    sources: Array<CustomTempSourceData>
-
-    children: Array<string> = []
-    parents: Array<string> = []
-
-    file_path?: string
-
-    constructor(
-        id: string,
-        cs_type: CustomSensorType = CustomSensorType.Mix,
-        mix_function: CustomSensorMixFunctionType = CustomSensorMixFunctionType.Max,
-        sources: Array<CustomTempSourceData> = [],
-        file_path: string | undefined = undefined,
-    ) {
-        this.id = id
-        this.cs_type = cs_type
-        this.mix_function = mix_function
-        this.sources = sources
-        this.file_path = file_path
-    }
-}
-
 export enum CustomSensorType {
     Mix = 'Mix',
     File = 'File',
@@ -110,17 +80,6 @@ export function getCustomSensorMixFunctionTypeDisplayName(
 
 export type Weight = number
 
-export class CustomTempSourceData {
-    @Type(() => CustomSensorTempSource)
-    temp_source: CustomSensorTempSource
-    weight: Weight
-
-    constructor(temp_source: CustomSensorTempSource, weight: Weight = 1) {
-        this.temp_source = temp_source
-        this.weight = weight
-    }
-}
-
 export class CustomSensorTempSource {
     constructor(
         /**
@@ -132,4 +91,45 @@ export class CustomSensorTempSource {
          */
         readonly temp_name: string,
     ) {}
+}
+
+export class CustomTempSourceData {
+    @Type(() => CustomSensorTempSource)
+    temp_source: CustomSensorTempSource
+    weight: Weight
+
+    constructor(temp_source: CustomSensorTempSource, weight: Weight = 1) {
+        this.temp_source = temp_source
+        this.weight = weight
+    }
+}
+
+export class CustomSensor {
+    id: string
+
+    cs_type: CustomSensorType
+    mix_function: CustomSensorMixFunctionType
+    offset?: number
+
+    @Type(() => CustomTempSourceData)
+    sources: Array<CustomTempSourceData>
+
+    children: Array<string> = []
+    parents: Array<string> = []
+
+    file_path?: string
+
+    constructor(
+        id: string,
+        cs_type: CustomSensorType = CustomSensorType.Mix,
+        mix_function: CustomSensorMixFunctionType = CustomSensorMixFunctionType.Max,
+        sources: Array<CustomTempSourceData> = [],
+        file_path: string | undefined = undefined,
+    ) {
+        this.id = id
+        this.cs_type = cs_type
+        this.mix_function = mix_function
+        this.sources = sources
+        this.file_path = file_path
+    }
 }
