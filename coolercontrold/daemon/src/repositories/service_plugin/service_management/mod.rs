@@ -18,7 +18,7 @@
 
 use crate::repositories::utils::DirectCommand;
 use anyhow::Result;
-use log::warn;
+use log::{info, warn};
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -58,8 +58,10 @@ pub async fn plugin_user_exists(username: &str) -> bool {
 /// Creates the plugin user if it does not already exist. Logs a warning on failure.
 pub async fn ensure_plugin_user(username: &str) {
     if plugin_user_exists(username).await {
+        info!("Plugin user '{username}' already exists");
         return;
     }
+    info!("Creating plugin user '{username}'");
     if let Err(err) = create_plugin_user(username).await {
         warn!("Failed to create plugin user '{username}': {err}");
     }
