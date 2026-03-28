@@ -70,7 +70,7 @@ const dialog = useDialog()
 const shortcutsView = defineAsyncComponent(() => import('../components/ShortcutsView.vue'))
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
-const logoUrl = `/logo.svg`
+const logoUrl = computed(() => (settingsStore.eyeCandy ? `/logo-animated.gif` : `/logo.svg`))
 
 const settingsStore = useSettingsStore()
 const daemonState = useDaemonState()

@@ -19,6 +19,19 @@
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Query pkg-config for hwdata's pkgdatadir at build time (e.g., NixOS).
+    if let Ok(output) = std::process::Command::new("pkg-config")
+        .args(["hwdata", "--variable", "pkgdatadir"])
+        .output()
+    {
+        if output.status.success() {
+            let dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !dir.is_empty() && std::path::Path::new(&dir).is_dir() {
+                println!("cargo:rustc-env=HWDATA_PKGDATADIR={dir}");
+            }
+        }
+    }
+
     let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
     tonic_prost_build::configure()
         .build_server(true)

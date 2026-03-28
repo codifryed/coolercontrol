@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Kernel module loading, blacklist checking, and driver conflict resolution.
+//! Kernel module loading and blacklist checking.
 
 use std::path::Path;
 use std::time::Duration;
@@ -28,34 +28,19 @@ use crate::shell_command::{ShellCommand, ShellCommandResult};
 const MODPROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const UDEVADM_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Driver conflict rules. If both drivers are detected, only load the preferred one.
-pub struct DriverConflict {
-    pub preferred: &'static str,
-    pub conflicting: &'static str,
-    pub reason: &'static str,
-}
-
-/// Known driver conflict rules.
-pub const DRIVER_CONFLICTS: &[DriverConflict] = &[DriverConflict {
-    preferred: "nct6775",
-    conflicting: "nct6687",
-    reason: "nct6775 provides more complete sensor support for most NCT chips",
-}];
-
 /// Result of a module load attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadResult {
     Loaded,
     AlreadyLoaded,
     Blacklisted,
-    ConflictSkipped { preferred: String },
     Failed(String),
 }
 
 /// Load a kernel module via modprobe.
-/// Checks blacklist and conflicts before loading.
+/// Checks blacklist before loading.
 #[must_use]
-pub fn load_module(driver: &str, all_detected_drivers: &[String]) -> LoadResult {
+pub fn load_module(driver: &str) -> LoadResult {
     debug!("Attempting to load module: {driver}");
 
     // Check if already loaded
@@ -68,14 +53,6 @@ pub fn load_module(driver: &str, all_detected_drivers: &[String]) -> LoadResult 
     if is_module_blacklisted(driver) {
         info!("Module {driver} is blacklisted, skipping");
         return LoadResult::Blacklisted;
-    }
-
-    // Check conflicts
-    if let Some(preferred) = check_conflict(driver, all_detected_drivers) {
-        info!("Module {driver} conflicts with preferred driver {preferred}, skipping");
-        return LoadResult::ConflictSkipped {
-            preferred: preferred.to_owned(),
-        };
     }
 
     // Run modprobe
@@ -184,23 +161,6 @@ fn is_blacklisted_in_cmdline_content(driver: &str, cmdline: &str) -> bool {
     false
 }
 
-/// Check if loading this driver would conflict with a preferred driver
-/// that was also detected. Returns the preferred driver name if conflicting.
-fn check_conflict<'a>(driver: &str, all_detected_drivers: &'a [String]) -> Option<&'a str> {
-    for conflict in DRIVER_CONFLICTS {
-        if driver == conflict.conflicting
-            && all_detected_drivers.iter().any(|d| d == conflict.preferred)
-        {
-            debug!(
-                "Driver conflict: {} vs {} - {}",
-                driver, conflict.preferred, conflict.reason
-            );
-            return Some(conflict.preferred);
-        }
-    }
-    None
-}
-
 /// Run `udevadm settle` to wait for udev events to be processed.
 /// This gives hwmon devices time to appear in sysfs after module loading.
 pub fn udevadm_settle() {
@@ -263,26 +223,5 @@ mod tests {
         assert!(is_blacklisted_in_cmdline_content("nct6687", cmdline));
         assert!(is_blacklisted_in_cmdline_content("nouveau", cmdline));
         assert!(!is_blacklisted_in_cmdline_content("it87", cmdline));
-    }
-
-    #[test]
-    fn test_check_conflict_conflicting() {
-        let detected = vec!["nct6775".to_string(), "nct6687".to_string()];
-        let result = check_conflict("nct6687", &detected);
-        assert_eq!(result, Some("nct6775"));
-    }
-
-    #[test]
-    fn test_check_conflict_preferred() {
-        let detected = vec!["nct6775".to_string(), "nct6687".to_string()];
-        let result = check_conflict("nct6775", &detected);
-        assert!(result.is_none(), "preferred driver should not be skipped");
-    }
-
-    #[test]
-    fn test_check_conflict_no_conflict() {
-        let detected = vec!["it87".to_string()];
-        let result = check_conflict("it87", &detected);
-        assert!(result.is_none());
     }
 }

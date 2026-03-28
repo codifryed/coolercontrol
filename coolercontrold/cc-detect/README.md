@@ -59,7 +59,6 @@ for chip in &results.detected_chips {
 ```rust
 pub struct DetectionResults {
     pub detected_chips: Vec<DetectedChipInfo>, // chips found on the system
-    pub skipped: Vec<SkippedDriver>,           // drivers skipped due to conflicts
     pub blacklisted: Vec<String>,              // drivers blacklisted by the kernel
     pub environment: EnvironmentInfo,          // /dev/port availability, container check
 }
@@ -67,15 +66,14 @@ pub struct DetectionResults {
 
 `module_status` on each `DetectedChipInfo` is one of:
 
-| Value                       | Meaning                                        |
-| --------------------------- | ---------------------------------------------- |
-| `detection_only`            | Module loading was not requested               |
-| `loaded`                    | Module loaded successfully                     |
-| `already_loaded`            | Module was already present in the kernel       |
-| `blacklisted`               | Module is blacklisted (`/etc/modprobe.d/`)     |
-| `skipped_conflict_<driver>` | Skipped in favor of a preferred driver         |
-| `failed: <reason>`          | `modprobe` failed                              |
-| `skipped_no_modprobe`       | `modprobe` not found or running in a container |
+| Value                 | Meaning                                        |
+| --------------------- | ---------------------------------------------- |
+| `detection_only`      | Module loading was not requested               |
+| `loaded`              | Module loaded successfully                     |
+| `already_loaded`      | Module was already present in the kernel       |
+| `blacklisted`         | Module is blacklisted (`/etc/modprobe.d/`)     |
+| `failed: <reason>`    | `modprobe` failed                              |
+| `skipped_no_modprobe` | `modprobe` not found or running in a container |
 
 ## Requirements
 

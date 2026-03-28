@@ -473,12 +473,6 @@ fn run_sensors_detection(config: &Rc<Config>) {
                     chip.name, chip.driver, chip.module_status
                 );
             }
-            for skip in &results.skipped {
-                info!(
-                    "Skipped driver {} (preferred: {})",
-                    skip.driver, skip.preferred
-                );
-            }
             if results.detected_chips.is_empty() && !results.environment.is_container {
                 info!("No Super-I/O chips detected");
             }

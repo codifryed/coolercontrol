@@ -69,7 +69,6 @@ use superio::DetectedChip;
 #[derive(Debug, Clone, Serialize)]
 pub struct DetectionResults {
     pub detected_chips: Vec<DetectedChipInfo>,
-    pub skipped: Vec<SkippedDriver>,
     pub blacklisted: Vec<String>,
     pub environment: EnvironmentInfo,
 }
@@ -84,14 +83,6 @@ pub struct DetectedChipInfo {
     pub device_id: String,
     pub features: Vec<String>,
     pub module_status: String,
-}
-
-/// A driver that was skipped due to conflict.
-#[derive(Debug, Clone, Serialize)]
-pub struct SkippedDriver {
-    pub driver: String,
-    pub reason: String,
-    pub preferred: String,
 }
 
 /// Environment information included in results.
@@ -125,7 +116,6 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
         info!("/dev/port unavailable, skipping hardware detection");
         return DetectionResults {
             detected_chips: Vec::new(),
-            skipped: Vec::new(),
             blacklisted: Vec::new(),
             environment: env_info,
         };
@@ -146,7 +136,6 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
             warn!("Failed to open /dev/port: {err}");
             return DetectionResults {
                 detected_chips: Vec::new(),
-                skipped: Vec::new(),
                 blacklisted: Vec::new(),
                 environment: env_info,
             };
@@ -166,7 +155,6 @@ pub fn run_detection(_load_modules: bool, _override_path: Option<&Path>) -> Dete
     info!("Super-I/O detection is only supported on x86_64");
     DetectionResults {
         detected_chips: Vec::new(),
-        skipped: Vec::new(),
         blacklisted: Vec::new(),
         environment: EnvironmentInfo {
             is_container: false,
@@ -183,11 +171,7 @@ fn process_results(
     env_info: EnvironmentInfo,
 ) -> DetectionResults {
     let mut chip_infos = Vec::new();
-    let mut skipped = Vec::new();
     let mut blacklisted = Vec::new();
-
-    // Collect all detected driver names for conflict resolution
-    let all_drivers: Vec<String> = detected.iter().map(|c| c.driver.clone()).collect();
 
     for chip in detected {
         let module_status = if !load_modules {
@@ -195,20 +179,12 @@ fn process_results(
         } else if !env.can_load_modules() {
             "skipped_no_modprobe".to_string()
         } else {
-            match module_loader::load_module(&chip.driver, &all_drivers) {
+            match module_loader::load_module(&chip.driver) {
                 LoadResult::Loaded => "loaded".to_string(),
                 LoadResult::AlreadyLoaded => "already_loaded".to_string(),
                 LoadResult::Blacklisted => {
                     blacklisted.push(chip.driver.clone());
                     "blacklisted".to_string()
-                }
-                LoadResult::ConflictSkipped { preferred } => {
-                    skipped.push(SkippedDriver {
-                        driver: chip.driver.clone(),
-                        reason: "conflict_with_preferred".to_string(),
-                        preferred: preferred.clone(),
-                    });
-                    format!("skipped_conflict_{preferred}")
                 }
                 LoadResult::Failed(err) => {
                     format!("failed: {err}")
@@ -236,15 +212,13 @@ fn process_results(
     }
 
     debug!(
-        "Detection complete: {} chips detected, {} skipped, {} blacklisted",
+        "Detection complete: {} chips detected, {} blacklisted",
         chip_infos.len(),
-        skipped.len(),
         blacklisted.len()
     );
 
     DetectionResults {
         detected_chips: chip_infos,
-        skipped,
         blacklisted,
         environment: env_info,
     }
@@ -279,16 +253,6 @@ pub fn output_results(results: &DetectionResults) {
             chip.device_id,
             chip.module_status
         );
-    }
-
-    if !results.skipped.is_empty() {
-        info!("\nSkipped drivers:");
-        for skip in &results.skipped {
-            info!(
-                "  {} - {} (preferred: {})",
-                skip.driver, skip.reason, skip.preferred
-            );
-        }
     }
 
     if !results.blacklisted.is_empty() {
@@ -342,7 +306,6 @@ mod tests {
 
         let results = process_results(&Vec::new(), false, &env, env_info);
         assert!(results.detected_chips.is_empty());
-        assert!(results.skipped.is_empty());
         assert!(results.blacklisted.is_empty());
     }
 
@@ -350,7 +313,6 @@ mod tests {
     fn test_print_results_empty() {
         let results = DetectionResults {
             detected_chips: Vec::new(),
-            skipped: Vec::new(),
             blacklisted: Vec::new(),
             environment: EnvironmentInfo {
                 is_container: false,
@@ -372,11 +334,6 @@ mod tests {
                 device_id: "0x0290".into(),
                 features: vec!["fan".into()],
                 module_status: "loaded".into(),
-            }],
-            skipped: vec![SkippedDriver {
-                driver: "nct6687".into(),
-                reason: "conflict".into(),
-                preferred: "nct6775".into(),
             }],
             blacklisted: vec!["nouveau".into()],
             environment: EnvironmentInfo {

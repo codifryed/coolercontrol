@@ -28,11 +28,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 /// Known filesystem locations for the pci.ids database file.
-const DB_PATHS: &[&str] = &[
-    "/usr/share/hwdata/pci.ids",
-    "/usr/share/misc/pci.ids",
-    "@hwdata@/share/hwdata/pci.ids",
-];
+const DB_PATHS: &[&str] = &["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids"];
 
 /// Result of looking up a PCI device in the pci.ids database.
 /// All four fields are human-readable names from the pci.ids file.
@@ -46,7 +42,14 @@ pub struct PciIdLookup {
 }
 
 /// Opens the first pci.ids file found at one of the known paths.
+/// A build-time pkg-config path (e.g., NixOS) is checked first if available.
 fn open_db_file() -> Result<File> {
+    if let Some(dir) = option_env!("HWDATA_PKGDATADIR") {
+        let path = format!("{dir}/pci.ids");
+        if Path::new(&path).exists() {
+            return File::open(&path).map_err(|e| anyhow!("Failed to open {path}: {e}"));
+        }
+    }
     for path in DB_PATHS {
         if Path::new(path).exists() {
             return File::open(path).map_err(|e| anyhow!("Failed to open {path}: {e}"));
