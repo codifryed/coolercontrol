@@ -137,6 +137,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                     selection-mode="single"
                     :meta-key-selection="false"
                     paginator
+                    paginator-position="top"
                     :rows="20"
                     :rows-per-page-options="[20, 50, 100]"
                     @row-select="onRowSelect"
