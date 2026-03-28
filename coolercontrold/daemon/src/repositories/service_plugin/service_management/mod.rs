@@ -66,7 +66,7 @@ pub async fn ensure_plugin_user(username: &str) {
 }
 
 /// Tries `useradd` first (systemd distros, Gentoo, Artix, Void), then falls back
-/// to `adduser` for Alpine Linux (BusyBox).
+/// to `adduser` for Alpine Linux (`BusyBox`).
 async fn create_plugin_user(username: &str) -> Result<()> {
     let (code, _, _) = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
         .arg("--system")
@@ -100,7 +100,7 @@ async fn create_plugin_user(username: &str) -> Result<()> {
 
 /// Deletes the plugin user if it exists.
 /// Tries `userdel` first (systemd distros, Gentoo, Artix, Void), then falls back
-/// to `deluser` for Alpine Linux (BusyBox).
+/// to `deluser` for Alpine Linux (`BusyBox`).
 pub async fn delete_plugin_user(username: &str) -> Result<()> {
     let userdel_ok = DirectCommand::new("userdel", USER_CMD_TIMEOUT)
         .arg(username)
