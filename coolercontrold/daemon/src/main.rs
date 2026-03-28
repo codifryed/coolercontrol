@@ -240,6 +240,7 @@ fn main() -> Result<()> {
         let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability()?;
+        paths::ensure_data_dir().await?;
         admin::load_passwd().await?;
 
         pause_before_startup(&config).await?;

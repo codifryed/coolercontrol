@@ -41,18 +41,30 @@ static UI_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("c
 static UI_CONFIG_BACKUP: LazyLock<PathBuf> =
     LazyLock::new(|| config_dir().join("config-ui-bak.json"));
 
-// -- auth --
+// -- auth (credentials stay in /etc) --
 static PASSWD_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".passwd"));
-static SESSION_KEY_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".session_key"));
-static SESSIONS_DIR: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("sessions"));
 static TOKENS_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".tokens"));
+
+// -- auth (runtime session state in /var/lib) --
+static SESSION_KEY_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join(".session_key"));
+static SESSIONS_DIR: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join("sessions"));
 
 // -- features --
 static ALERT_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("alerts.json"));
 static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("modes.json"));
 static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("detect.toml"));
 
-// -- plugins (independent of config_dir) --
+// -- data dir (runtime state, independent of config_dir) --
+const DEFAULT_DATA_DIR: &str = "/var/lib/coolercontrol";
+
+static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    plugins_dir()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR))
+});
+
+// -- plugins --
 const DEFAULT_PLUGINS_DIR: &str = "/var/lib/coolercontrol/plugins";
 
 static PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -66,6 +78,11 @@ static LEGACY_PLUGINS_DIR: LazyLock<PathBuf> = LazyLock::new(|| config_dir().joi
 /// Base configuration directory.
 pub fn config_dir() -> &'static Path {
     &CONFIG_DIR
+}
+
+/// Runtime state directory (`/var/lib/coolercontrol`).
+pub fn data_dir() -> &'static Path {
+    &DATA_DIR
 }
 
 pub fn config_file() -> &'static Path {
@@ -132,6 +149,68 @@ pub async fn ensure_plugins_dir() -> anyhow::Result<()> {
     migrate_plugins_dir(canonical, legacy).await
 }
 
+/// Ensures the data directory exists and migrates session data from the
+/// old config directory location.
+pub async fn ensure_data_dir() -> anyhow::Result<()> {
+    use crate::cc_fs;
+    use std::fs::Permissions;
+    use std::os::unix::fs::PermissionsExt;
+
+    let data = data_dir();
+    cc_fs::create_dir_all(data).await?;
+    cc_fs::set_permissions(data, Permissions::from_mode(0o711)).await?;
+
+    migrate_session_data(config_dir(), data, session_key_file(), sessions_dir());
+    Ok(())
+}
+
+/// Core session-data migration logic, extracted for testability.
+pub(crate) fn migrate_session_data(
+    config: &Path,
+    data: &Path,
+    new_key: &Path,
+    new_sessions: &Path,
+) {
+    use log::{info, warn};
+
+    if config == data {
+        return;
+    }
+
+    // Migrate .session_key
+    let old_key = config.join(".session_key");
+    if old_key.exists() && !new_key.exists() {
+        info!("Migrating session key to {}", new_key.display());
+        if let Err(err) = move_file(&old_key, new_key) {
+            warn!("Failed to migrate session key: {err}");
+        }
+    }
+
+    // Migrate sessions/ directory
+    let old_sessions = config.join("sessions");
+    if old_sessions.is_dir() && !old_sessions.is_symlink() && !new_sessions.exists() {
+        info!("Migrating sessions to {}", new_sessions.display());
+        if let Err(err) = move_file(&old_sessions, new_sessions) {
+            warn!("Failed to migrate sessions directory: {err}");
+        }
+    }
+}
+
+/// Move a file or directory, falling back to `mv` for cross-filesystem moves.
+fn move_file(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    if std::fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    let status = std::process::Command::new("mv")
+        .arg(src.as_os_str())
+        .arg(dst.as_os_str())
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("mv {} -> {} failed", src.display(), dst.display());
+    }
+    Ok(())
+}
+
 /// Core migration logic, extracted for testability.
 pub(crate) async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Result<()> {
     use crate::cc_fs;
@@ -142,9 +221,10 @@ pub(crate) async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyh
     // Step 1: Create the canonical directory hierarchy.
     cc_fs::create_dir_all(canonical).await?;
 
-    // Set 0o700 on the parent (/var/lib/coolercontrol) so only root can access.
+    // Set 0o711 on the parent (/var/lib/coolercontrol) so root has full access
+    // and cc-plugin-user can traverse into plugin subdirectories.
     if let Some(parent) = canonical.parent() {
-        cc_fs::set_permissions(parent, Permissions::from_mode(0o700)).await?;
+        cc_fs::set_permissions(parent, Permissions::from_mode(0o711)).await?;
     }
 
     // Step 2: If canonical == legacy (env override), no symlink needed.
@@ -247,12 +327,24 @@ mod tests {
         assert!(ui_config_file().starts_with(dir));
         assert!(ui_config_backup().starts_with(dir));
         assert!(passwd_file().starts_with(dir));
-        assert!(session_key_file().starts_with(dir));
-        assert!(sessions_dir().starts_with(dir));
         assert!(tokens_file().starts_with(dir));
         assert!(alert_config_file().starts_with(dir));
         assert!(mode_config_file().starts_with(dir));
         assert!(detect_override_file().starts_with(dir));
+    }
+
+    #[test]
+    fn session_paths_start_with_data_dir() {
+        let dir = data_dir();
+        assert!(session_key_file().starts_with(dir));
+        assert!(sessions_dir().starts_with(dir));
+    }
+
+    #[test]
+    fn data_dir_defaults_to_var_lib() {
+        if std::env::var(ENV_PLUGINS_DIR).is_err() {
+            assert_eq!(data_dir(), Path::new("/var/lib/coolercontrol"));
+        }
     }
 
     #[test]
@@ -344,5 +436,80 @@ mod tests {
 
         assert!(dir.is_dir());
         assert!(!dir.is_symlink());
+    }
+
+    #[test]
+    fn migrate_session_key_from_config_to_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join("etc/coolercontrol");
+        let data = tmp.path().join("var/lib/coolercontrol");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+
+        let old_key = config.join(".session_key");
+        let new_key = data.join(".session_key");
+        std::fs::write(&old_key, "secret").unwrap();
+
+        migrate_session_data(&config, &data, &new_key, &data.join("sessions"));
+
+        assert!(!old_key.exists());
+        assert_eq!(std::fs::read_to_string(&new_key).unwrap(), "secret");
+    }
+
+    #[test]
+    fn migrate_sessions_dir_from_config_to_data() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join("etc/coolercontrol");
+        let data = tmp.path().join("var/lib/coolercontrol");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+
+        let old_sessions = config.join("sessions");
+        let new_sessions = data.join("sessions");
+        std::fs::create_dir_all(old_sessions.join("abc")).unwrap();
+        std::fs::write(old_sessions.join("abc/token"), "tok123").unwrap();
+
+        migrate_session_data(&config, &data, &data.join(".session_key"), &new_sessions);
+
+        assert!(!old_sessions.exists());
+        assert_eq!(
+            std::fs::read_to_string(new_sessions.join("abc/token")).unwrap(),
+            "tok123"
+        );
+    }
+
+    #[test]
+    fn migrate_session_skips_when_dest_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = tmp.path().join("etc/coolercontrol");
+        let data = tmp.path().join("var/lib/coolercontrol");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+
+        // Both old and new key exist - should keep new.
+        let old_key = config.join(".session_key");
+        let new_key = data.join(".session_key");
+        std::fs::write(&old_key, "old").unwrap();
+        std::fs::write(&new_key, "new").unwrap();
+
+        migrate_session_data(&config, &data, &new_key, &data.join("sessions"));
+
+        assert!(old_key.exists()); // not moved
+        assert_eq!(std::fs::read_to_string(&new_key).unwrap(), "new");
+    }
+
+    #[test]
+    fn migrate_session_same_dir_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("coolercontrol");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let key = dir.join(".session_key");
+        std::fs::write(&key, "val").unwrap();
+
+        migrate_session_data(&dir, &dir, &key, &dir.join("sessions"));
+
+        // Key should be untouched.
+        assert_eq!(std::fs::read_to_string(&key).unwrap(), "val");
     }
 }
