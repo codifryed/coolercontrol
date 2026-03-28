@@ -207,6 +207,10 @@ struct Args {
     #[arg(long)]
     nvidia_cli: bool,
 
+    /// Delete and recreate the plugin user on startup
+    #[arg(long)]
+    reset_plugin_user: bool,
+
     #[command(subcommand)]
     command: Option<SubCommands>,
 }
@@ -553,7 +557,13 @@ async fn initialize_device_repos(
             }
         });
         init_scope.spawn(async {
-            match init_service_plugin_repo(config.clone(), api_up_token.clone()).await {
+            match init_service_plugin_repo(
+                config.clone(),
+                api_up_token.clone(),
+                cmd_args.reset_plugin_user,
+            )
+            .await
+            {
                 Ok(repo) => {
                     plugin_controller =
                         PluginController::new(&repo, repo.is_systemd(), repo.is_open_rc());
@@ -615,8 +625,9 @@ async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Resul
 async fn init_service_plugin_repo(
     config: Rc<Config>,
     api_up_token: CancellationToken,
+    reset_plugin_user: bool,
 ) -> Result<ServicePluginRepo> {
-    let mut external_repo = ServicePluginRepo::new(config, api_up_token)?;
+    let mut external_repo = ServicePluginRepo::new(config, api_up_token, reset_plugin_user)?;
     external_repo.initialize_devices().await?;
     Ok(external_repo)
 }

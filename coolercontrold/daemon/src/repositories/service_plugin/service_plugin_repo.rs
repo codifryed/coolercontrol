@@ -27,11 +27,12 @@ use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::plugin_controller::{
     secure_config_file, secure_plugin_folder, PLUGIN_CONFIG_FILE_NAME,
 };
-use crate::repositories::service_plugin::service_management::delete_plugin_user;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceDefinition, ServiceManager, ServiceStatus,
 };
-use crate::repositories::service_plugin::service_management::{ServiceId, ServiceIdExt};
+use crate::repositories::service_plugin::service_management::{
+    delete_plugin_user, ServiceId, ServiceIdExt,
+};
 use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::setting::{CCDeviceSettings, LcdSettings, LightingSettings, TempSource};
 use crate::{cc_fs, ENV_CC_LOG};
@@ -73,6 +74,7 @@ pub struct ServicePluginRepo {
     config: Rc<Config>,
     service_manager: Manager,
     api_up_token: CancellationToken,
+    reset_plugin_user: bool,
     services: HashMap<ServiceId, (Option<Rc<DeviceServiceConnection>>, ServiceManifest)>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<DeviceServiceConnection>)>,
     preloaded_statuses: RefCell<HashMap<DeviceUID, PreloadData>>,
@@ -96,12 +98,17 @@ struct FailsafeStatusData {
 }
 
 impl ServicePluginRepo {
-    pub fn new(config: Rc<Config>, api_up_token: CancellationToken) -> Result<Self> {
+    pub fn new(
+        config: Rc<Config>,
+        api_up_token: CancellationToken,
+        reset_plugin_user: bool,
+    ) -> Result<Self> {
         let service_manager = Manager::detect()?;
         Ok(Self {
             config,
             service_manager,
             api_up_token,
+            reset_plugin_user,
             services: HashMap::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -802,7 +809,12 @@ impl Repository for ServicePluginRepo {
         let preloaded_statuses = Rc::new(RefCell::new(HashMap::new()));
         let failsafe_statuses = Rc::new(RefCell::new(HashMap::new()));
         let poll_rate = self.config.get_settings()?.poll_rate;
-        remove_plugin_user().await;
+        if self.reset_plugin_user {
+            info!("Resetting plugin user '{CC_PLUGIN_USER}' as requested");
+            if let Err(err) = delete_plugin_user(CC_PLUGIN_USER).await {
+                warn!("Failed to delete plugin user '{CC_PLUGIN_USER}': {err}");
+            }
+        }
         moro_local::async_scope!(|service_init_scope| {
             for (service_id, service_manifest) in Self::find_service_manifests().await {
                 let service_manager = Rc::clone(&service_manager);
@@ -1222,10 +1234,4 @@ impl Repository for ServicePluginRepo {
         })
         .await;
     }
-}
-
-/// This will delete the plugin user if it exists.
-/// This is used to clean up the original plugin user should there be changes to it's setup.
-async fn remove_plugin_user() {
-    let _ = delete_plugin_user(CC_PLUGIN_USER).await;
 }
