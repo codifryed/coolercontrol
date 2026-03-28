@@ -136,6 +136,9 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                     :sort-order="-1"
                     selection-mode="single"
                     :meta-key-selection="false"
+                    paginator
+                    :rows="20"
+                    :rows-per-page-options="[20, 50, 100]"
                     @row-select="onRowSelect"
                 >
                     <Column field="timestamp" :header="t('common.timestamp')" :sortable="true">

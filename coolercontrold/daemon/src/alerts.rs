@@ -33,17 +33,22 @@ use nix::unistd::Pid;
 use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Display};
 use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use strum::{Display, EnumString};
 use tokio_util::sync::CancellationToken;
 
-const LOG_BUFFER_SIZE: usize = 20;
+const LOG_BUFFER_SIZE: usize = 1000;
+
+/// Minimum interval between consecutive alert-log disk flushes to avoid
+/// excessive I/O when alerts are firing rapidly. The very first state change
+/// after a quiet period is always flushed immediately.
+const LOG_FLUSH_COOLDOWN: Duration = Duration::from_secs(5);
 const COMMAND_SHUTDOWN: &str =
     "shutdown +1 \"Critical CoolerControl Alert! System will shutdown in 1 minute.\"";
 const COMMAND_SHUTDOWN_CANCEL: &str = "shutdown -c";
@@ -209,6 +214,8 @@ pub struct AlertController {
     alerts: RefCell<IndexMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
     logs: RefCell<VecDeque<AlertLog>>,
+    logs_dirty: Cell<bool>,
+    last_log_flush: Cell<Instant>,
     bin_path: String,
 }
 
@@ -230,6 +237,9 @@ impl AlertController {
             alerts: RefCell::new(IndexMap::new()),
             alert_handle: RefCell::new(None),
             logs: RefCell::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),
+            logs_dirty: Cell::new(false),
+            // Set to a past time so the first state change always flushes immediately.
+            last_log_flush: Cell::new(Instant::now() - LOG_FLUSH_COOLDOWN),
             bin_path,
         };
         alert_controller.load_data_from_alert_config_file().await?;
@@ -377,7 +387,7 @@ impl AlertController {
     }
 
     /// Processes all Alerts, firing off messages if an alert state has changed.
-    /// This function should be called in the main loop
+    /// This function should be called in the main loop.
     pub fn process_alerts(&self) {
         let alerts_to_fire = self.process_and_collect_alerts_to_fire();
         for (alert, message) in alerts_to_fire {
@@ -387,6 +397,39 @@ impl AlertController {
                 handle.broadcast_alert_state_change(log);
             }
         }
+        self.flush_logs_if_needed();
+    }
+
+    /// Flushes alert logs to disk. The first state change after a quiet period
+    /// is flushed immediately so a crash-causing event is always persisted.
+    /// Subsequent rapid changes are rate-limited by `LOG_FLUSH_COOLDOWN`.
+    fn flush_logs_if_needed(&self) {
+        if !self.logs_dirty.get() {
+            return;
+        }
+        let elapsed = self.last_log_flush.get().elapsed();
+        if elapsed < LOG_FLUSH_COOLDOWN {
+            return;
+        }
+        self.logs_dirty.set(false);
+        self.last_log_flush.set(Instant::now());
+        tokio::task::spawn_local({
+            let alerts: Vec<Alert> = self.alerts.borrow().values().cloned().collect();
+            let logs: Vec<AlertLog> = self.logs.borrow().iter().cloned().collect();
+            async move {
+                let alert_config = AlertConfigFile { alerts, logs };
+                match serde_json::to_string(&alert_config) {
+                    Ok(json) => {
+                        if let Err(err) =
+                            cc_fs::write_string(paths::alert_config_file(), json).await
+                        {
+                            warn!("Failed to flush alert logs to disk: {err}");
+                        }
+                    }
+                    Err(err) => warn!("Failed to serialize alert logs: {err}"),
+                }
+            }
+        });
     }
 
     /// Collects all Alerts that need firing
@@ -561,10 +604,11 @@ impl AlertController {
             timestamp: Local::now(),
         };
         let mut logs_lock = self.logs.borrow_mut();
-        if logs_lock.len() > LOG_BUFFER_SIZE {
+        while logs_lock.len() >= LOG_BUFFER_SIZE {
             logs_lock.pop_front();
         }
         logs_lock.push_back(log.clone());
+        self.logs_dirty.set(true);
         log
     }
 
