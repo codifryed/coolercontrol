@@ -175,6 +175,15 @@ const ENV_NVML: &str = "CC_NVML";
 /// ```
 pub const ENV_CONFIG_DIR: &str = "CC_CONFIG_DIR";
 
+/// Environment Variable: Override the plugins directory path
+/// Takes a directory path string. Defaults to `/var/lib/coolercontrol/plugins`.
+///
+/// # Example
+/// ```
+/// CC_PLUGINS_DIR=/opt/coolercontrol/plugins coolercontrold
+/// ```
+pub const ENV_PLUGINS_DIR: &str = "CC_PLUGINS_DIR";
+
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 

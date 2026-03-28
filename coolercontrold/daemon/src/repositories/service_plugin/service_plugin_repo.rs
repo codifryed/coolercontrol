@@ -120,14 +120,12 @@ impl ServicePluginRepo {
     async fn find_service_manifests() -> HashMap<ServiceId, ServiceManifest> {
         let plugins_dir = paths::plugins_dir();
         let mut services = HashMap::new();
+        if let Err(err) = paths::ensure_plugins_dir().await {
+            error!("Error setting up plugins directory: {err}");
+            return services;
+        }
         let Ok(dir_entries) = cc_fs::read_dir(plugins_dir) else {
-            debug!("Error reading plugins directory: {}", plugins_dir.display());
-            if let Err(err) = cc_fs::create_dir_all(plugins_dir).await {
-                error!(
-                    "Error creating plugins directory: {} Reason: {err}",
-                    plugins_dir.display()
-                );
-            }
+            error!("Error reading plugins directory: {}", plugins_dir.display());
             return services;
         };
         // cycle through subdirectories looking for a manifest.toml file

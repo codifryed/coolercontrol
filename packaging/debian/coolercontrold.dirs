@@ -1,1 +1,2 @@
 etc/coolercontrol
+var/lib/coolercontrol/plugins
