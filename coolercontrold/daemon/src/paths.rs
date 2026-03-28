@@ -63,8 +63,7 @@ static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
     }
     plugins_dir()
         .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR))
+        .map_or_else(|| PathBuf::from(DEFAULT_DATA_DIR), Path::to_path_buf)
 });
 
 // -- plugins --
@@ -272,7 +271,7 @@ pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Res
                             .arg(src.as_os_str())
                             .arg(dst.as_os_str())
                             .status();
-                        if status.is_err() || !status.unwrap().success() {
+                        if status.is_err() || !status?.success() {
                             warn!(
                                 "Failed to move plugin '{}' to new location",
                                 entry.file_name().to_string_lossy()
