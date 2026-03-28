@@ -26,7 +26,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use crate::{ENV_CONFIG_DIR, ENV_PLUGINS_DIR};
+use crate::{ENV_CONFIG_DIR, ENV_DATA_DIR, ENV_PLUGINS_DIR};
 
 const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 
@@ -58,6 +58,9 @@ static DETECT_OVERRIDE_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().j
 const DEFAULT_DATA_DIR: &str = "/var/lib/coolercontrol";
 
 static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    if let Ok(dir) = std::env::var(ENV_DATA_DIR) {
+        return PathBuf::from(dir);
+    }
     plugins_dir()
         .parent()
         .map(Path::to_path_buf)

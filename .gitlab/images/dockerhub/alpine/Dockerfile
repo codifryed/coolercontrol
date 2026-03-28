@@ -32,6 +32,7 @@ ENV CC_HOST_IP4=0.0.0.0
 ENV CC_HOST_IP6=::
 ENV CC_DBUS=OFF
 ENV CC_TLS=OFF
+ENV CC_DATA_DIR=/etc/coolercontrol
 ENV CC_PLUGINS_DIR=/etc/coolercontrol/plugins
 
 RUN apk add --update python3 libusb openrc && \
