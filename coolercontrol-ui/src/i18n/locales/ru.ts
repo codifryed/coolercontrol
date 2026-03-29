@@ -487,6 +487,19 @@ export default {
             discordDesc: 'Присоединяйтесь к нашему сообществу Discord',
             logsAndDiagnostics: 'Логи и диагностика',
             downloadCurrentLog: 'Скачать текущий лог',
+            stressTest: 'Стресс-тест',
+            stressTestTooltip:
+                'Создаёт нагрузку на CPU или GPU для проверки производительности охлаждения под нагрузкой. Стресс-тест GPU требует драйверов Vulkan или OpenGL ES.',
+            cpuStress: 'Стресс CPU',
+            gpuStress: 'Стресс GPU',
+            threadCount: 'Потоки',
+            duration: 'Длительность (с)',
+            start: 'Старт',
+            stop: 'Стоп',
+            stopAll: 'Остановить всё',
+            active: 'Активно',
+            inactive: 'Неактивно',
+            allCores: 'Все ядра',
         },
         alerts: {
             createAlert: 'Создать оповещение',
@@ -1192,6 +1205,13 @@ export default {
         channelType: {
             lcd: 'ЖК-экран',
             lighting: 'Подсветка',
+        },
+    },
+    daemon: {
+        status: {
+            ok: 'OK',
+            hasWarnings: 'Есть предупреждения',
+            hasErrors: 'Есть ошибки',
         },
     },
 }

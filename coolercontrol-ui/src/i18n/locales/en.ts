@@ -483,6 +483,20 @@ export default {
             discordDesc: 'Join our Discord community',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
+            stressTest: 'Stress Test',
+            stressTestTooltip:
+                'Generates CPU or GPU load to test cooling performance under stress. GPU stress requires Vulkan or OpenGL ES drivers.',
+            cpuStress: 'CPU Stress',
+            gpuStress: 'GPU Stress',
+            threadCount: 'Threads',
+            duration: 'Duration (s)',
+
+            start: 'Start',
+            stop: 'Stop',
+            stopAll: 'Stop All',
+            active: 'Active',
+            inactive: 'Inactive',
+            allCores: 'All Cores',
         },
         alerts: {
             createAlert: 'Create Alert',

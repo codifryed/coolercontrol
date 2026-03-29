@@ -528,6 +528,19 @@ export default {
             discordDesc: '私たちのDiscordコミュニティに参加',
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
+            stressTest: 'ストレステスト',
+            stressTestTooltip:
+                'ストレス下での冷却性能をテストするためにCPUまたはGPU負荷を生成します。GPUストレスにはVulkanまたはOpenGL ESドライバーが必要です。',
+            cpuStress: 'CPUストレス',
+            gpuStress: 'GPUストレス',
+            threadCount: 'スレッド数',
+            duration: '時間 (秒)',
+            start: '開始',
+            stop: '停止',
+            stopAll: 'すべて停止',
+            active: 'アクティブ',
+            inactive: '非アクティブ',
+            allCores: '全コア',
         },
         alerts: {
             createAlert: 'アラートを作成',
@@ -1195,6 +1208,13 @@ export default {
         channelType: {
             lcd: 'LCD',
             lighting: 'ライティング',
+        },
+    },
+    daemon: {
+        status: {
+            ok: 'OK',
+            hasWarnings: '警告あり',
+            hasErrors: 'エラーあり',
         },
     },
 }
