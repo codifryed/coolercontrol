@@ -29,7 +29,8 @@ use std::time::{Duration, Instant};
 
 use crate::cc_fs;
 use anyhow::{anyhow, Result};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
+use nu_glob::{glob, Uninterruptible};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::sleep;
@@ -293,6 +294,39 @@ fn limit_output_length(output: &mut String) {
         output.truncate(MAX_OUTPUT_LENGTH_BYTES);
         *output = format!("{output}... (truncated)");
     }
+}
+
+const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
+const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
+const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
+const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
+const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
+const GLOB_XAUTHORITY_PATH_ROOT: &str = "/root/.Xauthority";
+
+/// Searches for the Xauthority magic cookie on the system. Checks the XAUTHORITY
+/// environment variable first, then searches common file paths used by various
+/// display managers (GDM, SDDM, mutter-xwayland, etc.).
+pub fn find_xauthority_path() -> Option<String> {
+    if let Ok(environment_xauthority) = std::env::var("XAUTHORITY") {
+        info!("Found existing Xauthority in the environment: {environment_xauthority}");
+        return Some(environment_xauthority);
+    }
+    let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
+        .unwrap()
+        .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, Uninterruptible).unwrap())
+        .filter_map(Result::ok)
+        .find(|path| path.is_absolute());
+    if let Some(xauthority_path) = xauthority_path_opt {
+        if let Some(xauthority_str) = xauthority_path.to_str() {
+            info!("Xauthority found in file path: {xauthority_str}");
+            return Some(xauthority_str.to_owned());
+        }
+    }
+    None
 }
 
 /// Sanitizes a string for safe use in shell commands and notification displays.

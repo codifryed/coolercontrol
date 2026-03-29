@@ -34,6 +34,7 @@ mod session_store;
 mod settings;
 mod sse;
 pub mod status;
+mod stress_test;
 mod tls;
 mod tokens;
 
@@ -42,7 +43,7 @@ use crate::alerts::AlertController;
 use crate::api::actor::{
     AlertHandle, AuthHandle, CustomSensorHandle, DetectHandle, DeviceHandle, FunctionHandle,
     HealthHandle, ModeHandle, PluginHandle, ProfileHandle, SettingHandle, StatusHandle,
-    TokenHandle,
+    StressTestHandle, TokenHandle,
 };
 use crate::api::dual_protocol::Protocol;
 use crate::api::session_store::{FileSessionStore, MemorySessionStore};
@@ -551,6 +552,11 @@ fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
             description: Some("Plugins".to_string()),
             ..Tag::default()
         })
+        .tag(Tag {
+            name: "stress-test".to_string(),
+            description: Some("Stress Testing".to_string()),
+            ..Tag::default()
+        })
 }
 
 async fn create_app_state<'s>(
@@ -608,6 +614,7 @@ async fn create_app_state<'s>(
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
+    let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope);
     AppState {
         health,
         detect_handle,
@@ -622,6 +629,7 @@ async fn create_app_state<'s>(
         setting_handle,
         alert_handle,
         plugin_handle,
+        stress_test_handle,
         log_buf_handle,
     }
 }
@@ -1085,6 +1093,7 @@ pub struct AppState {
     pub setting_handle: SettingHandle,
     pub alert_handle: AlertHandle,
     pub plugin_handle: PluginHandle,
+    pub stress_test_handle: StressTestHandle,
     pub log_buf_handle: LogBufHandle,
 }
 

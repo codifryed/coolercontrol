@@ -41,6 +41,7 @@ mod plugin;
 mod profile;
 mod setting;
 mod status;
+mod stress_test;
 mod token;
 
 pub use self::alert::*;
@@ -55,6 +56,7 @@ pub use self::plugin::*;
 pub use self::profile::*;
 pub use self::setting::*;
 pub use self::status::*;
+pub use self::stress_test::*;
 pub use self::token::*;
 
 pub trait ApiActor<M> {
