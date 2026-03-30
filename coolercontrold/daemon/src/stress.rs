@@ -76,7 +76,10 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     set_nice_level()?;
 
     let num_threads = threads.unwrap_or_else(online_cpu_count);
-    eprintln!("CPU stress: {num_threads} threads, {timeout_secs}s (pid: {})", std::process::id());
+    eprintln!(
+        "CPU stress: {num_threads} threads, {timeout_secs}s (pid: {})",
+        std::process::id()
+    );
 
     let duration = Duration::from_secs(u64::from(timeout_secs));
     let deadline = Instant::now() + duration;
