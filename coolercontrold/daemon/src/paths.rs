@@ -168,7 +168,7 @@ pub async fn ensure_data_dir() -> anyhow::Result<()> {
 }
 
 /// Core session-data migration logic, extracted for testability.
-pub(crate) fn migrate_session_data(
+pub fn migrate_session_data(
     config: &Path,
     data: &Path,
     new_key: &Path,
@@ -215,7 +215,7 @@ fn move_file(src: &Path, dst: &Path) -> anyhow::Result<()> {
 }
 
 /// Core migration logic, extracted for testability.
-pub(crate) async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Result<()> {
+pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Result<()> {
     use crate::cc_fs;
     use log::{info, warn};
     use std::fs::Permissions;

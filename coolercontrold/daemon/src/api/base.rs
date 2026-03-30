@@ -143,7 +143,7 @@ pub struct HealthDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SystemDetails {
-    pub(crate) name: String,
+    pub name: String,
 }
 
 #[cfg(test)]
