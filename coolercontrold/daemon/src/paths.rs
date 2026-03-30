@@ -49,6 +49,9 @@ static TOKENS_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join(".tok
 static SESSION_KEY_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join(".session_key"));
 static SESSIONS_DIR: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join("sessions"));
 
+// -- alert logs (runtime state in /var/lib; separate from alert config in /etc) --
+static ALERT_LOGS_FILE: LazyLock<PathBuf> = LazyLock::new(|| data_dir().join("alert-logs.json"));
+
 // -- features --
 static ALERT_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("alerts.json"));
 static MODE_CONFIG_FILE: LazyLock<PathBuf> = LazyLock::new(|| config_dir().join("modes.json"));
@@ -113,6 +116,10 @@ pub fn session_key_file() -> &'static Path {
 
 pub fn sessions_dir() -> &'static Path {
     &SESSIONS_DIR
+}
+
+pub fn alert_logs_file() -> &'static Path {
+    &ALERT_LOGS_FILE
 }
 
 pub fn tokens_file() -> &'static Path {
@@ -335,6 +342,7 @@ mod tests {
         let dir = data_dir();
         assert!(session_key_file().starts_with(dir));
         assert!(sessions_dir().starts_with(dir));
+        assert!(alert_logs_file().starts_with(dir));
     }
 
     #[test]
@@ -358,6 +366,7 @@ mod tests {
         assert_eq!(sessions_dir().file_name().unwrap(), "sessions");
         assert_eq!(tokens_file().file_name().unwrap(), ".tokens");
         assert_eq!(alert_config_file().file_name().unwrap(), "alerts.json");
+        assert_eq!(alert_logs_file().file_name().unwrap(), "alert-logs.json");
         assert_eq!(mode_config_file().file_name().unwrap(), "modes.json");
         assert_eq!(plugins_dir().file_name().unwrap(), "plugins");
         assert_eq!(detect_override_file().file_name().unwrap(), "detect.toml");
