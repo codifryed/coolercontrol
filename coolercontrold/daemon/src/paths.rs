@@ -168,12 +168,7 @@ pub async fn ensure_data_dir() -> anyhow::Result<()> {
 }
 
 /// Core session-data migration logic, extracted for testability.
-pub fn migrate_session_data(
-    config: &Path,
-    data: &Path,
-    new_key: &Path,
-    new_sessions: &Path,
-) {
+pub fn migrate_session_data(config: &Path, data: &Path, new_key: &Path, new_sessions: &Path) {
     use log::{info, warn};
 
     if config == data {
