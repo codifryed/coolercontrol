@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use super::{find_on_path, ServiceId, ServiceIdExt};
+use super::{ensure_plugin_user, find_on_path, ServiceId, ServiceIdExt};
 use crate::cc_fs;
 use crate::repositories::service_plugin::service_management::manager::{
     ServiceDefinition, ServiceManager, ServiceStatus,
@@ -24,7 +24,6 @@ use crate::repositories::service_plugin::service_management::manager::{
 use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
 use crate::repositories::utils::DirectCommand;
 use anyhow::{anyhow, Result};
-use log::debug;
 use std::fmt::Write;
 use std::fs::Permissions;
 use std::os::unix::fs::PermissionsExt;
@@ -33,7 +32,6 @@ use std::time::Duration;
 
 const RC_SERVICE: &str = "rc-service";
 const RC_SERVICE_TIMEOUT: Duration = Duration::from_secs(10);
-const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o755;
 
 #[derive(Clone, Debug, Default)]
@@ -42,42 +40,6 @@ pub struct OpenRcManager {}
 impl OpenRcManager {
     pub fn detected() -> bool {
         find_on_path(RC_SERVICE).is_some()
-    }
-
-    /// Creates the plugin user. Returns an error if user creation fails.
-    /// An error is also returned if the user already exists.
-    async fn create_plugin_user(username: &str) -> Result<()> {
-        // Try `useradd` first - works on Gentoo, Artix, and Void Linux.
-        let useradd_ok = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
-            .arg("--system")
-            .arg("--comment")
-            .arg("CoolerControl unprivileged plugin user")
-            .arg("--shell")
-            .arg("/usr/sbin/nologin")
-            .arg(username)
-            .run_with_code()
-            .await
-            .is_ok_and(|(code, _, _)| code == 0);
-        if useradd_ok {
-            return Ok(());
-        }
-        // Fall back to `adduser` for Alpine Linux (BusyBox).
-        let (code, _, stderr) = DirectCommand::new("adduser", USER_CMD_TIMEOUT)
-            .arg("-S") // system user
-            .arg("-D") // no password
-            .arg("-H") // no home directory
-            .arg("-h")
-            .arg("/dev/null")
-            .arg("-s")
-            .arg("/sbin/nologin")
-            .arg(username)
-            .run_with_code()
-            .await?;
-        if code != 0 {
-            Err(anyhow!("Failed to create user {username}: {stderr}"))
-        } else {
-            Ok(())
-        }
     }
 
     /// Returns `(exit_code, stdout, stderr)`. `Err` only on spawn failure or timeout.
@@ -98,9 +60,7 @@ impl ServiceManager for OpenRcManager {
         let service_description = service_definition.service_id.to_description();
         let service_path = dir_path.join(&service_name);
         if service_definition.username.is_some() {
-            if let Err(err) = Self::create_plugin_user(CC_PLUGIN_USER).await {
-                debug!("Failed to create plugin user (expected when exists): {err}");
-            }
+            ensure_plugin_user(CC_PLUGIN_USER).await;
         }
         let service_file =
             create_service_file(&service_description, &service_name, &service_definition);

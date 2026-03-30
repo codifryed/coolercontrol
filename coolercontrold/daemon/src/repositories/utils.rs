@@ -180,6 +180,7 @@ impl DirectCommand {
     }
 
     /// Run. Returns `ShellCommandResult::Success` on exit 0, `Error` otherwise.
+    #[allow(dead_code)]
     pub async fn run(self) -> ShellCommandResult {
         match self.execute().await {
             Ok((0, stdout, stderr)) => ShellCommandResult::Success { stdout, stderr },

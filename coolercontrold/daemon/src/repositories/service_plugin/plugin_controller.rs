@@ -149,13 +149,14 @@ impl PluginController {
 
 pub async fn secure_plugin_folder(path: &Path, owner: Option<&str>) -> Result<()> {
     if let Some(owner) = owner {
-        let command = format!("chown -R {owner}:{owner} {}", path.display());
+        // -R: recursive, -h: do not follow symlinks (set ownership on the link itself)
+        let command = format!("chown -Rh {owner}:{owner} {}", path.display());
         match ShellCommand::new(&command, Duration::from_secs(5))
             .run()
             .await
         {
             ShellCommandResult::Success { .. } => {}
-            ShellCommandResult::Error(stderr) => return Err(anyhow!("chown -R failed: {stderr}")),
+            ShellCommandResult::Error(stderr) => return Err(anyhow!("chown -Rh failed: {stderr}")),
         }
     }
     Ok(())

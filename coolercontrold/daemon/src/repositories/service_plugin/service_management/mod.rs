@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::repositories::utils::{DirectCommand, ShellCommandResult};
-use anyhow::{anyhow, Result};
+use crate::repositories::utils::DirectCommand;
+use anyhow::Result;
+use log::{info, warn};
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -45,29 +46,81 @@ impl ServiceIdExt for ServiceId {
 
 const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Checks whether the given system user already exists via the `id` command.
+pub async fn plugin_user_exists(username: &str) -> bool {
+    DirectCommand::new("id", USER_CMD_TIMEOUT)
+        .arg(username)
+        .run_with_code()
+        .await
+        .is_ok_and(|(code, _, _)| code == 0)
+}
+
+/// Creates the plugin user if it does not already exist. Logs a warning on failure.
+pub async fn ensure_plugin_user(username: &str) {
+    if plugin_user_exists(username).await {
+        info!("Plugin user '{username}' already exists");
+        return;
+    }
+    info!("Creating plugin user '{username}'");
+    if let Err(err) = create_plugin_user(username).await {
+        warn!("Failed to create plugin user '{username}': {err}");
+    }
+}
+
+/// Tries `useradd` first (systemd distros, Gentoo, Artix, Void), then falls back
+/// to `adduser` for Alpine Linux (`BusyBox`).
+async fn create_plugin_user(username: &str) -> Result<()> {
+    let (code, _, _) = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
+        .arg("--system")
+        .arg("--comment")
+        .arg("CoolerControl unprivileged plugin user")
+        .arg("--shell")
+        .arg("/usr/sbin/nologin")
+        .arg(username)
+        .run_with_code()
+        .await?;
+    if code == 0 {
+        return Ok(());
+    }
+    // Fall back to `adduser` for Alpine Linux (BusyBox).
+    let (code, _, stderr) = DirectCommand::new("adduser", USER_CMD_TIMEOUT)
+        .arg("-S") // system user
+        .arg("-D") // no password
+        .arg("-H") // no home directory
+        .arg("-h")
+        .arg("/dev/null")
+        .arg("-s")
+        .arg("/sbin/nologin")
+        .arg(username)
+        .run_with_code()
+        .await?;
+    if code != 0 {
+        anyhow::bail!("useradd failed: {stderr}");
+    }
+    Ok(())
+}
+
 /// Deletes the plugin user if it exists.
 /// Tries `userdel` first (systemd distros, Gentoo, Artix, Void), then falls back
 /// to `deluser` for Alpine Linux (`BusyBox`).
 pub async fn delete_plugin_user(username: &str) -> Result<()> {
-    let userdel_ok = matches!(
-        DirectCommand::new("userdel", USER_CMD_TIMEOUT)
-            .arg(username)
-            .run()
-            .await,
-        ShellCommandResult::Success { .. }
-    );
+    let userdel_ok = DirectCommand::new("userdel", USER_CMD_TIMEOUT)
+        .arg(username)
+        .run_with_code()
+        .await
+        .is_ok_and(|(code, _, _)| code == 0);
     if userdel_ok {
         return Ok(());
     }
     // Fall back to `deluser` for Alpine Linux (BusyBox).
-    match DirectCommand::new("deluser", USER_CMD_TIMEOUT)
+    let (code, _, stderr) = DirectCommand::new("deluser", USER_CMD_TIMEOUT)
         .arg(username)
-        .run()
-        .await
-    {
-        ShellCommandResult::Success { .. } => Ok(()),
-        ShellCommandResult::Error(err) => Err(anyhow!("Failed to delete user {username}: {err}")),
+        .run_with_code()
+        .await?;
+    if code != 0 {
+        anyhow::bail!("Failed to delete user {username}: {stderr}");
     }
+    Ok(())
 }
 
 fn find_on_path(executable: &str) -> Option<PathBuf> {
@@ -81,4 +134,27 @@ fn find_on_path(executable: &str) -> Option<PathBuf> {
             }
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_plugin_user_exists_returns_true_for_root() {
+        // root always exists on Linux
+        assert!(plugin_user_exists("root").await);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_user_exists_returns_false_for_nonexistent() {
+        assert!(!plugin_user_exists("nonexistent_user_xyz_12345").await);
+    }
+
+    #[tokio::test]
+    async fn test_ensure_plugin_user_does_not_panic_for_nonexistent() {
+        // Should not panic; will log a warning when user creation fails
+        // (expected in test environment without root privileges).
+        ensure_plugin_user("cc-plugin-test-nonexistent").await;
+    }
 }

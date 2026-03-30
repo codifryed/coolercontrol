@@ -21,13 +21,12 @@ use crate::repositories::service_plugin::service_management::manager::{
     ServiceDefinition, ServiceManager, ServiceStatus,
 };
 use crate::repositories::service_plugin::service_management::{
-    find_on_path, ServiceId, ServiceIdExt,
+    ensure_plugin_user, find_on_path, ServiceId, ServiceIdExt,
 };
 use crate::repositories::service_plugin::service_plugin_repo::CC_PLUGIN_USER;
 use crate::repositories::utils::DirectCommand;
 use anyhow::{anyhow, Result};
 use derive_more::Display;
-use log::debug;
 use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
@@ -36,7 +35,6 @@ use std::time::Duration;
 
 const SYSTEMCTL: &str = "systemctl";
 const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(10);
-const USER_CMD_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
 
 #[derive(Clone, Debug)]
@@ -83,24 +81,6 @@ impl SystemdManager {
             .run_with_code()
             .await
     }
-
-    /// This will return an error if the user already exists.
-    async fn create_plugin_user(username: &str) -> Result<()> {
-        let (code, _, stderr) = DirectCommand::new("useradd", USER_CMD_TIMEOUT)
-            .arg("--system") // no home dir and id < 1000
-            .arg("--comment")
-            .arg("CoolerControl unprivileged plugin user")
-            .arg("--shell")
-            .arg("/usr/sbin/nologin") // no login shell
-            .arg(username)
-            .run_with_code()
-            .await?;
-        if code != 0 {
-            Err(anyhow!("Failed to create user {username}: {stderr}"))
-        } else {
-            Ok(())
-        }
-    }
 }
 
 impl ServiceManager for SystemdManager {
@@ -111,9 +91,7 @@ impl ServiceManager for SystemdManager {
         let service_path = dir_path.join(format!("{service_name}.service"));
         let service_description = service_definition.service_id.to_description();
         if service_definition.username.is_some() {
-            if let Err(err) = Self::create_plugin_user(CC_PLUGIN_USER).await {
-                debug!("Failed to create plugin user (expected when exists): {err}");
-            }
+            ensure_plugin_user(CC_PLUGIN_USER).await;
         }
         let unit_file = create_unit_file(&self.config, &service_description, service_definition)?;
         cc_fs::write_string(&service_path, unit_file).await?;
