@@ -118,7 +118,7 @@ export default {
             shutdownError:
                 'Erro desconhecido ao enviar sinal de desligamento. Veja os logs para detalhes.',
             quitDesktopApp: 'Sair do aplicativo desktop',
-            applicationInfo: 'Informações do aplicativo',
+            applicationInfo: 'Info e Ferramentas',
             back: 'Voltar',
             expandMenu: 'Expandir menu',
             collapseMenu: 'Recolher menu',
@@ -395,7 +395,7 @@ export default {
             duplicateDashboard: 'Duplicar Painel',
         },
         appInfo: {
-            title: 'Informações da Aplicação',
+            title: 'Info e Ferramentas',
             noWarranty: 'Este programa é fornecido sem absolutamente nenhuma garantia.',
             daemonStatus: 'Status do Daemon',
             acknowledgeIssues: 'Reconhecer Problemas',
@@ -422,9 +422,11 @@ export default {
             downloadCurrentLog: 'Baixar Log Atual',
             stressTest: 'Teste de estresse',
             stressTestTooltip:
-                'Gera carga de CPU ou GPU para testar o desempenho de resfriamento sob estresse. O estresse de GPU requer drivers Vulkan ou OpenGL ES.',
+                'Valide curvas de ventilador e perfis de resfriamento gerando carga térmica contínua de CPU ou GPU.',
             cpuStress: 'Estresse de CPU',
             gpuStress: 'Estresse de GPU',
+            gpuStressTooltip:
+                'Requer drivers Vulkan ou OpenGL ES (via ANGLE). Pode reduzir a resposta da interface do desktop.',
             threadCount: 'Threads',
             duration: 'Duração (s)',
             start: 'Iniciar',
@@ -924,9 +926,9 @@ export default {
             functions: 'Funções',
             functionsDesc:
                 'As Funções são aplicadas aos Perfis para suavizar as transições de velocidade do ventilador e reduzir o ruído.',
-            appInfo: 'Informações do Aplicativo e Daemon',
+            appInfo: 'Informações do Aplicativo e Ferramentas',
             appInfoDesc:
-                'Clique no logo para ver info do app, status do daemon e logs. Um indicador de status alerta sobre problemas.',
+                'Clique no logo para ver info do app, status do daemon, logs e ferramentas de carga térmica. Um indicador de status alerta sobre problemas.',
             quickAdd: 'Adição Rápida',
             quickAddDesc: 'Crie rapidamente novos Painéis, Perfis, Funções e mais.',
             dashboardQuick: 'Menu Rápido do Painel',

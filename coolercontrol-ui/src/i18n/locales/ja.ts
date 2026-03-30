@@ -116,7 +116,7 @@ export default {
             shutdownError:
                 'シャットダウン信号の送信中に不明なエラーが発生しました。詳細はログを確認してください。',
             quitDesktopApp: 'デスクトップアプリを終了',
-            applicationInfo: 'アプリケーション情報',
+            applicationInfo: '情報とツール',
             back: '戻る',
             expandMenu: 'メニューを展開',
             collapseMenu: 'メニューを折りたたむ',
@@ -503,7 +503,7 @@ export default {
             duplicateDashboard: 'ダッシュボードを複製',
         },
         appInfo: {
-            title: 'アプリケーション情報',
+            title: '情報とツール',
             noWarranty: 'このプログラムは絶対に保証がありません。',
             daemonStatus: 'デーモンステータス',
             acknowledgeIssues: '問題を確認',
@@ -530,9 +530,11 @@ export default {
             downloadCurrentLog: '現在のログをダウンロード',
             stressTest: 'ストレステスト',
             stressTestTooltip:
-                'ストレス下での冷却性能をテストするためにCPUまたはGPU負荷を生成します。GPUストレスにはVulkanまたはOpenGL ESドライバーが必要です。',
+                '継続的なCPUまたはGPU熱負荷を生成してファンカーブと冷却プロファイルを検証します。',
             cpuStress: 'CPUストレス',
             gpuStress: 'GPUストレス',
+            gpuStressTooltip:
+                'VulkanまたはOpenGL ES（ANGLE経由）ドライバーが必要です。実行中にデスクトップUIの応答性が低下する場合があります。',
             threadCount: 'スレッド数',
             duration: '時間 (秒)',
             start: '開始',
@@ -914,9 +916,9 @@ export default {
             functions: '機能',
             functionsDesc:
                 '機能はプロファイルに適用され、ファン速度の遷移をスムーズにし、ノイズを低減します。',
-            appInfo: 'アプリケーションとデーモン情報',
+            appInfo: 'アプリケーション情報とツール',
             appInfoDesc:
-                'ロゴをクリックしてアプリ情報、デーモンステータス、ログを表示。ステータスバッジが問題をお知らせします。',
+                'ロゴをクリックしてアプリ情報、デーモンステータス、ログおよび熱負荷ツールを表示。ステータスバッジが問題をお知らせします。',
             quickAdd: 'クイック追加',
             quickAddDesc: '新しいダッシュボード、プロファイル、機能などをすばやく作成。',
             dashboardQuick: 'ダッシュボードクイックメニュー',

@@ -119,7 +119,7 @@ export default {
             shutdownError:
                 "Erreur inconnue lors de l'envoi du signal d'arrêt. Consultez les journaux pour plus de détails.",
             quitDesktopApp: "Quitter l'application",
-            applicationInfo: "Informations sur l'application",
+            applicationInfo: 'Info & Outils',
             back: 'Retour',
             expandMenu: 'Développer le menu',
             collapseMenu: 'Réduire le menu',
@@ -474,7 +474,7 @@ export default {
             duplicateDashboard: 'Dupliquer le Tableau de Bord',
         },
         appInfo: {
-            title: "Informations sur l'Application",
+            title: 'Info & Outils',
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',
             daemonStatus: 'État du Daemon',
             acknowledgeIssues: 'Reconnaître les Problèmes',
@@ -501,9 +501,11 @@ export default {
             downloadCurrentLog: 'Télécharger le Journal Actuel',
             stressTest: 'Test de stress',
             stressTestTooltip:
-                'Génère une charge CPU ou GPU pour tester les performances de refroidissement sous stress. Le stress GPU nécessite des pilotes Vulkan ou OpenGL ES.',
+                'Validez les courbes de ventilateur et les profils de refroidissement en générant une charge thermique CPU ou GPU soutenue.',
             cpuStress: 'Stress CPU',
             gpuStress: 'Stress GPU',
+            gpuStressTooltip:
+                "Nécessite des pilotes Vulkan ou OpenGL ES (via ANGLE). Peut réduire la réactivité de l'interface de bureau.",
             threadCount: 'Threads',
             duration: 'Durée (s)',
             start: 'Démarrer',
@@ -924,9 +926,9 @@ export default {
             functions: 'Fonctions',
             functionsDesc:
                 'Les fonctions sont appliquées aux profils pour lisser les transitions de vitesse des ventilateurs et réduire le bruit.',
-            appInfo: "Informations sur l'Application et le Daemon",
+            appInfo: "Informations sur l'Application et les Outils",
             appInfoDesc:
-                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon et les journaux. Un badge de statut vous alerte en cas de problème.",
+                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon, les journaux et les outils de charge thermique. Un badge de statut vous alerte en cas de problème.",
             quickAdd: 'Ajout Rapide',
             quickAddDesc:
                 'Créez rapidement de nouveaux tableaux de bord, profils, fonctions et plus.',

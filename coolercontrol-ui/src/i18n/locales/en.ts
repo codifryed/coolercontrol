@@ -115,7 +115,7 @@ export default {
             shutdownSuccess: 'Daemon shutdown signal accepted',
             shutdownError: 'Unknown error sending shutdown signal. See logs for details.',
             quitDesktopApp: 'Quit Desktop App',
-            applicationInfo: 'Application Info',
+            applicationInfo: 'Info & Tools',
             back: 'Back',
             expandMenu: 'Expand Menu',
             collapseMenu: 'Collapse Menu',
@@ -458,7 +458,7 @@ export default {
             duplicateDashboard: 'Duplicate Dashboard',
         },
         appInfo: {
-            title: 'Application Information',
+            title: 'Info & Tools',
             noWarranty: 'This program comes with absolutely no warranty.',
             daemonStatus: 'Daemon Status',
             acknowledgeIssues: 'Acknowledge Issues',
@@ -485,9 +485,11 @@ export default {
             downloadCurrentLog: 'Download Current Log',
             stressTest: 'Stress Test',
             stressTestTooltip:
-                'Generates CPU or GPU load to test cooling performance under stress. GPU stress requires Vulkan or OpenGL ES drivers.',
+                'Validate fan curves and cooling profiles by generating sustained CPU or GPU thermal load.',
             cpuStress: 'CPU Stress',
             gpuStress: 'GPU Stress',
+            gpuStressTooltip:
+                'Requires Vulkan or OpenGL ES (via ANGLE) drivers. May reduce desktop UI responsiveness while active.',
             threadCount: 'Threads',
             duration: 'Duration (s)',
 
@@ -902,9 +904,9 @@ export default {
             functions: 'Functions',
             functionsDesc:
                 'Functions are applied to Profiles to smooth out fan speed transitions and reduce noise.',
-            appInfo: 'Application and Daemon Information',
+            appInfo: 'Application Info & Tools',
             appInfoDesc:
-                'Click the logo to view app info, daemon status, and logs. A status badge here alerts you to any issues.',
+                'Click the logo to view app info, daemon status, logs, and thermal load tools. A status badge here alerts you to any issues.',
             quickAdd: 'Quick Add',
             quickAddDesc: 'Quickly create new Dashboards, Profiles, Functions, and more.',
             dashboardQuick: 'Dashboard Quick Menu',

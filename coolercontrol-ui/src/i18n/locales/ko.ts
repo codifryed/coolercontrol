@@ -116,7 +116,7 @@ export default {
             shutdownError:
                 '종료 신호를 보내는 동안 알 수 없는 오류가 발생했습니다. 자세한 내용은 로그를 참조하세요.',
             quitDesktopApp: '데스크톱 앱 종료',
-            applicationInfo: '애플리케이션 정보',
+            applicationInfo: '정보 및 도구',
             back: '뒤로',
             expandMenu: '확장 메뉴',
             collapseMenu: '메뉴 접기',
@@ -453,7 +453,7 @@ export default {
             duplicateDashboard: '대시보드 복제',
         },
         appInfo: {
-            title: '애플리케이션 정보',
+            title: '정보 및 도구',
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
             daemonStatus: '데몬 상태',
             acknowledgeIssues: '문제 인지',
@@ -480,9 +480,11 @@ export default {
             downloadCurrentLog: '현재 로그 다운로드',
             stressTest: '스트레스 테스트',
             stressTestTooltip:
-                '스트레스 상황에서 냉각 성능을 테스트하기 위해 CPU 또는 GPU 부하를 생성합니다. GPU 스트레스에는 Vulkan 또는 OpenGL ES 드라이버가 필요합니다.',
+                '지속적인 CPU 또는 GPU 열 부하를 생성하여 팬 곡선과 냉각 프로파일을 검증합니다.',
             cpuStress: 'CPU 스트레스',
             gpuStress: 'GPU 스트레스',
+            gpuStressTooltip:
+                'Vulkan 또는 OpenGL ES (ANGLE 경유) 드라이버가 필요합니다. 실행 중 데스크톱 UI 반응성이 저하될 수 있습니다.',
             threadCount: '스레드',
             duration: '지속 시간 (초)',
             start: '시작',
@@ -892,9 +894,9 @@ export default {
             functions: '기능',
             functionsDesc:
                 '프로파일에 기능을 적용하여 팬 속도 전환을 부드럽게 하고 소음을 줄입니다.',
-            appInfo: '애플리케이션 및 데몬 정보',
+            appInfo: '애플리케이션 정보 및 도구',
             appInfoDesc:
-                '로고를 클릭하면 앱 정보, 데몬 상태 및 로그를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
+                '로고를 클릭하면 앱 정보, 데몬 상태, 로그 및 열 부하 도구를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
             quickAdd: '빠른 추가',
             quickAddDesc: '대시보드, 프로파일, 기능 등을 빠르게 생성하세요.',
             dashboardQuick: '대시보드 빠른 메뉴',

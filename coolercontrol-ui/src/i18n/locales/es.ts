@@ -119,7 +119,7 @@ export default {
             shutdownError:
                 'Error desconocido al enviar la señal de apagado. Consulte los registros para más detalles.',
             quitDesktopApp: 'Salir de la aplicación',
-            applicationInfo: 'Información de la aplicación',
+            applicationInfo: 'Info y Herramientas',
             back: 'Atrás',
             expandMenu: 'Expandir menú',
             collapseMenu: 'Contraer menú',
@@ -464,7 +464,7 @@ export default {
             duplicateDashboard: 'Duplicar Panel',
         },
         appInfo: {
-            title: 'Información de la Aplicación',
+            title: 'Info y Herramientas',
             noWarranty: 'Este programa viene sin absolutamente ninguna garantía.',
             daemonStatus: 'Estado del Daemon',
             acknowledgeIssues: 'Reconocer Problemas',
@@ -491,9 +491,11 @@ export default {
             downloadCurrentLog: 'Descargar Registro Actual',
             stressTest: 'Prueba de estrés',
             stressTestTooltip:
-                'Genera carga de CPU o GPU para probar el rendimiento de refrigeración bajo estrés. El estrés de GPU requiere controladores Vulkan u OpenGL ES.',
+                'Valide las curvas de ventilador y los perfiles de enfriamiento generando carga térmica sostenida de CPU o GPU.',
             cpuStress: 'Estrés de CPU',
             gpuStress: 'Estrés de GPU',
+            gpuStressTooltip:
+                'Requiere controladores Vulkan o OpenGL ES (via ANGLE). Puede reducir la respuesta de la interfaz de escritorio.',
             threadCount: 'Hilos',
             duration: 'Duración (s)',
             start: 'Iniciar',
@@ -910,9 +912,9 @@ export default {
             functions: 'Funciones',
             functionsDesc:
                 'Las funciones se aplican a los Perfiles para suavizar las transiciones de velocidad del ventilador y reducir el ruido.',
-            appInfo: 'Información de la Aplicación y el Daemon',
+            appInfo: 'Información de la Aplicación y Herramientas',
             appInfoDesc:
-                'Haga clic en el logo para ver info de la app, estado del daemon y registros. Una insignia de estado le alerta sobre problemas.',
+                'Haga clic en el logo para ver info de la app, estado del daemon, registros y herramientas de carga térmica. Una insignia de estado le alerta sobre problemas.',
             quickAdd: 'Agregar Rápido',
             quickAddDesc: 'Cree rápidamente nuevos Paneles, Perfiles, Funciones y más.',
             dashboardQuick: 'Menú Rápido de Panel',

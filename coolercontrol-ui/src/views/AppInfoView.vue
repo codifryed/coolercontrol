@@ -462,9 +462,18 @@ onBeforeUnmount(() => {
                         </div>
                         <!-- GPU Stress -->
                         <div class="flex flex-row items-center gap-4">
-                            <span class="font-bold text-lg w-28">{{
-                                t('views.appInfo.gpuStress')
-                            }}</span>
+                            <div class="flex items-center gap-1 w-28">
+                                <span class="font-bold text-lg">{{
+                                    t('views.appInfo.gpuStress')
+                                }}</span>
+                                <svg-icon
+                                    v-tooltip.right="t('views.appInfo.gpuStressTooltip')"
+                                    type="mdi"
+                                    class="text-text-color-secondary cursor-help"
+                                    :path="mdiHelpCircleOutline"
+                                    :size="deviceStore.getREMSize(1.25)"
+                                />
+                            </div>
                             <div class="flex items-center gap-1">
                                 <label class="text-sm text-text-color-secondary">{{
                                     t('views.appInfo.duration')

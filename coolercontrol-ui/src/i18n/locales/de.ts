@@ -120,7 +120,7 @@ export default {
             shutdownError:
                 'Unbekannter Fehler beim Senden des Shutdown-Signals. Details finden Sie in den Logs.',
             quitDesktopApp: 'Desktop-App beenden',
-            applicationInfo: 'Anwendungsinfo',
+            applicationInfo: 'Info & Werkzeuge',
             back: 'Zurück',
             expandMenu: 'Menü erweitern',
             collapseMenu: 'Menü einklappen',
@@ -467,7 +467,7 @@ export default {
             duplicateDashboard: 'Dashboard duplizieren',
         },
         appInfo: {
-            title: 'Anwendungsinformationen',
+            title: 'Info & Werkzeuge',
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',
             daemonStatus: 'Daemon-Status',
             acknowledgeIssues: 'Probleme bestätigen',
@@ -494,9 +494,11 @@ export default {
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             stressTest: 'Stresstest',
             stressTestTooltip:
-                'Erzeugt CPU- oder GPU-Last, um die Kühlleistung unter Stress zu testen. GPU-Stress erfordert Vulkan- oder OpenGL ES-Treiber.',
+                'Lüfterkurven und Kühlprofile durch anhaltende CPU- oder GPU-Thermallast validieren.',
             cpuStress: 'CPU-Stress',
             gpuStress: 'GPU-Stress',
+            gpuStressTooltip:
+                'Erfordert Vulkan- oder OpenGL ES (via ANGLE) GPU-Treiber. Kann die Desktop-UI-Reaktionsfähigkeit beeinträchtigen.',
             threadCount: 'Threads',
             duration: 'Dauer (s)',
             start: 'Start',
@@ -927,9 +929,9 @@ export default {
             functions: 'Funktionen',
             functionsDesc:
                 'Funktionen werden auf Profile angewendet, um Lüftergeschwindigkeitsübergänge zu glätten und Geräusche zu reduzieren.',
-            appInfo: 'Anwendungs- und Daemon-Informationen',
+            appInfo: 'Anwendungsinfo & Werkzeuge',
             appInfoDesc:
-                'Klicken Sie auf das Logo, um App-Info, Daemon-Status und Logs anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
+                'Klicken Sie auf das Logo, um App-Info, Daemon-Status, Logs und thermische Lastwerkzeuge anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
             quickAdd: 'Schnelles Hinzufügen',
             quickAddDesc: 'Schnelles Erstellen neuer Dashboards, Profile, Funktionen und mehr.',
             dashboardQuick: 'Dashboard-Schnellmenü',

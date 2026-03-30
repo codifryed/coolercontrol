@@ -115,7 +115,7 @@ export default {
             shutdownSuccess: '后台关闭信号已接收',
             shutdownError: '发送关闭信号时出现未知错误。详情请查看日志。',
             quitDesktopApp: '退出桌面应用',
-            applicationInfo: '应用信息',
+            applicationInfo: '信息与工具',
             back: '返回',
             expandMenu: '展开菜单',
             collapseMenu: '折叠菜单',
@@ -368,7 +368,7 @@ export default {
             duplicateDashboard: '复制仪表盘',
         },
         appInfo: {
-            title: '应用程序信息',
+            title: '信息与工具',
             noWarranty: '本程序不提供任何保证。',
             daemonStatus: '后台服务状态',
             acknowledgeIssues: '确认问题',
@@ -394,10 +394,11 @@ export default {
             logsAndDiagnostics: '日志和诊断',
             downloadCurrentLog: '下载当前日志',
             stressTest: '压力测试',
-            stressTestTooltip:
-                '生成 CPU 或 GPU 负载以测试压力下的冷却性能。GPU 压力测试需要 Vulkan 或 OpenGL ES 驱动程序。',
+            stressTestTooltip: '通过生成持续的 CPU 或 GPU 热负载来验证风扇曲线和冷却配置文件。',
             cpuStress: 'CPU 压力',
             gpuStress: 'GPU 压力',
+            gpuStressTooltip:
+                '需要 Vulkan 或 OpenGL ES（通过 ANGLE）驱动程序。可能会降低桌面界面响应速度。',
             threadCount: '线程数',
             duration: '持续时间 (秒)',
             start: '开始',
@@ -880,8 +881,9 @@ export default {
                 '配置文件定义响应温度变化的风扇曲线。同一配置文件可在多个设备上重复使用。',
             functions: '功能',
             functionsDesc: '功能应用于配置文件，以平滑风扇转速过渡并减少噪音。',
-            appInfo: '应用程序和后台服务信息',
-            appInfoDesc: '点击徽标查看应用信息、后台服务状态和日志。状态徽章会提醒您任何问题。',
+            appInfo: '应用程序信息与工具',
+            appInfoDesc:
+                '点击徽标查看应用信息、后台服务状态、日志和热负载工具。状态徽章会提醒您任何问题。',
             quickAdd: '快速添加',
             quickAddDesc: '快速创建新的仪表盘、配置文件、功能等。',
             dashboardQuick: '仪表盘快速菜单',
