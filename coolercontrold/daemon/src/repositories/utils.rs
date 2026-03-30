@@ -311,6 +311,7 @@ pub fn find_xauthority_path() -> Option<String> {
         info!("Found existing Xauthority in the environment: {environment_xauthority}");
         return Some(environment_xauthority);
     }
+    // glob() only fails for invalid pattern syntax; these are compile-time constants.
     let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
         .unwrap()
         .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())

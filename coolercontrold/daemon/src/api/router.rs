@@ -966,8 +966,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
             post_with(stress_test::start_cpu, |o| {
                 o.summary("Start CPU Stress Test")
                     .description(
-                        "Starts a CPU stress test using stress-ng. \
-                         Requires stress-ng to be installed.",
+                        "Spawns a CPU stress subprocess with tight FMA loops \
+                         on the requested number of threads.",
                     )
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
@@ -985,8 +985,8 @@ fn stress_test_routes() -> ApiRouter<AppState> {
             post_with(stress_test::start_gpu, |o| {
                 o.summary("Start GPU Stress Test")
                     .description(
-                        "Starts a GPU stress test using stress-ng. \
-                         Requires stress-ng to be installed.",
+                        "Spawns a GPU stress subprocess using wgpu compute \
+                         shaders (Vulkan or OpenGL ES via ANGLE).",
                     )
                     .tag("stress-test")
                     .security_requirement("CookieAuth")

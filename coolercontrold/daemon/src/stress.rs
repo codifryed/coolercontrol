@@ -34,10 +34,14 @@ const DISPATCHES_PER_SUBMISSION: u32 = 8;
 pub fn online_cpu_count() -> u16 {
     std::fs::read_to_string("/proc/cpuinfo")
         .map(|content| {
-            content
-                .lines()
-                .filter(|line| line.starts_with("processor"))
-                .count() as u16
+            // CPU count safely capped at u16::MAX (65535 cores).
+            u16::try_from(
+                content
+                    .lines()
+                    .filter(|line| line.starts_with("processor"))
+                    .count(),
+            )
+            .unwrap_or(u16::MAX)
         })
         .unwrap_or(1)
         .max(1)
@@ -179,42 +183,25 @@ pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
-async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()> {
-    let info = adapter.get_info();
-    let label = format!("{} ({:?})", info.name, info.backend);
+struct GpuStressResources {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    compute_pipeline: wgpu::ComputePipeline,
+    bind_group: wgpu::BindGroup,
+    dispatch_count: u32,
+}
 
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default(), None)
-        .await
-        .map_err(|e| anyhow!("Failed to create device for {label}: {e}"))?;
-
-    let buffer_size = u64::from(MATRIX_DIM) * u64::from(MATRIX_DIM) * 4; // f32 = 4 bytes
-
-    let buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Matrix A"),
-        size: buffer_size,
+fn create_storage_buffer(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size,
         usage: wgpu::BufferUsages::STORAGE,
         mapped_at_creation: false,
-    });
-    let buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Matrix B"),
-        size: buffer_size,
-        usage: wgpu::BufferUsages::STORAGE,
-        mapped_at_creation: false,
-    });
-    let buffer_c = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Matrix C"),
-        size: buffer_size,
-        usage: wgpu::BufferUsages::STORAGE,
-        mapped_at_creation: false,
-    });
+    })
+}
 
-    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("stress_shader"),
-        source: wgpu::ShaderSource::Wgsl(STRESS_SHADER_WGSL.into()),
-    });
-
-    let bgl_entry = |binding: u32, read_only: bool| wgpu::BindGroupLayoutEntry {
+fn storage_bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Buffer {
@@ -223,11 +210,35 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
             min_binding_size: None,
         },
         count: None,
-    };
+    }
+}
+
+/// Creates the wgpu device, pipeline, and bind group for a single adapter.
+async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStressResources> {
+    let info = adapter.get_info();
+    let label = format!("{} ({:?})", info.name, info.backend);
+
+    let (device, queue) = adapter
+        .request_device(&wgpu::DeviceDescriptor::default(), None)
+        .await
+        .map_err(|e| anyhow!("Failed to create device for {label}: {e}"))?;
+    let buffer_size = u64::from(MATRIX_DIM) * u64::from(MATRIX_DIM) * 4; // f32 = 4 bytes
+    let buffer_a = create_storage_buffer(&device, "Matrix A", buffer_size);
+    let buffer_b = create_storage_buffer(&device, "Matrix B", buffer_size);
+    let buffer_c = create_storage_buffer(&device, "Matrix C", buffer_size);
+
+    let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("stress_shader"),
+        source: wgpu::ShaderSource::Wgsl(STRESS_SHADER_WGSL.into()),
+    });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("stress_bgl"),
-        entries: &[bgl_entry(0, true), bgl_entry(1, true), bgl_entry(2, false)],
+        entries: &[
+            storage_bgl_entry(0, true),
+            storage_bgl_entry(1, true),
+            storage_bgl_entry(2, false),
+        ],
     });
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -263,28 +274,39 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
             },
         ],
     });
+    let dispatch_count = MATRIX_DIM.div_ceil(16);
 
-    let workgroup_size = 16u32;
-    let dispatch_count = MATRIX_DIM.div_ceil(workgroup_size);
+    Ok(GpuStressResources {
+        device,
+        queue,
+        compute_pipeline,
+        bind_group,
+        dispatch_count,
+    })
+}
 
+/// Submits compute dispatches in a tight loop until the deadline.
+async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()> {
+    let res = create_gpu_stress_resources(adapter).await?;
     let deadline = Instant::now() + duration;
 
     while Instant::now() < deadline {
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = res
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
                 timestamp_writes: None,
             });
-            pass.set_pipeline(&compute_pipeline);
-            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_pipeline(&res.compute_pipeline);
+            pass.set_bind_group(0, &res.bind_group, &[]);
             for _ in 0..DISPATCHES_PER_SUBMISSION {
-                pass.dispatch_workgroups(dispatch_count, dispatch_count, 1);
+                pass.dispatch_workgroups(res.dispatch_count, res.dispatch_count, 1);
             }
         }
-        queue.submit(std::iter::once(encoder.finish()));
-        device.poll(wgpu::Maintain::Wait);
+        res.queue.submit(std::iter::once(encoder.finish()));
+        res.device.poll(wgpu::Maintain::Wait);
         // Brief pause to leave a small gap for desktop compositing.
         tokio::time::sleep(Duration::from_millis(1)).await;
     }
