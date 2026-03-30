@@ -218,89 +218,30 @@ fn move_file(src: &Path, dst: &Path) -> anyhow::Result<()> {
 /// Core migration logic, extracted for testability.
 pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Result<()> {
     use crate::cc_fs;
-    use log::{info, warn};
     use std::fs::Permissions;
     use std::os::unix::fs::PermissionsExt;
 
-    // Step 1: Create the canonical directory hierarchy.
+    // Step 1: Create canonical directory with traversal permissions.
     cc_fs::create_dir_all(canonical).await?;
-
-    // Set 0o711 on the parent (/var/lib/coolercontrol) so root has full access
-    // and cc-plugin-user can traverse into plugin subdirectories.
     if let Some(parent) = canonical.parent() {
+        // 0o711: root has full access; cc-plugin-user can traverse into subdirectories.
         cc_fs::set_permissions(parent, Permissions::from_mode(0o711)).await?;
     }
 
-    // Step 2: If canonical == legacy (env override), no symlink needed.
+    // Step 2: No symlink needed when both paths resolve to the same location.
     if canonical == legacy {
         return Ok(());
     }
 
-    // Step 3: Handle the legacy path.
-    let legacy_symlink = legacy.is_symlink();
-    let legacy_exists = legacy.exists() || legacy_symlink;
-
-    if legacy_exists {
-        if legacy_symlink {
-            let target = std::fs::read_link(legacy)?;
-            if target == canonical {
-                return Ok(()); // already correct
-            }
-            // Symlink points elsewhere, recreate it.
-            info!(
-                "Replacing stale plugin symlink {} -> {}",
-                legacy.display(),
-                target.display()
-            );
-            std::fs::remove_file(legacy)?;
-        } else if legacy.is_dir() {
-            // Real directory from old installation, migrate contents.
-            info!(
-                "Migrating plugins from {} to {}",
-                legacy.display(),
-                canonical.display()
-            );
-            if let Ok(entries) = std::fs::read_dir(legacy) {
-                for entry in entries.flatten() {
-                    let src = entry.path();
-                    let dst = canonical.join(entry.file_name());
-                    if dst.exists() {
-                        warn!(
-                            "Plugin '{}' exists in both old and new locations, keeping {}",
-                            entry.file_name().to_string_lossy(),
-                            dst.display()
-                        );
-                        continue;
-                    }
-                    // Try atomic rename first, fall back to mv for cross-fs.
-                    if std::fs::rename(&src, &dst).is_err() {
-                        let status = std::process::Command::new("mv")
-                            .arg(src.as_os_str())
-                            .arg(dst.as_os_str())
-                            .status();
-                        if status.is_err() || !status?.success() {
-                            warn!(
-                                "Failed to move plugin '{}' to new location",
-                                entry.file_name().to_string_lossy()
-                            );
-                        }
-                    }
-                }
-            }
-            // Remove the now-empty legacy directory.
-            if let Err(err) = std::fs::remove_dir(legacy) {
-                warn!(
-                    "Could not remove old plugins directory {}: {err}",
-                    legacy.display()
-                );
-                return Ok(()); // can't create symlink if dir still exists
-            }
-        }
+    // Step 3: Clear the legacy path so the compatibility symlink can be placed.
+    if !prepare_legacy_path_for_symlink(canonical, legacy)? {
+        return Ok(());
     }
 
     // Step 4: Create the backward-compatibility symlink.
     if !legacy.exists() && !legacy.is_symlink() {
         if let Err(err) = std::os::unix::fs::symlink(canonical, legacy) {
+            use log::warn;
             warn!(
                 "Could not create compatibility symlink {} -> {}: {err}",
                 legacy.display(),
@@ -310,6 +251,88 @@ pub async fn migrate_plugins_dir(canonical: &Path, legacy: &Path) -> anyhow::Res
     }
 
     Ok(())
+}
+
+/// Prepares the legacy path for compatibility symlink creation.
+///
+/// Returns `true` when the caller should proceed to create a symlink,
+/// `false` when either the symlink already points to `canonical` (done)
+/// or the legacy directory could not be removed (skip symlink).
+fn prepare_legacy_path_for_symlink(canonical: &Path, legacy: &Path) -> anyhow::Result<bool> {
+    use log::{info, warn};
+
+    let is_symlink = legacy.is_symlink();
+    if !legacy.exists() && !is_symlink {
+        return Ok(true); // nothing to clear; ready to create symlink
+    }
+
+    if is_symlink {
+        let target = std::fs::read_link(legacy)?;
+        if target == canonical {
+            return Ok(false); // already correct; nothing to do
+        }
+        // Stale symlink pointing elsewhere; remove and recreate.
+        info!(
+            "Replacing stale plugin symlink {} -> {}",
+            legacy.display(),
+            target.display()
+        );
+        std::fs::remove_file(legacy)?;
+        return Ok(true);
+    }
+
+    if legacy.is_dir() {
+        info!(
+            "Migrating plugins from {} to {}",
+            legacy.display(),
+            canonical.display()
+        );
+        migrate_legacy_plugin_entries(canonical, legacy);
+        if let Err(err) = std::fs::remove_dir(legacy) {
+            warn!(
+                "Could not remove old plugins directory {}: {err}",
+                legacy.display()
+            );
+            return Ok(false); // leave legacy dir in place; skip symlink creation
+        }
+    }
+
+    Ok(true)
+}
+
+/// Moves each entry from the legacy plugins directory into the canonical one.
+/// Logs and skips entries that already exist at the destination or fail to move.
+fn migrate_legacy_plugin_entries(canonical: &Path, legacy: &Path) {
+    use log::warn;
+    let Ok(entries) = std::fs::read_dir(legacy) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let src = entry.path();
+        let dst = canonical.join(entry.file_name());
+        if dst.exists() {
+            warn!(
+                "Plugin '{}' exists in both old and new locations, keeping {}",
+                entry.file_name().to_string_lossy(),
+                dst.display()
+            );
+            continue;
+        }
+        // Try atomic rename first; fall back to `mv` for cross-filesystem moves.
+        if std::fs::rename(&src, &dst).is_err() {
+            let moved = std::process::Command::new("mv")
+                .arg(src.as_os_str())
+                .arg(dst.as_os_str())
+                .status()
+                .is_ok_and(|s| s.success());
+            if !moved {
+                warn!(
+                    "Failed to move plugin '{}' to new location",
+                    entry.file_name().to_string_lossy()
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

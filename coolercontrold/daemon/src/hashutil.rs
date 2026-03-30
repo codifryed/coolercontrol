@@ -23,6 +23,7 @@ pub fn to_lower_hex(bytes: &[u8]) -> String {
     bytes
         .iter()
         .fold(String::with_capacity(bytes.len() * 2), |mut acc, byte| {
+            // `fmt::Write` for `String` is infallible; it only calls `push_str` internally.
             write!(acc, "{byte:02x}").unwrap();
             acc
         })
