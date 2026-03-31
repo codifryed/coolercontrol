@@ -109,6 +109,7 @@ impl ServiceManager for OpenRcManager {
         } else {
             stderr.trim().to_string()
         };
+        #[allow(clippy::match_same_arms)]
         match code {
             0 => Ok(ServiceStatus::Running),
             // Exit code 3 is the POSIX standard for "stopped".

@@ -28,9 +28,11 @@ import { AlertState, getAlertStateDisplayName, getAlertStateIcon } from '@/model
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { Emitter, EventType } from 'mitt'
+import { FilterMatchMode } from '@primevue/core/api'
 import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -53,6 +55,9 @@ const alertsList = computed(() => {
         alerts.sort((a: any, b: any) => getIndex(a) - getIndex(b))
     }
     return alerts
+})
+const logFilters = ref({
+    global: { value: null, matchMode: FilterMatchMode.CONTAINS },
 })
 const onRowSelect = (event: DataTableRowSelectEvent) => {
     router.push({ name: 'alerts', params: { alertUID: event.data.uid } })
@@ -132,12 +137,25 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
                 <DataTable
                     class="w-full"
                     :value="settingsStore.alertLogs"
+                    v-model:filters="logFilters"
+                    :global-filter-fields="['name', 'message']"
                     sort-field="timestamp"
                     :sort-order="-1"
                     selection-mode="single"
                     :meta-key-selection="false"
+                    paginator
+                    paginator-position="top"
+                    :rows="20"
+                    :rows-per-page-options="[20, 50, 100]"
                     @row-select="onRowSelect"
                 >
+                    <template #paginatorstart>
+                        <InputText
+                            v-model="logFilters.global.value"
+                            :placeholder="t('common.search')"
+                            size="small"
+                        />
+                    </template>
                     <Column field="timestamp" :header="t('common.timestamp')" :sortable="true">
                         <template #body="slotProps">
                             {{ new Date(slotProps.data.timestamp).toLocaleString() }}

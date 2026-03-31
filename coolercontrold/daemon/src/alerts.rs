@@ -33,17 +33,22 @@ use nix::unistd::Pid;
 use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{self, Display};
 use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use strum::{Display, EnumString};
 use tokio_util::sync::CancellationToken;
 
-const LOG_BUFFER_SIZE: usize = 20;
+const LOG_BUFFER_SIZE: usize = 1000;
+
+/// Minimum interval between consecutive alert-log disk flushes to avoid
+/// excessive I/O when alerts are firing rapidly. The very first state change
+/// after a quiet period is always flushed immediately.
+const LOG_FLUSH_COOLDOWN: Duration = Duration::from_secs(5);
 const COMMAND_SHUTDOWN: &str =
     "shutdown +1 \"Critical CoolerControl Alert! System will shutdown in 1 minute.\"";
 const COMMAND_SHUTDOWN_CANCEL: &str = "shutdown -c";
@@ -209,6 +214,8 @@ pub struct AlertController {
     alerts: RefCell<IndexMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
     logs: RefCell<VecDeque<AlertLog>>,
+    logs_dirty: Cell<bool>,
+    last_log_flush: Cell<Instant>,
     bin_path: String,
 }
 
@@ -230,6 +237,10 @@ impl AlertController {
             alerts: RefCell::new(IndexMap::new()),
             alert_handle: RefCell::new(None),
             logs: RefCell::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),
+            logs_dirty: Cell::new(false),
+            // Set to a past time so the first state change always flushes immediately.
+            #[allow(clippy::unchecked_time_subtraction)]
+            last_log_flush: Cell::new(Instant::now() - LOG_FLUSH_COOLDOWN),
             bin_path,
         };
         alert_controller.load_data_from_alert_config_file().await?;
@@ -247,6 +258,7 @@ impl AlertController {
             cancellation_token.cancelled().await;
             trace!("Shutting down Alert Controller");
             let _ = alert_controller.save_alert_data_to_config().await;
+            let _ = alert_controller.save_alert_logs().await;
         });
     }
 
@@ -257,7 +269,7 @@ impl AlertController {
         self.alert_handle.replace(Some(alert_handle));
     }
 
-    /// Reads the Alert configuration file and fills the Alert `HashMap`.
+    /// Reads the Alert configuration file and fills the alert map and log buffer.
     async fn load_data_from_alert_config_file(&self) -> Result<()> {
         let config_dir = paths::config_dir();
         if !config_dir.exists() {
@@ -272,16 +284,15 @@ impl AlertController {
             contents
         } else {
             info!("Writing a new Alerts configuration file");
-            let default_alert_config = serde_json::to_string(&AlertConfigFile {
+            let default_json = serde_json::to_string(&AlertConfigFile {
                 alerts: Vec::with_capacity(0),
                 logs: Vec::with_capacity(0),
             })?;
-            cc_fs::write_string(&path, default_alert_config)
+            cc_fs::write_string(&path, default_json)
                 .await
                 .map_err(|err| {
                     anyhow!("Writing new configuration file: {} - {err}", path.display())
                 })?;
-            // make sure the file is readable:
             cc_fs::read_txt(&path)
                 .await
                 .map_err(|err| anyhow!("Reading configuration file {} - {err}", path.display()))?
@@ -301,12 +312,44 @@ impl AlertController {
                 alerts_lock.insert(alert.uid.clone(), alert);
             }
         }
+        let logs = Self::load_logs_from_data_dir(alert_config.logs).await;
         {
             let mut logs_lock = self.logs.borrow_mut();
             logs_lock.clear();
-            logs_lock.extend(alert_config.logs);
+            logs_lock.extend(logs);
         }
         Ok(())
+    }
+
+    /// Loads alert logs from the data-dir file, migrating from the legacy combined
+    /// config file on the first run after upgrade if the data-dir file does not yet exist.
+    async fn load_logs_from_data_dir(legacy_logs: Vec<AlertLog>) -> Vec<AlertLog> {
+        let path = paths::alert_logs_file();
+        if path.exists() {
+            let contents = cc_fs::read_txt(path).await.unwrap_or_default();
+            return serde_json::from_str::<AlertLogsFile>(&contents)
+                .map(|f| f.logs)
+                .unwrap_or_default();
+        }
+        if legacy_logs.is_empty() {
+            return Vec::new();
+        }
+        info!(
+            "Migrating {} alert log(s) to {}",
+            legacy_logs.len(),
+            path.display()
+        );
+        match serde_json::to_string(&AlertLogsFile {
+            logs: legacy_logs.clone(),
+        }) {
+            Ok(json) => {
+                if let Err(err) = cc_fs::write_string(path, json).await {
+                    warn!("Failed to write migrated alert logs: {err}");
+                }
+            }
+            Err(err) => warn!("Failed to serialize migrated alert logs: {err}"),
+        }
+        legacy_logs
     }
 
     /// Resets the saved state of an alert to Inactive.
@@ -316,16 +359,26 @@ impl AlertController {
         alert.state = AlertState::Inactive;
     }
 
-    /// Saves the current Alert data to the Alert configuration file.
+    /// Saves alert configuration (thresholds, settings) to `/etc/coolercontrol/alerts.json`.
+    /// Logs are intentionally excluded; use `save_alert_logs` for those.
     async fn save_alert_data_to_config(&self) -> Result<()> {
         let alert_config = AlertConfigFile {
             alerts: self.alerts.borrow().values().cloned().collect(),
-            logs: self.logs.borrow().iter().cloned().collect(),
+            logs: Vec::with_capacity(0),
         };
         let alert_config_json = serde_json::to_string(&alert_config)?;
         cc_fs::write_string(paths::alert_config_file(), alert_config_json)
             .await
             .map_err(|err| anyhow!("Writing Alert Configuration File - {err}"))
+    }
+
+    /// Saves the in-memory alert log buffer to `/var/lib/coolercontrol/alert-logs.json`.
+    async fn save_alert_logs(&self) -> Result<()> {
+        let logs: Vec<AlertLog> = self.logs.borrow().iter().cloned().collect();
+        let json = serde_json::to_string(&AlertLogsFile { logs })?;
+        cc_fs::write_string(paths::alert_logs_file(), json)
+            .await
+            .map_err(|err| anyhow!("Writing Alert Logs File - {err}"))
     }
 
     /// Returns a tuple of all available Alerts and logs: (alerts, logs)
@@ -377,7 +430,7 @@ impl AlertController {
     }
 
     /// Processes all Alerts, firing off messages if an alert state has changed.
-    /// This function should be called in the main loop
+    /// This function should be called in the main loop.
     pub fn process_alerts(&self) {
         let alerts_to_fire = self.process_and_collect_alerts_to_fire();
         for (alert, message) in alerts_to_fire {
@@ -387,6 +440,36 @@ impl AlertController {
                 handle.broadcast_alert_state_change(log);
             }
         }
+        self.flush_logs_if_needed();
+    }
+
+    /// Flushes alert logs to disk. The first state change after a quiet period
+    /// is flushed immediately so a crash-causing event is always persisted.
+    /// Subsequent rapid changes are rate-limited by `LOG_FLUSH_COOLDOWN`.
+    fn flush_logs_if_needed(&self) {
+        if !self.logs_dirty.get() {
+            return;
+        }
+        let elapsed = self.last_log_flush.get().elapsed();
+        if elapsed < LOG_FLUSH_COOLDOWN {
+            return;
+        }
+        self.logs_dirty.set(false);
+        self.last_log_flush.set(Instant::now());
+        tokio::task::spawn_local({
+            let logs: Vec<AlertLog> = self.logs.borrow().iter().cloned().collect();
+            async move {
+                match serde_json::to_string(&AlertLogsFile { logs }) {
+                    Ok(json) => {
+                        if let Err(err) = cc_fs::write_string(paths::alert_logs_file(), json).await
+                        {
+                            warn!("Failed to flush alert logs to disk: {err}");
+                        }
+                    }
+                    Err(err) => warn!("Failed to serialize alert logs: {err}"),
+                }
+            }
+        });
     }
 
     /// Collects all Alerts that need firing
@@ -561,10 +644,11 @@ impl AlertController {
             timestamp: Local::now(),
         };
         let mut logs_lock = self.logs.borrow_mut();
-        if logs_lock.len() > LOG_BUFFER_SIZE {
+        while logs_lock.len() >= LOG_BUFFER_SIZE {
             logs_lock.pop_front();
         }
         logs_lock.push_back(log.clone());
+        self.logs_dirty.set(true);
         log
     }
 
@@ -722,6 +806,15 @@ impl AlertController {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AlertConfigFile {
     alerts: Vec<Alert>,
+    /// Legacy field present in config files written before the data-dir split.
+    /// Populated on deserialization for one-time migration to `alert-logs.json`;
+    /// never serialized so new saves omit it.
+    #[serde(default, skip_serializing)]
+    logs: Vec<AlertLog>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AlertLogsFile {
     logs: Vec<AlertLog>,
 }
 
@@ -791,6 +884,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn indexmap_insert_existing_key_replaces_in_place() {
         // Goal: verify that insert() on an existing key updates the value
         // without changing its position in iteration order.
@@ -1017,16 +1111,54 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // -- AlertConfigFile round-trip serde test --
+    // -- AlertConfigFile and AlertLogsFile serde tests --
 
     #[test]
-    fn alert_config_file_serde_roundtrip() {
-        // Goal: verify alerts and logs survive a JSON round-trip,
-        // which is the persistence format used by the daemon.
-        let alerts = vec![
-            make_alert("uid-1", 10.0, 90.0, AlertState::Inactive),
-            make_alert("uid-2", 20.0, 80.0, AlertState::Active),
-        ];
+    fn alert_config_file_serializes_without_logs() {
+        // Goal: verify that AlertConfigFile never writes the `logs` field now
+        // that logs live in the separate data-dir file.
+        let config = AlertConfigFile {
+            alerts: vec![
+                make_alert("uid-1", 10.0, 90.0, AlertState::Inactive),
+                make_alert("uid-2", 20.0, 80.0, AlertState::Active),
+            ],
+            logs: vec![AlertLog::default()],
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(
+            !json.contains("\"logs\""),
+            "logs must not appear in config JSON"
+        );
+        let parsed: AlertConfigFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.alerts.len(), 2);
+        assert!(parsed.logs.is_empty());
+        assert_eq!(parsed.alerts[0].uid, "uid-1");
+        assert_eq!(parsed.alerts[1].state, AlertState::Active);
+    }
+
+    #[test]
+    fn alert_config_file_legacy_deserializes_logs_for_migration() {
+        // Goal: verify that an old-format alerts.json containing a `logs` array
+        // can be deserialized into AlertConfigFile.logs, enabling one-time
+        // migration to the data-dir location without data loss.
+        let legacy_json = r#"{
+            "alerts": [],
+            "logs": [
+                {"uid":"uid-1","name":"A","state":"Active","message":"over threshold",
+                 "timestamp":"2025-01-01T00:00:00+00:00"}
+            ]
+        }"#;
+        let parsed: AlertConfigFile = serde_json::from_str(legacy_json).unwrap();
+        assert!(parsed.alerts.is_empty());
+        assert_eq!(parsed.logs.len(), 1);
+        assert_eq!(parsed.logs[0].uid, "uid-1");
+        assert_eq!(parsed.logs[0].message, "over threshold");
+    }
+
+    #[test]
+    fn alert_logs_file_serde_roundtrip() {
+        // Goal: verify that AlertLogsFile survives a JSON round-trip, which is
+        // the persistence format for the new data-dir logs file.
         let logs = vec![AlertLog {
             uid: "uid-1".to_string(),
             name: "Alert-uid-1".to_string(),
@@ -1034,26 +1166,19 @@ mod tests {
             message: "Over threshold".to_string(),
             timestamp: Local::now(),
         }];
-        let config = AlertConfigFile {
-            alerts: alerts.clone(),
-            logs: logs.clone(),
-        };
-        let json = serde_json::to_string(&config).unwrap();
-        assert!(!json.is_empty());
-
-        let parsed: AlertConfigFile = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.alerts.len(), 2);
+        let file = AlertLogsFile { logs };
+        let json = serde_json::to_string(&file).unwrap();
+        assert!(json.contains("\"logs\""));
+        let parsed: AlertLogsFile = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.logs.len(), 1);
-        assert_eq!(parsed.alerts[0].uid, "uid-1");
-        assert_eq!(parsed.alerts[1].uid, "uid-2");
-        assert_eq!(parsed.alerts[0].min, 10.0);
-        assert_eq!(parsed.alerts[1].state, AlertState::Active);
+        assert_eq!(parsed.logs[0].uid, "uid-1");
         assert_eq!(parsed.logs[0].message, "Over threshold");
     }
 
     // -- Alert serde defaults test --
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn alert_deserialize_with_missing_optional_fields() {
         // Goal: verify that missing optional fields get their serde defaults,
         // which is important for backwards compatibility with older configs.
