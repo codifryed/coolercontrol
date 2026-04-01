@@ -390,7 +390,10 @@ onBeforeUnmount(() => {
                                     t('views.appInfo.stressTest')
                                 }}</span>
                                 <svg-icon
-                                    v-tooltip.right="t('views.appInfo.stressTestTooltip')"
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('views.appInfo.stressTestTooltip'),
+                                    }"
                                     type="mdi"
                                     class="text-text-color-secondary cursor-help"
                                     :path="mdiHelpCircleOutline"
@@ -415,13 +418,23 @@ onBeforeUnmount(() => {
                                 }}</label>
                                 <InputNumber
                                     v-model="cpuThreads"
+                                    show-buttons
+                                    button-layout="horizontal"
                                     :min="1"
                                     :max="512"
                                     :placeholder="t('views.appInfo.allCores')"
-                                    class="w-24"
+                                    class="w-36"
                                     :disabled="cpuActive"
-                                    input-class="!p-1.5 !text-sm w-full"
-                                />
+                                    :input-style="{ width: '4.5rem' }"
+                                    input-class="!p-1.5 !text-sm"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
                             </div>
                             <div class="flex items-center gap-1">
                                 <label class="text-sm text-text-color-secondary">{{
@@ -429,12 +442,23 @@ onBeforeUnmount(() => {
                                 }}</label>
                                 <InputNumber
                                     v-model="cpuDuration"
-                                    :min="1"
+                                    show-buttons
+                                    button-layout="horizontal"
+                                    :min="15"
                                     :max="600"
-                                    class="w-20"
+                                    :step="15"
+                                    class="w-28"
                                     :disabled="cpuActive"
-                                    input-class="!p-1.5 !text-sm w-full"
-                                />
+                                    :input-style="{ width: '3rem' }"
+                                    input-class="!p-1.5 !text-sm"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
                             </div>
                             <Button
                                 v-if="!cpuActive"
@@ -467,11 +491,14 @@ onBeforeUnmount(() => {
                                     t('views.appInfo.gpuStress')
                                 }}</span>
                                 <svg-icon
-                                    v-tooltip.right="t('views.appInfo.gpuStressTooltip')"
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('views.appInfo.gpuStressTooltip'),
+                                    }"
                                     type="mdi"
-                                    class="text-text-color-secondary cursor-help"
+                                    class="text-warning cursor-help"
                                     :path="mdiHelpCircleOutline"
-                                    :size="deviceStore.getREMSize(1.25)"
+                                    :size="deviceStore.getREMSize(1.5)"
                                 />
                             </div>
                             <div class="flex items-center gap-1">
@@ -480,12 +507,23 @@ onBeforeUnmount(() => {
                                 }}</label>
                                 <InputNumber
                                     v-model="gpuDuration"
-                                    :min="1"
+                                    show-buttons
+                                    button-layout="horizontal"
+                                    :min="15"
                                     :max="600"
-                                    class="w-20"
+                                    :step="15"
+                                    class="w-28"
                                     :disabled="gpuActive"
-                                    input-class="!p-1.5 !text-sm w-full"
-                                />
+                                    :input-style="{ width: '3rem' }"
+                                    input-class="!p-1.5 !text-sm"
+                                >
+                                    <template #incrementicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
                             </div>
                             <Button
                                 v-if="!gpuActive"
