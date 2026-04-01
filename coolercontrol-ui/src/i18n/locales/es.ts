@@ -491,11 +491,11 @@ export default {
             downloadCurrentLog: 'Descargar Registro Actual',
             stressTest: 'Prueba de estrés',
             stressTestTooltip:
-                'Valide las curvas de ventilador y los perfiles de enfriamiento generando carga térmica sostenida de CPU o GPU.',
+                'Valide las curvas de ventilador y los perfiles de enfriamiento<br>generando carga térmica sostenida de CPU o GPU.<br>Las pruebas de estrés utilizan múltiples componentes de cada sistema<br>para intentar generar el máximo calor.',
             cpuStress: 'Estrés de CPU',
             gpuStress: 'Estrés de GPU',
             gpuStressTooltip:
-                'Requiere controladores Vulkan o OpenGL ES (via ANGLE). Puede reducir la respuesta de la interfaz de escritorio.',
+                'Requiere controladores Vulkan o OpenGL ES (via ANGLE).<br>Puede reducir la respuesta de la interfaz de escritorio.',
             threadCount: 'Hilos',
             duration: 'Duración (s)',
             start: 'Iniciar',

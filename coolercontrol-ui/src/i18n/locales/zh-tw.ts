@@ -394,11 +394,12 @@ export default {
             logsAndDiagnostics: '日誌和診斷',
             downloadCurrentLog: '下載當前日誌',
             stressTest: '壓力測試',
-            stressTestTooltip: '透過生成持續的 CPU 或 GPU 熱負載來驗證風扇曲線和冷卻配置文件。',
+            stressTestTooltip:
+                '透過生成持續的 CPU 或 GPU 熱負載<br>來驗證風扇曲線和冷卻配置文件。<br>壓力測試利用每個系統的多個組件<br>嘗試產生最大熱量。',
             cpuStress: 'CPU 壓力',
             gpuStress: 'GPU 壓力',
             gpuStressTooltip:
-                '需要 Vulkan 或 OpenGL ES（通過 ANGLE）驅動程式。可能會降低桌面介面回應速度。',
+                '需要 Vulkan 或 OpenGL ES（通過 ANGLE）驅動程式。<br>可能會降低桌面介面回應速度。',
             threadCount: '執行緒數',
             duration: '持續時間 (秒)',
             start: '開始',

@@ -480,11 +480,11 @@ export default {
             downloadCurrentLog: '현재 로그 다운로드',
             stressTest: '스트레스 테스트',
             stressTestTooltip:
-                '지속적인 CPU 또는 GPU 열 부하를 생성하여 팬 곡선과 냉각 프로파일을 검증합니다.',
+                '지속적인 CPU 또는 GPU 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>스트레스 테스트는 각 시스템의 여러 구성 요소를 활용하여<br>최대 열을 발생시킵니다.',
             cpuStress: 'CPU 스트레스',
             gpuStress: 'GPU 스트레스',
             gpuStressTooltip:
-                'Vulkan 또는 OpenGL ES (ANGLE 경유) 드라이버가 필요합니다. 실행 중 데스크톱 UI 반응성이 저하될 수 있습니다.',
+                'Vulkan 또는 OpenGL ES (ANGLE 경유) 드라이버가 필요합니다.<br>실행 중 데스크톱 UI 반응성이 저하될 수 있습니다.',
             threadCount: '스레드',
             duration: '지속 시간 (초)',
             start: '시작',

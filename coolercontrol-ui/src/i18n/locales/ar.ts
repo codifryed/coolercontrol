@@ -482,11 +482,11 @@ export default {
             downloadCurrentLog: 'تنزيل السجل الحالي',
             stressTest: 'اختبار الإجهاد',
             stressTestTooltip:
-                'تحقق من منحنيات المروحة وملفات التبريد بتوليد حمل حراري مستدام على CPU أو GPU.',
+                'تحقق من منحنيات المروحة وملفات التبريد<br>بتوليد حمل حراري مستدام على CPU أو GPU.<br>تستخدم اختبارات الإجهاد مكونات متعددة من كل نظام<br>لمحاولة توليد أقصى حرارة.',
             cpuStress: 'إجهاد CPU',
             gpuStress: 'إجهاد GPU',
             gpuStressTooltip:
-                'يتطلب برامج تشغيل Vulkan أو OpenGL ES (عبر ANGLE). قد يقلل من استجابة واجهة سطح المكتب.',
+                'يتطلب برامج تشغيل Vulkan أو OpenGL ES (عبر ANGLE).<br>قد يقلل من استجابة واجهة سطح المكتب.',
             threadCount: 'الخيوط',
             duration: 'المدة (ث)',
             start: 'بدء',

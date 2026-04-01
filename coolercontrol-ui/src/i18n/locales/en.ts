@@ -485,11 +485,11 @@ export default {
             downloadCurrentLog: 'Download Current Log',
             stressTest: 'Stress Test',
             stressTestTooltip:
-                'Validate fan curves and cooling profiles by generating sustained CPU or GPU thermal load.',
+                'Validate fan curves and cooling profiles by generating<br>sustained CPU or GPU thermal load.<br>Stress tests utilize multiple components of each system<br>to attempt to generate maximum heat.',
             cpuStress: 'CPU Stress',
             gpuStress: 'GPU Stress',
             gpuStressTooltip:
-                'Requires Vulkan or OpenGL ES (via ANGLE) drivers. May reduce desktop UI responsiveness while active.',
+                'Requires Vulkan or OpenGL ES (via ANGLE) drivers.<br>May reduce desktop UI responsiveness while active.',
             threadCount: 'Threads',
             duration: 'Duration (s)',
 

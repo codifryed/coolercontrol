@@ -501,11 +501,11 @@ export default {
             downloadCurrentLog: 'Télécharger le Journal Actuel',
             stressTest: 'Test de stress',
             stressTestTooltip:
-                'Validez les courbes de ventilateur et les profils de refroidissement en générant une charge thermique CPU ou GPU soutenue.',
+                'Validez les courbes de ventilateur et les profils de refroidissement<br>en générant une charge thermique CPU ou GPU soutenue.<br>Les tests de stress utilisent plusieurs composants de chaque système<br>pour tenter de générer un maximum de chaleur.',
             cpuStress: 'Stress CPU',
             gpuStress: 'Stress GPU',
             gpuStressTooltip:
-                "Nécessite des pilotes Vulkan ou OpenGL ES (via ANGLE). Peut réduire la réactivité de l'interface de bureau.",
+                "Nécessite des pilotes Vulkan ou OpenGL ES (via ANGLE).<br>Peut réduire la réactivité de l'interface de bureau.",
             threadCount: 'Threads',
             duration: 'Durée (s)',
             start: 'Démarrer',

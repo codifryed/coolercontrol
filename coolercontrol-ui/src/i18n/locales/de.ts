@@ -494,11 +494,11 @@ export default {
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             stressTest: 'Stresstest',
             stressTestTooltip:
-                'Lüfterkurven und Kühlprofile durch anhaltende CPU- oder GPU-Thermallast validieren.',
+                'Lüfterkurven und Kühlprofile durch anhaltende<br>CPU- oder GPU-Thermallast validieren.<br>Stresstests nutzen mehrere Komponenten jedes Systems,<br>um maximale Wärme zu erzeugen.',
             cpuStress: 'CPU-Stress',
             gpuStress: 'GPU-Stress',
             gpuStressTooltip:
-                'Erfordert Vulkan- oder OpenGL ES (via ANGLE) GPU-Treiber. Kann die Desktop-UI-Reaktionsfähigkeit beeinträchtigen.',
+                'Erfordert Vulkan- oder OpenGL ES (via ANGLE) GPU-Treiber.<br>Kann die Desktop-UI-Reaktionsfähigkeit beeinträchtigen.',
             threadCount: 'Threads',
             duration: 'Dauer (s)',
             start: 'Start',
