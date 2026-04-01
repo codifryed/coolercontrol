@@ -321,12 +321,15 @@ pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
+const MAX_WORKGROUPS_PER_DIM: u32 = 65535;
+
 struct GpuStressResources {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     bind_groups: Vec<wgpu::BindGroup>,
-    dispatch_count: u32,
+    dispatch_x: u32,
+    dispatch_y: u32,
     _buffers: Vec<wgpu::Buffer>,
 }
 
@@ -357,16 +360,24 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
     let info = adapter.get_info();
     let label = format!("{} ({:?})", info.name, info.backend);
 
+    // Request the adapter's actual limits so large buffer bindings are allowed.
     let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor::default(), None)
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                required_limits: adapter.limits(),
+                ..Default::default()
+            },
+            None,
+        )
         .await
         .map_err(|e| anyhow!("Failed to create device for {label}: {e}"))?;
 
     // Scale buffer size by device type: discrete GPUs have dedicated VRAM,
-    // integrated GPUs share system RAM.
+    // integrated GPUs share system RAM. Clamp to the adapter's binding limit.
+    let max_binding = u64::from(adapter.limits().max_storage_buffer_binding_size);
     let buf_bytes = match info.device_type {
-        wgpu::DeviceType::DiscreteGpu => MEM_STRESS_BUF_DISCRETE,
-        _ => MEM_STRESS_BUF_INTEGRATED,
+        wgpu::DeviceType::DiscreteGpu => MEM_STRESS_BUF_DISCRETE.min(max_binding),
+        _ => MEM_STRESS_BUF_INTEGRATED.min(max_binding),
     };
     let vec4_count = (buf_bytes / 16) as u32;
     let total_mb = (buf_bytes * MEM_STRESS_RING_SIZE as u64) / (1024 * 1024);
@@ -381,22 +392,28 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         ));
     }
 
+    // Split dispatch across X and Y dimensions to stay within the
+    // 65535 per-dimension workgroup limit.
+    let total_groups = vec4_count.div_ceil(MEM_STRESS_WORKGROUP);
+    let dispatch_x = total_groups.min(MAX_WORKGROUPS_PER_DIM);
+    let dispatch_y = total_groups.div_ceil(dispatch_x);
+    let stride = dispatch_x * MEM_STRESS_WORKGROUP;
+
     let shader_src = format!(
         r"
 @group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> dst: array<vec4<f32>>;
 
 const N: u32 = {vec4_count}u;
+const STRIDE: u32 = {stride}u;
 const ITERS: u32 = {MEM_STRESS_COMPUTE_ITERS}u;
 
 @compute @workgroup_size({MEM_STRESS_WORKGROUP})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let idx = gid.x;
+    let idx = gid.y * STRIDE + gid.x;
     if idx >= N {{ return; }}
     var v = src[idx];
     var acc = dst[idx];
-    // Inner loop increases ALU utilization for core heat while
-    // the outer memory access pattern stresses VRAM bandwidth.
     for (var i: u32 = 0u; i < ITERS; i = i + 1u) {{
         acc = fma(v, acc, v);
         v = sqrt(abs(acc));
@@ -452,14 +469,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         }));
     }
 
-    let dispatch_count = vec4_count.div_ceil(MEM_STRESS_WORKGROUP);
-
     Ok(GpuStressResources {
         device,
         queue,
         pipeline,
         bind_groups,
-        dispatch_count,
+        dispatch_x,
+        dispatch_y,
         _buffers: buffers,
     })
 }
@@ -485,7 +501,7 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
                 });
                 pass.set_pipeline(&res.pipeline);
                 pass.set_bind_group(0, bg, &[]);
-                pass.dispatch_workgroups(res.dispatch_count, 1, 1);
+                pass.dispatch_workgroups(res.dispatch_x, res.dispatch_y, 1);
             }
         }
         res.queue.submit(std::iter::once(encoder.finish()));
