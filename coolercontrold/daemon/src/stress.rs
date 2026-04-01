@@ -33,14 +33,19 @@ const F64S_PER_AVX2: usize = 4;
 /// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
 const CACHE_SWEEPS_PER_CHECK: u32 = 16;
 
-/// Size of each GPU memory stress buffer (32 MiB).
-const MEM_STRESS_BUF_BYTES: u64 = 32 * 1024 * 1024;
-/// Number of vec4<f32> elements per buffer (32 MiB / 16 bytes).
-const MEM_STRESS_VEC4S: u32 = (MEM_STRESS_BUF_BYTES / 16) as u32;
-/// Number of buffers forming the ring. Total VRAM = N * 32 MiB.
+/// Per-buffer size for discrete GPUs (256 MiB, total ring = 2 GiB).
+const MEM_STRESS_BUF_DISCRETE: u64 = 256 * 1024 * 1024;
+/// Per-buffer size for integrated GPUs (16 MiB, total ring = 128 MiB).
+const MEM_STRESS_BUF_INTEGRATED: u64 = 16 * 1024 * 1024;
+/// Number of buffers forming the ring.
 const MEM_STRESS_RING_SIZE: usize = 8;
 /// Workgroup size for the streaming shader.
 const MEM_STRESS_WORKGROUP: u32 = 256;
+/// Compute iterations per element in the streaming shader. Higher values
+/// increase ALU utilization and core heat alongside memory stress.
+const MEM_STRESS_COMPUTE_ITERS: u32 = 64;
+/// Full ring traversals per GPU submission.
+const MEM_STRESS_RING_REPS: u32 = 4;
 /// Sleep between GPU submissions for desktop compositing (ms).
 const GPU_SUBMIT_SLEEP_MS: u64 = 0;
 
@@ -357,13 +362,22 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         .await
         .map_err(|e| anyhow!("Failed to create device for {label}: {e}"))?;
 
-    // Allocate ring of large buffers for memory-bandwidth stress.
+    // Scale buffer size by device type: discrete GPUs have dedicated VRAM,
+    // integrated GPUs share system RAM.
+    let buf_bytes = match info.device_type {
+        wgpu::DeviceType::DiscreteGpu => MEM_STRESS_BUF_DISCRETE,
+        _ => MEM_STRESS_BUF_INTEGRATED,
+    };
+    let vec4_count = (buf_bytes / 16) as u32;
+    let total_mb = (buf_bytes * MEM_STRESS_RING_SIZE as u64) / (1024 * 1024);
+    eprintln!("  VRAM stress: {total_mb} MiB ({MEM_STRESS_RING_SIZE} x {buf_bytes} B)");
+
     let mut buffers = Vec::with_capacity(MEM_STRESS_RING_SIZE);
     for i in 0..MEM_STRESS_RING_SIZE {
         buffers.push(create_storage_buffer(
             &device,
             &format!("ring_{i}"),
-            MEM_STRESS_BUF_BYTES,
+            buf_bytes,
         ));
     }
 
@@ -372,15 +386,22 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
 @group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> dst: array<vec4<f32>>;
 
-const N: u32 = {MEM_STRESS_VEC4S}u;
+const N: u32 = {vec4_count}u;
+const ITERS: u32 = {MEM_STRESS_COMPUTE_ITERS}u;
 
 @compute @workgroup_size({MEM_STRESS_WORKGROUP})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.x;
     if idx >= N {{ return; }}
-    let a = src[idx];
-    let b = dst[idx];
-    dst[idx] = sqrt(abs(fma(a, vec4(1.0001), b)));
+    var v = src[idx];
+    var acc = dst[idx];
+    // Inner loop increases ALU utilization for core heat while
+    // the outer memory access pattern stresses VRAM bandwidth.
+    for (var i: u32 = 0u; i < ITERS; i = i + 1u) {{
+        acc = fma(v, acc, v);
+        v = sqrt(abs(acc));
+    }}
+    dst[idx] = acc;
 }}
 "
     );
@@ -431,7 +452,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         }));
     }
 
-    let dispatch_count = MEM_STRESS_VEC4S.div_ceil(MEM_STRESS_WORKGROUP);
+    let dispatch_count = vec4_count.div_ceil(MEM_STRESS_WORKGROUP);
 
     Ok(GpuStressResources {
         device,
@@ -452,17 +473,20 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
         let mut encoder = res
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        // Multiple ring traversals per submission increase sustained load.
         // Each ring step needs its own compute pass to avoid conflicting
         // buffer usage (a buffer is read-only src in one step and
         // read-write dst in the adjacent step).
-        for bg in &res.bind_groups {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: None,
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&res.pipeline);
-            pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(res.dispatch_count, 1, 1);
+        for _ in 0..MEM_STRESS_RING_REPS {
+            for bg in &res.bind_groups {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: None,
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(&res.pipeline);
+                pass.set_bind_group(0, bg, &[]);
+                pass.dispatch_workgroups(res.dispatch_count, 1, 1);
+            }
         }
         res.queue.submit(std::iter::once(encoder.finish()));
         res.device.poll(wgpu::Maintain::Wait);
