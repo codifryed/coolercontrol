@@ -33,11 +33,16 @@ const F64S_PER_AVX2: usize = 4;
 /// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
 const CACHE_SWEEPS_PER_CHECK: u32 = 16;
 
-/// Matrix dimension for GPU stress test (N x N).
-const MATRIX_DIM: u32 = 1024;
-
-/// Number of compute dispatches per GPU submission for sustained saturation.
-const DISPATCHES_PER_SUBMISSION: u32 = 8;
+/// Size of each GPU memory stress buffer (32 MiB).
+const MEM_STRESS_BUF_BYTES: u64 = 32 * 1024 * 1024;
+/// Number of vec4<f32> elements per buffer (32 MiB / 16 bytes).
+const MEM_STRESS_VEC4S: u32 = (MEM_STRESS_BUF_BYTES / 16) as u32;
+/// Number of buffers forming the ring. Total VRAM = N * 32 MiB.
+const MEM_STRESS_RING_SIZE: usize = 8;
+/// Workgroup size for the streaming shader.
+const MEM_STRESS_WORKGROUP: u32 = 256;
+/// Sleep between GPU submissions for desktop compositing (ms).
+const GPU_SUBMIT_SLEEP_MS: u64 = 0;
 
 /// Returns the number of logical processors by counting entries in /proc/cpuinfo.
 /// This is not restricted by CPU affinity or cgroup limits
@@ -240,7 +245,7 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
     std::hint::black_box(iacc);
 }
 
-/// Run GPU stress test using wgpu compute shader (matrix multiplication).
+/// Run GPU stress test using wgpu compute shaders for memory-bandwidth stress.
 /// Enumerates all available GPU adapters and stresses them in parallel.
 pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
@@ -314,9 +319,10 @@ pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
 struct GpuStressResources {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    compute_pipeline: wgpu::ComputePipeline,
-    bind_group: wgpu::BindGroup,
+    pipeline: wgpu::ComputePipeline,
+    bind_groups: Vec<wgpu::BindGroup>,
     dispatch_count: u32,
+    _buffers: Vec<wgpu::Buffer>,
 }
 
 fn create_storage_buffer(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {
@@ -341,7 +347,7 @@ fn storage_bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntr
     }
 }
 
-/// Creates the wgpu device, pipeline, and bind group for a single adapter.
+/// Creates ring-buffer resources for memory-bandwidth GPU stress.
 async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStressResources> {
     let info = adapter.get_info();
     let label = format!("{} ({:?})", info.name, info.backend);
@@ -350,33 +356,53 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         .request_device(&wgpu::DeviceDescriptor::default(), None)
         .await
         .map_err(|e| anyhow!("Failed to create device for {label}: {e}"))?;
-    let buffer_size = u64::from(MATRIX_DIM) * u64::from(MATRIX_DIM) * 4; // f32 = 4 bytes
-    let buffer_a = create_storage_buffer(&device, "Matrix A", buffer_size);
-    let buffer_b = create_storage_buffer(&device, "Matrix B", buffer_size);
-    let buffer_c = create_storage_buffer(&device, "Matrix C", buffer_size);
+
+    // Allocate ring of large buffers for memory-bandwidth stress.
+    let mut buffers = Vec::with_capacity(MEM_STRESS_RING_SIZE);
+    for i in 0..MEM_STRESS_RING_SIZE {
+        buffers.push(create_storage_buffer(
+            &device,
+            &format!("ring_{i}"),
+            MEM_STRESS_BUF_BYTES,
+        ));
+    }
+
+    let shader_src = format!(
+        r"
+@group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst: array<vec4<f32>>;
+
+const N: u32 = {MEM_STRESS_VEC4S}u;
+
+@compute @workgroup_size({MEM_STRESS_WORKGROUP})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let idx = gid.x;
+    if idx >= N {{ return; }}
+    let a = src[idx];
+    let b = dst[idx];
+    dst[idx] = sqrt(abs(fma(a, vec4(1.0001), b)));
+}}
+"
+    );
 
     let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("stress_shader"),
-        source: wgpu::ShaderSource::Wgsl(STRESS_SHADER_WGSL.into()),
+        label: Some("mem_stress_shader"),
+        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
     });
 
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("stress_bgl"),
-        entries: &[
-            storage_bgl_entry(0, true),
-            storage_bgl_entry(1, true),
-            storage_bgl_entry(2, false),
-        ],
+        label: Some("mem_stress_bgl"),
+        entries: &[storage_bgl_entry(0, true), storage_bgl_entry(1, false)],
     });
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("stress_pipeline_layout"),
+        label: Some("mem_stress_pipeline_layout"),
         bind_group_layouts: &[&bind_group_layout],
         push_constant_ranges: &[],
     });
 
-    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("stress_pipeline"),
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("mem_stress_pipeline"),
         layout: Some(&pipeline_layout),
         module: &shader_module,
         entry_point: Some("main"),
@@ -384,36 +410,40 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         cache: None,
     });
 
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("stress_bind_group"),
-        layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer_a.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: buffer_b.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: buffer_c.as_entire_binding(),
-            },
-        ],
-    });
-    let dispatch_count = MATRIX_DIM.div_ceil(16);
+    // Ring bind groups: each reads buf[i], writes buf[(i+1) % N].
+    let mut bind_groups = Vec::with_capacity(MEM_STRESS_RING_SIZE);
+    for i in 0..MEM_STRESS_RING_SIZE {
+        let src_idx = i;
+        let dst_idx = (i + 1) % MEM_STRESS_RING_SIZE;
+        bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&format!("ring_bg_{i}")),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffers[src_idx].as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffers[dst_idx].as_entire_binding(),
+                },
+            ],
+        }));
+    }
+
+    let dispatch_count = MEM_STRESS_VEC4S.div_ceil(MEM_STRESS_WORKGROUP);
 
     Ok(GpuStressResources {
         device,
         queue,
-        compute_pipeline,
-        bind_group,
+        pipeline,
+        bind_groups,
         dispatch_count,
+        _buffers: buffers,
     })
 }
 
-/// Submits compute dispatches in a tight loop until the deadline.
+/// Streams data through ring buffers until deadline, stressing GPU memory.
 async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()> {
     let res = create_gpu_stress_resources(adapter).await?;
     let deadline = Instant::now() + duration;
@@ -422,47 +452,25 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
         let mut encoder = res
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        {
+        // Each ring step needs its own compute pass to avoid conflicting
+        // buffer usage (a buffer is read-only src in one step and
+        // read-write dst in the adjacent step).
+        for bg in &res.bind_groups {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: None,
                 timestamp_writes: None,
             });
-            pass.set_pipeline(&res.compute_pipeline);
-            pass.set_bind_group(0, &res.bind_group, &[]);
-            for _ in 0..DISPATCHES_PER_SUBMISSION {
-                pass.dispatch_workgroups(res.dispatch_count, res.dispatch_count, 1);
-            }
+            pass.set_pipeline(&res.pipeline);
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups(res.dispatch_count, 1, 1);
         }
         res.queue.submit(std::iter::once(encoder.finish()));
         res.device.poll(wgpu::Maintain::Wait);
-        // Brief pause to leave a small gap for desktop compositing.
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        tokio::time::sleep(Duration::from_millis(GPU_SUBMIT_SLEEP_MS)).await;
     }
 
     Ok(())
 }
-
-const STRESS_SHADER_WGSL: &str = r"
-@group(0) @binding(0) var<storage, read> a: array<f32>;
-@group(0) @binding(1) var<storage, read> b: array<f32>;
-@group(0) @binding(2) var<storage, read_write> c: array<f32>;
-
-const N: u32 = 1024u;
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let row = gid.x;
-    let col = gid.y;
-    if row >= N || col >= N {
-        return;
-    }
-    var sum: f32 = 0.0;
-    for (var k: u32 = 0u; k < N; k = k + 1u) {
-        sum = fma(a[row * N + k], b[k * N + col], sum);
-    }
-    c[row * N + col] = sum;
-}
-";
 
 #[cfg(test)]
 mod tests {
