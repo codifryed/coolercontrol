@@ -16,11 +16,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::alloc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
 const NICE_LEVEL: i32 = 19;
+
+/// Per-thread working buffer size. Exceeds typical L2 caches, forcing L3 and
+/// DRAM traffic across threads for maximum heat generation.
+const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
+const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
+const AVX2_ALIGN: usize = 32;
+const F64S_PER_AVX2: usize = 4;
+/// Full buffer sweeps between deadline checks. Higher values reduce the
+/// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
+const CACHE_SWEEPS_PER_CHECK: u32 = 16;
 
 /// Matrix dimension for GPU stress test (N x N).
 const MATRIX_DIM: u32 = 1024;
@@ -74,7 +85,48 @@ fn set_nice_level() -> Result<()> {
     Ok(())
 }
 
-/// Run CPU stress test with tight f64 FMA loops on N threads.
+/// 32-byte-aligned heap buffer for SIMD-friendly cache-stressing workloads.
+struct AlignedBuffer {
+    ptr: *mut f64,
+    layout: alloc::Layout,
+    len: usize,
+}
+
+impl AlignedBuffer {
+    fn new(count: usize) -> Self {
+        let size = count * size_of::<f64>();
+        let layout = alloc::Layout::from_size_align(size, AVX2_ALIGN).expect("valid layout");
+        // SAFETY: Layout is valid and non-zero.
+        let ptr = unsafe { alloc::alloc(layout) };
+        if ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+        let ptr = ptr.cast::<f64>();
+        // Initialize to small positive values to avoid denormals.
+        for i in 0..count {
+            // SAFETY: ptr has count elements allocated.
+            unsafe { ptr.add(i).write(1.0 + (i as f64) * 1e-10) };
+        }
+        Self {
+            ptr,
+            layout,
+            len: count,
+        }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut f64 {
+        self.ptr
+    }
+}
+
+impl Drop for AlignedBuffer {
+    fn drop(&mut self) {
+        // SAFETY: ptr was allocated with this layout in new().
+        unsafe { alloc::dealloc(self.ptr.cast(), self.layout) };
+    }
+}
+
+/// Run CPU stress test with cache-busting FMA+sqrt loops on N threads.
 pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
     set_nice_level()?;
@@ -91,17 +143,14 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
 
     for _ in 0..num_threads {
         handles.push(std::thread::spawn(move || {
-            let mut a: f64 = 1.0;
-            let mut b: f64 = 2.0;
-            let mut c: f64 = 3.0;
-            while Instant::now() < deadline {
-                for _ in 0..10_000 {
-                    a = a.mul_add(b, c);
-                    b = b.mul_add(c, a);
-                    c = c.mul_add(a, b);
-                }
+            let mut buf = AlignedBuffer::new(STRESS_BUF_F64S);
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA support confirmed by runtime feature detection.
+                unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
+                return;
             }
-            std::hint::black_box((a, b, c));
+            stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
         }));
     }
 
@@ -110,6 +159,85 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Scalar fallback: sweeps buffer with FMA + interleaved sqrt for cache and
+/// FP unit stress. Used on non-x86_64 or CPUs without AVX2+FMA.
+fn stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
+    let multiplier = 1.000_000_001_f64;
+    let addend = 0.999_999_999_f64;
+    while Instant::now() < deadline {
+        for _ in 0..CACHE_SWEEPS_PER_CHECK {
+            for i in 0..len {
+                // SAFETY: buf has len elements, all indices in bounds.
+                unsafe {
+                    let ptr = buf.add(i);
+                    let mut v = ptr.read();
+                    v = v.mul_add(multiplier, addend);
+                    if i % 2 == 0 {
+                        v = v.sqrt();
+                    }
+                    v = v.clamp(0.1, 1e100);
+                    ptr.write(v);
+                }
+            }
+        }
+    }
+    std::hint::black_box(unsafe { buf.read() });
+}
+
+/// AVX2+FMA hot loop: 4-wide f64 FMA with interleaved sqrt and integer ops.
+/// Engages SIMD FP units, divider, integer ports, and cache hierarchy.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
+    use std::arch::x86_64::{
+        __m256d, __m256i, _mm256_add_epi32, _mm256_fmadd_pd, _mm256_load_pd, _mm256_max_pd,
+        _mm256_min_pd, _mm256_mullo_epi32, _mm256_set1_pd, _mm256_set_epi32, _mm256_sqrt_pd,
+        _mm256_store_pd,
+    };
+
+    let vmul: __m256d = _mm256_set1_pd(1.000_000_001);
+    let vadd: __m256d = _mm256_set1_pd(0.999_999_999);
+    let vclamp_lo: __m256d = _mm256_set1_pd(0.1);
+    let vclamp_hi: __m256d = _mm256_set1_pd(1e100);
+
+    // Integer accumulators to engage integer execution ports.
+    let mut iacc: __m256i = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+    let imul: __m256i = _mm256_set_epi32(7, 11, 13, 17, 19, 23, 29, 31);
+
+    let chunks = len / F64S_PER_AVX2;
+    while Instant::now() < deadline {
+        for _ in 0..CACHE_SWEEPS_PER_CHECK {
+            for i in 0..chunks {
+                // SAFETY: buf is 32-byte aligned with len elements.
+                let ptr = unsafe { buf.add(i * F64S_PER_AVX2) };
+                let mut v = unsafe { _mm256_load_pd(ptr) };
+
+                v = _mm256_fmadd_pd(v, vmul, vadd);
+
+                // Sqrt on even chunks engages the divider unit (VSQRTPD,
+                // 15-20 cycle latency). Alternating lets OOO overlap FMA
+                // and sqrt on independent data.
+                if i % 2 == 0 {
+                    v = _mm256_sqrt_pd(v);
+                }
+
+                v = _mm256_max_pd(v, vclamp_lo);
+                v = _mm256_min_pd(v, vclamp_hi);
+                // SAFETY: ptr is aligned and in-bounds.
+                unsafe { _mm256_store_pd(ptr, v) };
+
+                // Integer multiply every 8 chunks to keep integer ports
+                // active without starving FP throughput.
+                if i % 8 == 0 {
+                    iacc = _mm256_mullo_epi32(iacc, imul);
+                    iacc = _mm256_add_epi32(iacc, imul);
+                }
+            }
+        }
+    }
+    std::hint::black_box(iacc);
 }
 
 /// Run GPU stress test using wgpu compute shader (matrix multiplication).
@@ -354,5 +482,30 @@ mod tests {
     #[test]
     fn reset_cpu_affinity_succeeds() {
         reset_cpu_affinity().unwrap();
+    }
+
+    #[test]
+    fn aligned_buffer_is_32_byte_aligned() {
+        let buf = AlignedBuffer::new(STRESS_BUF_F64S);
+        assert_eq!(buf.ptr as usize % AVX2_ALIGN, 0);
+        assert_eq!(buf.len, STRESS_BUF_F64S);
+    }
+
+    #[test]
+    fn scalar_stress_loop_runs_briefly() {
+        let mut buf = AlignedBuffer::new(1024);
+        let deadline = Instant::now() + Duration::from_millis(100);
+        stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn avx2_stress_loop_runs_if_supported() {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            let mut buf = AlignedBuffer::new(STRESS_BUF_F64S);
+            let deadline = Instant::now() + Duration::from_millis(200);
+            // SAFETY: AVX2+FMA support confirmed above.
+            unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
+        }
     }
 }
