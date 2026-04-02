@@ -505,6 +505,10 @@ export default {
             active: 'Aktiv',
             inactive: 'Inaktiv',
             allCores: 'Alle Kerne',
+            psuWarningHeader: 'Warnung: Hohe Leistungsaufnahme',
+            psuWarningMessage:
+                'Das gleichzeitige Ausführen von CPU- und GPU-Stresstests belastet das Netzteil erheblich. Bei Übertaktung oder einem Netzteil mit niedriger Wattzahl kann es zu Systeminstabilität kommen. Möchten Sie trotzdem fortfahren?',
+            proceed: 'Fortfahren',
         },
         alerts: {
             createAlert: 'Warnung erstellen',

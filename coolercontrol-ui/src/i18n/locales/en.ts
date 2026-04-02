@@ -498,6 +498,10 @@ export default {
             active: 'Active',
             inactive: 'Inactive',
             allCores: 'All Cores',
+            psuWarningHeader: 'High Power Warning',
+            psuWarningMessage:
+                'Running both CPU and GPU stress tests simultaneously will put significant load on your PSU. If overclocking or using a low wattage PSU, system instability can occur. Are you sure you want to proceed?',
+            proceed: 'Proceed',
         },
         alerts: {
             createAlert: 'Create Alert',

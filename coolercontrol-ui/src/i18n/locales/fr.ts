@@ -501,7 +501,7 @@ export default {
             downloadCurrentLog: 'Télécharger le Journal Actuel',
             stressTest: 'Test de stress',
             stressTestTooltip:
-                'Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Ce ne sont pas des benchmarks, mais un outil pratique<br>pour générer de la chaleur, pas pour mesurer les performances.<br>Le stress GPU peut nécessiter des pilotes Vulkan ou OpenGL ES.<br>Peut réduire la réactivité de l\'interface.',
+                "Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Ce ne sont pas des benchmarks, mais un outil pratique<br>pour générer de la chaleur, pas pour mesurer les performances.<br>Le stress GPU peut nécessiter des pilotes Vulkan ou OpenGL ES.<br>Peut réduire la réactivité de l'interface.",
             cpuStress: 'Stress CPU',
             gpuStress: 'Stress GPU',
             threadCount: 'Threads',
@@ -512,6 +512,10 @@ export default {
             active: 'Actif',
             inactive: 'Inactif',
             allCores: 'Tous les cœurs',
+            psuWarningHeader: 'Avertissement: consommation élevée',
+            psuWarningMessage:
+                "L'exécution simultanée des tests de stress CPU et GPU sollicitera fortement votre alimentation. En cas d'overclocking ou avec une alimentation de faible puissance, une instabilité système peut survenir. Voulez-vous continuer ?",
+            proceed: 'Continuer',
         },
         alerts: {
             createAlert: 'Créer une Alerte',

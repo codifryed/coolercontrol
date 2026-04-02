@@ -439,6 +439,10 @@ export default {
             active: 'सक्रिय',
             inactive: 'निष्क्रिय',
             allCores: 'सभी कोर',
+            psuWarningHeader: 'उच्च बिजली चेतावनी',
+            psuWarningMessage:
+                'CPU और GPU स्ट्रेस टेस्ट एक साथ चलाने से PSU पर काफी भार पड़ेगा। ओवरक्लॉकिंग या कम वॉटेज PSU के साथ सिस्टम अस्थिरता हो सकती है। क्या आप आगे बढ़ना चाहते हैं?',
+            proceed: 'आगे बढ़ें',
         },
         alerts: {
             createAlert: 'अलर्ट बनाएं',

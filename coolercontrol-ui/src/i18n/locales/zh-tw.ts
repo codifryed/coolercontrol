@@ -406,6 +406,10 @@ export default {
             active: '活躍',
             inactive: '不活躍',
             allCores: '所有核心',
+            psuWarningHeader: '高功耗警告',
+            psuWarningMessage:
+                '同時執行 CPU 和 GPU 壓力測試將對電源產生較大負載。如果正在超頻或使用低功率電源，可能會導致系統不穩定。確定要繼續嗎？',
+            proceed: '繼續',
         },
         alerts: {
             createAlert: '創建警報',

@@ -36,6 +36,7 @@ import InputNumber from 'primevue/inputnumber'
 import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
+import { useConfirm } from 'primevue/useconfirm'
 
 const appVersion = import.meta.env.PACKAGE_VERSION
 const deviceStore = useDeviceStore()
@@ -131,6 +132,7 @@ onMounted(async () => {
 
 // Stress Test
 const toast = useToast()
+const confirm = useConfirm()
 const cpuDuration = ref<number>(60)
 const gpuDuration = ref<number>(60)
 const ramDuration = ref<number>(60)
@@ -159,7 +161,25 @@ const startPolling = () => {
     }
 }
 
-const startCpuStress = async () => {
+const anyStressActive = () => cpuActive.value || gpuActive.value || ramActive.value
+
+const confirmOrRun = (action: () => void) => {
+    if (anyStressActive()) {
+        confirm.require({
+            message: t('views.appInfo.psuWarningMessage'),
+            header: t('views.appInfo.psuWarningHeader'),
+            icon: 'pi pi-exclamation-triangle',
+            defaultFocus: 'reject',
+            rejectLabel: t('common.cancel'),
+            acceptLabel: t('views.appInfo.proceed'),
+            accept: action,
+        })
+    } else {
+        action()
+    }
+}
+
+const doCpuStress = async () => {
     cpuLoading.value = true
     const err = await deviceStore.daemonClient.startCpuStress(undefined, cpuDuration.value)
     cpuLoading.value = false
@@ -170,6 +190,7 @@ const startCpuStress = async () => {
         startPolling()
     }
 }
+const startCpuStress = () => confirmOrRun(doCpuStress)
 
 const stopCpuStress = async () => {
     cpuLoading.value = true
@@ -178,7 +199,7 @@ const stopCpuStress = async () => {
     cpuActive.value = false
 }
 
-const startGpuStress = async () => {
+const doGpuStress = async () => {
     gpuLoading.value = true
     const err = await deviceStore.daemonClient.startGpuStress(gpuDuration.value)
     gpuLoading.value = false
@@ -189,6 +210,7 @@ const startGpuStress = async () => {
         startPolling()
     }
 }
+const startGpuStress = () => confirmOrRun(doGpuStress)
 
 const stopGpuStress = async () => {
     gpuLoading.value = true
@@ -197,7 +219,7 @@ const stopGpuStress = async () => {
     gpuActive.value = false
 }
 
-const startRamStress = async () => {
+const doRamStress = async () => {
     ramLoading.value = true
     const err = await deviceStore.daemonClient.startRamStress(ramDuration.value)
     ramLoading.value = false
@@ -208,6 +230,7 @@ const startRamStress = async () => {
         startPolling()
     }
 }
+const startRamStress = () => confirmOrRun(doRamStress)
 
 const stopRamStress = async () => {
     ramLoading.value = true

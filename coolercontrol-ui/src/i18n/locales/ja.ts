@@ -541,6 +541,10 @@ export default {
             active: 'アクティブ',
             inactive: '非アクティブ',
             allCores: '全コア',
+            psuWarningHeader: '高電力警告',
+            psuWarningMessage:
+                'CPUとGPUのストレステストを同時に実行すると、電源ユニットに大きな負荷がかかります。オーバークロック中や低ワット数の電源では、システムが不安定になる可能性があります。続行しますか？',
+            proceed: '続行',
         },
         alerts: {
             createAlert: 'アラートを作成',

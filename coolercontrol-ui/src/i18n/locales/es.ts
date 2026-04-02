@@ -502,6 +502,10 @@ export default {
             active: 'Activo',
             inactive: 'Inactivo',
             allCores: 'Todos los núcleos',
+            psuWarningHeader: 'Advertencia de alto consumo',
+            psuWarningMessage:
+                'Ejecutar las pruebas de estrés de CPU y GPU simultáneamente generará una carga significativa en la fuente de alimentación. Si hace overclocking o usa una fuente de bajo vataje, puede producirse inestabilidad del sistema. ¿Desea continuar?',
+            proceed: 'Continuar',
         },
         alerts: {
             createAlert: 'Crear Alerta',
