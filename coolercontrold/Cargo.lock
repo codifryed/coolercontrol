@@ -734,6 +734,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-image"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gifski",
+ "image",
+ "imgref",
+ "log",
+ "mime",
+ "rgb",
+ "ril",
+ "tiny-skia",
+ "tokio",
+]
+
+[[package]]
 name = "cc-stress"
 version = "0.1.0"
 dependencies = [
@@ -937,19 +953,18 @@ dependencies = [
  "base64",
  "bitflags 2.11.0",
  "cc-detect",
+ "cc-image",
  "cc-stress",
  "chrono",
  "clap",
  "derive_more",
  "env_logger",
  "futures-util",
- "gifski",
  "heck",
  "http-body-util",
  "hyper",
  "hyper-util",
  "image",
- "imgref",
  "include_dir",
  "indexmap",
  "libdrm_amdgpu_sys",
@@ -963,8 +978,6 @@ dependencies = [
  "prost",
  "rcgen",
  "regex",
- "rgb",
- "ril",
  "schemars",
  "serde",
  "serde_json",
@@ -976,7 +989,6 @@ dependencies = [
  "systemd-journal-logger",
  "tempfile",
  "time",
- "tiny-skia",
  "tokio",
  "tokio-rustls",
  "tokio-stream",
