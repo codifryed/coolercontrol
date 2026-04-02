@@ -29,10 +29,13 @@ const NICE_LEVEL: i32 = 19;
 /// DRAM traffic across threads for maximum heat generation.
 const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
 const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
+#[cfg(target_arch = "x86_64")]
 const AVX2_ALIGN: usize = 32;
+#[cfg(target_arch = "x86_64")]
 const F64S_PER_AVX2: usize = 4;
 // AVX2 loops process F64S_PER_AVX2 elements per iteration; a non-divisible
 // buffer would silently drop remainder elements, under-stressing the cache.
+#[cfg(target_arch = "x86_64")]
 const _: () = assert!(STRESS_BUF_F64S % F64S_PER_AVX2 == 0);
 /// Full buffer sweeps between deadline checks. Higher values reduce the
 /// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
