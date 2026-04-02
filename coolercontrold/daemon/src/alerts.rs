@@ -29,7 +29,6 @@ use chrono::{DateTime, Local};
 use indexmap::IndexMap;
 use log::{error, info, trace, warn};
 use moro_local::Scope;
-use nix::unistd::Pid;
 use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -221,17 +220,7 @@ pub struct AlertController {
 
 impl AlertController {
     /// A controller for managing and handling Alerts.
-    pub async fn init(all_devices: AllDevices) -> Result<Self> {
-        let sys_info =
-            sysinfo::System::new_with_specifics(sysinfo::RefreshKind::nothing().with_processes(
-                sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
-            ));
-        #[allow(clippy::cast_sign_loss)]
-        let pid = sysinfo::Pid::from_u32(Pid::this().as_raw() as u32);
-        let daemon_process = sys_info.process(pid);
-        let bin_path = daemon_process
-            .and_then(|p| p.exe())
-            .map_or_else(|| "coolercontrold".to_string(), |p| p.display().to_string());
+    pub async fn init(all_devices: AllDevices, bin_path: String) -> Result<Self> {
         let alert_controller = Self {
             all_devices,
             alerts: RefCell::new(IndexMap::new()),

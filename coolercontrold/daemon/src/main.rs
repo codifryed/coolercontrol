@@ -256,7 +256,7 @@ fn main() -> Result<()> {
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
 
-        let (repos, custom_sensors_repo, plugin_controller, api_up_token) =
+        let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
@@ -282,13 +282,27 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let alert_controller =
-                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
+                let bin_path = daemon_bin_path();
+                let alert_controller = Rc::new(
+                    AlertController::init(Rc::clone(&all_devices), bin_path.clone()).await?,
+                );
                 AlertController::watch_for_shutdown(
                     &alert_controller,
                     run_token.clone(),
                     main_scope,
                 );
+                let _device_listener = device_listener::DeviceListener::new(
+                    Rc::clone(&all_devices),
+                    lc_repo,
+                    bin_path,
+                    run_token.clone(),
+                    main_scope,
+                )
+                .await
+                .unwrap_or_else(|err| {
+                    warn!("Device change listener failed to start: {err}");
+                    device_listener::DeviceListener::deaf()
+                });
                 match api::start_server(
                     Rc::clone(&all_devices),
                     Rc::clone(&repos),
@@ -591,14 +605,17 @@ async fn initialize_device_repos(
     Rc<CustomSensorsRepo>,
     Rc<PluginController>,
     CancellationToken,
+    Option<Rc<LiquidctlRepo>>,
 )> {
     info!("Initializing Devices...");
     let mut repos = Repositories::default();
     let mut lc_locations = Vec::new();
+    let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
     match init_liquidctl_repo(config.clone(), run_token).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
+            lc_repo_typed = Some(Rc::clone(&repo));
             repos.liquidctl = Some(repo);
         }
         Err(err) => match err.downcast_ref() {
@@ -657,6 +674,7 @@ async fn initialize_device_repos(
         custom_sensors_repo,
         Rc::new(plugin_controller),
         api_up_token,
+        lc_repo_typed,
     ))
 }
 
@@ -750,6 +768,14 @@ fn set_cpu_affinity() -> Result<()> {
     cpu_set.set(current_cpu)?;
     sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
     Ok(())
+}
+
+/// Returns the path to the current daemon binary for use in subprocess
+/// notification commands. Falls back to "coolercontrold" if unavailable.
+fn daemon_bin_path() -> String {
+    std::env::current_exe()
+        .ok()
+        .map_or_else(|| "coolercontrold".to_string(), |p| p.display().to_string())
 }
 
 async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
