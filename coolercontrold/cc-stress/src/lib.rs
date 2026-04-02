@@ -31,6 +31,9 @@ const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
 const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
 const AVX2_ALIGN: usize = 32;
 const F64S_PER_AVX2: usize = 4;
+// AVX2 loops process F64S_PER_AVX2 elements per iteration; a non-divisible
+// buffer would silently drop remainder elements, under-stressing the cache.
+const _: () = assert!(STRESS_BUF_F64S % F64S_PER_AVX2 == 0);
 /// Full buffer sweeps between deadline checks. Higher values reduce the
 /// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
 const CACHE_SWEEPS_PER_CHECK: u32 = 16;
@@ -590,8 +593,8 @@ pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
 
     // Deduplicate by device ID, preferring Vulkan over GL to avoid
     // software-rendered GL backends consuming CPU instead of GPU.
-    let mut seen_devices = std::collections::HashSet::new();
-    let mut unique_adapters = Vec::new();
+    let mut seen_devices = std::collections::HashSet::with_capacity(adapters.len());
+    let mut unique_adapters = Vec::with_capacity(adapters.len());
     for adapter in adapters {
         let info = adapter.get_info();
         if info.device_type == wgpu::DeviceType::Cpu {
@@ -708,13 +711,32 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         ));
     }
 
-    // Split dispatch across X and Y dimensions to stay within the
-    // 65535 per-dimension workgroup limit.
     let total_groups = vec4_count.div_ceil(MEM_STRESS_WORKGROUP);
     let dispatch_x = total_groups.min(MAX_WORKGROUPS_PER_DIM);
     let dispatch_y = total_groups.div_ceil(dispatch_x);
     let stride = dispatch_x * MEM_STRESS_WORKGROUP;
 
+    let (pipeline, bind_groups) =
+        create_stress_pipeline_and_bindings(&device, &buffers, vec4_count, stride);
+
+    Ok(GpuStressResources {
+        device,
+        queue,
+        pipeline,
+        bind_groups,
+        dispatch_x,
+        dispatch_y,
+        _buffers: buffers,
+    })
+}
+
+/// Creates the compute pipeline and ring bind groups for the streaming shader.
+fn create_stress_pipeline_and_bindings(
+    device: &wgpu::Device,
+    buffers: &[wgpu::Buffer],
+    vec4_count: u32,
+    stride: u32,
+) -> (wgpu::ComputePipeline, Vec<wgpu::BindGroup>) {
     let shader_src = format!(
         r"
 @group(0) @binding(0) var<storage, read> src: array<vec4<f32>>;
@@ -765,17 +787,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     });
 
     // Ring bind groups: each reads buf[i], writes buf[(i+1) % N].
-    let mut bind_groups = Vec::with_capacity(MEM_STRESS_RING_SIZE);
-    for i in 0..MEM_STRESS_RING_SIZE {
-        let src_idx = i;
-        let dst_idx = (i + 1) % MEM_STRESS_RING_SIZE;
+    let ring_size = buffers.len();
+    let mut bind_groups = Vec::with_capacity(ring_size);
+    for i in 0..ring_size {
+        let dst_idx = (i + 1) % ring_size;
         bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("ring_bg_{i}")),
             layout: &bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: buffers[src_idx].as_entire_binding(),
+                    resource: buffers[i].as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -785,15 +807,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         }));
     }
 
-    Ok(GpuStressResources {
-        device,
-        queue,
-        pipeline,
-        bind_groups,
-        dispatch_x,
-        dispatch_y,
-        _buffers: buffers,
-    })
+    (pipeline, bind_groups)
 }
 
 /// Streams data through ring buffers until deadline, stressing GPU memory.

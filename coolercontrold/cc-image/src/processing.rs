@@ -29,6 +29,7 @@ use tokio::task::JoinHandle;
 
 /// Returns the supported image MIME types for LCD screen uploads.
 pub fn supported_image_types() -> [Mime; 5] {
+    // Constant string literal, so parsing cannot fail.
     let image_tiff: Mime = Mime::from_str("image/tiff").unwrap();
     [
         mime::IMAGE_PNG,
@@ -83,7 +84,8 @@ async fn process_gif(
                     FilterType::Nearest,
                 )
                 .to_rgba8();
-            let mut image_pixels = Vec::new();
+            let pixel_count = (screen_width as usize) * (screen_height as usize);
+            let mut image_pixels = Vec::with_capacity(pixel_count);
             for pixel in frame_image.pixels() {
                 image_pixels.push(rgb::RGBA8::from(pixel.0));
             }

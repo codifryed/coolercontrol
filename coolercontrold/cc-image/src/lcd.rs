@@ -50,8 +50,10 @@ pub struct LcdImageGenerator {
 impl LcdImageGenerator {
     pub fn new() -> Self {
         Self {
-            font_mono: Font::from_bytes(FONT_MONO_BYTES, 100.0).expect("font to load"),
-            font_variable: Font::from_bytes(FONT_VARIABLE_BYTES, 100.0).expect("font to load"),
+            // Fonts are static byte slices compiled into the binary, so parsing cannot fail.
+            font_mono: Font::from_bytes(FONT_MONO_BYTES, 100.0).expect("embedded font is valid"),
+            font_variable: Font::from_bytes(FONT_VARIABLE_BYTES, 100.0)
+                .expect("embedded font is valid"),
         }
     }
 
@@ -96,7 +98,7 @@ impl LcdImageGenerator {
         trace!("Image text rasterized in: {:?}", now.elapsed());
         now = Instant::now();
 
-        let mut buf = Cursor::new(Vec::new());
+        let mut buf = Cursor::new(Vec::with_capacity(64 * 1024));
         if let Err(e) = image.encode(ImageFormat::Png, &mut buf) {
             return Err(anyhow!("{e}"));
         }
@@ -104,47 +106,71 @@ impl LcdImageGenerator {
         Ok((buf.into_inner(), template))
     }
 
-    #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss)]
     fn generate_template(&self, label: &str, now: Instant) -> Result<Image<Rgba>> {
-        let circle_center_x = 160.0_f32;
-        let circle_center_y = 160.0_f32;
-        let outer_circle_radius = 160.0_f32;
-        let middle_of_boarder_radius = 145.0_f32;
-        let boarder_thickness = 30.0;
-        // degrees start left center = 0, bottom center = 90, right center = 180
-        let left_stop_degree = 45.0_f32;
-        let left_stop_cos = left_stop_degree.to_radians().cos();
-        let left_stop_sin = left_stop_degree.to_radians().sin();
-        let right_stop_degree = 135.0_f32;
-        let right_stop_cos = right_stop_degree.to_radians().cos();
-        let right_stop_sin = right_stop_degree.to_radians().sin();
-        let stop_point_outer_circle_left_x = outer_circle_radius * left_stop_cos + circle_center_x;
-        let stop_point_outer_circle_left_y = outer_circle_radius * left_stop_sin + circle_center_y;
-        let stop_point_outer_circle_right_x =
-            outer_circle_radius * right_stop_cos + circle_center_x;
-        let stop_point_outer_circle_right_y =
-            outer_circle_radius * right_stop_sin + circle_center_y;
-        let center_point_end_cap_left_x =
-            middle_of_boarder_radius * left_stop_cos + circle_center_x;
-        let center_point_end_cap_left_y =
-            middle_of_boarder_radius * left_stop_sin + circle_center_y;
-        let center_point_end_cap_right_x =
-            middle_of_boarder_radius * right_stop_cos + circle_center_x;
-        let center_point_end_cap_right_y =
-            middle_of_boarder_radius * right_stop_sin + circle_center_y;
+        let pixmap_foreground = Self::render_gauge_arc()?;
+        let mut image = Self::composite_to_ril_image(pixmap_foreground)?;
+        Self::draw_temp_label(&self.font_variable, label, &mut image);
+        trace!("Single Temp Image Template created in: {:?}", now.elapsed());
+        Ok(image)
+    }
 
-        // create clip path for hollow circle with thick boarder
+    /// Renders the colored gauge arc as a foreground pixmap with transparent background.
+    #[allow(clippy::cast_precision_loss)]
+    fn render_gauge_arc() -> Result<Pixmap> {
+        let center_x = 160.0_f32;
+        let center_y = 160.0_f32;
+        let outer_radius = 160.0_f32;
+        let mid_radius = 145.0_f32;
+        let border_thickness = 30.0_f32;
+        // Degrees: left center = 0, bottom center = 90, right center = 180.
+        let (left_cos, left_sin) = (45.0_f32.to_radians().cos(), 45.0_f32.to_radians().sin());
+        let (right_cos, right_sin) = (135.0_f32.to_radians().cos(), 135.0_f32.to_radians().sin());
+
+        let (initial_paint, mut pixmap_fg) =
+            Self::paint_gradient_ring(center_x, center_y, outer_radius, border_thickness)?;
+
+        Self::cut_bottom_section(
+            &mut pixmap_fg,
+            center_x,
+            center_y,
+            outer_radius,
+            (left_cos, left_sin),
+            (right_cos, right_sin),
+        )?;
+
+        Self::add_end_caps(
+            &mut pixmap_fg,
+            initial_paint,
+            border_thickness,
+            (
+                mid_radius * left_cos + center_x,
+                mid_radius * left_sin + center_y,
+            ),
+            (
+                mid_radius * right_cos + center_x,
+                mid_radius * right_sin + center_y,
+            ),
+        )?;
+
+        Ok(pixmap_fg)
+    }
+
+    /// Paints the blue-to-red gradient ring onto a new foreground pixmap.
+    /// Returns the initial paint (for end caps) and the foreground pixmap.
+    #[allow(clippy::cast_precision_loss)]
+    fn paint_gradient_ring(
+        center_x: f32,
+        center_y: f32,
+        outer_radius: f32,
+        border_thickness: f32,
+    ) -> Result<(Paint<'static>, Pixmap)> {
         let clip_path = {
             let mut pb = PathBuilder::new();
-            pb.push_circle(circle_center_x, circle_center_y, outer_circle_radius);
-            pb.push_circle(
-                circle_center_x,
-                circle_center_y,
-                outer_circle_radius - boarder_thickness,
-            );
+            pb.push_circle(center_x, center_y, outer_radius);
+            pb.push_circle(center_x, center_y, outer_radius - border_thickness);
             pb.finish().with_context(|| "Path builder creation")?
         };
-
         let mut clip_mask =
             Mask::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Image Mask creation")?;
         clip_mask.fill_path(&clip_path, FillRule::EvenOdd, true, Transform::identity());
@@ -154,11 +180,10 @@ impl LcdImageGenerator {
                 Point::from_xy(0.0, 0.0),
                 Point::from_xy(320.0, 0.0),
                 vec![
-                    // todo: Color selection for future feature
                     GradientStop::new(0.0, Color::from_rgba8(0, 0, 255, 255)),
                     GradientStop::new(0.2, Color::from_rgba8(0, 0, 255, 255)),
-                    GradientStop::new(0.8, Color::from_rgba8(255, 0, 00, 255)),
-                    GradientStop::new(1.0, Color::from_rgba8(255, 0, 00, 255)),
+                    GradientStop::new(0.8, Color::from_rgba8(255, 0, 0, 255)),
+                    GradientStop::new(1.0, Color::from_rgba8(255, 0, 0, 255)),
                 ],
                 SpreadMode::Pad,
                 Transform::identity(),
@@ -166,20 +191,15 @@ impl LcdImageGenerator {
             .with_context(|| "Shader creation")?,
             ..Default::default()
         };
-
         let initial_paint = paint.clone();
+        let full_rect = Rect::from_xywh(0.0, 0.0, IMAGE_WIDTH as f32, IMAGE_HEIGHT as f32)
+            .with_context(|| "Rect creation")?;
 
-        let mut pixmap_foreground =
+        let mut pixmap =
             Pixmap::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Pixmap creation")?;
-        pixmap_foreground.fill_rect(
-            Rect::from_xywh(0.0, 0.0, IMAGE_WIDTH as f32, IMAGE_HEIGHT as f32)
-                .with_context(|| "Rect creation")?,
-            &paint,
-            Transform::identity(),
-            Some(&clip_mask),
-        );
+        pixmap.fill_rect(full_rect, &paint, Transform::identity(), Some(&clip_mask));
 
-        // Smooth out gradient for a semi-circle (emulates a sweep gradient)
+        // Smooth out gradient for a semi-circle (emulates a sweep gradient).
         paint.shader = tiny_skia::LinearGradient::new(
             Point::from_xy(0.0, 0.0),
             Point::from_xy(0.0, 320.0),
@@ -191,78 +211,93 @@ impl LcdImageGenerator {
             Transform::identity(),
         )
         .with_context(|| "Shader creation")?;
-        pixmap_foreground.fill_rect(
-            Rect::from_xywh(0.0, 0.0, IMAGE_WIDTH as f32, IMAGE_HEIGHT as f32)
-                .with_context(|| "Rect creation")?,
-            &paint,
-            Transform::identity(),
-            Some(&clip_mask),
-        );
+        pixmap.fill_rect(full_rect, &paint, Transform::identity(), Some(&clip_mask));
 
-        // Cut out the lower part of the circle
-        let cut_out_path = {
+        Ok((initial_paint, pixmap))
+    }
+
+    /// Cuts out the bottom section of the arc and replaces black pixels with
+    /// transparency. This creates the open-ended gauge appearance.
+    fn cut_bottom_section(
+        pixmap: &mut Pixmap,
+        center_x: f32,
+        center_y: f32,
+        outer_radius: f32,
+        left_stop: (f32, f32),
+        right_stop: (f32, f32),
+    ) -> Result<()> {
+        let outer_left_x = outer_radius * left_stop.0 + center_x;
+        let outer_left_y = outer_radius * left_stop.1 + center_y;
+        let outer_right_x = outer_radius * right_stop.0 + center_x;
+        let outer_right_y = outer_radius * right_stop.1 + center_y;
+
+        let cut_path = {
             let mut pb = PathBuilder::new();
-            pb.move_to(circle_center_x, circle_center_y);
-            pb.line_to(
-                stop_point_outer_circle_left_x,
-                stop_point_outer_circle_left_y,
-            );
-            pb.line_to(stop_point_outer_circle_left_x, 320.0);
-            pb.line_to(stop_point_outer_circle_right_x, 320.0);
-            pb.line_to(
-                stop_point_outer_circle_right_x,
-                stop_point_outer_circle_right_y,
-            );
+            pb.move_to(center_x, center_y);
+            pb.line_to(outer_left_x, outer_left_y);
+            pb.line_to(outer_left_x, 320.0);
+            pb.line_to(outer_right_x, 320.0);
+            pb.line_to(outer_right_x, outer_right_y);
             pb.close();
             pb.finish().with_context(|| "PathBuilder creation")?
         };
-        let mut cut_out_paint = Paint::default();
-        cut_out_paint.set_color(Color::BLACK);
-        pixmap_foreground.fill_path(
-            &cut_out_path,
-            &cut_out_paint,
+        let mut cut_paint = Paint::default();
+        cut_paint.set_color(Color::BLACK);
+        pixmap.fill_path(
+            &cut_path,
+            &cut_paint,
             FillRule::Winding,
             Transform::identity(),
             None,
         );
-        // transform the black 'cut out' to transparent
-        pixmap_foreground
+
+        // Replace the black cutout pixels with transparency.
+        pixmap
             .pixels_mut()
             .iter_mut()
             .filter(|p| p.red() == 0 && p.green() == 0 && p.blue() == 0)
             .for_each(|p| *p = PremultipliedColorU8::TRANSPARENT);
+        Ok(())
+    }
 
-        // Create the rounded end caps for the circle
-        let mut paint_caps = initial_paint;
-        paint_caps.anti_alias = true;
-        let left_cap_path = PathBuilder::from_circle(
-            center_point_end_cap_left_x,
-            center_point_end_cap_left_y,
-            boarder_thickness / 2.0,
-        )
-        .with_context(|| "PathBuilder creation")?;
-        pixmap_foreground.fill_path(
-            &left_cap_path,
-            &paint_caps,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-        let right_cap_path = PathBuilder::from_circle(
-            center_point_end_cap_right_x,
-            center_point_end_cap_right_y,
-            boarder_thickness / 2.0,
-        )
-        .with_context(|| "PathBuilder creation")?;
-        pixmap_foreground.fill_path(
-            &right_cap_path,
-            &paint_caps,
+    /// Adds rounded end caps at the arc endpoints.
+    fn add_end_caps(
+        pixmap: &mut Pixmap,
+        initial_paint: Paint<'_>,
+        border_thickness: f32,
+        left_center: (f32, f32),
+        right_center: (f32, f32),
+    ) -> Result<()> {
+        let mut paint = initial_paint;
+        paint.anti_alias = true;
+        let cap_radius = border_thickness / 2.0;
+
+        let left_path = PathBuilder::from_circle(left_center.0, left_center.1, cap_radius)
+            .with_context(|| "PathBuilder creation")?;
+        pixmap.fill_path(
+            &left_path,
+            &paint,
             FillRule::Winding,
             Transform::identity(),
             None,
         );
 
-        // draw the background and then place the foreground on top of it.
+        let right_path = PathBuilder::from_circle(right_center.0, right_center.1, cap_radius)
+            .with_context(|| "PathBuilder creation")?;
+        pixmap.fill_path(
+            &right_path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+        Ok(())
+    }
+
+    /// Composites the foreground arc onto a black background and converts to
+    /// the ril Rgba image model for font rasterization.
+    #[allow(clippy::cast_precision_loss)]
+    fn composite_to_ril_image(pixmap_foreground: Pixmap) -> Result<Image<Rgba>> {
         let mut pixmap =
             Pixmap::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Pixmap creation")?;
         pixmap.fill(Color::BLACK);
@@ -276,7 +311,6 @@ impl LcdImageGenerator {
             ),
             ..Default::default()
         };
-
         pixmap.fill_rect(
             Rect::from_xywh(0.0, 0.0, IMAGE_WIDTH as f32, IMAGE_HEIGHT as f32)
                 .with_context(|| "Rect creation")?,
@@ -285,15 +319,18 @@ impl LcdImageGenerator {
             None,
         );
 
-        // Convert to ril Rgba model for font rasterization (faster than png encoding/decoding)
-        let rgb_pixels = pixmap
+        let pixel_count = (IMAGE_WIDTH * IMAGE_HEIGHT) as usize;
+        let rgb_pixels: Vec<Rgba> = pixmap
             .pixels()
             .iter()
             .map(|p| Rgba::new(p.red(), p.green(), p.blue(), p.alpha()))
             .collect::<Vec<Rgba>>();
-        let mut image = Image::from_pixels(IMAGE_WIDTH, rgb_pixels);
+        debug_assert_eq!(rgb_pixels.len(), pixel_count);
+        Ok(Image::from_pixels(IMAGE_WIDTH, rgb_pixels))
+    }
 
-        // draw temp name
+    /// Draws the temperature label text at the bottom of the gauge.
+    fn draw_temp_label(font: &Font, label: &str, image: &mut Image<Rgba>) {
         let temp_label = if label.len() < 8 {
             label
         } else if label.starts_with("CPU") {
@@ -309,11 +346,7 @@ impl LcdImageGenerator {
             .with_align(TextAlign::Center)
             .centered()
             .with_position(160, 232)
-            .with_segment(
-                &TextSegment::new(&self.font_variable, temp_label, Rgba::white()).with_size(35.0),
-            )
-            .draw(&mut image);
-        trace!("Single Temp Image Template created in: {:?}", now.elapsed());
-        Ok(image)
+            .with_segment(&TextSegment::new(font, temp_label, Rgba::white()).with_size(35.0))
+            .draw(image);
     }
 }

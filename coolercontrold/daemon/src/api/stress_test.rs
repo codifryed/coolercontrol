@@ -166,11 +166,32 @@ pub async fn start_drive(
     }): State<AppState>,
     Json(request): Json<StartDriveStressRequest>,
 ) -> Result<Json<()>, CCError> {
+    validate_device_path(&request.device_path)?;
     stress_test_handle
         .start_drive(request.device_path, request.threads, request.duration_secs)
         .await
         .map(Json)
         .map_err(|e| CCError::UserError { msg: e.to_string() })
+}
+
+/// Validates block device path at the API boundary before passing to actor.
+fn validate_device_path(device_path: &str) -> Result<(), CCError> {
+    if !device_path.starts_with("/dev/") {
+        return Err(CCError::UserError {
+            msg: "Device path must start with /dev/".to_string(),
+        });
+    }
+    if device_path.contains("..") {
+        return Err(CCError::UserError {
+            msg: "Device path must not contain '..'".to_string(),
+        });
+    }
+    if !std::path::Path::new(device_path).exists() {
+        return Err(CCError::UserError {
+            msg: format!("Device {device_path} does not exist"),
+        });
+    }
+    Ok(())
 }
 
 /// DELETE /stress-test/drive

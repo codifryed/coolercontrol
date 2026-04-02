@@ -163,7 +163,7 @@ impl StressTestActor {
         let available_cpus = cc_stress::online_cpu_count();
         let threads = thread_count
             .unwrap_or(available_cpus)
-            .min(available_cpus * 2)
+            .min(available_cpus.saturating_mul(2))
             .max(1);
 
         info!(
@@ -476,6 +476,9 @@ impl StressTestHandle {
         cancel_token: CancellationToken,
         main_scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Self {
+        // Depth 1: callers await the oneshot response, so at most one message
+        // is in flight per caller. Backpressure is handled by the sender
+        // awaiting channel capacity.
         let (sender, receiver) = mpsc::channel(1);
         let actor = StressTestActor::new(receiver);
         main_scope.spawn(run_api_actor(actor, cancel_token));
