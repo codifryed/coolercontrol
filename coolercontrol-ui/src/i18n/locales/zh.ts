@@ -395,11 +395,9 @@ export default {
             downloadCurrentLog: '下载当前日志',
             stressTest: '压力测试',
             stressTestTooltip:
-                '通过生成持续的 CPU 或 GPU 热负载<br>来验证风扇曲线和冷却配置文件。<br>压力测试利用每个系统的多个组件<br>尝试产生最大热量。',
+                '生成持续热负载以验证<br>风扇曲线和冷却配置文件。<br>这不是基准测试，而是一种方便的发热工具，<br>不用于性能测量。<br>GPU 压力测试可能需要 Vulkan 或 OpenGL ES 驱动程序。<br>可能会降低界面响应速度。',
             cpuStress: 'CPU 压力',
             gpuStress: 'GPU 压力',
-            gpuStressTooltip:
-                '需要 Vulkan 或 OpenGL ES（通过 ANGLE）驱动程序。<br>可能会降低桌面界面响应速度。',
             threadCount: '线程数',
             duration: '持续时间 (秒)',
             start: '开始',

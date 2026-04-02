@@ -530,11 +530,9 @@ export default {
             downloadCurrentLog: '現在のログをダウンロード',
             stressTest: 'ストレステスト',
             stressTestTooltip:
-                '継続的なCPUまたはGPU熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>ストレステストは各システムの複数のコンポーネントを活用し、<br>最大限の発熱を試みます。',
+                '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>ベンチマークではなく、性能測定ではない<br>発熱のための便利機能です。<br>GPUストレスにはVulkanまたはOpenGL ESドライバーが必要です。<br>実行中にUIの応答性が低下する場合があります。',
             cpuStress: 'CPUストレス',
             gpuStress: 'GPUストレス',
-            gpuStressTooltip:
-                'VulkanまたはOpenGL ES（ANGLE経由）ドライバーが必要です。<br>実行中にデスクトップUIの応答性が低下する場合があります。',
             threadCount: 'スレッド数',
             duration: '時間 (秒)',
             start: '開始',

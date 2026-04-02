@@ -430,6 +430,13 @@ enum SubCommands {
         #[arg(long)]
         timeout: u16,
     },
+    #[command(hide = true)]
+    StressRam {
+        #[arg(long)]
+        bytes: u64,
+        #[arg(long)]
+        timeout: u16,
+    },
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
@@ -458,6 +465,10 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     }
     if let Some(SubCommands::StressGpu { timeout }) = &args.command {
         stress::run_gpu_stress(*timeout).await?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressRam { bytes, timeout }) = &args.command {
+        stress::run_ram_stress(*bytes, *timeout)?;
         exit_successfully();
     }
     Ok(())

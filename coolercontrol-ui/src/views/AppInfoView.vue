@@ -124,27 +124,30 @@ const downloadLogDatasetURL = computed((): string => {
 onMounted(async () => {
     scrollToBottom()
     await pollStatus()
-    if (cpuActive.value || gpuActive.value) {
+    if (cpuActive.value || gpuActive.value || ramActive.value) {
         startPolling()
     }
 })
 
 // Stress Test
 const toast = useToast()
-const cpuThreads = ref<number | undefined>(undefined)
 const cpuDuration = ref<number>(60)
 const gpuDuration = ref<number>(60)
+const ramDuration = ref<number>(60)
 const cpuActive = ref(false)
 const gpuActive = ref(false)
+const ramActive = ref(false)
 const cpuLoading = ref(false)
 const gpuLoading = ref(false)
+const ramLoading = ref(false)
 let statusPollInterval: ReturnType<typeof setInterval> | null = null
 
 const pollStatus = async () => {
     const status = await deviceStore.daemonClient.stressTestStatus()
     cpuActive.value = status.cpu_active
     gpuActive.value = status.gpu_active
-    if (!status.cpu_active && !status.gpu_active && statusPollInterval) {
+    ramActive.value = status.ram_active
+    if (!status.cpu_active && !status.gpu_active && !status.ram_active && statusPollInterval) {
         clearInterval(statusPollInterval)
         statusPollInterval = null
     }
@@ -158,7 +161,7 @@ const startPolling = () => {
 
 const startCpuStress = async () => {
     cpuLoading.value = true
-    const err = await deviceStore.daemonClient.startCpuStress(cpuThreads.value, cpuDuration.value)
+    const err = await deviceStore.daemonClient.startCpuStress(undefined, cpuDuration.value)
     cpuLoading.value = false
     if (err) {
         toast.add({ severity: 'error', summary: 'CPU Stress', detail: err.error, life: 5000 })
@@ -194,14 +197,36 @@ const stopGpuStress = async () => {
     gpuActive.value = false
 }
 
+const startRamStress = async () => {
+    ramLoading.value = true
+    const err = await deviceStore.daemonClient.startRamStress(ramDuration.value)
+    ramLoading.value = false
+    if (err) {
+        toast.add({ severity: 'error', summary: 'RAM Stress', detail: err.error, life: 5000 })
+    } else {
+        ramActive.value = true
+        startPolling()
+    }
+}
+
+const stopRamStress = async () => {
+    ramLoading.value = true
+    await deviceStore.daemonClient.stopRamStress()
+    ramLoading.value = false
+    ramActive.value = false
+}
+
 const stopAllStress = async () => {
     cpuLoading.value = true
     gpuLoading.value = true
+    ramLoading.value = true
     await deviceStore.daemonClient.stopAllStress()
     cpuLoading.value = false
     gpuLoading.value = false
+    ramLoading.value = false
     cpuActive.value = false
     gpuActive.value = false
+    ramActive.value = false
 }
 
 onBeforeUnmount(() => {
@@ -395,7 +420,7 @@ onBeforeUnmount(() => {
                                         value: t('views.appInfo.stressTestTooltip'),
                                     }"
                                     type="mdi"
-                                    class="text-text-color-secondary cursor-help"
+                                    class="text-warning cursor-help"
                                     :path="mdiHelpCircleOutline"
                                     :size="deviceStore.getREMSize(1.25)"
                                 />
@@ -403,152 +428,205 @@ onBeforeUnmount(() => {
                             <Button
                                 :label="t('views.appInfo.stopAll')"
                                 class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
-                                :disabled="!cpuActive && !gpuActive"
+                                :disabled="!cpuActive && !gpuActive && !ramActive"
                                 @click="stopAllStress"
                             />
                         </div>
-                        <!-- CPU Stress -->
-                        <div class="flex flex-row items-center gap-4 mb-3">
-                            <span class="font-bold text-lg w-28">{{
-                                t('views.appInfo.cpuStress')
-                            }}</span>
-                            <div class="flex items-center gap-1">
-                                <label class="text-sm text-text-color-secondary">{{
-                                    t('views.appInfo.threadCount')
-                                }}</label>
-                                <InputNumber
-                                    v-model="cpuThreads"
-                                    show-buttons
-                                    button-layout="horizontal"
-                                    :min="1"
-                                    :max="512"
-                                    :placeholder="t('views.appInfo.allCores')"
-                                    class="w-36"
-                                    :disabled="cpuActive"
-                                    :input-style="{ width: '4.5rem' }"
-                                    input-class="!p-1.5 !text-sm"
-                                >
-                                    <template #incrementicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <label class="text-sm text-text-color-secondary">{{
-                                    t('views.appInfo.duration')
-                                }}</label>
-                                <InputNumber
-                                    v-model="cpuDuration"
-                                    show-buttons
-                                    button-layout="horizontal"
-                                    :min="15"
-                                    :max="600"
-                                    :step="15"
-                                    class="w-28"
-                                    :disabled="cpuActive"
-                                    :input-style="{ width: '3rem' }"
-                                    input-class="!p-1.5 !text-sm"
-                                >
-                                    <template #incrementicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </div>
-                            <Button
-                                v-if="!cpuActive"
-                                :label="t('views.appInfo.start')"
-                                class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                                :loading="cpuLoading"
-                                @click="startCpuStress"
-                            />
-                            <Button
-                                v-else
-                                :label="t('views.appInfo.stop')"
-                                class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
-                                :loading="cpuLoading"
-                                @click="stopCpuStress"
-                            />
-                            <svg-icon
-                                type="mdi"
-                                :class="cpuActive ? 'text-success' : 'text-text-color-secondary'"
-                                :path="mdiCircle"
-                                :size="deviceStore.getREMSize(0.75)"
-                            />
-                            <span class="text-sm">{{
-                                cpuActive ? t('views.appInfo.active') : t('views.appInfo.inactive')
-                            }}</span>
-                        </div>
-                        <!-- GPU Stress -->
-                        <div class="flex flex-row items-center gap-4">
-                            <div class="flex items-center gap-1 w-28">
-                                <span class="font-bold text-lg">{{
-                                    t('views.appInfo.gpuStress')
-                                }}</span>
-                                <svg-icon
-                                    v-tooltip.right="{
-                                        escape: false,
-                                        value: t('views.appInfo.gpuStressTooltip'),
-                                    }"
-                                    type="mdi"
-                                    class="text-warning cursor-help"
-                                    :path="mdiHelpCircleOutline"
-                                    :size="deviceStore.getREMSize(1.5)"
-                                />
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <label class="text-sm text-text-color-secondary">{{
-                                    t('views.appInfo.duration')
-                                }}</label>
-                                <InputNumber
-                                    v-model="gpuDuration"
-                                    show-buttons
-                                    button-layout="horizontal"
-                                    :min="15"
-                                    :max="600"
-                                    :step="15"
-                                    class="w-28"
-                                    :disabled="gpuActive"
-                                    :input-style="{ width: '3rem' }"
-                                    input-class="!p-1.5 !text-sm"
-                                >
-                                    <template #incrementicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </div>
-                            <Button
-                                v-if="!gpuActive"
-                                :label="t('views.appInfo.start')"
-                                class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
-                                :loading="gpuLoading"
-                                @click="startGpuStress"
-                            />
-                            <Button
-                                v-else
-                                :label="t('views.appInfo.stop')"
-                                class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
-                                :loading="gpuLoading"
-                                @click="stopGpuStress"
-                            />
-                            <svg-icon
-                                type="mdi"
-                                :class="gpuActive ? 'text-success' : 'text-text-color-secondary'"
-                                :path="mdiCircle"
-                                :size="deviceStore.getREMSize(0.75)"
-                            />
-                            <span class="text-sm">{{
-                                gpuActive ? t('views.appInfo.active') : t('views.appInfo.inactive')
-                            }}</span>
-                        </div>
+                        <table class="border-separate border-spacing-y-2">
+                            <tbody>
+                                <!-- CPU Stress -->
+                                <tr>
+                                    <td class="pr-4">
+                                        <span class="font-bold text-lg">{{
+                                            t('views.appInfo.cpuStress')
+                                        }}</span>
+                                    </td>
+                                    <td class="pr-4">
+                                        <InputNumber
+                                            v-model="cpuDuration"
+                                            show-buttons
+                                            button-layout="horizontal"
+                                            :min="15"
+                                            :max="600"
+                                            :step="15"
+                                            suffix=" s"
+                                            class="w-32"
+                                            :disabled="cpuActive"
+                                            :input-style="{ width: '3.5rem' }"
+                                            input-class="!p-1.5 !text-sm"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                    <td class="pr-4">
+                                        <Button
+                                            v-if="!cpuActive"
+                                            :label="t('views.appInfo.start')"
+                                            class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                                            :disabled="ramActive"
+                                            @click="startCpuStress"
+                                        />
+                                        <Button
+                                            v-else
+                                            :label="t('views.appInfo.stop')"
+                                            class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
+                                            @click="stopCpuStress"
+                                        />
+                                    </td>
+                                    <td>
+                                        <div class="flex items-center gap-2">
+                                            <svg-icon
+                                                type="mdi"
+                                                :class="
+                                                    cpuActive
+                                                        ? 'text-success'
+                                                        : 'text-text-color-secondary'
+                                                "
+                                                :path="mdiCircle"
+                                                :size="deviceStore.getREMSize(0.75)"
+                                            />
+                                            <span class="text-sm">{{
+                                                cpuActive
+                                                    ? t('views.appInfo.active')
+                                                    : t('views.appInfo.inactive')
+                                            }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!-- GPU Stress -->
+                                <tr>
+                                    <td class="pr-4">
+                                        <span class="font-bold text-lg">{{
+                                            t('views.appInfo.gpuStress')
+                                        }}</span>
+                                    </td>
+                                    <td class="pr-4">
+                                        <InputNumber
+                                            v-model="gpuDuration"
+                                            show-buttons
+                                            button-layout="horizontal"
+                                            :min="15"
+                                            :max="600"
+                                            :step="15"
+                                            suffix=" s"
+                                            class="w-32"
+                                            :disabled="gpuActive"
+                                            :input-style="{ width: '3.5rem' }"
+                                            input-class="!p-1.5 !text-sm"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                    <td class="pr-4">
+                                        <Button
+                                            v-if="!gpuActive"
+                                            :label="t('views.appInfo.start')"
+                                            class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                                            @click="startGpuStress"
+                                        />
+                                        <Button
+                                            v-else
+                                            :label="t('views.appInfo.stop')"
+                                            class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
+                                            @click="stopGpuStress"
+                                        />
+                                    </td>
+                                    <td>
+                                        <div class="flex items-center gap-2">
+                                            <svg-icon
+                                                type="mdi"
+                                                :class="
+                                                    gpuActive
+                                                        ? 'text-success'
+                                                        : 'text-text-color-secondary'
+                                                "
+                                                :path="mdiCircle"
+                                                :size="deviceStore.getREMSize(0.75)"
+                                            />
+                                            <span class="text-sm">{{
+                                                gpuActive
+                                                    ? t('views.appInfo.active')
+                                                    : t('views.appInfo.inactive')
+                                            }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!-- RAM Stress -->
+                                <tr>
+                                    <td class="pr-4">
+                                        <span class="font-bold text-lg">{{
+                                            t('views.appInfo.ramStress')
+                                        }}</span>
+                                    </td>
+                                    <td class="pr-4">
+                                        <InputNumber
+                                            v-model="ramDuration"
+                                            show-buttons
+                                            button-layout="horizontal"
+                                            :min="15"
+                                            :max="600"
+                                            :step="15"
+                                            suffix=" s"
+                                            class="w-32"
+                                            :disabled="ramActive"
+                                            :input-style="{ width: '3.5rem' }"
+                                            input-class="!p-1.5 !text-sm"
+                                        >
+                                            <template #incrementicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                    <td class="pr-4">
+                                        <Button
+                                            v-if="!ramActive"
+                                            :label="t('views.appInfo.start')"
+                                            class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                                            :disabled="cpuActive"
+                                            @click="startRamStress"
+                                        />
+                                        <Button
+                                            v-else
+                                            :label="t('views.appInfo.stop')"
+                                            class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
+                                            @click="stopRamStress"
+                                        />
+                                    </td>
+                                    <td>
+                                        <div class="flex items-center gap-2">
+                                            <svg-icon
+                                                type="mdi"
+                                                :class="
+                                                    ramActive
+                                                        ? 'text-success'
+                                                        : 'text-text-color-secondary'
+                                                "
+                                                :path="mdiCircle"
+                                                :size="deviceStore.getREMSize(0.75)"
+                                            />
+                                            <span class="text-sm">{{
+                                                ramActive
+                                                    ? t('views.appInfo.active')
+                                                    : t('views.appInfo.inactive')
+                                            }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

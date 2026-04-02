@@ -491,11 +491,9 @@ export default {
             downloadCurrentLog: 'Descargar Registro Actual',
             stressTest: 'Prueba de estrés',
             stressTestTooltip:
-                'Valide las curvas de ventilador y los perfiles de enfriamiento<br>generando carga térmica sostenida de CPU o GPU.<br>Las pruebas de estrés utilizan múltiples componentes de cada sistema<br>para intentar generar el máximo calor.',
+                'Genera carga térmica sostenida para validar<br>curvas de ventilador y perfiles de enfriamiento.<br>No es un benchmark, sino una herramienta para generar calor<br>en lugar de medir rendimiento.<br>El estrés de GPU puede requerir controladores Vulkan o OpenGL ES.<br>Puede reducir la capacidad de respuesta de la interfaz.',
             cpuStress: 'Estrés de CPU',
             gpuStress: 'Estrés de GPU',
-            gpuStressTooltip:
-                'Requiere controladores Vulkan o OpenGL ES (via ANGLE).<br>Puede reducir la respuesta de la interfaz de escritorio.',
             threadCount: 'Hilos',
             duration: 'Duración (s)',
             start: 'Iniciar',

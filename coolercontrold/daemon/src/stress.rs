@@ -33,6 +33,9 @@ const F64S_PER_AVX2: usize = 4;
 /// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
 const CACHE_SWEEPS_PER_CHECK: u32 = 16;
 
+/// Fraction of MemAvailable to allocate for RAM stress.
+pub const RAM_STRESS_ALLOC_FRACTION: f64 = 0.8;
+
 /// Per-buffer size for discrete GPUs (256 MiB, total ring = 2 GiB).
 const MEM_STRESS_BUF_DISCRETE: u64 = 256 * 1024 * 1024;
 /// Per-buffer size for integrated GPUs (16 MiB, total ring = 128 MiB).
@@ -66,6 +69,22 @@ pub fn online_cpu_count() -> u16 {
         })
         .unwrap_or(1)
         .max(1)
+}
+
+/// Returns available system memory in bytes from /proc/meminfo.
+pub fn available_memory_bytes() -> Result<u64> {
+    let content = std::fs::read_to_string("/proc/meminfo")
+        .map_err(|e| anyhow!("Failed to read /proc/meminfo: {e}"))?;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            let kb_str = rest.trim().strip_suffix("kB").unwrap_or(rest).trim();
+            let kb: u64 = kb_str
+                .parse()
+                .map_err(|e| anyhow!("Failed to parse MemAvailable: {e}"))?;
+            return Ok(kb * 1024);
+        }
+    }
+    Err(anyhow!("MemAvailable not found in /proc/meminfo"))
 }
 
 /// Reset CPU affinity to all online CPUs.
@@ -248,6 +267,126 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
         }
     }
     std::hint::black_box(iacc);
+}
+
+/// Run RAM stress test by streaming read-modify-write across a large allocation.
+/// Stresses DIMMs and the CPU's memory controller for maximum memory heat.
+pub fn run_ram_stress(alloc_bytes: u64, timeout_secs: u16) -> Result<()> {
+    reset_cpu_affinity()?;
+    set_nice_level()?;
+
+    let num_threads = online_cpu_count();
+    let per_thread_f64s = (alloc_bytes / u64::from(num_threads) / 8) as usize;
+    let per_thread_bytes = per_thread_f64s * 8;
+    let total_mb = u64::from(num_threads) * per_thread_bytes as u64 / (1024 * 1024);
+    eprintln!(
+        "RAM stress: {num_threads} threads, {total_mb} MiB total, {timeout_secs}s (pid: {})",
+        std::process::id()
+    );
+
+    let duration = Duration::from_secs(u64::from(timeout_secs));
+    let deadline = Instant::now() + duration;
+    let mut handles = Vec::with_capacity(num_threads as usize);
+
+    for _ in 0..num_threads {
+        handles.push(std::thread::spawn(move || {
+            let mut buf = AlignedBuffer::new(per_thread_f64s);
+            #[cfg(target_arch = "x86_64")]
+            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+                // SAFETY: AVX2+FMA support confirmed by runtime feature detection.
+                unsafe { ram_stress_loop_avx2(buf.as_mut_ptr(), buf.len, deadline) };
+                return;
+            }
+            ram_stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    Ok(())
+}
+
+/// Scalar RAM stress: unrolled sequential read-modify-write across buffer.
+fn ram_stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
+    let multiplier = 1.000_000_000_1_f64;
+    let addend = 0.999_999_999_9_f64;
+    let unrolled = len / 4 * 4;
+    while Instant::now() < deadline {
+        // Unrolled sequential sweep for maximum hardware prefetcher utilization.
+        let mut i = 0;
+        while i < unrolled {
+            // SAFETY: buf has len elements, all indices in bounds.
+            unsafe {
+                let p0 = buf.add(i);
+                p0.write(p0.read().mul_add(multiplier, addend));
+                let p1 = buf.add(i + 1);
+                p1.write(p1.read().mul_add(multiplier, addend));
+                let p2 = buf.add(i + 2);
+                p2.write(p2.read().mul_add(multiplier, addend));
+                let p3 = buf.add(i + 3);
+                p3.write(p3.read().mul_add(multiplier, addend));
+            }
+            i += 4;
+        }
+        for j in unrolled..len {
+            unsafe {
+                let p = buf.add(j);
+                p.write(p.read().mul_add(multiplier, addend));
+            }
+        }
+    }
+    std::hint::black_box(unsafe { buf.read() });
+}
+
+/// AVX2 RAM stress: unrolled sequential non-temporal stores bypass cache and
+/// write directly to DRAM. Sequential access lets the hardware prefetcher
+/// run at full speed for maximum memory bandwidth and heat.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
+    use std::arch::x86_64::{
+        _mm256_fmadd_pd, _mm256_load_pd, _mm256_set1_pd, _mm256_stream_pd, _mm_sfence,
+    };
+
+    let vmul = _mm256_set1_pd(1.000_000_000_1);
+    let vadd = _mm256_set1_pd(0.999_999_999_9);
+    let chunks = len / F64S_PER_AVX2;
+    // Process 4 consecutive 32-byte vectors (128 bytes) per iteration.
+    let unrolled = chunks / 4 * 4;
+
+    while Instant::now() < deadline {
+        let mut i = 0;
+        while i < unrolled {
+            let off0 = i * F64S_PER_AVX2;
+            // SAFETY: buf is 32-byte aligned with len elements.
+            let p0 = unsafe { buf.add(off0) };
+            let v0 = unsafe { _mm256_load_pd(p0) };
+            unsafe { _mm256_stream_pd(p0, _mm256_fmadd_pd(v0, vmul, vadd)) };
+
+            let p1 = unsafe { buf.add(off0 + F64S_PER_AVX2) };
+            let v1 = unsafe { _mm256_load_pd(p1) };
+            unsafe { _mm256_stream_pd(p1, _mm256_fmadd_pd(v1, vmul, vadd)) };
+
+            let p2 = unsafe { buf.add(off0 + F64S_PER_AVX2 * 2) };
+            let v2 = unsafe { _mm256_load_pd(p2) };
+            unsafe { _mm256_stream_pd(p2, _mm256_fmadd_pd(v2, vmul, vadd)) };
+
+            let p3 = unsafe { buf.add(off0 + F64S_PER_AVX2 * 3) };
+            let v3 = unsafe { _mm256_load_pd(p3) };
+            unsafe { _mm256_stream_pd(p3, _mm256_fmadd_pd(v3, vmul, vadd)) };
+
+            i += 4;
+        }
+        // Handle remaining chunks.
+        for j in unrolled..chunks {
+            let p = unsafe { buf.add(j * F64S_PER_AVX2) };
+            let v = unsafe { _mm256_load_pd(p) };
+            unsafe { _mm256_stream_pd(p, _mm256_fmadd_pd(v, vmul, vadd)) };
+        }
+        _mm_sfence();
+    }
 }
 
 /// Run GPU stress test using wgpu compute shaders for memory-bandwidth stress.
@@ -555,5 +694,15 @@ mod tests {
             // SAFETY: AVX2+FMA support confirmed above.
             unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
         }
+    }
+
+    #[test]
+    fn ram_stress_runs_briefly() {
+        run_ram_stress(4 * 1024 * 1024, 1).unwrap();
+    }
+
+    #[test]
+    fn available_memory_returns_positive() {
+        assert!(available_memory_bytes().unwrap() > 0);
     }
 }

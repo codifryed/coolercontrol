@@ -1437,6 +1437,28 @@ export default class DaemonClient {
         }
     }
 
+    async startRamStress(durationSecs?: number): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/ram', {
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start RAM Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopRamStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/ram')
+            this.logDaemonResponse(response, 'Stop RAM Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
     async stopAllStress(): Promise<undefined | ErrorResponse> {
         try {
             const response = await this.getClient().delete('/stress-test')
@@ -1452,13 +1474,15 @@ export default class DaemonClient {
         cpu_duration_secs?: number
         gpu_active: boolean
         gpu_duration_secs?: number
+        ram_active: boolean
+        ram_duration_secs?: number
     }> {
         try {
             const response = await this.getClient().get('/stress-test')
             this.logDaemonResponse(response, 'Stress Test Status')
             return response.data
         } catch {
-            return { cpu_active: false, gpu_active: false }
+            return { cpu_active: false, gpu_active: false, ram_active: false }
         }
     }
 }

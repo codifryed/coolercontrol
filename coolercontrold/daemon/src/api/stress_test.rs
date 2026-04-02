@@ -37,12 +37,20 @@ pub struct StartGpuStressRequest {
     pub duration_secs: Option<u16>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct StartRamStressRequest {
+    /// Duration in seconds. Defaults to 60, max 600.
+    pub duration_secs: Option<u16>,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StressTestStatusResponse {
     pub cpu_active: bool,
     pub cpu_duration_secs: Option<u16>,
     pub gpu_active: bool,
     pub gpu_duration_secs: Option<u16>,
+    pub ram_active: bool,
+    pub ram_duration_secs: Option<u16>,
 }
 
 /// POST /stress-test/cpu/start
@@ -99,6 +107,33 @@ pub async fn stop_gpu(
         .map_err(|e| CCError::InternalError { msg: e.to_string() })
 }
 
+/// POST /stress-test/ram
+pub async fn start_ram(
+    State(AppState {
+        stress_test_handle, ..
+    }): State<AppState>,
+    Json(request): Json<StartRamStressRequest>,
+) -> Result<Json<()>, CCError> {
+    stress_test_handle
+        .start_ram(request.duration_secs)
+        .await
+        .map(Json)
+        .map_err(|e| CCError::UserError { msg: e.to_string() })
+}
+
+/// DELETE /stress-test/ram
+pub async fn stop_ram(
+    State(AppState {
+        stress_test_handle, ..
+    }): State<AppState>,
+) -> Result<Json<()>, CCError> {
+    stress_test_handle
+        .stop_ram()
+        .await
+        .map(Json)
+        .map_err(|e| CCError::InternalError { msg: e.to_string() })
+}
+
 /// POST /stress-test/stop
 pub async fn stop_all(
     State(AppState {
@@ -124,5 +159,7 @@ pub async fn status(
         cpu_duration_secs: s.cpu_duration_secs,
         gpu_active: s.gpu_active,
         gpu_duration_secs: s.gpu_duration_secs,
+        ram_active: s.ram_active,
+        ram_duration_secs: s.ram_duration_secs,
     })
 }

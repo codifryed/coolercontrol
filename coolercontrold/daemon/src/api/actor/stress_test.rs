@@ -39,6 +39,8 @@ struct StressTestActor {
     cpu_duration_secs: Option<u16>,
     gpu_child: Option<Child>,
     gpu_duration_secs: Option<u16>,
+    ram_child: Option<Child>,
+    ram_duration_secs: Option<u16>,
 }
 
 enum StressTestMessage {
@@ -57,6 +59,13 @@ enum StressTestMessage {
     StopGpu {
         respond_to: oneshot::Sender<Result<()>>,
     },
+    StartRam {
+        duration_secs: Option<u16>,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    StopRam {
+        respond_to: oneshot::Sender<Result<()>>,
+    },
     StopAll {
         respond_to: oneshot::Sender<Result<()>>,
     },
@@ -71,6 +80,8 @@ pub struct StressTestStatus {
     pub cpu_duration_secs: Option<u16>,
     pub gpu_active: bool,
     pub gpu_duration_secs: Option<u16>,
+    pub ram_active: bool,
+    pub ram_duration_secs: Option<u16>,
 }
 
 impl StressTestActor {
@@ -81,6 +92,8 @@ impl StressTestActor {
             cpu_duration_secs: None,
             gpu_child: None,
             gpu_duration_secs: None,
+            ram_child: None,
+            ram_duration_secs: None,
         }
     }
 
@@ -213,6 +226,53 @@ impl StressTestActor {
         }
     }
 
+    async fn start_ram(&mut self, duration_secs: Option<u16>) -> Result<()> {
+        if self.ram_child.is_some() {
+            return Err(anyhow!("RAM stress test is already running"));
+        }
+
+        let bin_path = Self::bin_path()?;
+        let duration = duration_secs
+            .unwrap_or(DEFAULT_DURATION_SECS)
+            .min(MAX_DURATION_SECS);
+
+        let available = crate::stress::available_memory_bytes()
+            .map_err(|e| anyhow!("Failed to read available memory: {e}"))?;
+        let alloc_bytes = (available as f64 * crate::stress::RAM_STRESS_ALLOC_FRACTION) as u64;
+
+        info!(
+            "Starting RAM stress test: {duration}s, {} MiB",
+            alloc_bytes / (1024 * 1024)
+        );
+
+        let mut child = Command::new(&bin_path)
+            .arg("stress-ram")
+            .arg("--bytes")
+            .arg(alloc_bytes.to_string())
+            .arg("--timeout")
+            .arg(duration.to_string())
+            .kill_on_drop(true)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| anyhow!("Failed to start RAM stress subprocess: {e}"))?;
+
+        Self::check_early_exit(&mut child, "RAM").await?;
+
+        self.ram_child = Some(child);
+        self.ram_duration_secs = Some(duration);
+        Ok(())
+    }
+
+    async fn stop_ram(&mut self) {
+        if let Some(mut child) = self.ram_child.take() {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            self.ram_duration_secs = None;
+            info!("RAM stress test stopped");
+        }
+    }
+
     fn check_child_still_running(
         child: &mut Option<Child>,
         duration: &mut Option<u16>,
@@ -238,11 +298,14 @@ impl StressTestActor {
     fn status(&mut self) -> StressTestStatus {
         Self::check_child_still_running(&mut self.cpu_child, &mut self.cpu_duration_secs, "CPU");
         Self::check_child_still_running(&mut self.gpu_child, &mut self.gpu_duration_secs, "GPU");
+        Self::check_child_still_running(&mut self.ram_child, &mut self.ram_duration_secs, "RAM");
         StressTestStatus {
             cpu_active: self.cpu_child.is_some(),
             cpu_duration_secs: self.cpu_duration_secs,
             gpu_active: self.gpu_child.is_some(),
             gpu_duration_secs: self.gpu_duration_secs,
+            ram_active: self.ram_child.is_some(),
+            ram_duration_secs: self.ram_duration_secs,
         }
     }
 }
@@ -281,9 +344,21 @@ impl ApiActor<StressTestMessage> for StressTestActor {
                 self.stop_gpu().await;
                 let _ = respond_to.send(Ok(()));
             }
+            StressTestMessage::StartRam {
+                duration_secs,
+                respond_to,
+            } => {
+                let result = self.start_ram(duration_secs).await;
+                let _ = respond_to.send(result);
+            }
+            StressTestMessage::StopRam { respond_to } => {
+                self.stop_ram().await;
+                let _ = respond_to.send(Ok(()));
+            }
             StressTestMessage::StopAll { respond_to } => {
                 self.stop_cpu().await;
                 self.stop_gpu().await;
+                self.stop_ram().await;
                 let _ = respond_to.send(Ok(()));
             }
             StressTestMessage::Status { respond_to } => {
@@ -348,6 +423,23 @@ impl StressTestHandle {
         rx.await?
     }
 
+    pub async fn start_ram(&self, duration_secs: Option<u16>) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StressTestMessage::StartRam {
+            duration_secs,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn stop_ram(&self) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StressTestMessage::StopRam { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
     pub async fn stop_all(&self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = StressTestMessage::StopAll { respond_to: tx };
@@ -364,6 +456,8 @@ impl StressTestHandle {
             cpu_duration_secs: None,
             gpu_active: false,
             gpu_duration_secs: None,
+            ram_active: false,
+            ram_duration_secs: None,
         })
     }
 }
@@ -379,8 +473,11 @@ mod tests {
             cpu_duration_secs: None,
             gpu_active: false,
             gpu_duration_secs: None,
+            ram_active: false,
+            ram_duration_secs: None,
         };
         assert!(!status.cpu_active);
         assert!(!status.gpu_active);
+        assert!(!status.ram_active);
     }
 }

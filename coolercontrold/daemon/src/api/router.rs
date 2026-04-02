@@ -1000,16 +1000,35 @@ fn stress_test_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
+            "/stress-test/ram",
+            post_with(stress_test::start_ram, |o| {
+                o.summary("Start RAM Stress Test")
+                    .description(
+                        "Spawns a RAM stress subprocess that streams data \
+                         through system memory to maximize bandwidth.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_ram, |o| {
+                o.summary("Stop RAM Stress Test")
+                    .description("Stops the running RAM stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
             "/stress-test",
             get_with(stress_test::status, |o| {
                 o.summary("Stress Test Status")
-                    .description("Returns the current status of CPU and GPU stress tests.")
+                    .description("Returns the current status of CPU, GPU, and RAM stress tests.")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_all, |o| {
                 o.summary("Stop All Stress Tests")
-                    .description("Stops all running stress tests (CPU and GPU).")
+                    .description("Stops all running stress tests (CPU, GPU, and RAM).")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
             })
