@@ -1,7 +1,7 @@
 # cc-stress
 
-CPU, GPU, and RAM stress testing for thermal validation on Linux. Generates sustained thermal load to
-help verify fan curves and cooling profiles.
+CPU, GPU, and RAM stress testing for thermal validation on Linux. Generates sustained thermal load
+to help verify fan curves and cooling profiles.
 
 This is not a benchmark. It is a convenience tool for heat generation, not performance measurement.
 
@@ -15,8 +15,8 @@ Saturates hardware subsystems to produce maximum heat:
   through a ring of storage buffers with interleaved FMA + sqrt to heat both VRAM and shader cores.
   All detected hardware GPUs are stressed in parallel.
 - **RAM** - streaming read-modify-write across a large allocation (80% of available memory by
-  default). Uses AVX2 non-temporal stores to bypass cache and write directly to DRAM, stressing DIMMs
-  and the memory controller.
+  default). Uses AVX2 non-temporal stores to bypass cache and write directly to DRAM, stressing
+  DIMMs and the memory controller.
 
 All stress functions run at nice 19 to avoid starving the desktop, and reset CPU affinity to all
 online cores (overriding any systemd restrictions).
@@ -45,13 +45,13 @@ run_ram_stress(alloc, 60).unwrap();
 
 ### Public API
 
-| Function                  | Description                                          |
-| ------------------------- | ---------------------------------------------------- |
-| `run_cpu_stress`          | Spawn N threads running FMA+sqrt loops until timeout |
-| `run_gpu_stress`          | Async. Stress all detected GPUs via wgpu compute     |
-| `run_ram_stress`          | Streaming memory stress across a large allocation    |
-| `online_cpu_count`        | Count logical CPUs from `/proc/cpuinfo`              |
-| `available_memory_bytes`  | Read `MemAvailable` from `/proc/meminfo`             |
+| Function                    | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| `run_cpu_stress`            | Spawn N threads running FMA+sqrt loops until timeout   |
+| `run_gpu_stress`            | Async. Stress all detected GPUs via wgpu compute       |
+| `run_ram_stress`            | Streaming memory stress across a large allocation      |
+| `online_cpu_count`          | Count logical CPUs from `/proc/cpuinfo`                |
+| `available_memory_bytes`    | Read `MemAvailable` from `/proc/meminfo`               |
 | `RAM_STRESS_ALLOC_FRACTION` | Default fraction of available memory to allocate (0.8) |
 
 ## Requirements

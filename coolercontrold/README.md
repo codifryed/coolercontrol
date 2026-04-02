@@ -2,10 +2,10 @@
 
 The CoolerControl daemon. A Cargo workspace containing three crates:
 
-| Crate                       | Path         | Description                                            |
-| --------------------------- | ------------ | ------------------------------------------------------ |
-| [`coolercontrold`](daemon/) | `daemon/`    | daemon - core business logic and hardware access       |
-| [`cc-detect`](cc-detect/)   | `cc-detect/` | Super-I/O hardware detection and kernel module loading |
+| Crate                       | Path         | Description                                             |
+| --------------------------- | ------------ | ------------------------------------------------------- |
+| [`coolercontrold`](daemon/) | `daemon/`    | daemon - core business logic and hardware access        |
+| [`cc-detect`](cc-detect/)   | `cc-detect/` | Super-I/O hardware detection and kernel module loading  |
 | [`cc-stress`](cc-stress/)   | `cc-stress/` | CPU, GPU, and RAM stress testing for thermal validation |
 
 For project-wide documentation, installation packages, and issue tracking see the
