@@ -58,6 +58,7 @@ const LIQCTLD_SPEED_PROFILE: &str = "/devices/{}/speed/profile";
 const LIQCTLD_CONTROL_MODE: &str = "/devices/{}/control-mode";
 const LIQCTLD_COLOR: &str = "/devices/{}/color";
 const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
+const LIQCTLD_SCAN: &str = "/devices/scan";
 const LIQCTLD_QUIT: &str = "/quit";
 const LIQCTLD_MAX_INIT_RETRIES: usize = 5;
 const LIQCTLD_INIT_PAUSE_MS: u64 = 1_000;
@@ -303,6 +304,16 @@ impl LiqctldClient {
     pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
         let request = Self::request_builder()
             .uri(LIQCTLD_DEVICES)
+            .method("GET")
+            .body(String::new())?;
+        self.make_request(&request).await
+    }
+
+    /// Performs a fresh scan for currently connected liquidctl devices without
+    /// modifying the cached device state in the Python service.
+    pub async fn scan_devices(&self) -> Result<DevicesResponse> {
+        let request = Self::request_builder()
+            .uri(LIQCTLD_SCAN)
             .method("GET")
             .body(String::new())?;
         self.make_request(&request).await

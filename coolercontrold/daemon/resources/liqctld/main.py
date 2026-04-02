@@ -601,6 +601,48 @@ class DeviceService:
             raise e
         # all other exceptions are handled on startup with retry
 
+    def scan_devices(self) -> List[Device]:
+        """Perform a fresh device scan without modifying the cached device state.
+
+        This is used by the daemon's device change detection to compare currently
+        connected devices against the initial baseline.
+        """
+        log.debug("Scanning for currently connected liquidctl devices")
+        try:
+            found_devices = list(liquidctl.find_liquidctl_devices())
+            devices: List[Device] = []
+            for index, lc_device in enumerate(found_devices):
+                index_id = index + 1
+                description: str = getattr(lc_device, "description", "")
+                serial_number: Optional[str] = getattr(
+                    lc_device, "serial_number", None
+                )
+                devices.append(
+                    Device(
+                        id=index_id,
+                        description=description,
+                        device_type=type(lc_device).__name__,
+                        serial_number=serial_number,
+                        properties=self._get_device_properties(lc_device),
+                        liquidctl_version=self.liquidctl_version,
+                        hid_address=(
+                            str(lc_device.address) if lc_device.address else None
+                        ),
+                        hwmon_address=None,
+                    )
+                )
+            log.debug(
+                f"Scan found {len(devices)} liquidctl device(s): "
+                f"{[d.description for d in devices]}"
+            )
+            return devices
+        except ValueError as ve:
+            log.debug(f"ValueError when scanning for devices: {ve}")
+            return []
+        except Exception as e:
+            log.warning(f"Error scanning for liquidctl devices: {e}")
+            return []
+
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
         """
@@ -1170,6 +1212,13 @@ class HTTPHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK, json.dumps({"devices": [d.to_dict() for d in devices]})
         )
 
+    # get("/devices/scan")
+    def scan_devices(self):
+        devices: List[Device] = self.device_service.scan_devices()
+        self._send(
+            HTTPStatus.OK, json.dumps({"devices": [d.to_dict() for d in devices]})
+        )
+
     # put("/devices/{device_id}/legacy690")
     def set_device_as_legacy690(self, device_id: int):
         device: Device = self.device_service.set_device_as_legacy690(device_id)
@@ -1234,6 +1283,9 @@ class HTTPHandler(BaseHTTPRequestHandler):
         elif len(path) == 1 and path[0] == "handshake":
             # get("/handshake")
             self.handshake()
+        elif len(path) == 2 and path[0] == "devices" and path[1] == "scan":
+            # get("/devices/scan")
+            self.scan_devices()
         elif len(path) == 1 and path[0] == "devices":
             # get("/devices")
             self.get_devices()
