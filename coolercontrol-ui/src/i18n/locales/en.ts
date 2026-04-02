@@ -483,12 +483,17 @@ export default {
             discordDesc: 'Join our Discord community',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
-            stressTest: 'Stress Test',
+            stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
-                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Not a benchmark, but a convenience for heat generation<br>rather than performance measurement.<br>GPU stress may require Vulkan or OpenGL ES drivers.<br>May reduce UI responsiveness while active.',
+                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Not a benchmark, but a convenience for heat generation<br>rather than performance measurement.<br>May reduce UI responsiveness while active.',
             cpuStress: 'CPU Stress',
             gpuStress: 'GPU Stress',
+            gpuStressTooltip: 'May require Vulkan or OpenGL ES drivers.',
             ramStress: 'RAM Stress',
+            driveStress: 'Drive Stress',
+            driveStressTooltip:
+                'Read-only I/O stress on a block device.<br>Uses O_DIRECT random reads to generate heat<br>on drive controllers without causing any wear.<br>No data is written to the drive.',
+            selectDrive: 'Select drive',
             threadCount: 'Threads',
             duration: 'Duration (s)',
 

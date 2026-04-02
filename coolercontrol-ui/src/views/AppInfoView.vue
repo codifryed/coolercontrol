@@ -33,6 +33,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { DaemonStatus, useDaemonState } from '@/stores/DaemonState.ts'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
 import { $enum } from 'ts-enum-util'
 import { useI18n } from 'vue-i18n'
 import { useToast } from 'primevue/usetoast'
@@ -124,8 +125,13 @@ const downloadLogDatasetURL = computed((): string => {
 
 onMounted(async () => {
     scrollToBottom()
+    const drives = await deviceStore.daemonClient.listDrivesForStress()
+    availableDrives.value = drives
+    if (drives.length > 0) {
+        selectedDrive.value = drives[0].device_path
+    }
     await pollStatus()
-    if (cpuActive.value || gpuActive.value || ramActive.value) {
+    if (cpuActive.value || gpuActive.value || ramActive.value || driveActive.value) {
         startPolling()
     }
 })
@@ -136,12 +142,17 @@ const confirm = useConfirm()
 const cpuDuration = ref<number>(60)
 const gpuDuration = ref<number>(60)
 const ramDuration = ref<number>(60)
+const driveDuration = ref<number>(60)
 const cpuActive = ref(false)
 const gpuActive = ref(false)
 const ramActive = ref(false)
+const driveActive = ref(false)
 const cpuLoading = ref(false)
 const gpuLoading = ref(false)
 const ramLoading = ref(false)
+const driveLoading = ref(false)
+const availableDrives = ref<Array<{ device_path: string; model?: string; size_bytes: number }>>([])
+const selectedDrive = ref<string | null>(null)
 let statusPollInterval: ReturnType<typeof setInterval> | null = null
 
 const pollStatus = async () => {
@@ -149,7 +160,14 @@ const pollStatus = async () => {
     cpuActive.value = status.cpu_active
     gpuActive.value = status.gpu_active
     ramActive.value = status.ram_active
-    if (!status.cpu_active && !status.gpu_active && !status.ram_active && statusPollInterval) {
+    driveActive.value = status.drive_active
+    if (
+        !status.cpu_active &&
+        !status.gpu_active &&
+        !status.ram_active &&
+        !status.drive_active &&
+        statusPollInterval
+    ) {
         clearInterval(statusPollInterval)
         statusPollInterval = null
     }
@@ -161,10 +179,15 @@ const startPolling = () => {
     }
 }
 
-const anyStressActive = () => cpuActive.value || gpuActive.value || ramActive.value
+const needsPsuWarning = (starting: 'cpu' | 'gpu' | 'ram' | 'drive') => {
+    // Warn only when GPU and CPU/RAM would run simultaneously.
+    if (starting === 'gpu') return cpuActive.value || ramActive.value
+    if (starting === 'cpu' || starting === 'ram') return gpuActive.value
+    return false
+}
 
-const confirmOrRun = (action: () => void) => {
-    if (anyStressActive()) {
+const confirmOrRun = (action: () => void, starting: 'cpu' | 'gpu' | 'ram' | 'drive') => {
+    if (needsPsuWarning(starting)) {
         confirm.require({
             message: t('views.appInfo.psuWarningMessage'),
             header: t('views.appInfo.psuWarningHeader'),
@@ -190,7 +213,7 @@ const doCpuStress = async () => {
         startPolling()
     }
 }
-const startCpuStress = () => confirmOrRun(doCpuStress)
+const startCpuStress = () => confirmOrRun(doCpuStress, 'cpu')
 
 const stopCpuStress = async () => {
     cpuLoading.value = true
@@ -210,7 +233,7 @@ const doGpuStress = async () => {
         startPolling()
     }
 }
-const startGpuStress = () => confirmOrRun(doGpuStress)
+const startGpuStress = () => confirmOrRun(doGpuStress, 'gpu')
 
 const stopGpuStress = async () => {
     gpuLoading.value = true
@@ -230,7 +253,7 @@ const doRamStress = async () => {
         startPolling()
     }
 }
-const startRamStress = () => confirmOrRun(doRamStress)
+const startRamStress = () => confirmOrRun(doRamStress, 'ram')
 
 const stopRamStress = async () => {
     ramLoading.value = true
@@ -239,17 +262,48 @@ const stopRamStress = async () => {
     ramActive.value = false
 }
 
+const driveLabel = (drive: { device_path: string; model?: string }) =>
+    drive.model ? `${drive.model} (${drive.device_path})` : drive.device_path
+
+const doDriveStress = async () => {
+    if (!selectedDrive.value) return
+    driveLoading.value = true
+    const err = await deviceStore.daemonClient.startDriveStress(
+        selectedDrive.value,
+        undefined,
+        driveDuration.value,
+    )
+    driveLoading.value = false
+    if (err) {
+        toast.add({ severity: 'error', summary: 'Drive Stress', detail: err.error, life: 5000 })
+    } else {
+        driveActive.value = true
+        startPolling()
+    }
+}
+const startDriveStress = () => confirmOrRun(doDriveStress, 'drive')
+
+const stopDriveStress = async () => {
+    driveLoading.value = true
+    await deviceStore.daemonClient.stopDriveStress()
+    driveLoading.value = false
+    driveActive.value = false
+}
+
 const stopAllStress = async () => {
     cpuLoading.value = true
     gpuLoading.value = true
     ramLoading.value = true
+    driveLoading.value = true
     await deviceStore.daemonClient.stopAllStress()
     cpuLoading.value = false
     gpuLoading.value = false
     ramLoading.value = false
+    driveLoading.value = false
     cpuActive.value = false
     gpuActive.value = false
     ramActive.value = false
+    driveActive.value = false
 }
 
 onBeforeUnmount(() => {
@@ -451,7 +505,7 @@ onBeforeUnmount(() => {
                             <Button
                                 :label="t('views.appInfo.stopAll')"
                                 class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
-                                :disabled="!cpuActive && !gpuActive && !ramActive"
+                                :disabled="!cpuActive && !gpuActive && !ramActive && !driveActive"
                                 @click="stopAllStress"
                             />
                         </div>
@@ -524,9 +578,14 @@ onBeforeUnmount(() => {
                                 <!-- GPU Stress -->
                                 <tr>
                                     <td class="pr-4">
-                                        <span class="font-bold text-lg">{{
-                                            t('views.appInfo.gpuStress')
-                                        }}</span>
+                                        <span
+                                            v-tooltip.right="{
+                                                escape: false,
+                                                value: t('views.appInfo.gpuStressTooltip'),
+                                            }"
+                                            class="font-bold text-lg cursor-help"
+                                            >{{ t('views.appInfo.gpuStress') }}</span
+                                        >
                                     </td>
                                     <td class="pr-4">
                                         <InputNumber
@@ -642,6 +701,90 @@ onBeforeUnmount(() => {
                                             />
                                             <span class="text-sm">{{
                                                 ramActive
+                                                    ? t('views.appInfo.active')
+                                                    : t('views.appInfo.inactive')
+                                            }}</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!-- Drive Stress -->
+                                <tr>
+                                    <td class="pr-4">
+                                        <span
+                                            v-tooltip.right="{
+                                                escape: false,
+                                                value: t('views.appInfo.driveStressTooltip'),
+                                            }"
+                                            class="font-bold text-lg cursor-help"
+                                            >{{ t('views.appInfo.driveStress') }}</span
+                                        >
+                                    </td>
+                                    <td class="pr-4">
+                                        <div class="flex items-center gap-2">
+                                            <InputNumber
+                                                v-model="driveDuration"
+                                                show-buttons
+                                                button-layout="horizontal"
+                                                :min="15"
+                                                :max="600"
+                                                :step="15"
+                                                suffix=" s"
+                                                class="w-32"
+                                                :disabled="driveActive"
+                                                :input-style="{ width: '3.5rem' }"
+                                                input-class="!p-1.5 !text-sm"
+                                            >
+                                                <template #incrementicon>
+                                                    <span class="pi pi-plus" />
+                                                </template>
+                                                <template #decrementicon>
+                                                    <span class="pi pi-minus" />
+                                                </template>
+                                            </InputNumber>
+                                            <Select
+                                                v-model="selectedDrive"
+                                                :options="availableDrives"
+                                                option-value="device_path"
+                                                :option-label="driveLabel"
+                                                :placeholder="t('views.appInfo.selectDrive')"
+                                                class="w-64"
+                                                :disabled="
+                                                    driveActive || availableDrives.length === 0
+                                                "
+                                            />
+                                        </div>
+                                    </td>
+                                    <td class="pr-4">
+                                        <Button
+                                            v-if="!driveActive"
+                                            :label="t('views.appInfo.start')"
+                                            class="bg-accent/80 hover:!bg-accent h-[2.375rem]"
+                                            :disabled="
+                                                !selectedDrive || availableDrives.length === 0
+                                            "
+                                            @click="startDriveStress"
+                                        />
+                                        <Button
+                                            v-else
+                                            :label="t('views.appInfo.stop')"
+                                            class="bg-red-600/80 hover:!bg-red-600 h-[2.375rem]"
+                                            @click="stopDriveStress"
+                                        />
+                                    </td>
+                                    <td>
+                                        <div class="flex items-center gap-2">
+                                            <svg-icon
+                                                type="mdi"
+                                                :class="
+                                                    driveActive
+                                                        ? 'text-success'
+                                                        : 'text-text-color-secondary'
+                                                "
+                                                :path="mdiCircle"
+                                                :size="deviceStore.getREMSize(0.75)"
+                                            />
+                                            <span class="text-sm">{{
+                                                driveActive
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>

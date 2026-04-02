@@ -754,6 +754,7 @@ name = "cc-stress"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
  "nix",
  "tokio",
  "wgpu",

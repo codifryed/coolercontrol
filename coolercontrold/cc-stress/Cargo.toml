@@ -16,9 +16,11 @@ doctest = false
 
 [dependencies]
 anyhow = "1.0.102"
+libc = "0.2"
 nix = { version = "0.31.2", default-features = false, features = [
   "user",
   "sched",
+  "ioctl",
 ] }
 wgpu = { version = "24", default-features = false, features = [
   "vulkan-portability",

@@ -1459,6 +1459,46 @@ export default class DaemonClient {
         }
     }
 
+    async listDrivesForStress(): Promise<
+        Array<{ device_path: string; model?: string; size_bytes: number }>
+    > {
+        try {
+            const response = await this.getClient().get('/stress-test/drives')
+            this.logDaemonResponse(response, 'List Drives')
+            return response.data
+        } catch {
+            return []
+        }
+    }
+
+    async startDriveStress(
+        devicePath: string,
+        threads?: number,
+        durationSecs?: number,
+    ): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/drive', {
+                device_path: devicePath,
+                threads: threads,
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start Drive Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopDriveStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/drive')
+            this.logDaemonResponse(response, 'Stop Drive Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
     async stopAllStress(): Promise<undefined | ErrorResponse> {
         try {
             const response = await this.getClient().delete('/stress-test')
@@ -1476,13 +1516,20 @@ export default class DaemonClient {
         gpu_duration_secs?: number
         ram_active: boolean
         ram_duration_secs?: number
+        drive_active: boolean
+        drive_duration_secs?: number
     }> {
         try {
             const response = await this.getClient().get('/stress-test')
             this.logDaemonResponse(response, 'Stress Test Status')
             return response.data
         } catch {
-            return { cpu_active: false, gpu_active: false, ram_active: false }
+            return {
+                cpu_active: false,
+                gpu_active: false,
+                ram_active: false,
+                drive_active: false,
+            }
         }
     }
 }

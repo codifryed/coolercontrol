@@ -17,6 +17,8 @@
  */
 
 use std::alloc;
+use std::os::unix::fs::FileTypeExt;
+use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
@@ -51,6 +53,15 @@ const MEM_STRESS_COMPUTE_ITERS: u32 = 64;
 const MEM_STRESS_RING_REPS: u32 = 4;
 /// Sleep between GPU submissions for desktop compositing (ms).
 const GPU_SUBMIT_SLEEP_MS: u64 = 0;
+
+/// Per-read block size for drive stress (128 KiB, natural NVMe transfer size).
+const DRIVE_STRESS_BLOCK_SIZE: usize = 128 * 1024;
+/// Page alignment required for O_DIRECT buffers.
+const DRIVE_STRESS_ALIGNMENT: usize = 4096;
+/// Default number of I/O threads for drive stress.
+pub const DRIVE_STRESS_DEFAULT_THREADS: u16 = 4;
+/// Number of reads between deadline checks.
+const READS_PER_DEADLINE_CHECK: u32 = 64;
 
 /// Returns the number of logical processors by counting entries in /proc/cpuinfo.
 /// This is not restricted by CPU affinity or cgroup limits
@@ -389,6 +400,172 @@ unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
     }
 }
 
+/// Fast, non-cryptographic PRNG for generating random read offsets.
+struct XorShift64(u64);
+
+impl XorShift64 {
+    fn new(seed: u64) -> Self {
+        Self(seed | 1) // ensure non-zero
+    }
+
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+}
+
+/// Page-aligned heap buffer for O_DIRECT reads.
+struct DirectIoBuffer {
+    ptr: *mut u8,
+    layout: alloc::Layout,
+}
+
+// SAFETY: The buffer is a raw heap allocation not shared across threads.
+unsafe impl Send for DirectIoBuffer {}
+
+impl DirectIoBuffer {
+    fn new(size: usize) -> Self {
+        let layout =
+            alloc::Layout::from_size_align(size, DRIVE_STRESS_ALIGNMENT).expect("valid layout");
+        // SAFETY: Layout is valid and non-zero.
+        let ptr = unsafe { alloc::alloc(layout) };
+        if ptr.is_null() {
+            alloc::handle_alloc_error(layout);
+        }
+        Self { ptr, layout }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.ptr
+    }
+}
+
+impl Drop for DirectIoBuffer {
+    fn drop(&mut self) {
+        // SAFETY: ptr was allocated with this layout in new().
+        unsafe { alloc::dealloc(self.ptr, self.layout) };
+    }
+}
+
+// BLKGETSIZE64 ioctl number: _IOR(0x12, 114, sizeof(u64))
+// = 0x80000000 | (8 << 16) | (0x12 << 8) | 114 = 0x80081272
+const BLKGETSIZE64: libc::c_ulong = 0x80081272;
+
+/// Returns the size of a block device in bytes using BLKGETSIZE64 ioctl.
+fn block_device_size(path: &str) -> Result<u64> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| anyhow!("Failed to open block device {path}: {e}"))?;
+    let fd = file.as_raw_fd();
+    let mut size: u64 = 0;
+    // SAFETY: BLKGETSIZE64 writes a u64, fd is a valid block device.
+    let ret = unsafe { libc::ioctl(fd, BLKGETSIZE64, &mut size) };
+    if ret < 0 {
+        return Err(anyhow!(
+            "BLKGETSIZE64 ioctl failed on {path}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(size)
+}
+
+/// Run drive stress test with random read-only I/O using O_DIRECT.
+/// Performs random reads on the specified block device to generate heat
+/// without causing any drive wear (reads only, no writes).
+pub fn run_drive_stress(device_path: &str, threads: u16, timeout_secs: u16) -> Result<()> {
+    reset_cpu_affinity()?;
+    set_nice_level()?;
+
+    let metadata =
+        std::fs::metadata(device_path).map_err(|e| anyhow!("Failed to stat {device_path}: {e}"))?;
+    if !metadata.file_type().is_block_device() {
+        return Err(anyhow!("{device_path} is not a block device"));
+    }
+
+    let device_size = block_device_size(device_path)?;
+    let block_size = DRIVE_STRESS_BLOCK_SIZE as u64;
+    if device_size < block_size {
+        return Err(anyhow!(
+            "Device {device_path} too small ({device_size} bytes) for stress testing"
+        ));
+    }
+    let max_offset = device_size - block_size;
+
+    eprintln!(
+        "Drive stress: {device_path}, {threads} threads, {timeout_secs}s, \
+         {device_size} bytes (pid: {})",
+        std::process::id()
+    );
+
+    let duration = Duration::from_secs(u64::from(timeout_secs));
+    let deadline = Instant::now() + duration;
+    let path = device_path.to_string();
+    let mut handles = Vec::with_capacity(threads as usize);
+
+    for thread_idx in 0..threads {
+        let path = path.clone();
+        handles.push(std::thread::spawn(move || {
+            drive_stress_thread(&path, thread_idx, max_offset, deadline);
+        }));
+    }
+
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    Ok(())
+}
+
+fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: Instant) {
+    use std::fs::OpenOptions;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECT)
+        .open(path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Thread {thread_idx}: failed to open {path}: {e}");
+            return;
+        }
+    };
+    let fd = file.as_raw_fd();
+
+    let mut buf = DirectIoBuffer::new(DRIVE_STRESS_BLOCK_SIZE);
+    // Seed PRNG with thread index and current time for diversity.
+    let seed = u64::from(thread_idx).wrapping_mul(6_364_136_223_846_793_005)
+        ^ (Instant::now().elapsed().as_nanos() as u64);
+    let mut rng = XorShift64::new(seed);
+
+    while Instant::now() < deadline {
+        for _ in 0..READS_PER_DEADLINE_CHECK {
+            // Align offset to DRIVE_STRESS_BLOCK_SIZE boundary.
+            let offset = (rng.next() % (max_offset / DRIVE_STRESS_BLOCK_SIZE as u64))
+                * DRIVE_STRESS_BLOCK_SIZE as u64;
+            // SAFETY: buf is properly aligned and sized for O_DIRECT reads,
+            // fd is a valid file descriptor.
+            let ret = unsafe {
+                libc::pread(
+                    fd,
+                    buf.as_mut_ptr().cast(),
+                    DRIVE_STRESS_BLOCK_SIZE,
+                    offset as libc::off_t,
+                )
+            };
+            if ret < 0 {
+                // Transient I/O errors are expected on some drives, continue.
+                continue;
+            }
+        }
+    }
+    std::hint::black_box(unsafe { buf.as_mut_ptr().read() });
+}
+
 /// Run GPU stress test using wgpu compute shaders for memory-bandwidth stress.
 /// Enumerates all available GPU adapters and stresses them in parallel.
 pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
@@ -704,5 +881,39 @@ mod tests {
     #[test]
     fn available_memory_returns_positive() {
         assert!(available_memory_bytes().unwrap() > 0);
+    }
+
+    #[test]
+    fn direct_io_buffer_is_page_aligned() {
+        let buf = DirectIoBuffer::new(DRIVE_STRESS_BLOCK_SIZE);
+        assert_eq!(buf.ptr as usize % DRIVE_STRESS_ALIGNMENT, 0);
+        assert_eq!(buf.layout.size(), DRIVE_STRESS_BLOCK_SIZE);
+    }
+
+    #[test]
+    fn xorshift64_produces_varied_offsets() {
+        let mut rng = XorShift64::new(42);
+        let mut values = std::collections::HashSet::new();
+        for _ in 0..1000 {
+            values.insert(rng.next());
+        }
+        // With 1000 iterations, we should get at least 990 unique values.
+        assert!(values.len() > 990, "PRNG produced too few unique values");
+    }
+
+    #[test]
+    fn drive_stress_rejects_non_block_device() {
+        let result = run_drive_stress("/dev/null", 1, 1);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not a block device"));
+    }
+
+    #[test]
+    fn drive_stress_rejects_nonexistent_device() {
+        let result = run_drive_stress("/dev/nonexistent_drive_xyz", 1, 1);
+        assert!(result.is_err());
     }
 }

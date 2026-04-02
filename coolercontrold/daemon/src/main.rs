@@ -436,6 +436,15 @@ enum SubCommands {
         #[arg(long)]
         timeout: u16,
     },
+    #[command(hide = true)]
+    StressDrive {
+        #[arg(long)]
+        device: String,
+        #[arg(long)]
+        threads: Option<u16>,
+        #[arg(long)]
+        timeout: u16,
+    },
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
@@ -468,6 +477,19 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
     }
     if let Some(SubCommands::StressRam { bytes, timeout }) = &args.command {
         cc_stress::run_ram_stress(*bytes, *timeout)?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressDrive {
+        device,
+        threads,
+        timeout,
+    }) = &args.command
+    {
+        cc_stress::run_drive_stress(
+            device,
+            threads.unwrap_or(cc_stress::DRIVE_STRESS_DEFAULT_THREADS),
+            *timeout,
+        )?;
         exit_successfully();
     }
     Ok(())

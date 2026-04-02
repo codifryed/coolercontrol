@@ -41,6 +41,8 @@ struct StressTestActor {
     gpu_duration_secs: Option<u16>,
     ram_child: Option<Child>,
     ram_duration_secs: Option<u16>,
+    drive_child: Option<Child>,
+    drive_duration_secs: Option<u16>,
 }
 
 enum StressTestMessage {
@@ -66,6 +68,15 @@ enum StressTestMessage {
     StopRam {
         respond_to: oneshot::Sender<Result<()>>,
     },
+    StartDrive {
+        device_path: String,
+        threads: Option<u16>,
+        duration_secs: Option<u16>,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    StopDrive {
+        respond_to: oneshot::Sender<Result<()>>,
+    },
     StopAll {
         respond_to: oneshot::Sender<Result<()>>,
     },
@@ -82,6 +93,8 @@ pub struct StressTestStatus {
     pub gpu_duration_secs: Option<u16>,
     pub ram_active: bool,
     pub ram_duration_secs: Option<u16>,
+    pub drive_active: bool,
+    pub drive_duration_secs: Option<u16>,
 }
 
 impl StressTestActor {
@@ -94,6 +107,8 @@ impl StressTestActor {
             gpu_duration_secs: None,
             ram_child: None,
             ram_duration_secs: None,
+            drive_child: None,
+            drive_duration_secs: None,
         }
     }
 
@@ -273,6 +288,68 @@ impl StressTestActor {
         }
     }
 
+    async fn start_drive(
+        &mut self,
+        device_path: String,
+        threads: Option<u16>,
+        duration_secs: Option<u16>,
+    ) -> Result<()> {
+        if self.drive_child.is_some() {
+            return Err(anyhow!("Drive stress test is already running"));
+        }
+
+        // Validate device path for safety.
+        if !device_path.starts_with("/dev/") {
+            return Err(anyhow!("Device path must start with /dev/"));
+        }
+        if device_path.contains("..") {
+            return Err(anyhow!("Device path must not contain '..'"));
+        }
+        let path = std::path::Path::new(&device_path);
+        if !path.exists() {
+            return Err(anyhow!("Device {device_path} does not exist"));
+        }
+
+        let bin_path = Self::bin_path()?;
+        let duration = duration_secs
+            .unwrap_or(DEFAULT_DURATION_SECS)
+            .min(MAX_DURATION_SECS);
+        let thread_count = threads
+            .unwrap_or(cc_stress::DRIVE_STRESS_DEFAULT_THREADS)
+            .max(1);
+
+        info!("Starting Drive stress test: {device_path}, {thread_count} threads, {duration}s");
+
+        let mut child = Command::new(&bin_path)
+            .arg("stress-drive")
+            .arg("--device")
+            .arg(&device_path)
+            .arg("--threads")
+            .arg(thread_count.to_string())
+            .arg("--timeout")
+            .arg(duration.to_string())
+            .kill_on_drop(true)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| anyhow!("Failed to start Drive stress subprocess: {e}"))?;
+
+        Self::check_early_exit(&mut child, "Drive").await?;
+
+        self.drive_child = Some(child);
+        self.drive_duration_secs = Some(duration);
+        Ok(())
+    }
+
+    async fn stop_drive(&mut self) {
+        if let Some(mut child) = self.drive_child.take() {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            self.drive_duration_secs = None;
+            info!("Drive stress test stopped");
+        }
+    }
+
     fn check_child_still_running(
         child: &mut Option<Child>,
         duration: &mut Option<u16>,
@@ -299,6 +376,11 @@ impl StressTestActor {
         Self::check_child_still_running(&mut self.cpu_child, &mut self.cpu_duration_secs, "CPU");
         Self::check_child_still_running(&mut self.gpu_child, &mut self.gpu_duration_secs, "GPU");
         Self::check_child_still_running(&mut self.ram_child, &mut self.ram_duration_secs, "RAM");
+        Self::check_child_still_running(
+            &mut self.drive_child,
+            &mut self.drive_duration_secs,
+            "Drive",
+        );
         StressTestStatus {
             cpu_active: self.cpu_child.is_some(),
             cpu_duration_secs: self.cpu_duration_secs,
@@ -306,6 +388,8 @@ impl StressTestActor {
             gpu_duration_secs: self.gpu_duration_secs,
             ram_active: self.ram_child.is_some(),
             ram_duration_secs: self.ram_duration_secs,
+            drive_active: self.drive_child.is_some(),
+            drive_duration_secs: self.drive_duration_secs,
         }
     }
 }
@@ -355,10 +439,24 @@ impl ApiActor<StressTestMessage> for StressTestActor {
                 self.stop_ram().await;
                 let _ = respond_to.send(Ok(()));
             }
+            StressTestMessage::StartDrive {
+                device_path,
+                threads,
+                duration_secs,
+                respond_to,
+            } => {
+                let result = self.start_drive(device_path, threads, duration_secs).await;
+                let _ = respond_to.send(result);
+            }
+            StressTestMessage::StopDrive { respond_to } => {
+                self.stop_drive().await;
+                let _ = respond_to.send(Ok(()));
+            }
             StressTestMessage::StopAll { respond_to } => {
                 self.stop_cpu().await;
                 self.stop_gpu().await;
                 self.stop_ram().await;
+                self.stop_drive().await;
                 let _ = respond_to.send(Ok(()));
             }
             StressTestMessage::Status { respond_to } => {
@@ -440,6 +538,30 @@ impl StressTestHandle {
         rx.await?
     }
 
+    pub async fn start_drive(
+        &self,
+        device_path: String,
+        threads: Option<u16>,
+        duration_secs: Option<u16>,
+    ) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StressTestMessage::StartDrive {
+            device_path,
+            threads,
+            duration_secs,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn stop_drive(&self) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = StressTestMessage::StopDrive { respond_to: tx };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
     pub async fn stop_all(&self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let msg = StressTestMessage::StopAll { respond_to: tx };
@@ -458,6 +580,8 @@ impl StressTestHandle {
             gpu_duration_secs: None,
             ram_active: false,
             ram_duration_secs: None,
+            drive_active: false,
+            drive_duration_secs: None,
         })
     }
 }
@@ -475,9 +599,12 @@ mod tests {
             gpu_duration_secs: None,
             ram_active: false,
             ram_duration_secs: None,
+            drive_active: false,
+            drive_duration_secs: None,
         };
         assert!(!status.cpu_active);
         assert!(!status.gpu_active);
         assert!(!status.ram_active);
+        assert!(!status.drive_active);
     }
 }

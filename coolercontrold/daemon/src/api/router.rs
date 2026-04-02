@@ -1019,16 +1019,47 @@ fn stress_test_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
+            "/stress-test/drive",
+            post_with(stress_test::start_drive, |o| {
+                o.summary("Start Drive Stress Test")
+                    .description(
+                        "Spawns a drive stress subprocess that performs random \
+                         read-only I/O on the specified block device using O_DIRECT.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_drive, |o| {
+                o.summary("Stop Drive Stress Test")
+                    .description("Stops the running drive stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test/drives",
+            get_with(stress_test::list_drives, |o| {
+                o.summary("List Available Drives")
+                    .description("Returns block devices available for drive stress testing.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
             "/stress-test",
             get_with(stress_test::status, |o| {
                 o.summary("Stress Test Status")
-                    .description("Returns the current status of CPU, GPU, and RAM stress tests.")
+                    .description(
+                        "Returns the current status of CPU, GPU, RAM, and Drive stress tests.",
+                    )
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
             })
             .delete_with(stress_test::stop_all, |o| {
                 o.summary("Stop All Stress Tests")
-                    .description("Stops all running stress tests (CPU, GPU, and RAM).")
+                    .description("Stops all running stress tests (CPU, GPU, RAM, and Drive).")
                     .tag("stress-test")
                     .security_requirement("CookieAuth")
             })
