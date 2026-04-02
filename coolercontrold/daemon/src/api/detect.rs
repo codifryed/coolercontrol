@@ -51,6 +51,7 @@ pub struct DetectedChipDto {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct EnvironmentDto {
     pub is_container: bool,
+    pub is_secure_boot: bool,
     pub has_dev_port: bool,
 }
 
@@ -72,6 +73,7 @@ impl From<cc_detect::DetectionResults> for DetectResponse {
             blacklisted: results.blacklisted,
             environment: EnvironmentDto {
                 is_container: results.environment.is_container,
+                is_secure_boot: results.environment.is_secure_boot,
                 has_dev_port: results.environment.has_dev_port,
             },
         }

@@ -25,10 +25,13 @@ use std::path::Path;
 
 use log::debug;
 
+const LOCKDOWN_PATH: &str = "/sys/kernel/security/lockdown";
+
 /// Runtime environment capabilities.
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub is_container: bool,
+    pub is_secure_boot: bool,
     pub has_dev_port: bool,
     pub has_modprobe: bool,
 }
@@ -38,16 +41,19 @@ impl Environment {
     #[must_use]
     pub fn detect() -> Self {
         let is_container = Self::check_container();
+        let is_secure_boot = Self::check_secure_boot();
         let has_dev_port = Path::new("/dev/port").exists();
         let has_modprobe = Self::command_exists("modprobe");
         let has_proc_modules = Path::new("/proc/modules").exists();
 
         debug!(
-            "Environment: container={is_container}, /dev/port={has_dev_port}, modprobe={has_modprobe}, /proc/modules={has_proc_modules}"
+            "Environment: container={is_container}, secure_boot={is_secure_boot}, \
+             /dev/port={has_dev_port}, modprobe={has_modprobe}, /proc/modules={has_proc_modules}"
         );
 
         Self {
             is_container,
+            is_secure_boot,
             has_dev_port,
             has_modprobe,
         }
@@ -56,13 +62,24 @@ impl Environment {
     /// Check whether we can perform I/O port probing.
     #[must_use]
     pub fn can_probe(&self) -> bool {
-        self.has_dev_port
+        self.has_dev_port && !self.is_secure_boot
     }
 
     /// Check whether we can load kernel modules.
     #[must_use]
     pub fn can_load_modules(&self) -> bool {
         self.has_modprobe && !self.is_container
+    }
+
+    fn check_secure_boot() -> bool {
+        let content = match std::fs::read_to_string(LOCKDOWN_PATH) {
+            Ok(c) => c,
+            Err(_) => {
+                debug!("Lockdown file not available ({LOCKDOWN_PATH})");
+                return false;
+            }
+        };
+        parse_lockdown_active(&content)
     }
 
     fn check_container() -> bool {
@@ -95,6 +112,20 @@ impl Environment {
     }
 }
 
+/// Parse the content of `/sys/kernel/security/lockdown` and return whether
+/// the kernel is locked down (integrity or confidentiality mode active).
+fn parse_lockdown_active(content: &str) -> bool {
+    // Format: "[none] integrity confidentiality"
+    // The active mode is enclosed in brackets.
+    if let Some(start) = content.find('[') {
+        if let Some(end) = content.find(']') {
+            let active = content[start + 1..end].trim();
+            return matches!(active, "integrity" | "confidentiality");
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +135,7 @@ mod tests {
         let env = Environment::detect();
         // These tests are environment-dependent, but should not panic
         let _ = env.is_container;
+        let _ = env.is_secure_boot;
         let _ = env.has_dev_port;
         let _ = env.has_modprobe;
     }
@@ -112,6 +144,7 @@ mod tests {
     fn test_can_probe() {
         let env = Environment {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
         };
@@ -122,12 +155,19 @@ mod tests {
             ..env.clone()
         };
         assert!(!env_no_port.can_probe());
+
+        let env_secure_boot = Environment {
+            is_secure_boot: true,
+            ..env.clone()
+        };
+        assert!(!env_secure_boot.can_probe());
     }
 
     #[test]
     fn test_can_load_modules() {
         let env = Environment {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
         };
@@ -144,5 +184,30 @@ mod tests {
             ..env.clone()
         };
         assert!(!env_no_modprobe.can_load_modules());
+    }
+
+    #[test]
+    fn test_parse_lockdown_none() {
+        assert!(!parse_lockdown_active("[none] integrity confidentiality"));
+    }
+
+    #[test]
+    fn test_parse_lockdown_integrity() {
+        assert!(parse_lockdown_active("none [integrity] confidentiality"));
+    }
+
+    #[test]
+    fn test_parse_lockdown_confidentiality() {
+        assert!(parse_lockdown_active("none integrity [confidentiality]"));
+    }
+
+    #[test]
+    fn test_parse_lockdown_empty() {
+        assert!(!parse_lockdown_active(""));
+    }
+
+    #[test]
+    fn test_parse_lockdown_malformed() {
+        assert!(!parse_lockdown_active("garbage"));
     }
 }

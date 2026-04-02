@@ -89,6 +89,7 @@ pub struct DetectedChipInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct EnvironmentInfo {
     pub is_container: bool,
+    pub is_secure_boot: bool,
     pub has_dev_port: bool,
 }
 
@@ -109,11 +110,19 @@ pub fn run_detection(load_modules: bool, override_path: Option<&Path>) -> Detect
     let env = Environment::detect();
     let env_info = EnvironmentInfo {
         is_container: env.is_container,
+        is_secure_boot: env.is_secure_boot,
         has_dev_port: env.has_dev_port,
     };
 
     if !env.can_probe() {
-        info!("/dev/port unavailable, skipping hardware detection");
+        if env.is_secure_boot {
+            info!(
+                "Secure boot is enabled. To enable auto-detection of Super-I/O \
+                 kernel drivers, secure boot will need to be disabled."
+            );
+        } else {
+            info!("/dev/port unavailable, skipping hardware detection");
+        }
         return DetectionResults {
             detected_chips: Vec::new(),
             blacklisted: Vec::new(),
@@ -158,6 +167,7 @@ pub fn run_detection(_load_modules: bool, _override_path: Option<&Path>) -> Dete
         blacklisted: Vec::new(),
         environment: EnvironmentInfo {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: false,
         },
     }
@@ -231,6 +241,12 @@ pub fn output_results(results: &DetectionResults) {
         if results.environment.is_container {
             info!("  (Running inside a container - hardware probing may be limited)");
         }
+        if results.environment.is_secure_boot {
+            info!(
+                "  (Secure boot is enabled - to enable auto-detection of Super-I/O \
+                 kernel drivers, secure boot will need to be disabled)"
+            );
+        }
         if !results.environment.has_dev_port {
             info!("  (/dev/port is not available)");
         }
@@ -278,11 +294,13 @@ mod tests {
         }];
         let env = Environment {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
         };
 
@@ -296,11 +314,13 @@ mod tests {
     fn test_process_results_empty() {
         let env = Environment {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
             has_modprobe: true,
         };
         let env_info = EnvironmentInfo {
             is_container: false,
+            is_secure_boot: false,
             has_dev_port: true,
         };
 
@@ -316,6 +336,7 @@ mod tests {
             blacklisted: Vec::new(),
             environment: EnvironmentInfo {
                 is_container: false,
+                is_secure_boot: false,
                 has_dev_port: true,
             },
         };
@@ -338,6 +359,7 @@ mod tests {
             blacklisted: vec!["nouveau".into()],
             environment: EnvironmentInfo {
                 is_container: false,
+                is_secure_boot: false,
                 has_dev_port: true,
             },
         };
