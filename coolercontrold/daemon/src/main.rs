@@ -52,6 +52,7 @@ mod api;
 mod cc_fs;
 mod config;
 mod device;
+mod device_listener;
 mod engine;
 mod grpc_api;
 mod hashutil;
@@ -62,7 +63,6 @@ mod notifier;
 mod paths;
 mod repositories;
 mod setting;
-mod device_listener;
 mod sleep_listener;
 mod token;
 

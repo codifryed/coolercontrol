@@ -614,9 +614,7 @@ class DeviceService:
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 description: str = getattr(lc_device, "description", "")
-                serial_number: Optional[str] = getattr(
-                    lc_device, "serial_number", None
-                )
+                serial_number: Optional[str] = getattr(lc_device, "serial_number", None)
                 devices.append(
                     Device(
                         id=index_id,

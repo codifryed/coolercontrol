@@ -16,9 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::repositories::hwmon::devices::{
-    self, HWMON_DEVICE_NAME_BLACKLIST,
-};
+use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::utils::{sanitize_for_shell, ShellCommand};
 use crate::{cc_fs, AllDevices, ENV_DBUS};
@@ -26,8 +24,7 @@ use anyhow::Result;
 use log::{debug, info, warn};
 use moro_local::Scope;
 use nix::sys::socket::{
-    bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag,
-    SockProtocol, SockType,
+    bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
 };
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -83,9 +80,7 @@ impl<'s> DeviceListener {
         let async_fd = match AsyncFd::new(fd) {
             Ok(afd) => afd,
             Err(err) => {
-                warn!(
-                    "Could not register netlink socket with tokio: {err}"
-                );
+                warn!("Could not register netlink socket with tokio: {err}");
                 return Ok(Self::deaf());
             }
         };
@@ -309,10 +304,7 @@ fn is_relevant_uevent(buf: &[u8]) -> bool {
                 }
             } else if s.starts_with("SUBSYSTEM=") {
                 let subsystem = &s[10..];
-                if subsystem == "hwmon"
-                    || subsystem == "usb"
-                    || subsystem == "hidraw"
-                {
+                if subsystem == "hwmon" || subsystem == "usb" || subsystem == "hidraw" {
                     subsystem_relevant = true;
                 }
             }
@@ -336,18 +328,14 @@ async fn perform_scan(
     debug!("Scanning for device changes...");
     let mut changes_detected = false;
     changes_detected |= scan_hwmon_changes(hwmon_baseline, bin_path).await;
-    changes_detected |=
-        scan_liquidctl_changes(lc_baseline, liquidctl_repo, bin_path).await;
+    changes_detected |= scan_liquidctl_changes(lc_baseline, liquidctl_repo, bin_path).await;
     if changes_detected {
         device_changed.set(true);
     }
 }
 
 /// Compares current hwmon devices against the baseline.
-async fn scan_hwmon_changes(
-    baseline: &HashSet<PathBuf>,
-    bin_path: &str,
-) -> bool {
+async fn scan_hwmon_changes(baseline: &HashSet<PathBuf>, bin_path: &str) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
     for path in &current_paths {
@@ -472,9 +460,7 @@ fn fire_notification_command(cmd: String) {
         let result = ShellCommand::new(&cmd, NOTIFICATION_CMD_TIMEOUT)
             .run()
             .await;
-        if let crate::repositories::utils::ShellCommandResult::Error(err) =
-            result
-        {
+        if let crate::repositories::utils::ShellCommandResult::Error(err) = result {
             if log::log_enabled!(log::Level::Debug) {
                 debug!("Failed to execute notification command: {err}");
             }
