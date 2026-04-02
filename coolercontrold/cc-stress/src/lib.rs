@@ -236,6 +236,7 @@ fn stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
 /// Engages SIMD FP units, divider, integer ports, and cache hierarchy.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
     use std::arch::x86_64::{
         __m256d, __m256i, _mm256_add_epi32, _mm256_fmadd_pd, _mm256_load_pd, _mm256_max_pd,
@@ -243,43 +244,40 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
         _mm256_store_pd,
     };
 
-    // SAFETY: target_feature guarantees AVX2+FMA are available.
-    let vmul: __m256d = unsafe { _mm256_set1_pd(1.000_000_001) };
-    let vadd: __m256d = unsafe { _mm256_set1_pd(0.999_999_999) };
-    let vclamp_lo: __m256d = unsafe { _mm256_set1_pd(0.1) };
-    let vclamp_hi: __m256d = unsafe { _mm256_set1_pd(1e100) };
+    let vmul: __m256d = _mm256_set1_pd(1.000_000_001);
+    let vadd: __m256d = _mm256_set1_pd(0.999_999_999);
+    let vclamp_lo: __m256d = _mm256_set1_pd(0.1);
+    let vclamp_hi: __m256d = _mm256_set1_pd(1e100);
 
     // Integer accumulators to engage integer execution ports.
-    let mut iacc: __m256i = unsafe { _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8) };
-    let imul: __m256i = unsafe { _mm256_set_epi32(7, 11, 13, 17, 19, 23, 29, 31) };
+    let mut iacc: __m256i = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+    let imul: __m256i = _mm256_set_epi32(7, 11, 13, 17, 19, 23, 29, 31);
 
     let chunks = len / F64S_PER_AVX2;
     while Instant::now() < deadline {
         for _ in 0..CACHE_SWEEPS_PER_CHECK {
             for i in 0..chunks {
-                // SAFETY: buf is 32-byte aligned with len elements.
-                let ptr = unsafe { buf.add(i * F64S_PER_AVX2) };
-                let mut v = unsafe { _mm256_load_pd(ptr) };
+                let ptr = buf.add(i * F64S_PER_AVX2);
+                let mut v = _mm256_load_pd(ptr);
 
-                v = unsafe { _mm256_fmadd_pd(v, vmul, vadd) };
+                v = _mm256_fmadd_pd(v, vmul, vadd);
 
                 // Sqrt on even chunks engages the divider unit (VSQRTPD,
                 // 15-20 cycle latency). Alternating lets OOO overlap FMA
                 // and sqrt on independent data.
                 if i % 2 == 0 {
-                    v = unsafe { _mm256_sqrt_pd(v) };
+                    v = _mm256_sqrt_pd(v);
                 }
 
-                v = unsafe { _mm256_max_pd(v, vclamp_lo) };
-                v = unsafe { _mm256_min_pd(v, vclamp_hi) };
-                // SAFETY: ptr is aligned and in-bounds.
-                unsafe { _mm256_store_pd(ptr, v) };
+                v = _mm256_max_pd(v, vclamp_lo);
+                v = _mm256_min_pd(v, vclamp_hi);
+                _mm256_store_pd(ptr, v);
 
                 // Integer multiply every 8 chunks to keep integer ports
                 // active without starving FP throughput.
                 if i % 8 == 0 {
-                    iacc = unsafe { _mm256_mullo_epi32(iacc, imul) };
-                    iacc = unsafe { _mm256_add_epi32(iacc, imul) };
+                    iacc = _mm256_mullo_epi32(iacc, imul);
+                    iacc = _mm256_add_epi32(iacc, imul);
                 }
             }
         }
@@ -363,14 +361,14 @@ fn ram_stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
 /// run at full speed for maximum memory bandwidth and heat.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
     use std::arch::x86_64::{
         _mm256_fmadd_pd, _mm256_load_pd, _mm256_set1_pd, _mm256_stream_pd, _mm_sfence,
     };
 
-    // SAFETY: target_feature guarantees AVX2+FMA are available.
-    let vmul = unsafe { _mm256_set1_pd(1.000_000_000_1) };
-    let vadd = unsafe { _mm256_set1_pd(0.999_999_999_9) };
+    let vmul = _mm256_set1_pd(1.000_000_000_1);
+    let vadd = _mm256_set1_pd(0.999_999_999_9);
     let chunks = len / F64S_PER_AVX2;
     // Process 4 consecutive 32-byte vectors (128 bytes) per iteration.
     let unrolled = chunks / 4 * 4;
@@ -379,32 +377,31 @@ unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
         let mut i = 0;
         while i < unrolled {
             let off0 = i * F64S_PER_AVX2;
-            // SAFETY: buf is 32-byte aligned with len elements.
-            let p0 = unsafe { buf.add(off0) };
-            let v0 = unsafe { _mm256_load_pd(p0) };
-            unsafe { _mm256_stream_pd(p0, _mm256_fmadd_pd(v0, vmul, vadd)) };
+            let p0 = buf.add(off0);
+            let v0 = _mm256_load_pd(p0);
+            _mm256_stream_pd(p0, _mm256_fmadd_pd(v0, vmul, vadd));
 
-            let p1 = unsafe { buf.add(off0 + F64S_PER_AVX2) };
-            let v1 = unsafe { _mm256_load_pd(p1) };
-            unsafe { _mm256_stream_pd(p1, _mm256_fmadd_pd(v1, vmul, vadd)) };
+            let p1 = buf.add(off0 + F64S_PER_AVX2);
+            let v1 = _mm256_load_pd(p1);
+            _mm256_stream_pd(p1, _mm256_fmadd_pd(v1, vmul, vadd));
 
-            let p2 = unsafe { buf.add(off0 + F64S_PER_AVX2 * 2) };
-            let v2 = unsafe { _mm256_load_pd(p2) };
-            unsafe { _mm256_stream_pd(p2, _mm256_fmadd_pd(v2, vmul, vadd)) };
+            let p2 = buf.add(off0 + F64S_PER_AVX2 * 2);
+            let v2 = _mm256_load_pd(p2);
+            _mm256_stream_pd(p2, _mm256_fmadd_pd(v2, vmul, vadd));
 
-            let p3 = unsafe { buf.add(off0 + F64S_PER_AVX2 * 3) };
-            let v3 = unsafe { _mm256_load_pd(p3) };
-            unsafe { _mm256_stream_pd(p3, _mm256_fmadd_pd(v3, vmul, vadd)) };
+            let p3 = buf.add(off0 + F64S_PER_AVX2 * 3);
+            let v3 = _mm256_load_pd(p3);
+            _mm256_stream_pd(p3, _mm256_fmadd_pd(v3, vmul, vadd));
 
             i += 4;
         }
         // Handle remaining chunks.
         for j in unrolled..chunks {
-            let p = unsafe { buf.add(j * F64S_PER_AVX2) };
-            let v = unsafe { _mm256_load_pd(p) };
-            unsafe { _mm256_stream_pd(p, _mm256_fmadd_pd(v, vmul, vadd)) };
+            let p = buf.add(j * F64S_PER_AVX2);
+            let v = _mm256_load_pd(p);
+            _mm256_stream_pd(p, _mm256_fmadd_pd(v, vmul, vadd));
         }
-        unsafe { _mm_sfence() };
+        _mm_sfence();
     }
 }
 
