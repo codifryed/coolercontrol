@@ -29,8 +29,7 @@ const NICE_LEVEL: i32 = 19;
 /// DRAM traffic across threads for maximum heat generation.
 const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
 const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
-#[cfg(target_arch = "x86_64")]
-const AVX2_ALIGN: usize = 32;
+const SIMD_ALIGN: usize = 32;
 #[cfg(target_arch = "x86_64")]
 const F64S_PER_AVX2: usize = 4;
 // AVX2 loops process F64S_PER_AVX2 elements per iteration; a non-divisible
@@ -141,7 +140,7 @@ struct AlignedBuffer {
 impl AlignedBuffer {
     fn new(count: usize) -> Self {
         let size = count * size_of::<f64>();
-        let layout = alloc::Layout::from_size_align(size, AVX2_ALIGN).expect("valid layout");
+        let layout = alloc::Layout::from_size_align(size, SIMD_ALIGN).expect("valid layout");
         // SAFETY: Layout is valid and non-zero.
         let ptr = unsafe { alloc::alloc(layout) };
         if ptr.is_null() {
@@ -867,7 +866,7 @@ mod tests {
     #[test]
     fn aligned_buffer_is_32_byte_aligned() {
         let buf = AlignedBuffer::new(STRESS_BUF_F64S);
-        assert_eq!(buf.ptr as usize % AVX2_ALIGN, 0);
+        assert_eq!(buf.ptr as usize % SIMD_ALIGN, 0);
         assert_eq!(buf.len, STRESS_BUF_F64S);
     }
 
