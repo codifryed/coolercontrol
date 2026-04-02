@@ -41,7 +41,7 @@ use tokio_util::sync::CancellationToken;
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
 const NOTIFICATION_CMD_TIMEOUT: Duration = Duration::from_secs(20);
 const UEVENT_BUF_SIZE: usize = 4096;
-/// Icon 4 = NotificationIcon::Info in notifier.rs.
+/// Icon 4 = `NotificationIcon::Info` in notifier.rs.
 const NOTIFICATION_ICON_INFO: u8 = 4;
 const MIN_USER_UID: u32 = 1000;
 
@@ -227,7 +227,7 @@ async fn run_event_loop(
             perform_scan(
                 &hwmon_baseline,
                 &lc_baseline,
-                &liquidctl_repo,
+                liquidctl_repo.as_ref(),
                 &bin_path,
                 &device_changed,
             )
@@ -297,13 +297,11 @@ fn is_relevant_uevent(buf: &[u8]) -> bool {
             continue;
         }
         if let Ok(s) = std::str::from_utf8(field) {
-            if s.starts_with("ACTION=") {
-                let action = &s[7..];
+            if let Some(action) = s.strip_prefix("ACTION=") {
                 if action == "add" || action == "remove" {
                     action_relevant = true;
                 }
-            } else if s.starts_with("SUBSYSTEM=") {
-                let subsystem = &s[10..];
+            } else if let Some(subsystem) = s.strip_prefix("SUBSYSTEM=") {
                 if subsystem == "hwmon" || subsystem == "usb" || subsystem == "hidraw" {
                     subsystem_relevant = true;
                 }
@@ -321,7 +319,7 @@ fn is_relevant_uevent(buf: &[u8]) -> bool {
 async fn perform_scan(
     hwmon_baseline: &HashSet<PathBuf>,
     lc_baseline: &HashSet<String>,
-    liquidctl_repo: &Option<Rc<LiquidctlRepo>>,
+    liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
     bin_path: &str,
     device_changed: &Rc<Cell<bool>>,
 ) {
@@ -367,7 +365,7 @@ async fn scan_hwmon_changes(baseline: &HashSet<PathBuf>, bin_path: &str) -> bool
 /// Gets a device name for a removed device path.
 /// The sysfs name file may no longer exist, so fall back to the path itself.
 async fn device_name_for_removed(path: &Path) -> String {
-    if let Ok(contents) = crate::cc_fs::read_sysfs(path.join("name")).await {
+    if let Ok(contents) = cc_fs::read_sysfs(path.join("name")).await {
         let name = contents.trim().to_string();
         if name.is_empty().not() {
             return name;
@@ -379,7 +377,7 @@ async fn device_name_for_removed(path: &Path) -> String {
 /// Compares current liquidctl devices against the baseline.
 async fn scan_liquidctl_changes(
     baseline: &HashSet<String>,
-    liquidctl_repo: &Option<Rc<LiquidctlRepo>>,
+    liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
     bin_path: &str,
 ) -> bool {
     let Some(repo) = liquidctl_repo else {
