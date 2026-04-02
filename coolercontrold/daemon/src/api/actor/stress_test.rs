@@ -145,7 +145,7 @@ impl StressTestActor {
         let duration = duration_secs
             .unwrap_or(DEFAULT_DURATION_SECS)
             .min(MAX_DURATION_SECS);
-        let available_cpus = crate::stress::online_cpu_count();
+        let available_cpus = cc_stress::online_cpu_count();
         let threads = thread_count
             .unwrap_or(available_cpus)
             .min(available_cpus * 2)
@@ -236,9 +236,9 @@ impl StressTestActor {
             .unwrap_or(DEFAULT_DURATION_SECS)
             .min(MAX_DURATION_SECS);
 
-        let available = crate::stress::available_memory_bytes()
+        let available = cc_stress::available_memory_bytes()
             .map_err(|e| anyhow!("Failed to read available memory: {e}"))?;
-        let alloc_bytes = (available as f64 * crate::stress::RAM_STRESS_ALLOC_FRACTION) as u64;
+        let alloc_bytes = (available as f64 * cc_stress::RAM_STRESS_ALLOC_FRACTION) as u64;
 
         info!(
             "Starting RAM stress test: {duration}s, {} MiB",

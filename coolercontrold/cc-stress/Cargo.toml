@@ -1,0 +1,31 @@
+[package]
+name = "cc-stress"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "CPU, GPU, and RAM stress testing for thermal validation"
+categories = ["hardware-support"]
+keywords = ["stress", "hardware", "thermal", "benchmark"]
+homepage = "https://coolercontrol.org"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow = "1.0.102"
+nix = { version = "0.31.2", default-features = false, features = [
+  "user",
+  "sched",
+] }
+wgpu = { version = "24", default-features = false, features = [
+  "vulkan-portability",
+  "angle",
+  "wgsl",
+] }
+tokio = { version = "1.50.0", default-features = false, features = [
+  "rt",
+  "time",
+] }

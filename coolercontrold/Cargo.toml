@@ -1,5 +1,5 @@
 [workspace]
-members = ["daemon", "cc-detect"]
+members = ["daemon", "cc-detect", "cc-stress"]
 resolver = "3"
 
 [profile.dev]

@@ -63,7 +63,6 @@ mod paths;
 mod repositories;
 mod setting;
 mod sleep_listener;
-mod stress;
 mod token;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -460,15 +459,15 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
         exit_successfully();
     }
     if let Some(SubCommands::StressCpu { threads, timeout }) = &args.command {
-        stress::run_cpu_stress(*threads, *timeout)?;
+        cc_stress::run_cpu_stress(*threads, *timeout)?;
         exit_successfully();
     }
     if let Some(SubCommands::StressGpu { timeout }) = &args.command {
-        stress::run_gpu_stress(*timeout).await?;
+        cc_stress::run_gpu_stress(*timeout).await?;
         exit_successfully();
     }
     if let Some(SubCommands::StressRam { bytes, timeout }) = &args.command {
-        stress::run_ram_stress(*bytes, *timeout)?;
+        cc_stress::run_ram_stress(*bytes, *timeout)?;
         exit_successfully();
     }
     Ok(())

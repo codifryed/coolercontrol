@@ -734,6 +734,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc-stress"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nix",
+ "tokio",
+ "wgpu",
+]
+
+[[package]]
 name = "cfg-expr"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -927,6 +937,7 @@ dependencies = [
  "base64",
  "bitflags 2.11.0",
  "cc-detect",
+ "cc-stress",
  "chrono",
  "clap",
  "derive_more",
@@ -983,7 +994,6 @@ dependencies = [
  "tower-sessions",
  "tower-sessions-core",
  "uuid",
- "wgpu",
  "zbus",
 ]
 
