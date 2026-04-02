@@ -62,6 +62,7 @@ mod notifier;
 mod paths;
 mod repositories;
 mod setting;
+mod device_listener;
 mod sleep_listener;
 mod token;
 

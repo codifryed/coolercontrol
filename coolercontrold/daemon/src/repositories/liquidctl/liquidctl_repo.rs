@@ -209,6 +209,17 @@ impl LiquidctlRepo {
         Ok(())
     }
 
+    /// Performs a fresh scan for currently connected liquidctl devices without
+    /// modifying any cached state. Used for device change detection.
+    pub async fn scan_devices(&self) -> Result<Vec<String>> {
+        let response = self.liqctld_client.scan_devices().await?;
+        Ok(response
+            .devices
+            .into_iter()
+            .map(|d| d.description)
+            .collect())
+    }
+
     /// Returns a vector of all driver locations for devices managed by this
     /// `LiquidctlRepo` instance.
     ///
