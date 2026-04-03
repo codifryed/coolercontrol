@@ -27,14 +27,14 @@
 //!
 //! - **CPU**: Spawns N OS threads running tight FMA+sqrt loops over a
 //!   4 MiB buffer (exceeds L2, forces L3/DRAM traffic). Uses AVX2
-//!   intrinsics on x86_64 when available, with a scalar fallback for
+//!   intrinsics on `x86_64` when available, with a scalar fallback for
 //!   other architectures.
 //! - **RAM**: Similar to CPU but uses non-temporal stores (AVX2) to
 //!   bypass cache and stream directly to DRAM, stressing DIMMs and the
 //!   memory controller.
 //! - **GPU**: Uses wgpu compute shaders to stream FMA+sqrt workloads
 //!   through a ring of VRAM buffers, stressing GPU cores and VRAM.
-//! - **Drive**: Performs random O_DIRECT reads on a block device to
+//! - **Drive**: Performs random `O_DIRECT` reads on a block device to
 //!   generate I/O heat without write wear.
 //!
 //! # Unsafe usage
@@ -42,7 +42,7 @@
 //! Unsafe is used in this crate for:
 //! - Manual aligned heap allocation (`alloc::alloc`/`dealloc`) because
 //!   standard `Vec` cannot guarantee the 32-byte (SIMD) or 4096-byte
-//!   (O_DIRECT page) alignment these workloads require.
+//!   (`O_DIRECT` page) alignment these workloads require.
 //! - AVX2/FMA SIMD intrinsics, which are inherently unsafe in Rust.
 //! - Linux syscalls (`nice`, `ioctl`, `pread`) that have no safe
 //!   wrapper in the `nix` crate at the version we use.
@@ -75,10 +75,10 @@ const F64S_PER_AVX2: usize = 4;
 #[cfg(target_arch = "x86_64")]
 const _: () = assert!(STRESS_BUF_F64S % F64S_PER_AVX2 == 0);
 /// Full buffer sweeps between deadline checks. Higher values reduce the
-/// overhead of clock_gettime syscalls and keep CPU utilization closer to 100%.
+/// overhead of `clock_gettime` syscalls and keep CPU utilization closer to 100%.
 const CACHE_SWEEPS_PER_CHECK: u32 = 16;
 
-/// Fraction of MemAvailable to allocate for RAM stress.
+/// Fraction of `MemAvailable` to allocate for RAM stress.
 pub const RAM_STRESS_ALLOC_FRACTION: f64 = 0.8;
 
 /// Per-buffer size for discrete GPUs (256 MiB, total ring = 2 GiB).
@@ -97,9 +97,9 @@ const MEM_STRESS_RING_REPS: u32 = 4;
 /// Sleep between GPU submissions for desktop compositing (ms).
 const GPU_SUBMIT_SLEEP_MS: u64 = 0;
 
-/// Per-read block size for drive stress (128 KiB, natural NVMe transfer size).
+/// Per-read block size for drive stress (128 KiB, natural `NVMe` transfer size).
 const DRIVE_STRESS_BLOCK_SIZE: usize = 128 * 1024;
-/// Page alignment required for O_DIRECT buffers.
+/// Page alignment required for `O_DIRECT` buffers.
 const DRIVE_STRESS_ALIGNMENT: usize = 4096;
 /// Default number of I/O threads for drive stress.
 pub const DRIVE_STRESS_DEFAULT_THREADS: u16 = 4;
@@ -109,6 +109,7 @@ const READS_PER_DEADLINE_CHECK: u32 = 64;
 /// Returns the number of logical processors by counting entries in /proc/cpuinfo.
 /// This is not restricted by CPU affinity or cgroup limits
 /// (unlike `available_parallelism`).
+#[must_use]
 pub fn online_cpu_count() -> u16 {
     std::fs::read_to_string("/proc/cpuinfo")
         .map(|content| {
@@ -126,6 +127,10 @@ pub fn online_cpu_count() -> u16 {
 }
 
 /// Returns available system memory in bytes from /proc/meminfo.
+///
+/// # Errors
+///
+/// Returns an error if /proc/meminfo cannot be read or parsed.
 pub fn available_memory_bytes() -> Result<u64> {
     let content = std::fs::read_to_string("/proc/meminfo")
         .map_err(|e| anyhow!("Failed to read /proc/meminfo: {e}"))?;
@@ -163,7 +168,7 @@ fn set_nice_level() -> Result<()> {
     // SAFETY: nice() is always safe to call. It cannot corrupt memory;
     // it only asks the kernel to adjust this process's scheduling
     // priority. No pointers, no shared state, no invariants to uphold.
-    let result = unsafe { nix::libc::nice(NICE_LEVEL) };
+    let result = unsafe { libc::nice(NICE_LEVEL) };
     // nice() returns -1 on error, but -1 is also a valid new priority.
     // The only way to distinguish: clear errno before the call (libc
     // does this), then check errno after. If errno is 0, the call
@@ -205,6 +210,8 @@ impl AlignedBuffer {
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }
+        // Alignment is sound: SIMD_ALIGN (32) exceeds f64's alignment (8).
+        #[allow(clippy::cast_ptr_alignment)]
         let ptr = ptr.cast::<f64>();
         // SAFETY: alloc() just returned a valid, non-null pointer to
         // `count * size_of::<f64>()` bytes. Casting to `*mut f64` and
@@ -215,7 +222,11 @@ impl AlignedBuffer {
         // handle in microcode at 50-100x penalty per operation. That
         // would throttle the stress loop instead of maximizing heat.
         for (i, elem) in init_slice.iter_mut().enumerate() {
-            *elem = 1.0 + (i as f64) * 1e-10;
+            // Precision loss is intentional; exact init values do not matter.
+            #[allow(clippy::cast_precision_loss)]
+            {
+                *elem = 1.0 + (i as f64) * 1e-10;
+            }
         }
         Self {
             ptr,
@@ -248,6 +259,10 @@ impl Drop for AlignedBuffer {
 }
 
 /// Run CPU stress test with cache-busting FMA+sqrt loops on N threads.
+///
+/// # Errors
+///
+/// Returns an error if CPU affinity or nice level cannot be set.
 pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
     set_nice_level()?;
@@ -297,8 +312,8 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let addend = 0.999_999_999_f64;
     while Instant::now() < deadline {
         for _ in 0..CACHE_SWEEPS_PER_CHECK {
-            for i in 0..buf.len() {
-                let mut v = buf[i];
+            for (i, elem) in buf.iter_mut().enumerate() {
+                let mut v = *elem;
                 v = v.mul_add(multiplier, addend);
                 if i % 2 == 0 {
                     v = v.sqrt();
@@ -306,7 +321,7 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
                 // Clamp as a safety net against numerical drift
                 // accumulating over billions of iterations.
                 v = v.clamp(0.1, 1e100);
-                buf[i] = v;
+                *elem = v;
             }
         }
     }
@@ -384,6 +399,10 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
 
 /// Run RAM stress test by streaming read-modify-write across a large allocation.
 /// Stresses DIMMs and the CPU's memory controller for maximum memory heat.
+///
+/// # Errors
+///
+/// Returns an error if CPU affinity or nice level cannot be set.
 pub fn run_ram_stress(alloc_bytes: u64, timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
     set_nice_level()?;
@@ -445,8 +464,8 @@ fn ram_stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
             buf[i + 3] = buf[i + 3].mul_add(multiplier, addend);
             i += 4;
         }
-        for j in unrolled..len {
-            buf[j] = buf[j].mul_add(multiplier, addend);
+        for elem in &mut buf[unrolled..len] {
+            *elem = elem.mul_add(multiplier, addend);
         }
     }
     std::hint::black_box(buf[0]);
@@ -539,9 +558,9 @@ impl XorShift64 {
     }
 }
 
-/// Page-aligned (4096-byte) heap buffer for O_DIRECT reads.
+/// Page-aligned (4096-byte) heap buffer for `O_DIRECT` reads.
 ///
-/// Linux O_DIRECT requires the user-space buffer to be aligned to the
+/// Linux `O_DIRECT` requires the user-space buffer to be aligned to the
 /// block device's logical sector size (typically 512 or 4096 bytes).
 /// Standard `Vec<u8>` only guarantees 1-byte alignment. Manual
 /// allocation via `alloc::alloc` lets us specify page alignment.
@@ -598,7 +617,7 @@ impl Drop for DirectIoBuffer {
 // Breakdown: direction=read (0x80000000) | size=8 bytes (8 << 16) |
 //            type=0x12 (block device) | nr=114
 // This is a stable kernel ABI, safe to hardcode.
-const BLKGETSIZE64: libc::c_ulong = 0x80081272;
+const BLKGETSIZE64: libc::c_ulong = 0x8008_1272;
 
 /// Returns the size of a block device in bytes via the BLKGETSIZE64
 /// ioctl. Used to compute the valid offset range for random reads.
@@ -623,9 +642,14 @@ fn block_device_size(path: &str) -> Result<u64> {
     Ok(size)
 }
 
-/// Run drive stress test with random read-only I/O using O_DIRECT.
+/// Run drive stress test with random read-only I/O using `O_DIRECT`.
 /// Performs random reads on the specified block device to generate heat
 /// without causing any drive wear (reads only, no writes).
+///
+/// # Errors
+///
+/// Returns an error if the device path is not a block device, is too
+/// small, or if CPU affinity/nice level cannot be set.
 pub fn run_drive_stress(device_path: &str, threads: u16, timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
     set_nice_level()?;
@@ -673,8 +697,8 @@ pub fn run_drive_stress(device_path: &str, threads: u16, timeout_secs: u16) -> R
 /// Per-thread drive stress worker.
 ///
 /// Opens the block device with `O_DIRECT` to bypass the kernel page
-/// cache. Without O_DIRECT, repeated reads would be served from RAM
-/// after the first pass, generating zero drive activity. O_DIRECT
+/// cache. Without `O_DIRECT`, repeated reads would be served from RAM
+/// after the first pass, generating zero drive activity. `O_DIRECT`
 /// forces every read to hit the physical drive.
 ///
 /// Reads are random to defeat the drive's internal read-ahead cache
@@ -702,6 +726,8 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
     // multiplier) and XOR with nanosecond time. This gives each thread
     // a different random offset sequence, spreading I/O across the
     // full device instead of all threads reading the same blocks.
+    // Truncation is intentional: we only need entropy for PRNG seeding.
+    #[allow(clippy::cast_possible_truncation)]
     let seed = u64::from(thread_idx).wrapping_mul(6_364_136_223_846_793_005)
         ^ (Instant::now().elapsed().as_nanos() as u64);
     let mut rng = XorShift64::new(seed);
@@ -718,7 +744,9 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
             // - count: DRIVE_STRESS_BLOCK_SIZE matches buf's allocation.
             // - offset: within [0, device_size - block_size], guaranteed
             //   by max_offset computation in run_drive_stress.
-            let ret = unsafe {
+            // Wrap is not possible: max device offset fits in i64.
+            #[allow(clippy::cast_possible_wrap)]
+            let _ret = unsafe {
                 libc::pread(
                     fd,
                     buf.as_mut_ptr().cast(),
@@ -726,10 +754,7 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
                     offset as libc::off_t,
                 )
             };
-            if ret < 0 {
-                // Transient I/O errors are expected on some drives, continue.
-                continue;
-            }
+            // Transient I/O errors are expected on some drives; ignore.
         }
     }
     // Prevent the compiler from optimizing away the read loop by
@@ -739,6 +764,11 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
 
 /// Run GPU stress test using wgpu compute shaders for memory-bandwidth stress.
 /// Enumerates all available GPU adapters and stresses them in parallel.
+///
+/// # Errors
+///
+/// Returns an error if no hardware GPU adapter is found, if all adapters
+/// fail to initialize, or if CPU affinity/nice level cannot be set.
 pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
     reset_cpu_affinity()?;
     set_nice_level()?;
@@ -872,6 +902,8 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         wgpu::DeviceType::DiscreteGpu => MEM_STRESS_BUF_DISCRETE.min(max_binding),
         _ => MEM_STRESS_BUF_INTEGRATED.min(max_binding),
     };
+    // buf_bytes is at most 256 MiB, so buf_bytes/16 fits in u32.
+    #[allow(clippy::cast_possible_truncation)]
     let vec4_count = (buf_bytes / 16) as u32;
     let total_mb = (buf_bytes * MEM_STRESS_RING_SIZE as u64) / (1024 * 1024);
     eprintln!("  VRAM stress: {total_mb} MiB ({MEM_STRESS_RING_SIZE} x {buf_bytes} B)");
@@ -963,7 +995,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         layout: Some(&pipeline_layout),
         module: &shader_module,
         entry_point: Some("main"),
-        compilation_options: Default::default(),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
         cache: None,
     });
 
