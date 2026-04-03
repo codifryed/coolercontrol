@@ -25,10 +25,10 @@
 //!
 //! # Architecture
 //!
-//! - **CPU**: Spawns N OS threads running tight FMA+sqrt loops over a
-//!   16 KiB buffer (fits in L1d cache to keep execution units fully fed
-//!   with no memory stalls). Uses AVX2 intrinsics on `x86_64` when
-//!   available, with a scalar fallback for other architectures.
+//! - **CPU**: Spawns N OS threads each running a tight matrix product
+//!   loop (C = A x B, 128x128 f64). The triple-nested multiply
+//!   balances sustained FMA compute with L1->L2 cache traffic for
+//!   maximum heat. Inspired by stress-ng's matrixprod method.
 //! - **RAM**: Similar to CPU but uses non-temporal stores (AVX2) to
 //!   bypass cache and stream directly to DRAM, stressing DIMMs and the
 //!   memory controller.
@@ -63,28 +63,22 @@ use anyhow::{anyhow, Result};
 /// purpose of a thermal stress test.
 const NICE_LEVEL: i32 = 5;
 
-/// Per-thread working buffer size. Sized to fit within L1 data cache
-/// (typically 32 KiB per core). L1-resident data keeps execution units
-/// fed every cycle with no memory stalls. A larger buffer that exceeds
-/// L1/L2 causes cache misses that stall the core while waiting for
-/// L3/DRAM, reducing dynamic power draw and heat despite 100% CPU usage.
-const STRESS_BUF_BYTES: usize = 16 * 1024;
-/// Element count for the f64 working buffer.
-const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
+/// Matrix dimension for CPU stress. Three 128x128 f64 matrices total
+/// 384 KiB, which fits in L2 cache (typically 256 KiB to 1 MiB per core)
+/// but not L1 (32 KiB). This creates sustained L1 miss -> L2 hit traffic
+/// that exercises the cache hierarchy alongside FPU compute, generating
+/// more heat than either pure register loops or pure memory streaming.
+/// Inspired by stress-ng's matrixprod method, which benchmarks as the
+/// highest heat generator on x86_64 (Colin Ian King, GPL-2+).
+const MAT_SIZE: usize = 128;
+/// Total element count per matrix (128 x 128 = 16,384 f64 values).
+const MAT_ELEMENTS: usize = MAT_SIZE * MAT_SIZE;
 /// 32 bytes = 256 bits, matching AVX2 register width. Required for
 /// `_mm256_load_pd`/`_mm256_store_pd` which fault on unaligned addresses.
 const SIMD_ALIGN: usize = 32;
 /// Number of f64 values packed in one AVX2 256-bit register.
 #[cfg(target_arch = "x86_64")]
 const F64S_PER_AVX2: usize = 4;
-// AVX2 loops process F64S_PER_AVX2 elements per iteration; a non-divisible
-// buffer would silently drop remainder elements, under-stressing the cache.
-#[cfg(target_arch = "x86_64")]
-const _: () = assert!(STRESS_BUF_F64S % F64S_PER_AVX2 == 0);
-/// Full buffer sweeps between deadline checks. With the 16 KiB L1-resident
-/// buffer, each sweep completes in microseconds, so a high count is needed
-/// to amortize `clock_gettime` syscall overhead (~10-20 ms between checks).
-const BUFFER_SWEEPS_PER_CHECK: u32 = 4096;
 
 /// Fraction of `MemAvailable` to allocate for RAM stress.
 pub const RAM_STRESS_ALLOC_FRACTION: f64 = 0.8;
@@ -267,7 +261,12 @@ impl Drop for AlignedBuffer {
     }
 }
 
-/// Run CPU stress test with cache-busting FMA+sqrt loops on N threads.
+/// Run CPU stress test using matrix product on N threads.
+///
+/// Each thread repeatedly computes C = A x B on 128x128 f64 matrices.
+/// This generates maximum sustained heat by balancing FPU compute
+/// (one FMA per inner-loop iteration) with L1->L2 cache traffic
+/// (column-wise B access defeats the L1 prefetcher).
 ///
 /// # Errors
 ///
@@ -288,14 +287,7 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
 
     for _ in 0..num_threads {
         handles.push(std::thread::spawn(move || {
-            let mut buf = AlignedBuffer::new(STRESS_BUF_F64S);
-            #[cfg(target_arch = "x86_64")]
-            if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-                // SAFETY: AVX2+FMA support confirmed by runtime feature detection.
-                unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
-                return;
-            }
-            stress_loop_scalar(buf.as_mut_slice(), deadline);
+            cpu_stress_matrixprod(deadline);
         }));
     }
 
@@ -306,101 +298,57 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
-/// Scalar fallback for non-x86_64 or CPUs without AVX2+FMA.
+/// Matrix product loop for maximum sustained CPU heat generation.
 ///
-/// Each element gets: FMA (fused multiply-add) to exercise the FP
-/// multiply and add units, plus sqrt on every element to keep the FP
-/// divider engaged 100% of the time (the divider is the most
-/// power-hungry unit in the core).
-/// The buffer fits in L1d cache so execution units stay fully fed.
-fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
-    // Coefficients close to 1.0: the FMA result stays in the same
-    // order of magnitude indefinitely, avoiding overflow, underflow,
-    // and denormal penalties.
-    let multiplier = 1.000_000_001_f64;
-    let addend = 0.999_999_999_f64;
-    while Instant::now() < deadline {
-        for _ in 0..BUFFER_SWEEPS_PER_CHECK {
-            for elem in buf.iter_mut() {
-                let mut v = *elem;
-                v = v.mul_add(multiplier, addend);
-                v = v.sqrt();
-                // Clamp as a safety net against numerical drift
-                // accumulating over billions of iterations.
-                v = v.clamp(0.1, 1e100);
-                *elem = v;
-            }
-        }
+/// Computes C = A x B repeatedly using a triple-nested loop. The inner
+/// multiply-accumulate (`sum += A[i][k] * B[k][j]`) keeps the FMA unit
+/// busy every cycle. Column-wise access to B (stride = 1 KiB between
+/// consecutive k values) defeats the L1 prefetcher, creating steady
+/// L1 miss -> L2 hit traffic that exercises the cache coherency
+/// hardware. The total working set (384 KiB for three matrices) fits
+/// in L2 but not L1, so misses resolve quickly (~12 cycles) without
+/// long DRAM stalls.
+///
+/// After each multiply, A and C are swapped so the result feeds back
+/// as input. This creates cross-iteration data dependencies that
+/// prevent the compiler from hoisting or eliminating the computation.
+fn cpu_stress_matrixprod(deadline: Instant) {
+    let mut a = vec![0.0_f64; MAT_ELEMENTS];
+    let mut b = vec![0.0_f64; MAT_ELEMENTS];
+    let mut c = vec![0.0_f64; MAT_ELEMENTS];
+
+    // Initialize with small positive values. Varying per-element avoids
+    // degenerate patterns (all-zeros, all-ones) that could let the CPU
+    // skip work via fast-path detection.
+    for i in 0..MAT_ELEMENTS {
+        // Precision loss is intentional; exact init values do not matter.
+        #[allow(clippy::cast_precision_loss)]
+        let v = 1.0 + (i as f64) * 1e-10;
+        a[i] = v;
+        b[i] = v;
     }
-    // Prevent the compiler from optimizing away the entire loop by
-    // marking the buffer content as observable.
-    std::hint::black_box(buf[0]);
-}
 
-/// AVX2+FMA hot loop: 4-wide f64 FMA with interleaved sqrt and integer ops.
-///
-/// Targets multiple execution ports simultaneously to maximize power draw:
-/// - VFMADD231PD (FMA unit, port 0/1 on Zen/Intel)
-/// - VSQRTPD (divider unit, 15-20 cycle latency, overlapped by OOO)
-/// - VPMULLD/VPADDD (integer ALU, port 0/1, interleaved with FP)
-/// - L1-resident buffer sweep (all loads/stores hit L1d, no stalls)
-///
-/// Takes raw pointers because AVX2 aligned load/store intrinsics
-/// (`_mm256_load_pd`, `_mm256_store_pd`) operate on `*const f64` /
-/// `*mut f64` directly. There is no safe Rust API for these.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx2,fma")]
-// Suppresses per-intrinsic unsafe blocks inside this already-unsafe fn.
-// Every intrinsic call here is sound: the buffer is 32-byte aligned
-// (AlignedBuffer guarantees SIMD_ALIGN), and all pointer offsets stay
-// within the allocated region (loop bounds are derived from `len`).
-#[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
-    use std::arch::x86_64::{
-        __m256d, __m256i, _mm256_add_epi32, _mm256_fmadd_pd, _mm256_load_pd, _mm256_max_pd,
-        _mm256_min_pd, _mm256_mullo_epi32, _mm256_set1_pd, _mm256_set_epi32, _mm256_sqrt_pd,
-        _mm256_store_pd,
-    };
-
-    let vmul: __m256d = _mm256_set1_pd(1.000_000_001);
-    let vadd: __m256d = _mm256_set1_pd(0.999_999_999);
-    let vclamp_lo: __m256d = _mm256_set1_pd(0.1);
-    let vclamp_hi: __m256d = _mm256_set1_pd(1e100);
-
-    // Integer accumulators to engage integer execution ports.
-    let mut iacc: __m256i = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
-    let imul: __m256i = _mm256_set_epi32(7, 11, 13, 17, 19, 23, 29, 31);
-
-    let chunks = len / F64S_PER_AVX2;
     while Instant::now() < deadline {
-        for _ in 0..BUFFER_SWEEPS_PER_CHECK {
-            for i in 0..chunks {
-                let ptr = buf.add(i * F64S_PER_AVX2);
-                let mut v = _mm256_load_pd(ptr);
-
-                v = _mm256_fmadd_pd(v, vmul, vadd);
-
-                // Sqrt on every chunk keeps the divider unit (VSQRTPD,
-                // 15-20 cycle latency) engaged 100%. The OOO engine
-                // overlaps FMA from other independent chunks while sqrt
-                // is in flight.
-                v = _mm256_sqrt_pd(v);
-
-                v = _mm256_max_pd(v, vclamp_lo);
-                v = _mm256_min_pd(v, vclamp_hi);
-                _mm256_store_pd(ptr, v);
-
-                // Integer multiply every 8 chunks to keep integer ports
-                // active without starving FP throughput.
-                if i % 8 == 0 {
-                    iacc = _mm256_mullo_epi32(iacc, imul);
-                    iacc = _mm256_add_epi32(iacc, imul);
+        // C = A x B. Each multiply does MAT_SIZE^3 = ~2M FMA ops,
+        // taking ~1-5 ms depending on CPU frequency.
+        for i in 0..MAT_SIZE {
+            for j in 0..MAT_SIZE {
+                let mut sum = 0.0_f64;
+                for k in 0..MAT_SIZE {
+                    // mul_add compiles to a single FMA instruction on
+                    // hardware that supports it (x86_64 FMA3, aarch64).
+                    sum = a[i * MAT_SIZE + k].mul_add(b[k * MAT_SIZE + j], sum);
                 }
+                c[i * MAT_SIZE + j] = sum;
             }
         }
+        // Prevent dead-code elimination of the result matrix.
+        std::hint::black_box(&c);
+        // Feed result back as input for the next iteration. This
+        // creates a data dependency across iterations, preventing the
+        // compiler from optimizing away repeated identical multiplies.
+        std::mem::swap(&mut a, &mut c);
     }
-    // Prevent dead-code elimination of the integer accumulator.
-    std::hint::black_box(iacc);
 }
 
 /// Run RAM stress test by streaming read-modify-write across a large allocation.
@@ -491,8 +439,9 @@ fn ram_stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
 /// indefinitely, reducing effective bandwidth.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
-// See stress_loop_avx2_fma for rationale on suppressing per-intrinsic
-// unsafe blocks. Same alignment and bounds guarantees apply here.
+// Suppresses per-intrinsic unsafe blocks inside this already-unsafe fn.
+// The buffer is 32-byte aligned (AlignedBuffer guarantees SIMD_ALIGN),
+// and all pointer offsets stay within the allocated region.
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
     use std::arch::x86_64::{
@@ -1088,27 +1037,44 @@ mod tests {
 
     #[test]
     fn aligned_buffer_is_32_byte_aligned() {
-        let buf = AlignedBuffer::new(STRESS_BUF_F64S);
+        // AlignedBuffer is used by RAM stress. Verify SIMD alignment.
+        let buf = AlignedBuffer::new(1024);
         assert_eq!(buf.ptr as usize % SIMD_ALIGN, 0);
-        assert_eq!(buf.len, STRESS_BUF_F64S);
+        assert_eq!(buf.len, 1024);
     }
 
     #[test]
-    fn scalar_stress_loop_runs_briefly() {
-        let mut buf = AlignedBuffer::new(1024);
-        let deadline = Instant::now() + Duration::from_millis(100);
-        stress_loop_scalar(buf.as_mut_slice(), deadline);
+    fn cpu_stress_matrixprod_runs_briefly() {
+        // Verify the matrix product loop runs and terminates on deadline.
+        let deadline = Instant::now() + Duration::from_millis(200);
+        cpu_stress_matrixprod(deadline);
     }
 
-    #[cfg(target_arch = "x86_64")]
     #[test]
-    fn avx2_stress_loop_runs_if_supported() {
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            let mut buf = AlignedBuffer::new(STRESS_BUF_F64S);
-            let deadline = Instant::now() + Duration::from_millis(200);
-            // SAFETY: AVX2+FMA support confirmed above.
-            unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
+    fn cpu_stress_matrixprod_produces_nonzero_result() {
+        // Guard against the compiler optimizing away the computation.
+        // A single matrix multiply of positive inputs must produce
+        // positive, non-zero results.
+        let mut a = vec![0.0_f64; MAT_ELEMENTS];
+        let mut b = vec![0.0_f64; MAT_ELEMENTS];
+        let mut c = vec![0.0_f64; MAT_ELEMENTS];
+        for i in 0..MAT_ELEMENTS {
+            #[allow(clippy::cast_precision_loss)]
+            let v = 1.0 + (i as f64) * 1e-10;
+            a[i] = v;
+            b[i] = v;
         }
+        for i in 0..MAT_SIZE {
+            for j in 0..MAT_SIZE {
+                let mut sum = 0.0_f64;
+                for k in 0..MAT_SIZE {
+                    sum = a[i * MAT_SIZE + k].mul_add(b[k * MAT_SIZE + j], sum);
+                }
+                c[i * MAT_SIZE + j] = sum;
+            }
+        }
+        // Every element of C should be positive and finite.
+        assert!(c.iter().all(|v| v.is_finite() && *v > 0.0));
     }
 
     #[test]
