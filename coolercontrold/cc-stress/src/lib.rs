@@ -309,8 +309,9 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
 /// Scalar fallback for non-x86_64 or CPUs without AVX2+FMA.
 ///
 /// Each element gets: FMA (fused multiply-add) to exercise the FP
-/// multiply and add units, plus sqrt on every other element to engage
-/// the FP divider (sqrt shares the divider pipeline on most CPUs).
+/// multiply and add units, plus sqrt on every element to keep the FP
+/// divider engaged 100% of the time (the divider is the most
+/// power-hungry unit in the core).
 /// The buffer fits in L1d cache so execution units stay fully fed.
 fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     // Coefficients close to 1.0: the FMA result stays in the same
@@ -320,12 +321,10 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let addend = 0.999_999_999_f64;
     while Instant::now() < deadline {
         for _ in 0..BUFFER_SWEEPS_PER_CHECK {
-            for (i, elem) in buf.iter_mut().enumerate() {
+            for elem in buf.iter_mut() {
                 let mut v = *elem;
                 v = v.mul_add(multiplier, addend);
-                if i % 2 == 0 {
-                    v = v.sqrt();
-                }
+                v = v.sqrt();
                 // Clamp as a safety net against numerical drift
                 // accumulating over billions of iterations.
                 v = v.clamp(0.1, 1e100);
@@ -381,12 +380,11 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
 
                 v = _mm256_fmadd_pd(v, vmul, vadd);
 
-                // Sqrt on even chunks engages the divider unit (VSQRTPD,
-                // 15-20 cycle latency). Alternating lets OOO overlap FMA
-                // and sqrt on independent data.
-                if i % 2 == 0 {
-                    v = _mm256_sqrt_pd(v);
-                }
+                // Sqrt on every chunk keeps the divider unit (VSQRTPD,
+                // 15-20 cycle latency) engaged 100%. The OOO engine
+                // overlaps FMA from other independent chunks while sqrt
+                // is in flight.
+                v = _mm256_sqrt_pd(v);
 
                 v = _mm256_max_pd(v, vclamp_lo);
                 v = _mm256_min_pd(v, vclamp_hi);
