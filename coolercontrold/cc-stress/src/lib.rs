@@ -147,10 +147,11 @@ impl AlignedBuffer {
             alloc::handle_alloc_error(layout);
         }
         let ptr = ptr.cast::<f64>();
+        // SAFETY: ptr has count f64 elements allocated above.
+        let init_slice = unsafe { std::slice::from_raw_parts_mut(ptr, count) };
         // Initialize to small positive values to avoid denormals.
-        for i in 0..count {
-            // SAFETY: ptr has count elements allocated.
-            unsafe { ptr.add(i).write(1.0 + (i as f64) * 1e-10) };
+        for (i, elem) in init_slice.iter_mut().enumerate() {
+            *elem = 1.0 + (i as f64) * 1e-10;
         }
         Self {
             ptr,
@@ -161,6 +162,12 @@ impl AlignedBuffer {
 
     fn as_mut_ptr(&mut self) -> *mut f64 {
         self.ptr
+    }
+
+    fn as_mut_slice(&mut self) -> &mut [f64] {
+        // SAFETY: ptr has self.len f64 elements allocated and
+        // initialized in new().
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }
 
@@ -195,7 +202,7 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
                 unsafe { stress_loop_avx2_fma(buf.as_mut_ptr(), buf.len, deadline) };
                 return;
             }
-            stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
+            stress_loop_scalar(buf.as_mut_slice(), deadline);
         }));
     }
 
@@ -208,27 +215,23 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
 
 /// Scalar fallback: sweeps buffer with FMA + interleaved sqrt for cache and
 /// FP unit stress. Used on non-x86_64 or CPUs without AVX2+FMA.
-fn stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
+fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let multiplier = 1.000_000_001_f64;
     let addend = 0.999_999_999_f64;
     while Instant::now() < deadline {
         for _ in 0..CACHE_SWEEPS_PER_CHECK {
-            for i in 0..len {
-                // SAFETY: buf has len elements, all indices in bounds.
-                unsafe {
-                    let ptr = buf.add(i);
-                    let mut v = ptr.read();
-                    v = v.mul_add(multiplier, addend);
-                    if i % 2 == 0 {
-                        v = v.sqrt();
-                    }
-                    v = v.clamp(0.1, 1e100);
-                    ptr.write(v);
+            for i in 0..buf.len() {
+                let mut v = buf[i];
+                v = v.mul_add(multiplier, addend);
+                if i % 2 == 0 {
+                    v = v.sqrt();
                 }
+                v = v.clamp(0.1, 1e100);
+                buf[i] = v;
             }
         }
     }
-    std::hint::black_box(unsafe { buf.read() });
+    std::hint::black_box(buf[0]);
 }
 
 /// AVX2+FMA hot loop: 4-wide f64 FMA with interleaved sqrt and integer ops.
@@ -312,7 +315,7 @@ pub fn run_ram_stress(alloc_bytes: u64, timeout_secs: u16) -> Result<()> {
                 unsafe { ram_stress_loop_avx2(buf.as_mut_ptr(), buf.len, deadline) };
                 return;
             }
-            ram_stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
+            ram_stress_loop_scalar(buf.as_mut_slice(), deadline);
         }));
     }
 
@@ -324,35 +327,26 @@ pub fn run_ram_stress(alloc_bytes: u64, timeout_secs: u16) -> Result<()> {
 }
 
 /// Scalar RAM stress: unrolled sequential read-modify-write across buffer.
-fn ram_stress_loop_scalar(buf: *mut f64, len: usize, deadline: Instant) {
+fn ram_stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let multiplier = 1.000_000_000_1_f64;
     let addend = 0.999_999_999_9_f64;
+    let len = buf.len();
     let unrolled = len / 4 * 4;
     while Instant::now() < deadline {
         // Unrolled sequential sweep for maximum hardware prefetcher utilization.
         let mut i = 0;
         while i < unrolled {
-            // SAFETY: buf has len elements, all indices in bounds.
-            unsafe {
-                let p0 = buf.add(i);
-                p0.write(p0.read().mul_add(multiplier, addend));
-                let p1 = buf.add(i + 1);
-                p1.write(p1.read().mul_add(multiplier, addend));
-                let p2 = buf.add(i + 2);
-                p2.write(p2.read().mul_add(multiplier, addend));
-                let p3 = buf.add(i + 3);
-                p3.write(p3.read().mul_add(multiplier, addend));
-            }
+            buf[i] = buf[i].mul_add(multiplier, addend);
+            buf[i + 1] = buf[i + 1].mul_add(multiplier, addend);
+            buf[i + 2] = buf[i + 2].mul_add(multiplier, addend);
+            buf[i + 3] = buf[i + 3].mul_add(multiplier, addend);
             i += 4;
         }
         for j in unrolled..len {
-            unsafe {
-                let p = buf.add(j);
-                p.write(p.read().mul_add(multiplier, addend));
-            }
+            buf[j] = buf[j].mul_add(multiplier, addend);
         }
     }
-    std::hint::black_box(unsafe { buf.read() });
+    std::hint::black_box(buf[0]);
 }
 
 /// AVX2 RAM stress: unrolled sequential non-temporal stores bypass cache and
@@ -445,6 +439,11 @@ impl DirectIoBuffer {
 
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        // SAFETY: ptr has self.layout.size() bytes allocated in new().
+        unsafe { std::slice::from_raw_parts(self.ptr, self.layout.size()) }
     }
 }
 
@@ -567,7 +566,7 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
             }
         }
     }
-    std::hint::black_box(unsafe { buf.as_mut_ptr().read() });
+    std::hint::black_box(buf.as_slice()[0]);
 }
 
 /// Run GPU stress test using wgpu compute shaders for memory-bandwidth stress.
@@ -874,7 +873,7 @@ mod tests {
     fn scalar_stress_loop_runs_briefly() {
         let mut buf = AlignedBuffer::new(1024);
         let deadline = Instant::now() + Duration::from_millis(100);
-        stress_loop_scalar(buf.as_mut_ptr(), buf.len, deadline);
+        stress_loop_scalar(buf.as_mut_slice(), deadline);
     }
 
     #[cfg(target_arch = "x86_64")]
