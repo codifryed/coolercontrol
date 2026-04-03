@@ -494,7 +494,7 @@ export default {
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
-                'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Kein Benchmark, sondern eine Hilfe zur Wärmeerzeugung<br>statt zur Leistungsmessung.<br>Kann die UI-Reaktionsfähigkeit beeinträchtigen.',
+                'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Für gründliche Tests verwenden Sie Ihr bevorzugtes<br>Stress- oder Benchmarking-Tool.',
             cpuStress: 'CPU-Stress',
             gpuStress: 'GPU-Stress',
             gpuStressTooltip: 'Erfordert Vulkan- oder OpenGL ES-Treiber.',

@@ -395,7 +395,7 @@ export default {
             downloadCurrentLog: '下載當前日誌',
             stressTest: '熱壓力測試',
             stressTestTooltip:
-                '生成持續熱負載以驗證<br>風扇曲線和冷卻配置文件。<br>這不是基準測試，而是一種方便的發熱工具，<br>不用於效能測量。<br>可能會降低介面回應速度。',
+                '生成持續熱負載以驗證<br>風扇曲線和冷卻配置文件。<br>結果可能因硬體而異。<br>如需全面測試，請使用您喜愛的<br>壓力測試或基準測試工具。',
             cpuStress: 'CPU 壓力',
             gpuStress: 'GPU 壓力',
             gpuStressTooltip: '可能需要 Vulkan 或 OpenGL ES 驅動程式。',

@@ -501,7 +501,7 @@ export default {
             downloadCurrentLog: 'Télécharger le Journal Actuel',
             stressTest: 'Tests de stress thermique',
             stressTestTooltip:
-                "Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Ce ne sont pas des benchmarks, mais un outil pratique<br>pour générer de la chaleur, pas pour mesurer les performances.<br>Peut réduire la réactivité de l'interface.",
+                'Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Les résultats peuvent varier selon le matériel.<br>Pour des tests approfondis, utilisez votre outil<br>de stress ou de benchmarking préféré.',
             cpuStress: 'Stress CPU',
             gpuStress: 'Stress GPU',
             gpuStressTooltip: 'Peut nécessiter des pilotes Vulkan ou OpenGL ES.',

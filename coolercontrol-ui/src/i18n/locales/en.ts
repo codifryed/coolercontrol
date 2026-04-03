@@ -485,7 +485,7 @@ export default {
             downloadCurrentLog: 'Download Current Log',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
-                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Not a benchmark, but a convenience for heat generation<br>rather than performance measurement.<br>May reduce UI responsiveness while active.',
+                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>For thorough testing, use your favorite<br>stress or benchmarking tool.',
             cpuStress: 'CPU Stress',
             gpuStress: 'GPU Stress',
             gpuStressTooltip: 'May require Vulkan or OpenGL ES drivers.',

@@ -480,7 +480,7 @@ export default {
             downloadCurrentLog: '현재 로그 다운로드',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
-                '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>벤치마크가 아닌 열 생성을 위한 편의 기능으로<br>성능 측정 용도가 아닙니다.<br>실행 중 UI 반응성이 저하될 수 있습니다.',
+                '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>철저한 테스트를 위해서는 선호하는<br>스트레스 또는 벤치마킹 도구를 사용하세요.',
             cpuStress: 'CPU 스트레스',
             gpuStress: 'GPU 스트레스',
             gpuStressTooltip: 'Vulkan 또는 OpenGL ES 드라이버가 필요할 수 있습니다.',

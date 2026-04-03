@@ -422,7 +422,7 @@ export default {
             downloadCurrentLog: 'Baixar Log Atual',
             stressTest: 'Testes de estresse térmico',
             stressTestTooltip:
-                'Gera carga térmica sustentada para validar<br>curvas de ventilador e perfis de resfriamento.<br>Não é um benchmark, mas uma conveniência para gerar calor<br>em vez de medir desempenho.<br>Pode reduzir a capacidade de resposta da interface.',
+                'Gera carga térmica sustentada para validar<br>curvas de ventilador e perfis de resfriamento.<br>Os resultados podem variar dependendo do hardware.<br>Para testes completos, use sua ferramenta<br>de estresse ou benchmarking favorita.',
             cpuStress: 'Estresse de CPU',
             gpuStress: 'Estresse de GPU',
             gpuStressTooltip: 'Pode requerer drivers Vulkan ou OpenGL ES.',
