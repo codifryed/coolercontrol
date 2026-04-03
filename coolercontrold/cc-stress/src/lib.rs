@@ -620,7 +620,7 @@ impl Drop for DirectIoBuffer {
 // This is a stable kernel ABI, safe to hardcode.
 // Type is `libc::Ioctl` to match the ioctl() signature on both glibc
 // (c_ulong) and musl (c_int).
-const BLKGETSIZE64: libc::Ioctl = 0x8008_1272 as libc::Ioctl;
+const BLKGETSIZE64: libc::Ioctl = 0x8008_1272_u32 as i32 as libc::Ioctl;
 
 /// Returns the size of a block device in bytes via the BLKGETSIZE64
 /// ioctl. Used to compute the valid offset range for random reads.
