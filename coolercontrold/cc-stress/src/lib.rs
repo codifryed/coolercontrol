@@ -26,9 +26,9 @@
 //! # Architecture
 //!
 //! - **CPU**: Spawns N OS threads running tight FMA+sqrt loops over a
-//!   4 MiB buffer (exceeds L2, forces L3/DRAM traffic). Uses AVX2
-//!   intrinsics on `x86_64` when available, with a scalar fallback for
-//!   other architectures.
+//!   16 KiB buffer (fits in L1d cache to keep execution units fully fed
+//!   with no memory stalls). Uses AVX2 intrinsics on `x86_64` when
+//!   available, with a scalar fallback for other architectures.
 //! - **RAM**: Similar to CPU but uses non-temporal stores (AVX2) to
 //!   bypass cache and stream directly to DRAM, stressing DIMMs and the
 //!   memory controller.
@@ -63,10 +63,12 @@ use anyhow::{anyhow, Result};
 /// purpose of a thermal stress test.
 const NICE_LEVEL: i32 = 5;
 
-/// Per-thread working buffer size. Exceeds typical L2 caches (256 KiB to
-/// 1 MiB per core), forcing L3 and DRAM traffic across threads for
-/// maximum heat generation.
-const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
+/// Per-thread working buffer size. Sized to fit within L1 data cache
+/// (typically 32 KiB per core). L1-resident data keeps execution units
+/// fed every cycle with no memory stalls. A larger buffer that exceeds
+/// L1/L2 causes cache misses that stall the core while waiting for
+/// L3/DRAM, reducing dynamic power draw and heat despite 100% CPU usage.
+const STRESS_BUF_BYTES: usize = 16 * 1024;
 /// Element count for the f64 working buffer.
 const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
 /// 32 bytes = 256 bits, matching AVX2 register width. Required for
@@ -79,9 +81,10 @@ const F64S_PER_AVX2: usize = 4;
 // buffer would silently drop remainder elements, under-stressing the cache.
 #[cfg(target_arch = "x86_64")]
 const _: () = assert!(STRESS_BUF_F64S % F64S_PER_AVX2 == 0);
-/// Full buffer sweeps between deadline checks. Higher values reduce the
-/// overhead of `clock_gettime` syscalls and keep CPU utilization closer to 100%.
-const CACHE_SWEEPS_PER_CHECK: u32 = 16;
+/// Full buffer sweeps between deadline checks. With the 16 KiB L1-resident
+/// buffer, each sweep completes in microseconds, so a high count is needed
+/// to amortize `clock_gettime` syscall overhead (~10-20 ms between checks).
+const BUFFER_SWEEPS_PER_CHECK: u32 = 4096;
 
 /// Fraction of `MemAvailable` to allocate for RAM stress.
 pub const RAM_STRESS_ALLOC_FRACTION: f64 = 0.8;
@@ -308,8 +311,7 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
 /// Each element gets: FMA (fused multiply-add) to exercise the FP
 /// multiply and add units, plus sqrt on every other element to engage
 /// the FP divider (sqrt shares the divider pipeline on most CPUs).
-/// The buffer (4 MiB) exceeds L2 cache, so each full sweep forces
-/// cache-line evictions and DRAM traffic alongside the FP work.
+/// The buffer fits in L1d cache so execution units stay fully fed.
 fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     // Coefficients close to 1.0: the FMA result stays in the same
     // order of magnitude indefinitely, avoiding overflow, underflow,
@@ -317,7 +319,7 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let multiplier = 1.000_000_001_f64;
     let addend = 0.999_999_999_f64;
     while Instant::now() < deadline {
-        for _ in 0..CACHE_SWEEPS_PER_CHECK {
+        for _ in 0..BUFFER_SWEEPS_PER_CHECK {
             for (i, elem) in buf.iter_mut().enumerate() {
                 let mut v = *elem;
                 v = v.mul_add(multiplier, addend);
@@ -342,7 +344,7 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
 /// - VFMADD231PD (FMA unit, port 0/1 on Zen/Intel)
 /// - VSQRTPD (divider unit, 15-20 cycle latency, overlapped by OOO)
 /// - VPMULLD/VPADDD (integer ALU, port 0/1, interleaved with FP)
-/// - 4 MiB sequential buffer sweep (cache-line loads from L3/DRAM)
+/// - L1-resident buffer sweep (all loads/stores hit L1d, no stalls)
 ///
 /// Takes raw pointers because AVX2 aligned load/store intrinsics
 /// (`_mm256_load_pd`, `_mm256_store_pd`) operate on `*const f64` /
@@ -372,7 +374,7 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
 
     let chunks = len / F64S_PER_AVX2;
     while Instant::now() < deadline {
-        for _ in 0..CACHE_SWEEPS_PER_CHECK {
+        for _ in 0..BUFFER_SWEEPS_PER_CHECK {
             for i in 0..chunks {
                 let ptr = buf.add(i * F64S_PER_AVX2);
                 let mut v = _mm256_load_pd(ptr);
