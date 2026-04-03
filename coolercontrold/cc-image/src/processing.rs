@@ -28,6 +28,9 @@ use mime::Mime;
 use tokio::task::JoinHandle;
 
 /// Returns the supported image MIME types for LCD screen uploads.
+// MIME string literals are valid by construction; unwrap cannot fail.
+#[allow(clippy::missing_panics_doc)]
+#[must_use]
 pub fn supported_image_types() -> [Mime; 5] {
     // Constant string literal, so parsing cannot fail.
     let image_tiff: Mime = Mime::from_str("image/tiff").unwrap();
@@ -40,8 +43,12 @@ pub fn supported_image_types() -> [Mime; 5] {
     ]
 }
 
-/// Takes uploaded image data and processes it in accordance to the LCD/Screen specifications.
-/// Makes sure that images are properly sized, cropped and standardized for our use.
+/// Takes uploaded image data and processes it for the LCD/Screen.
+/// Ensures images are properly sized, cropped, and standardized.
+///
+/// # Errors
+///
+/// Returns an error if decoding, resizing, or re-encoding fails.
 pub async fn process_image(
     content_type: Mime,
     file_data: Vec<u8>,

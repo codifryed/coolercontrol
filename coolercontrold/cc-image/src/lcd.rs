@@ -47,7 +47,17 @@ pub struct LcdImageGenerator {
     font_variable: Font,
 }
 
+impl Default for LcdImageGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LcdImageGenerator {
+    // Fonts are static byte slices embedded at compile time; parsing
+    // cannot fail unless the binary is corrupted.
+    #[allow(clippy::missing_panics_doc)]
+    #[must_use]
     pub fn new() -> Self {
         Self {
             // Fonts are static byte slices compiled into the binary, so parsing cannot fail.
@@ -57,9 +67,14 @@ impl LcdImageGenerator {
         }
     }
 
-    /// Generates a single-temperature gauge image and returns the PNG bytes along with a
-    /// reusable template. When an existing `template` is provided, the expensive gauge-circle
-    /// generation is skipped and only the temperature text is re-rendered.
+    /// Generates a single-temperature gauge image and returns the PNG bytes
+    /// along with a reusable template. When an existing `template` is
+    /// provided, the expensive gauge-circle generation is skipped and only
+    /// the temperature text is re-rendered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if image compositing or PNG encoding fails.
     pub fn generate_single_temp_image(
         &self,
         temp: f64,
@@ -109,7 +124,7 @@ impl LcdImageGenerator {
     #[allow(clippy::cast_precision_loss)]
     fn generate_template(&self, label: &str, now: Instant) -> Result<Image<Rgba>> {
         let pixmap_foreground = Self::render_gauge_arc()?;
-        let mut image = Self::composite_to_ril_image(pixmap_foreground)?;
+        let mut image = Self::composite_to_ril_image(&pixmap_foreground)?;
         Self::draw_temp_label(&self.font_variable, label, &mut image);
         trace!("Single Temp Image Template created in: {:?}", now.elapsed());
         Ok(image)
@@ -297,7 +312,7 @@ impl LcdImageGenerator {
     /// Composites the foreground arc onto a black background and converts to
     /// the ril Rgba image model for font rasterization.
     #[allow(clippy::cast_precision_loss)]
-    fn composite_to_ril_image(pixmap_foreground: Pixmap) -> Result<Image<Rgba>> {
+    fn composite_to_ril_image(pixmap_foreground: &Pixmap) -> Result<Image<Rgba>> {
         let mut pixmap =
             Pixmap::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Pixmap creation")?;
         pixmap.fill(Color::BLACK);
