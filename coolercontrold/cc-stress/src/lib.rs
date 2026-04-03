@@ -54,9 +54,14 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
-/// Lowest scheduling priority. Stress subprocess should not compete with
-/// the daemon's sensor polling or the desktop compositor.
-const NICE_LEVEL: i32 = 19;
+/// Mildly reduced scheduling priority. High enough that the schedutil
+/// CPU frequency governor still sees significant utilization via PELT
+/// (Per-Entity Load Tracking) and boosts clock speeds, but low enough
+/// to yield to the daemon and desktop compositor when competing on the
+/// same core. Nice 19 suppresses PELT weight to ~1/68th of normal,
+/// causing the governor to select low P-states and defeating the
+/// purpose of a thermal stress test.
+const NICE_LEVEL: i32 = 5;
 
 /// Per-thread working buffer size. Exceeds typical L2 caches (256 KiB to
 /// 1 MiB per core), forcing L3 and DRAM traffic across threads for
