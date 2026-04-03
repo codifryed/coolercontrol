@@ -16,6 +16,37 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+//! Hardware stress testing for thermal validation.
+//!
+//! Runs as a subprocess spawned by the daemon's `StressTestActor`. Each
+//! stress mode (CPU, RAM, GPU, drive) is designed to push a specific
+//! subsystem to maximum thermal output so users can verify their cooling
+//! profiles under real load.
+//!
+//! # Architecture
+//!
+//! - **CPU**: Spawns N OS threads running tight FMA+sqrt loops over a
+//!   4 MiB buffer (exceeds L2, forces L3/DRAM traffic). Uses AVX2
+//!   intrinsics on x86_64 when available, with a scalar fallback for
+//!   other architectures.
+//! - **RAM**: Similar to CPU but uses non-temporal stores (AVX2) to
+//!   bypass cache and stream directly to DRAM, stressing DIMMs and the
+//!   memory controller.
+//! - **GPU**: Uses wgpu compute shaders to stream FMA+sqrt workloads
+//!   through a ring of VRAM buffers, stressing GPU cores and VRAM.
+//! - **Drive**: Performs random O_DIRECT reads on a block device to
+//!   generate I/O heat without write wear.
+//!
+//! # Unsafe usage
+//!
+//! Unsafe is used in this crate for:
+//! - Manual aligned heap allocation (`alloc::alloc`/`dealloc`) because
+//!   standard `Vec` cannot guarantee the 32-byte (SIMD) or 4096-byte
+//!   (O_DIRECT page) alignment these workloads require.
+//! - AVX2/FMA SIMD intrinsics, which are inherently unsafe in Rust.
+//! - Linux syscalls (`nice`, `ioctl`, `pread`) that have no safe
+//!   wrapper in the `nix` crate at the version we use.
+
 use std::alloc;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::AsRawFd;
@@ -23,13 +54,20 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
+/// Lowest scheduling priority. Stress subprocess should not compete with
+/// the daemon's sensor polling or the desktop compositor.
 const NICE_LEVEL: i32 = 19;
 
-/// Per-thread working buffer size. Exceeds typical L2 caches, forcing L3 and
-/// DRAM traffic across threads for maximum heat generation.
+/// Per-thread working buffer size. Exceeds typical L2 caches (256 KiB to
+/// 1 MiB per core), forcing L3 and DRAM traffic across threads for
+/// maximum heat generation.
 const STRESS_BUF_BYTES: usize = 4 * 1024 * 1024;
+/// Element count for the f64 working buffer.
 const STRESS_BUF_F64S: usize = STRESS_BUF_BYTES / size_of::<f64>();
+/// 32 bytes = 256 bits, matching AVX2 register width. Required for
+/// `_mm256_load_pd`/`_mm256_store_pd` which fault on unaligned addresses.
 const SIMD_ALIGN: usize = 32;
+/// Number of f64 values packed in one AVX2 256-bit register.
 #[cfg(target_arch = "x86_64")]
 const F64S_PER_AVX2: usize = 4;
 // AVX2 loops process F64S_PER_AVX2 elements per iteration; a non-divisible
@@ -118,9 +156,18 @@ fn reset_cpu_affinity() -> Result<()> {
         .map_err(|e| anyhow!("Failed to reset CPU affinity: {e}"))
 }
 
+/// Lower this process's scheduling priority so stress workloads do not
+/// starve the daemon or desktop. Uses `libc::nice()` directly because
+/// `nix` 0.31 does not provide a safe wrapper for it.
 fn set_nice_level() -> Result<()> {
-    // SAFETY: nice() is always safe to call; it only adjusts scheduling priority.
+    // SAFETY: nice() is always safe to call. It cannot corrupt memory;
+    // it only asks the kernel to adjust this process's scheduling
+    // priority. No pointers, no shared state, no invariants to uphold.
     let result = unsafe { nix::libc::nice(NICE_LEVEL) };
+    // nice() returns -1 on error, but -1 is also a valid new priority.
+    // The only way to distinguish: clear errno before the call (libc
+    // does this), then check errno after. If errno is 0, the call
+    // succeeded even though the return value is -1.
     if result == -1 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() != Some(0) {
@@ -130,7 +177,16 @@ fn set_nice_level() -> Result<()> {
     Ok(())
 }
 
-/// 32-byte-aligned heap buffer for SIMD-friendly cache-stressing workloads.
+/// Heap buffer with guaranteed 32-byte alignment for AVX2 SIMD loads/stores.
+///
+/// Standard `Vec<f64>` only guarantees 8-byte alignment (f64's natural
+/// alignment). AVX2 aligned instructions (`_mm256_load_pd`,
+/// `_mm256_store_pd`) require 32-byte alignment and will segfault on
+/// unaligned addresses. Manual allocation via `alloc::alloc` lets us
+/// specify the exact alignment the hardware needs.
+///
+/// Owns its allocation and frees it on drop. Not `Send` by default
+/// (raw pointer), but only used within the thread that creates it.
 struct AlignedBuffer {
     ptr: *mut f64,
     layout: alloc::Layout,
@@ -141,15 +197,23 @@ impl AlignedBuffer {
     fn new(count: usize) -> Self {
         let size = count * size_of::<f64>();
         let layout = alloc::Layout::from_size_align(size, SIMD_ALIGN).expect("valid layout");
-        // SAFETY: Layout is valid and non-zero.
+        // SAFETY: Layout has non-zero size (count > 0 for all callers)
+        // and valid alignment (SIMD_ALIGN is a power of two). alloc()
+        // returns a pointer to `size` bytes with the requested alignment,
+        // or null on failure.
         let ptr = unsafe { alloc::alloc(layout) };
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
         }
         let ptr = ptr.cast::<f64>();
-        // SAFETY: ptr has count f64 elements allocated above.
+        // SAFETY: alloc() just returned a valid, non-null pointer to
+        // `count * size_of::<f64>()` bytes. Casting to `*mut f64` and
+        // building a slice of `count` elements is in bounds.
         let init_slice = unsafe { std::slice::from_raw_parts_mut(ptr, count) };
-        // Initialize to small positive values to avoid denormals.
+        // Initialize to small positive values (1.0 + epsilon). Values
+        // near zero risk becoming IEEE 754 denormals, which modern CPUs
+        // handle in microcode at 50-100x penalty per operation. That
+        // would throttle the stress loop instead of maximizing heat.
         for (i, elem) in init_slice.iter_mut().enumerate() {
             *elem = 1.0 + (i as f64) * 1e-10;
         }
@@ -160,20 +224,25 @@ impl AlignedBuffer {
         }
     }
 
+    /// Raw pointer access for AVX2 intrinsics that require `*mut f64`.
     fn as_mut_ptr(&mut self) -> *mut f64 {
         self.ptr
     }
 
+    /// Safe slice view for scalar (non-SIMD) code paths.
     fn as_mut_slice(&mut self) -> &mut [f64] {
-        // SAFETY: ptr has self.len f64 elements allocated and
-        // initialized in new().
+        // SAFETY: ptr points to self.len initialized f64 elements that
+        // remain valid and exclusively owned until drop. The slice
+        // borrows &mut self, preventing aliasing.
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
     }
 }
 
 impl Drop for AlignedBuffer {
     fn drop(&mut self) {
-        // SAFETY: ptr was allocated with this layout in new().
+        // SAFETY: ptr was allocated with alloc::alloc(self.layout) in
+        // new(). We pass the same layout back to dealloc, satisfying the
+        // allocator contract. No other code frees this pointer.
         unsafe { alloc::dealloc(self.ptr.cast(), self.layout) };
     }
 }
@@ -213,9 +282,17 @@ pub fn run_cpu_stress(threads: Option<u16>, timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
-/// Scalar fallback: sweeps buffer with FMA + interleaved sqrt for cache and
-/// FP unit stress. Used on non-x86_64 or CPUs without AVX2+FMA.
+/// Scalar fallback for non-x86_64 or CPUs without AVX2+FMA.
+///
+/// Each element gets: FMA (fused multiply-add) to exercise the FP
+/// multiply and add units, plus sqrt on every other element to engage
+/// the FP divider (sqrt shares the divider pipeline on most CPUs).
+/// The buffer (4 MiB) exceeds L2 cache, so each full sweep forces
+/// cache-line evictions and DRAM traffic alongside the FP work.
 fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
+    // Coefficients close to 1.0: the FMA result stays in the same
+    // order of magnitude indefinitely, avoiding overflow, underflow,
+    // and denormal penalties.
     let multiplier = 1.000_000_001_f64;
     let addend = 0.999_999_999_f64;
     while Instant::now() < deadline {
@@ -226,18 +303,35 @@ fn stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
                 if i % 2 == 0 {
                     v = v.sqrt();
                 }
+                // Clamp as a safety net against numerical drift
+                // accumulating over billions of iterations.
                 v = v.clamp(0.1, 1e100);
                 buf[i] = v;
             }
         }
     }
+    // Prevent the compiler from optimizing away the entire loop by
+    // marking the buffer content as observable.
     std::hint::black_box(buf[0]);
 }
 
 /// AVX2+FMA hot loop: 4-wide f64 FMA with interleaved sqrt and integer ops.
-/// Engages SIMD FP units, divider, integer ports, and cache hierarchy.
+///
+/// Targets multiple execution ports simultaneously to maximize power draw:
+/// - VFMADD231PD (FMA unit, port 0/1 on Zen/Intel)
+/// - VSQRTPD (divider unit, 15-20 cycle latency, overlapped by OOO)
+/// - VPMULLD/VPADDD (integer ALU, port 0/1, interleaved with FP)
+/// - 4 MiB sequential buffer sweep (cache-line loads from L3/DRAM)
+///
+/// Takes raw pointers because AVX2 aligned load/store intrinsics
+/// (`_mm256_load_pd`, `_mm256_store_pd`) operate on `*const f64` /
+/// `*mut f64` directly. There is no safe Rust API for these.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
+// Suppresses per-intrinsic unsafe blocks inside this already-unsafe fn.
+// Every intrinsic call here is sound: the buffer is 32-byte aligned
+// (AlignedBuffer guarantees SIMD_ALIGN), and all pointer offsets stay
+// within the allocated region (loop bounds are derived from `len`).
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
     use std::arch::x86_64::{
@@ -284,6 +378,7 @@ unsafe fn stress_loop_avx2_fma(buf: *mut f64, len: usize, deadline: Instant) {
             }
         }
     }
+    // Prevent dead-code elimination of the integer accumulator.
     std::hint::black_box(iacc);
 }
 
@@ -326,7 +421,15 @@ pub fn run_ram_stress(alloc_bytes: u64, timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
-/// Scalar RAM stress: unrolled sequential read-modify-write across buffer.
+/// Scalar RAM stress: 4x-unrolled sequential read-modify-write.
+///
+/// Sequential access is intentional: it lets the hardware prefetcher
+/// run at full speed, maximizing sustained memory bandwidth (and thus
+/// DIMM and memory controller heat). Random access would bottleneck on
+/// TLB misses and prefetch failures instead of raw bandwidth.
+///
+/// The 4x unroll gives the CPU's out-of-order engine independent
+/// operations to overlap, hiding memory latency.
 fn ram_stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     let multiplier = 1.000_000_000_1_f64;
     let addend = 0.999_999_999_9_f64;
@@ -349,11 +452,22 @@ fn ram_stress_loop_scalar(buf: &mut [f64], deadline: Instant) {
     std::hint::black_box(buf[0]);
 }
 
-/// AVX2 RAM stress: unrolled sequential non-temporal stores bypass cache and
-/// write directly to DRAM. Sequential access lets the hardware prefetcher
-/// run at full speed for maximum memory bandwidth and heat.
+/// AVX2 RAM stress: non-temporal stores bypass all cache levels and
+/// write directly to DRAM via write-combining buffers.
+///
+/// This is the key difference from CPU stress: `_mm256_stream_pd`
+/// (VMOVNTPD) avoids polluting L1/L2/L3 cache, forcing every write to
+/// travel the full path to the DIMMs. Combined with sequential access
+/// (prefetcher-friendly), this saturates memory bandwidth.
+///
+/// `_mm_sfence` (SFENCE) after each full sweep ensures all
+/// non-temporal stores are globally visible before the next pass.
+/// Without it, stores could linger in write-combining buffers
+/// indefinitely, reducing effective bandwidth.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
+// See stress_loop_avx2_fma for rationale on suppressing per-intrinsic
+// unsafe blocks. Same alignment and bounds guarantees apply here.
 #[allow(unsafe_op_in_unsafe_fn)]
 unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
     use std::arch::x86_64::{
@@ -398,14 +512,23 @@ unsafe fn ram_stress_loop_avx2(buf: *mut f64, len: usize, deadline: Instant) {
     }
 }
 
-/// Fast, non-cryptographic PRNG for generating random read offsets.
+/// Xorshift64 PRNG for generating random block device read offsets.
+///
+/// Not cryptographically secure, but that is irrelevant here. We only
+/// need a fast, uniform-ish distribution of offsets to prevent the
+/// drive's read cache from absorbing all the I/O. The xorshift family
+/// has zero allocation, no heap, and compiles to ~6 instructions.
 struct XorShift64(u64);
 
 impl XorShift64 {
     fn new(seed: u64) -> Self {
-        Self(seed | 1) // ensure non-zero
+        // Xorshift gets stuck in the zero state forever if initialized
+        // with zero. OR-ing with 1 guarantees a non-zero starting state.
+        Self(seed | 1)
     }
 
+    /// Shift constants (13, 7, 17) are from Marsaglia's 2003 paper
+    /// "Xorshift RNGs". This triple has a full 2^64 - 1 period.
     fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;
@@ -416,20 +539,30 @@ impl XorShift64 {
     }
 }
 
-/// Page-aligned heap buffer for O_DIRECT reads.
+/// Page-aligned (4096-byte) heap buffer for O_DIRECT reads.
+///
+/// Linux O_DIRECT requires the user-space buffer to be aligned to the
+/// block device's logical sector size (typically 512 or 4096 bytes).
+/// Standard `Vec<u8>` only guarantees 1-byte alignment. Manual
+/// allocation via `alloc::alloc` lets us specify page alignment.
 struct DirectIoBuffer {
     ptr: *mut u8,
     layout: alloc::Layout,
 }
 
-// SAFETY: The buffer is a raw heap allocation not shared across threads.
+// SAFETY: Raw pointers are `!Send` by default as a conservative lint,
+// but this buffer is a sole-ownership heap allocation (like a `Box`).
+// Only one thread ever holds it, and ownership is moved (not shared)
+// into the drive stress thread via `std::thread::spawn(move || ...)`.
 unsafe impl Send for DirectIoBuffer {}
 
 impl DirectIoBuffer {
     fn new(size: usize) -> Self {
         let layout =
             alloc::Layout::from_size_align(size, DRIVE_STRESS_ALIGNMENT).expect("valid layout");
-        // SAFETY: Layout is valid and non-zero.
+        // SAFETY: Layout is non-zero (DRIVE_STRESS_BLOCK_SIZE > 0) and
+        // alignment is a power of two (4096). Returns a pointer to
+        // `size` bytes at the requested alignment.
         let ptr = unsafe { alloc::alloc(layout) };
         if ptr.is_null() {
             alloc::handle_alloc_error(layout);
@@ -437,34 +570,49 @@ impl DirectIoBuffer {
         Self { ptr, layout }
     }
 
+    /// Raw pointer for `libc::pread`, which requires `*mut c_void`.
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr
     }
 
+    /// Safe read-only view, used for `black_box` at loop end.
     fn as_slice(&self) -> &[u8] {
-        // SAFETY: ptr has self.layout.size() bytes allocated in new().
+        // SAFETY: ptr points to self.layout.size() allocated bytes that
+        // remain valid until drop. The shared borrow of &self prevents
+        // concurrent mutation.
         unsafe { std::slice::from_raw_parts(self.ptr, self.layout.size()) }
     }
 }
 
 impl Drop for DirectIoBuffer {
     fn drop(&mut self) {
-        // SAFETY: ptr was allocated with this layout in new().
+        // SAFETY: ptr was allocated with alloc::alloc(self.layout) in
+        // new(). Same layout is passed to dealloc. No double-free: this
+        // is the only deallocation path (drop runs exactly once).
         unsafe { alloc::dealloc(self.ptr, self.layout) };
     }
 }
 
-// BLKGETSIZE64 ioctl number: _IOR(0x12, 114, sizeof(u64))
-// = 0x80000000 | (8 << 16) | (0x12 << 8) | 114 = 0x80081272
+// BLKGETSIZE64 ioctl number, computed from the Linux kernel macro:
+//   _IOR(0x12, 114, sizeof(u64))
+// Breakdown: direction=read (0x80000000) | size=8 bytes (8 << 16) |
+//            type=0x12 (block device) | nr=114
+// This is a stable kernel ABI, safe to hardcode.
 const BLKGETSIZE64: libc::c_ulong = 0x80081272;
 
-/// Returns the size of a block device in bytes using BLKGETSIZE64 ioctl.
+/// Returns the size of a block device in bytes via the BLKGETSIZE64
+/// ioctl. Used to compute the valid offset range for random reads.
 fn block_device_size(path: &str) -> Result<u64> {
     let file = std::fs::File::open(path)
         .map_err(|e| anyhow!("Failed to open block device {path}: {e}"))?;
     let fd = file.as_raw_fd();
     let mut size: u64 = 0;
-    // SAFETY: BLKGETSIZE64 writes a u64, fd is a valid block device.
+    // SAFETY: Three conditions for a sound ioctl call:
+    // 1. fd is a valid, open file descriptor (File::open succeeded).
+    // 2. BLKGETSIZE64 expects a `*mut u64` as its third argument, and
+    //    `&mut size` provides exactly that with correct alignment.
+    // 3. The kernel writes exactly 8 bytes (u64) into the pointer;
+    //    our local variable has that size.
     let ret = unsafe { libc::ioctl(fd, BLKGETSIZE64, &mut size) };
     if ret < 0 {
         return Err(anyhow!(
@@ -522,6 +670,16 @@ pub fn run_drive_stress(device_path: &str, threads: u16, timeout_secs: u16) -> R
     Ok(())
 }
 
+/// Per-thread drive stress worker.
+///
+/// Opens the block device with `O_DIRECT` to bypass the kernel page
+/// cache. Without O_DIRECT, repeated reads would be served from RAM
+/// after the first pass, generating zero drive activity. O_DIRECT
+/// forces every read to hit the physical drive.
+///
+/// Reads are random to defeat the drive's internal read-ahead cache
+/// and force seek operations (on HDDs) or spread wear evenly across
+/// NAND pages (on SSDs). Read-only by design to avoid drive wear.
 fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: Instant) {
     use std::fs::OpenOptions;
     use std::os::unix::fs::OpenOptionsExt;
@@ -540,7 +698,10 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
     let fd = file.as_raw_fd();
 
     let mut buf = DirectIoBuffer::new(DRIVE_STRESS_BLOCK_SIZE);
-    // Seed PRNG with thread index and current time for diversity.
+    // Mix thread index with a large prime (from PCG's default
+    // multiplier) and XOR with nanosecond time. This gives each thread
+    // a different random offset sequence, spreading I/O across the
+    // full device instead of all threads reading the same blocks.
     let seed = u64::from(thread_idx).wrapping_mul(6_364_136_223_846_793_005)
         ^ (Instant::now().elapsed().as_nanos() as u64);
     let mut rng = XorShift64::new(seed);
@@ -550,8 +711,13 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
             // Align offset to DRIVE_STRESS_BLOCK_SIZE boundary.
             let offset = (rng.next() % (max_offset / DRIVE_STRESS_BLOCK_SIZE as u64))
                 * DRIVE_STRESS_BLOCK_SIZE as u64;
-            // SAFETY: buf is properly aligned and sized for O_DIRECT reads,
-            // fd is a valid file descriptor.
+            // SAFETY: pread reads into a user-supplied buffer without
+            // modifying the file descriptor's offset (thread-safe).
+            // - fd: valid open file descriptor (OpenOptions above).
+            // - buf: page-aligned (DirectIoBuffer), satisfying O_DIRECT.
+            // - count: DRIVE_STRESS_BLOCK_SIZE matches buf's allocation.
+            // - offset: within [0, device_size - block_size], guaranteed
+            //   by max_offset computation in run_drive_stress.
             let ret = unsafe {
                 libc::pread(
                     fd,
@@ -566,6 +732,8 @@ fn drive_stress_thread(path: &str, thread_idx: u16, max_offset: u64, deadline: I
             }
         }
     }
+    // Prevent the compiler from optimizing away the read loop by
+    // marking the buffer content as observable.
     std::hint::black_box(buf.as_slice()[0]);
 }
 
@@ -640,8 +808,14 @@ pub async fn run_gpu_stress(timeout_secs: u16) -> Result<()> {
     Ok(())
 }
 
+/// WebGPU/Vulkan spec limit for workgroups per dispatch dimension.
+/// When the total workgroup count exceeds this, we split across X and Y.
 const MAX_WORKGROUPS_PER_DIM: u32 = 65535;
 
+/// Holds all GPU objects needed for the stress loop. Kept as a struct so
+/// `stress_adapter` can reference them without passing 7 arguments.
+/// `_buffers` is kept alive to prevent deallocation while bind groups
+/// reference them.
 struct GpuStressResources {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -730,7 +904,14 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
     })
 }
 
-/// Creates the compute pipeline and ring bind groups for the streaming shader.
+/// Creates the compute pipeline and ring bind groups for the streaming
+/// shader.
+///
+/// The WGSL shader reads from `src`, applies 64 iterations of
+/// FMA+sqrt per element (to generate ALU heat alongside memory
+/// traffic), and writes to `dst`. Ring bind groups rotate src/dst
+/// so each submission reads what the previous one wrote, keeping the
+/// data "hot" in VRAM.
 fn create_stress_pipeline_and_bindings(
     device: &wgpu::Device,
     buffers: &[wgpu::Buffer],
@@ -810,7 +991,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     (pipeline, bind_groups)
 }
 
-/// Streams data through ring buffers until deadline, stressing GPU memory.
+/// Main GPU stress loop: submits compute dispatches in a tight loop until
+/// the deadline. Each submission encodes multiple ring traversals to keep
+/// the GPU command processor busy. `device.poll(Wait)` blocks until the
+/// GPU finishes, ensuring we do not queue unbounded work.
 async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()> {
     let res = create_gpu_stress_resources(adapter).await?;
     let deadline = Instant::now() + duration;
