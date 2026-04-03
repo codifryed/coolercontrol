@@ -236,6 +236,7 @@ impl AlignedBuffer {
     }
 
     /// Raw pointer access for AVX2 intrinsics that require `*mut f64`.
+    #[cfg(target_arch = "x86_64")]
     fn as_mut_ptr(&mut self) -> *mut f64 {
         self.ptr
     }
