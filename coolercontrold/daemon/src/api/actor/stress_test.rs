@@ -86,6 +86,7 @@ enum StressTestMessage {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct StressTestStatus {
     pub cpu_active: bool,
     pub cpu_duration_secs: Option<u16>,
@@ -253,6 +254,12 @@ impl StressTestActor {
 
         let available = cc_stress::available_memory_bytes()
             .map_err(|e| anyhow!("Failed to read available memory: {e}"))?;
+        // Precision loss is acceptable for a memory size estimate.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
         let alloc_bytes = (available as f64 * cc_stress::RAM_STRESS_ALLOC_FRACTION) as u64;
 
         info!(

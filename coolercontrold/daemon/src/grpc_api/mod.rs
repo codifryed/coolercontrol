@@ -29,11 +29,13 @@ use tonic::transport::Server;
 // Note: the rust module relational hierarchy MUST follow the proto package hierarchy
 pub mod models {
     pub mod v1 {
+        #![allow(clippy::pedantic)]
         tonic::include_proto!("coolercontrol.models.v1");
     }
 }
 pub mod device_service {
     pub mod v1 {
+        #![allow(clippy::pedantic)]
         tonic::include_proto!("coolercontrol.device_service.v1");
     }
     pub const FILE_DESCRIPTOR_SET: &[u8] =

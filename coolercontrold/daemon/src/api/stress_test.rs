@@ -57,6 +57,7 @@ pub struct StartDriveStressRequest {
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct StressTestStatusResponse {
     pub cpu_active: bool,
     pub cpu_duration_secs: Option<u16>,
@@ -241,8 +242,7 @@ pub async fn list_drives() -> Json<Vec<DriveInfo>> {
         let size_bytes = std::fs::read_to_string(size_path)
             .ok()
             .and_then(|s| s.trim().parse::<u64>().ok())
-            .map(|sectors| sectors * 512)
-            .unwrap_or(0);
+            .map_or(0, |sectors| sectors * 512);
         drives.push(DriveInfo {
             device_path,
             model,

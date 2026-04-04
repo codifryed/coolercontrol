@@ -959,6 +959,7 @@ fn detect_routes() -> ApiRouter<AppState> {
         )
 }
 
+#[allow(clippy::too_many_lines)] // Declarative route registration; splitting hurts readability.
 fn stress_test_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(

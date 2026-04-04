@@ -72,7 +72,7 @@ const NICE_LEVEL: i32 = 5;
 /// that exercises the cache hierarchy alongside FPU compute, generating
 /// more heat than either pure register loops or pure memory streaming.
 /// Inspired by stress-ng's matrixprod method, which benchmarks as the
-/// highest heat generator on x86_64 (Colin Ian King, GPL-2+).
+/// highest heat generator on `x86_64` (Colin Ian King, GPL-2+).
 const MAT_SIZE: usize = 128;
 /// Total element count per matrix (128 x 128 = 16,384 f64 values).
 const MAT_ELEMENTS: usize = MAT_SIZE * MAT_SIZE;
@@ -109,13 +109,13 @@ const DRIVE_STRESS_BLOCK_SIZE: usize = 4 * 1024;
 /// Page alignment required for `O_DIRECT` buffers.
 const DRIVE_STRESS_ALIGNMENT: usize = 4096;
 /// Default number of I/O threads for drive stress. Each thread issues
-/// synchronous pread() calls, so the thread count equals the maximum
-/// I/O queue depth. Modern NVMe drives generate the most heat at high
+/// synchronous `pread()` calls, so the thread count equals the maximum
+/// I/O queue depth. Modern `NVMe` drives generate the most heat at high
 /// queue depth; 16 threads provide a reasonable default without
 /// overwhelming the system's thread scheduler.
 pub const DRIVE_STRESS_DEFAULT_THREADS: u16 = 16;
 /// Number of reads between deadline checks. With 4 KiB blocks, each
-/// pread completes in ~10-50us on NVMe, so 2048 reads takes ~20-100 ms
+/// pread completes in ~10-50us on `NVMe`, so 2048 reads takes ~20-100 ms
 /// between time checks.
 const READS_PER_DEADLINE_CHECK: u32 = 2048;
 
@@ -585,6 +585,9 @@ impl Drop for DirectIoBuffer {
 // This is a stable kernel ABI, safe to hardcode.
 // Type is `libc::Ioctl` to match the ioctl() signature on both glibc
 // (c_ulong) and musl (c_int).
+// Wrapping and sign loss are intentional: the kernel ioctl number's
+// bit pattern must be preserved regardless of the platform's Ioctl type.
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
 const BLKGETSIZE64: libc::Ioctl = 0x8008_1272_u32 as i32 as libc::Ioctl;
 
 /// Returns the size of a block device in bytes via the BLKGETSIZE64
@@ -847,7 +850,7 @@ fn storage_bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntr
     }
 }
 
-/// Returns (compute_iters, ring_reps) tuned for the GPU vendor.
+/// Returns (`compute_iters`, `ring_reps`) tuned for the GPU vendor.
 ///
 /// Different GPU architectures have different ALU-to-SFU ratios:
 /// - NVIDIA: Few SFUs (~4 per SM) vs many CUDA cores (~128 per SM).

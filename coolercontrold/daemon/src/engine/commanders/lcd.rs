@@ -263,7 +263,8 @@ impl LcdCommander {
         }
     }
 
-    /// The self: Rc<Self> is a 'trick' to be able to call methods that belong to self in another thread
+    /// The self: Rc<Self> is a 'trick' to be able to call methods that belong to self in another thread.
+    #[allow(clippy::too_many_lines)] // Linear flow with early returns and async scope boilerplate.
     async fn set_single_temp_lcd_image(
         self: Rc<Self>,
         device_uid: UID,
