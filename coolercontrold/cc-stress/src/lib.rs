@@ -36,6 +36,9 @@
 //!   through a ring of VRAM buffers, stressing GPU cores and VRAM.
 //! - **Drive**: Performs random `O_DIRECT` reads on a block device to
 //!   generate I/O heat without write wear.
+//! - **Drive**: Performs random 4 KiB `O_DIRECT` reads on a block
+//!   device with 16 I/O threads to maximize IOPS and drive controller
+//!   heat without write wear.
 //!
 //! # Unsafe usage
 //!
@@ -99,14 +102,24 @@ const MEM_STRESS_RING_REPS: u32 = 4;
 /// Sleep between GPU submissions for desktop compositing (ms).
 const GPU_SUBMIT_SLEEP_MS: u64 = 0;
 
-/// Per-read block size for drive stress (128 KiB, natural `NVMe` transfer size).
-const DRIVE_STRESS_BLOCK_SIZE: usize = 128 * 1024;
+/// Per-read block size for drive stress (4 KiB). Small random reads
+/// maximize IOPS (I/O operations per second), which stresses the drive
+/// controller harder than fewer large reads. 4 KiB matches the typical
+/// logical sector size and OS page size, ensuring each read is a
+/// distinct command to the drive controller.
+const DRIVE_STRESS_BLOCK_SIZE: usize = 4 * 1024;
 /// Page alignment required for `O_DIRECT` buffers.
 const DRIVE_STRESS_ALIGNMENT: usize = 4096;
-/// Default number of I/O threads for drive stress.
-pub const DRIVE_STRESS_DEFAULT_THREADS: u16 = 4;
-/// Number of reads between deadline checks.
-const READS_PER_DEADLINE_CHECK: u32 = 64;
+/// Default number of I/O threads for drive stress. Each thread issues
+/// synchronous pread() calls, so the thread count equals the maximum
+/// I/O queue depth. Modern NVMe drives generate the most heat at high
+/// queue depth; 16 threads provide a reasonable default without
+/// overwhelming the system's thread scheduler.
+pub const DRIVE_STRESS_DEFAULT_THREADS: u16 = 16;
+/// Number of reads between deadline checks. With 4 KiB blocks, each
+/// pread completes in ~10-50us on NVMe, so 2048 reads takes ~20-100 ms
+/// between time checks.
+const READS_PER_DEADLINE_CHECK: u32 = 2048;
 
 /// Returns the number of logical processors by counting entries in /proc/cpuinfo.
 /// This is not restricted by CPU affinity or cgroup limits
