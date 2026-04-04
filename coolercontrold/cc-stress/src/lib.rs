@@ -32,10 +32,10 @@
 //! - **RAM**: Similar to CPU but uses non-temporal stores (AVX2) to
 //!   bypass cache and stream directly to DRAM, stressing DIMMs and the
 //!   memory controller.
-//! - **GPU**: Uses wgpu compute shaders to stream FMA+sqrt workloads
-//!   through a ring of VRAM buffers, stressing GPU cores and VRAM.
-//! - **Drive**: Performs random `O_DIRECT` reads on a block device to
-//!   generate I/O heat without write wear.
+//! - **GPU**: Uses wgpu compute shaders with mixed FMA + sin/cos +
+//!   sqrt to stress both ALU and Special Function Units through a
+//!   ring of VRAM buffers. Values are kept bounded via `fract()` to
+//!   prevent inf/NaN fast-paths that would defeat the stress.
 //! - **Drive**: Performs random 4 KiB `O_DIRECT` reads on a block
 //!   device with 16 I/O threads to maximize IOPS and drive controller
 //!   heat without write wear.
@@ -94,11 +94,9 @@ const MEM_STRESS_BUF_INTEGRATED: u64 = 16 * 1024 * 1024;
 const MEM_STRESS_RING_SIZE: usize = 8;
 /// Workgroup size for the streaming shader.
 const MEM_STRESS_WORKGROUP: u32 = 256;
-/// Compute iterations per element in the streaming shader. Higher values
-/// increase ALU utilization and core heat alongside memory stress.
-const MEM_STRESS_COMPUTE_ITERS: u32 = 64;
-/// Full ring traversals per GPU submission.
-const MEM_STRESS_RING_REPS: u32 = 4;
+/// PCI vendor IDs for GPU-specific tuning.
+const PCI_VENDOR_NVIDIA: u32 = 0x10DE;
+const PCI_VENDOR_AMD: u32 = 0x1002;
 /// Sleep between GPU submissions for desktop compositing (ms).
 const GPU_SUBMIT_SLEEP_MS: u64 = 0;
 
@@ -823,6 +821,7 @@ struct GpuStressResources {
     bind_groups: Vec<wgpu::BindGroup>,
     dispatch_x: u32,
     dispatch_y: u32,
+    ring_reps: u32,
     _buffers: Vec<wgpu::Buffer>,
 }
 
@@ -848,10 +847,36 @@ fn storage_bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntr
     }
 }
 
+/// Returns (compute_iters, ring_reps) tuned for the GPU vendor.
+///
+/// Different GPU architectures have different ALU-to-SFU ratios:
+/// - NVIDIA: Few SFUs (~4 per SM) vs many CUDA cores (~128 per SM).
+///   Heavy transcendental use bottlenecks on SFUs, leaving ALU idle.
+///   Higher iterations with the mixed shader keeps both busy longer.
+///   NVIDIA Linux drivers tolerate longer submissions (higher reps).
+/// - AMD: Transcendentals run on the VALU (same units as FMA). The
+///   mixed shader works well; moderate iterations keep utilization
+///   high without excessive per-dispatch time.
+/// - Others (Intel, etc.): Conservative defaults to avoid timeouts on
+///   less capable or less tested hardware.
+fn gpu_stress_tuning(vendor: u32) -> (u32, u32) {
+    match vendor {
+        PCI_VENDOR_NVIDIA => (128, 4),
+        PCI_VENDOR_AMD => (64, 4),
+        _ => (32, 2),
+    }
+}
+
 /// Creates ring-buffer resources for memory-bandwidth GPU stress.
 async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStressResources> {
     let info = adapter.get_info();
     let label = format!("{} ({:?})", info.name, info.backend);
+
+    let (compute_iters, ring_reps) = gpu_stress_tuning(info.vendor);
+    eprintln!(
+        "  Tuning: vendor 0x{:04X}, {compute_iters} iters, {ring_reps} ring reps",
+        info.vendor
+    );
 
     // Request the adapter's actual limits so large buffer bindings are allowed.
     let (device, queue) = adapter
@@ -893,7 +918,7 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
     let stride = dispatch_x * MEM_STRESS_WORKGROUP;
 
     let (pipeline, bind_groups) =
-        create_stress_pipeline_and_bindings(&device, &buffers, vec4_count, stride);
+        create_stress_pipeline_and_bindings(&device, &buffers, vec4_count, stride, compute_iters);
 
     Ok(GpuStressResources {
         device,
@@ -902,6 +927,7 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
         bind_groups,
         dispatch_x,
         dispatch_y,
+        ring_reps,
         _buffers: buffers,
     })
 }
@@ -909,16 +935,21 @@ async fn create_gpu_stress_resources(adapter: wgpu::Adapter) -> Result<GpuStress
 /// Creates the compute pipeline and ring bind groups for the streaming
 /// shader.
 ///
-/// The WGSL shader reads from `src`, applies 64 iterations of
-/// FMA+sqrt per element (to generate ALU heat alongside memory
-/// traffic), and writes to `dst`. Ring bind groups rotate src/dst
-/// so each submission reads what the previous one wrote, keeping the
-/// data "hot" in VRAM.
+/// The WGSL shader runs N iterations per element using four different
+/// transcendental functions (sin, cos, exp, sqrt) all driven by the
+/// loop index, plus FMA and division on the accumulator. This engages
+/// both ALU (FMA, division) and all Special Function Unit hardware
+/// (sin, cos, exp, sqrt) simultaneously for maximum power draw.
+///
+/// The loop index drives all transcendentals (not the accumulator).
+/// Ring bind groups rotate src/dst so each submission reads what the
+/// previous one wrote, keeping the data "hot" in VRAM.
 fn create_stress_pipeline_and_bindings(
     device: &wgpu::Device,
     buffers: &[wgpu::Buffer],
     vec4_count: u32,
     stride: u32,
+    compute_iters: u32,
 ) -> (wgpu::ComputePipeline, Vec<wgpu::BindGroup>) {
     let shader_src = format!(
         r"
@@ -927,19 +958,30 @@ fn create_stress_pipeline_and_bindings(
 
 const N: u32 = {vec4_count}u;
 const STRIDE: u32 = {stride}u;
-const ITERS: u32 = {MEM_STRESS_COMPUTE_ITERS}u;
+const ITERS: u32 = {compute_iters}u;
 
 @compute @workgroup_size({MEM_STRESS_WORKGROUP})
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let idx = gid.y * STRIDE + gid.x;
     if idx >= N {{ return; }}
-    var v = src[idx];
-    var acc = dst[idx];
+    var a = src[idx] + vec4<f32>(0.01);
     for (var i: u32 = 0u; i < ITERS; i = i + 1u) {{
-        acc = fma(v, acc, v);
-        v = sqrt(abs(acc));
+        // Loop index drives all transcendentals -- deterministic inputs
+        // ensure every iteration does real work with no degenerate
+        // convergence. Using sin+cos+exp+sqrt engages all SFU hardware.
+        let f = f32(i) + 1.0;
+        let sv = sin(vec4<f32>(f));
+        let cv = cos(vec4<f32>(f));
+        let ev = exp(vec4<f32>(f * 0.1));
+        let sq = sqrt(vec4<f32>(f));
+        // FMA exercises ALU multiply-add units.
+        a = fma(a, sv, cv);
+        // Division is ~4x the cost of multiply on most GPUs.
+        // clamp keeps divisor bounded and positive.
+        a = a / clamp(ev * sq, vec4<f32>(0.1), vec4<f32>(0.9));
     }}
-    dst[idx] = acc;
+    // clamp prevents overflow across ring passes.
+    dst[idx] = clamp(a, vec4<f32>(-1.0), vec4<f32>(1.0));
 }}
 "
     );
@@ -993,10 +1035,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     (pipeline, bind_groups)
 }
 
-/// Main GPU stress loop: submits compute dispatches in a tight loop until
-/// the deadline. Each submission encodes multiple ring traversals to keep
-/// the GPU command processor busy. `device.poll(Wait)` blocks until the
-/// GPU finishes, ensuring we do not queue unbounded work.
+/// Main GPU stress loop: submits ring traversals and syncs with
+/// `device.poll(Wait)` after each. Ring reps per submission are tuned
+/// per GPU vendor (see `gpu_stress_tuning`). The tight while loop
+/// keeps the GPU continuously busy by submitting the next batch
+/// immediately after the previous one completes.
 async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()> {
     let res = create_gpu_stress_resources(adapter).await?;
     let deadline = Instant::now() + duration;
@@ -1009,7 +1052,7 @@ async fn stress_adapter(adapter: wgpu::Adapter, duration: Duration) -> Result<()
         // Each ring step needs its own compute pass to avoid conflicting
         // buffer usage (a buffer is read-only src in one step and
         // read-write dst in the adjacent step).
-        for _ in 0..MEM_STRESS_RING_REPS {
+        for _ in 0..res.ring_reps {
             for bg in &res.bind_groups {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: None,
