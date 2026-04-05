@@ -211,12 +211,14 @@ impl LiquidctlRepo {
 
     /// Performs a fresh scan for currently connected liquidctl devices without
     /// modifying any cached state. Used for device change detection.
+    /// Filters out devices with empty descriptions as they are not usable.
     pub async fn scan_devices(&self) -> Result<Vec<String>> {
         let response = self.liqctld_client.scan_devices().await?;
         Ok(response
             .devices
             .into_iter()
             .map(|d| d.description)
+            .filter(|desc| desc.is_empty().not())
             .collect())
     }
 

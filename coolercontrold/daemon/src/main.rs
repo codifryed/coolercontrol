@@ -237,6 +237,7 @@ struct Args {
 /// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
 /// It uses a structured concurrency model for consistent and efficient performance while
 /// concurrently handling varying device latencies.
+#[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     cc_fs::runtime(async {

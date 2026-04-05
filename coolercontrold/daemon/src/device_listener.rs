@@ -40,10 +40,17 @@ use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
 const NOTIFICATION_CMD_TIMEOUT: Duration = Duration::from_secs(20);
+/// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;
+/// Maximum uevent messages to drain per readable notification. Prevents
+/// starvation if the kernel produces events faster than we consume them.
+const MAX_DRAIN_PER_WAKE: usize = 256;
 /// Icon 4 = `NotificationIcon::Info` in notifier.rs.
 const NOTIFICATION_ICON_INFO: u8 = 4;
 const MIN_USER_UID: u32 = 1000;
+// Static assertions documenting constant relationships.
+const _: () = assert!(UEVENT_BUF_SIZE >= 1024);
+const _: () = assert!(MAX_DRAIN_PER_WAKE > 0);
 
 pub struct DeviceListener {
     device_changed: Rc<Cell<bool>>,
@@ -124,18 +131,19 @@ impl<'s> DeviceListener {
     }
 }
 
+/// The listener is disabled when the D-Bus env var explicitly disables it
+/// (set to "0" or "off"). Enabled by default when unset.
 fn is_listener_disabled() -> bool {
-    env::var(ENV_DBUS)
-        .ok()
-        .and_then(|env_dbus| {
-            env_dbus
-                .parse::<u8>()
-                .ok()
-                .map(|bb| bb != 0)
-                .or_else(|| Some(env_dbus.trim().to_lowercase() != "off"))
-        })
-        .unwrap_or(true)
-        .not()
+    let Ok(env_dbus) = env::var(ENV_DBUS) else {
+        // Not set: listener enabled by default.
+        return false;
+    };
+    // Numeric check first (e.g. "0" disables, any non-zero enables).
+    if let Ok(value) = env_dbus.parse::<u8>() {
+        return value == 0;
+    }
+    // Fall back to string comparison.
+    env_dbus.trim().eq_ignore_ascii_case("off")
 }
 
 fn create_netlink_socket() -> Result<OwnedFd> {
@@ -244,17 +252,19 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
     }
 }
 
-/// Drains all pending uevent messages and returns whether a scan is needed.
+/// Drains pending uevent messages (up to `MAX_DRAIN_PER_WAKE`) and returns
+/// whether a scan is needed.
 fn handle_readable_event(
     result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
     async_fd: &AsyncFd<OwnedFd>,
     buf: &mut [u8],
     debounce_deadline: &mut Option<Instant>,
 ) -> bool {
+    debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
     let mut relevant = false;
     if let Ok(mut guard) = result {
         let raw_fd = async_fd.as_raw_fd();
-        loop {
+        for _ in 0..MAX_DRAIN_PER_WAKE {
             match recv(raw_fd, buf, MsgFlags::MSG_DONTWAIT) {
                 Ok(n) if n > 0 => {
                     if is_relevant_uevent(&buf[..n]) {
@@ -444,9 +454,10 @@ fn send_desktop_notification(title: &str, body: &str, bin_path: &str) {
     let user_ids = available_session_user_ids();
     let safe_title = sanitize_for_shell(title);
     let safe_body = sanitize_for_shell(body);
-    for uid in user_ids {
+    let safe_bin_path = sanitize_for_shell(bin_path);
+    for uid in &user_ids {
         let cmd = format!(
-            "sudo -u \\#{uid} {bin_path} notify \"{safe_title}\" \
+            "sudo -u \\#{uid} {safe_bin_path} notify \"{safe_title}\" \
              \"{safe_body}\" {NOTIFICATION_ICON_INFO}"
         );
         fire_notification_command(cmd);
@@ -459,9 +470,7 @@ fn fire_notification_command(cmd: String) {
             .run()
             .await;
         if let crate::repositories::utils::ShellCommandResult::Error(err) = result {
-            if log::log_enabled!(log::Level::Debug) {
-                debug!("Failed to execute notification command: {err}");
-            }
+            debug!("Failed to execute notification command: {err}");
         }
     });
 }
@@ -499,12 +508,16 @@ mod tests {
 
     #[test]
     fn deaf_listener_reports_no_changes() {
+        // A deaf listener must always report no changes.
         let listener = DeviceListener::deaf();
         assert!(!listener.has_device_changed());
     }
 
+    // --- is_relevant_uevent positive space: accepted events ---
+
     #[test]
     fn hwmon_add_event_is_relevant() {
+        // Hwmon add events must trigger a device scan.
         let uevent = b"add@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=add\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
         assert!(is_relevant_uevent(uevent));
@@ -512,6 +525,7 @@ mod tests {
 
     #[test]
     fn hwmon_remove_event_is_relevant() {
+        // Hwmon remove events must trigger a device scan.
         let uevent = b"remove@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=remove\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
         assert!(is_relevant_uevent(uevent));
@@ -519,6 +533,7 @@ mod tests {
 
     #[test]
     fn usb_add_event_is_relevant() {
+        // USB add events cover liquidctl HID devices.
         let uevent = b"add@/devices/pci0000:00/usb1/1-4\0\
             ACTION=add\0SUBSYSTEM=usb\0DEVPATH=/devices/pci\0";
         assert!(is_relevant_uevent(uevent));
@@ -526,13 +541,17 @@ mod tests {
 
     #[test]
     fn hidraw_add_event_is_relevant() {
+        // Hidraw add events cover direct HID device access.
         let uevent = b"add@/devices/pci0000:00/hidraw/hidraw0\0\
             ACTION=add\0SUBSYSTEM=hidraw\0DEVPATH=/devices/pci\0";
         assert!(is_relevant_uevent(uevent));
     }
 
+    // --- is_relevant_uevent negative space: rejected events ---
+
     #[test]
     fn network_add_event_is_not_relevant() {
+        // Network subsystem events have no cooling devices.
         let uevent = b"add@/devices/virtual/net/eth0\0\
             ACTION=add\0SUBSYSTEM=net\0DEVPATH=/devices/virtual\0";
         assert!(!is_relevant_uevent(uevent));
@@ -540,7 +559,7 @@ mod tests {
 
     #[test]
     fn hwmon_change_event_is_not_relevant() {
-        // Only add/remove are relevant, not change.
+        // Only add/remove trigger scans; change events do not.
         let uevent = b"change@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=change\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
         assert!(!is_relevant_uevent(uevent));
@@ -548,6 +567,7 @@ mod tests {
 
     #[test]
     fn block_device_event_is_not_relevant() {
+        // Block device events are not cooling-related.
         let uevent = b"add@/devices/pci0000:00/block/sda\0\
             ACTION=add\0SUBSYSTEM=block\0DEVPATH=/devices/pci\0";
         assert!(!is_relevant_uevent(uevent));
@@ -555,36 +575,74 @@ mod tests {
 
     #[test]
     fn empty_buffer_is_not_relevant() {
+        // Empty buffers must be safely rejected.
         assert!(!is_relevant_uevent(b""));
     }
 
     #[test]
     fn malformed_buffer_is_not_relevant() {
+        // Non-null-separated data must be safely rejected.
         assert!(!is_relevant_uevent(b"garbage data with no null bytes"));
     }
 
     #[test]
     fn action_without_subsystem_is_not_relevant() {
+        // A matching action without a matching subsystem is not enough.
         let uevent = b"add@/devices/something\0ACTION=add\0";
         assert!(!is_relevant_uevent(uevent));
     }
 
     #[test]
     fn subsystem_without_action_is_not_relevant() {
+        // A matching subsystem without a matching action (bind != add/remove)
+        // must be rejected.
         let uevent = b"bind@/devices/something\0\
             ACTION=bind\0SUBSYSTEM=hwmon\0";
         assert!(!is_relevant_uevent(uevent));
     }
 
+    // --- is_hwmon_applicable ---
+
     #[test]
     fn blacklisted_hwmon_device_is_not_applicable() {
+        // GPU hwmon devices are managed by the GPU repo, not hwmon.
         assert!(!is_hwmon_applicable("amdgpu"));
     }
 
     #[test]
     fn normal_hwmon_device_is_applicable() {
+        // Standard sensor chips and drive temp monitors are applicable.
         assert!(is_hwmon_applicable("coretemp"));
         assert!(is_hwmon_applicable("nct6775"));
         assert!(is_hwmon_applicable("drivetemp"));
+    }
+
+    // --- is_listener_disabled ---
+
+    #[test]
+    fn listener_disabled_when_env_is_zero() {
+        // ENV_DBUS="0" explicitly disables D-Bus features including the listener.
+        // Safety: test is single-threaded; no concurrent env reads.
+        unsafe { env::set_var(ENV_DBUS, "0") };
+        assert!(is_listener_disabled());
+        unsafe { env::remove_var(ENV_DBUS) };
+    }
+
+    #[test]
+    fn listener_disabled_when_env_is_off() {
+        // ENV_DBUS="off" (case-insensitive) disables the listener.
+        // Safety: test is single-threaded; no concurrent env reads.
+        unsafe { env::set_var(ENV_DBUS, "OFF") };
+        assert!(is_listener_disabled());
+        unsafe { env::remove_var(ENV_DBUS) };
+    }
+
+    #[test]
+    fn listener_enabled_when_env_is_one() {
+        // ENV_DBUS="1" enables D-Bus features.
+        // Safety: test is single-threaded; no concurrent env reads.
+        unsafe { env::set_var(ENV_DBUS, "1") };
+        assert!(!is_listener_disabled());
+        unsafe { env::remove_var(ENV_DBUS) };
     }
 }
