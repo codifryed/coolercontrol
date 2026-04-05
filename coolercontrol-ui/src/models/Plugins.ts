@@ -35,3 +35,19 @@ export enum ServiceType {
     Device = 'Device',
     Integration = 'Integration',
 }
+
+export enum PluginStatus {
+    Running = 'Running',
+    Stopped = 'Stopped',
+    NotInstalled = 'NotInstalled',
+}
+
+export class PluginStatusDto {
+    status: PluginStatus = PluginStatus.NotInstalled
+    reason?: string
+}
+
+export class HasUiDto {
+    has_ui: boolean = false
+    has_full_page_ui: boolean = false
+}

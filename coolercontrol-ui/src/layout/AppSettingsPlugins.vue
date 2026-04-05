@@ -38,10 +38,8 @@ const pluginsDto = await deviceStore.daemonClient.loadPlugins()
 const pluginUiAvailable: Ref<Map<string, boolean>> = ref<Map<string, boolean>>(new Map())
 await Promise.all(
     pluginsDto.plugins.map(async (plugin) => {
-        pluginUiAvailable.value.set(
-            plugin.id,
-            await deviceStore.daemonClient.hasPluginUi(plugin.id),
-        )
+        const uiInfo = await deviceStore.daemonClient.hasPluginUi(plugin.id)
+        pluginUiAvailable.value.set(plugin.id, uiInfo.has_ui)
     }),
 )
 
