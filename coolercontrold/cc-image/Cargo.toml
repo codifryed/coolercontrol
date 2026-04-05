@@ -1,0 +1,45 @@
+[package]
+name = "cc-image"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Image processing and LCD image generation for CoolerControl"
+categories = ["hardware-support"]
+keywords = ["image", "lcd", "hardware"]
+homepage = "https://coolercontrol.org"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+license = "GPL-3.0-or-later"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow = "1.0.102"
+log = "0.4.29"
+mime = "0.3.17"
+tokio = { version = "1.50.0", default-features = false, features = [
+  "rt",
+  "time",
+] }
+# image processing
+image = { version = "=0.25.8", default-features = false, features = [
+  "rayon",
+  "gif",
+  "jpeg",
+  "ico",
+  "png",
+  "tiff",
+  "bmp",
+  "webp",
+] }
+gifski = { version = "1.34.0", default-features = false, features = [
+  "gifsicle",
+] }
+imgref = "1.12.0"
+rgb = "0.8.52"
+# LCD image generation
+ril = { version = "0.10.3", default-features = false, features = [
+  "png",
+  "text",
+] }
+tiny-skia = "0.12.0"

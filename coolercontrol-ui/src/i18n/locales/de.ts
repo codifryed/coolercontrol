@@ -120,7 +120,7 @@ export default {
             shutdownError:
                 'Unbekannter Fehler beim Senden des Shutdown-Signals. Details finden Sie in den Logs.',
             quitDesktopApp: 'Desktop-App beenden',
-            applicationInfo: 'Anwendungsinfo',
+            applicationInfo: 'Info & Werkzeuge',
             back: 'Zurück',
             expandMenu: 'Menü erweitern',
             collapseMenu: 'Menü einklappen',
@@ -467,7 +467,7 @@ export default {
             duplicateDashboard: 'Dashboard duplizieren',
         },
         appInfo: {
-            title: 'Anwendungsinformationen',
+            title: 'Info & Werkzeuge',
             noWarranty: 'Dieses Programm kommt absolut ohne Garantie.',
             daemonStatus: 'Daemon-Status',
             acknowledgeIssues: 'Probleme bestätigen',
@@ -492,6 +492,31 @@ export default {
             discordDesc: 'Treten Sie unserer Discord-Community bei',
             logsAndDiagnostics: 'Logs und Diagnose',
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
+            stressTest: 'Thermische Stresstests',
+            stressTestTooltip:
+                'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Installieren Sie stress-ng für bessere Ergebnisse.',
+            cpuStress: 'CPU-Stress',
+            gpuStress: 'GPU-Stress',
+            gpuStressTooltip:
+                'Erfordert Vulkan- oder OpenGL ES-Treiber<br>bei Verwendung des eingebauten Backends.',
+            ramStress: 'RAM-Stress',
+            driveStress: 'Laufwerk-Stress',
+            driveStressTooltip:
+                'I/O-Stress auf einem Blockgerät zur<br>Wärmeerzeugung an Laufwerkscontrollern.',
+            builtInBackend: 'eingebaut',
+            selectDrive: 'Laufwerk auswählen',
+            threadCount: 'Threads',
+            duration: 'Dauer (s)',
+            start: 'Start',
+            stop: 'Stop',
+            stopAll: 'Alle stoppen',
+            active: 'Aktiv',
+            inactive: 'Inaktiv',
+            allCores: 'Alle Kerne',
+            psuWarningHeader: 'Warnung: Hohe Leistungsaufnahme',
+            psuWarningMessage:
+                'Das gleichzeitige Ausführen von CPU- und GPU-Stresstests belastet das Netzteil erheblich. Bei Übertaktung oder einem Netzteil mit niedriger Wattzahl kann es zu Systeminstabilität kommen. Möchten Sie trotzdem fortfahren?',
+            proceed: 'Fortfahren',
         },
         alerts: {
             createAlert: 'Warnung erstellen',
@@ -914,9 +939,9 @@ export default {
             functions: 'Funktionen',
             functionsDesc:
                 'Funktionen werden auf Profile angewendet, um Lüftergeschwindigkeitsübergänge zu glätten und Geräusche zu reduzieren.',
-            appInfo: 'Anwendungs- und Daemon-Informationen',
+            appInfo: 'Anwendungsinfo & Werkzeuge',
             appInfoDesc:
-                'Klicken Sie auf das Logo, um App-Info, Daemon-Status und Logs anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
+                'Klicken Sie auf das Logo, um App-Info, Daemon-Status, Logs und thermische Lastwerkzeuge anzuzeigen. Ein Status-Symbol warnt Sie bei Problemen.',
             quickAdd: 'Schnelles Hinzufügen',
             quickAddDesc: 'Schnelles Erstellen neuer Dashboards, Profile, Funktionen und mehr.',
             dashboardQuick: 'Dashboard-Schnellmenü',

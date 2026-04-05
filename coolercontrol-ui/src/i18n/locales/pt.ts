@@ -118,7 +118,7 @@ export default {
             shutdownError:
                 'Erro desconhecido ao enviar sinal de desligamento. Veja os logs para detalhes.',
             quitDesktopApp: 'Sair do aplicativo desktop',
-            applicationInfo: 'Informações do aplicativo',
+            applicationInfo: 'Info e Ferramentas',
             back: 'Voltar',
             expandMenu: 'Expandir menu',
             collapseMenu: 'Recolher menu',
@@ -395,7 +395,7 @@ export default {
             duplicateDashboard: 'Duplicar Painel',
         },
         appInfo: {
-            title: 'Informações da Aplicação',
+            title: 'Info e Ferramentas',
             noWarranty: 'Este programa é fornecido sem absolutamente nenhuma garantia.',
             daemonStatus: 'Status do Daemon',
             acknowledgeIssues: 'Reconhecer Problemas',
@@ -420,6 +420,31 @@ export default {
             discordDesc: 'Junte-se à nossa comunidade no Discord',
             logsAndDiagnostics: 'Logs e Diagnósticos',
             downloadCurrentLog: 'Baixar Log Atual',
+            stressTest: 'Testes de estresse térmico',
+            stressTestTooltip:
+                'Gera carga térmica sustentada para validar<br>curvas de ventilador e perfis de resfriamento.<br>Os resultados podem variar dependendo do hardware.<br>Instale stress-ng para melhores resultados.',
+            cpuStress: 'Estresse de CPU',
+            gpuStress: 'Estresse de GPU',
+            gpuStressTooltip:
+                'Pode requerer drivers Vulkan ou OpenGL ES<br>ao usar o backend integrado.',
+            ramStress: 'Estresse de RAM',
+            driveStress: 'Estresse de disco',
+            driveStressTooltip:
+                'Estresse de E/S em um dispositivo de bloco para gerar<br>calor nos controladores de disco.',
+            builtInBackend: 'integrado',
+            selectDrive: 'Selecionar disco',
+            threadCount: 'Threads',
+            duration: 'Duração (s)',
+            start: 'Iniciar',
+            stop: 'Parar',
+            stopAll: 'Parar tudo',
+            active: 'Ativo',
+            inactive: 'Inativo',
+            allCores: 'Todos os núcleos',
+            psuWarningHeader: 'Aviso de alto consumo',
+            psuWarningMessage:
+                'Executar os testes de estresse de CPU e GPU simultaneamente colocará carga significativa na fonte de alimentação. Se estiver com overclock ou usando uma fonte de baixa potência, pode ocorrer instabilidade do sistema. Deseja continuar?',
+            proceed: 'Continuar',
         },
         devices: {
             detectionIssues: 'Problemas de Detecção? Veja a',
@@ -911,9 +936,9 @@ export default {
             functions: 'Funções',
             functionsDesc:
                 'As Funções são aplicadas aos Perfis para suavizar as transições de velocidade do ventilador e reduzir o ruído.',
-            appInfo: 'Informações do Aplicativo e Daemon',
+            appInfo: 'Informações do Aplicativo e Ferramentas',
             appInfoDesc:
-                'Clique no logo para ver info do app, status do daemon e logs. Um indicador de status alerta sobre problemas.',
+                'Clique no logo para ver info do app, status do daemon, logs e ferramentas de carga térmica. Um indicador de status alerta sobre problemas.',
             quickAdd: 'Adição Rápida',
             quickAddDesc: 'Crie rapidamente novos Painéis, Perfis, Funções e mais.',
             dashboardQuick: 'Menu Rápido do Painel',

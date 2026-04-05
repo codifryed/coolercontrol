@@ -116,7 +116,7 @@ export default {
             shutdownError:
                 'シャットダウン信号の送信中に不明なエラーが発生しました。詳細はログを確認してください。',
             quitDesktopApp: 'デスクトップアプリを終了',
-            applicationInfo: 'アプリケーション情報',
+            applicationInfo: '情報とツール',
             back: '戻る',
             expandMenu: 'メニューを展開',
             collapseMenu: 'メニューを折りたたむ',
@@ -503,7 +503,7 @@ export default {
             duplicateDashboard: 'ダッシュボードを複製',
         },
         appInfo: {
-            title: 'アプリケーション情報',
+            title: '情報とツール',
             noWarranty: 'このプログラムは絶対に保証がありません。',
             daemonStatus: 'デーモンステータス',
             acknowledgeIssues: '問題を確認',
@@ -528,6 +528,31 @@ export default {
             discordDesc: '私たちのDiscordコミュニティに参加',
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
+            stressTest: '熱ストレステスト',
+            stressTestTooltip:
+                '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>stress-ngをインストールするとより良い結果が得られます。',
+            cpuStress: 'CPUストレス',
+            gpuStress: 'GPUストレス',
+            gpuStressTooltip:
+                '内蔵バックエンド使用時は<br>VulkanまたはOpenGL ESドライバーが必要な場合があります。',
+            ramStress: 'RAMストレス',
+            driveStress: 'ドライブストレス',
+            driveStressTooltip:
+                'ブロックデバイスへのI/Oストレスで<br>ドライブコントローラーの発熱を促進します。',
+            builtInBackend: '内蔵',
+            selectDrive: 'ドライブを選択',
+            threadCount: 'スレッド数',
+            duration: '時間 (秒)',
+            start: '開始',
+            stop: '停止',
+            stopAll: 'すべて停止',
+            active: 'アクティブ',
+            inactive: '非アクティブ',
+            allCores: '全コア',
+            psuWarningHeader: '高電力警告',
+            psuWarningMessage:
+                'CPUとGPUのストレステストを同時に実行すると、電源ユニットに大きな負荷がかかります。オーバークロック中や低ワット数の電源では、システムが不安定になる可能性があります。続行しますか？',
+            proceed: '続行',
         },
         alerts: {
             createAlert: 'アラートを作成',
@@ -901,9 +926,9 @@ export default {
             functions: '機能',
             functionsDesc:
                 '機能はプロファイルに適用され、ファン速度の遷移をスムーズにし、ノイズを低減します。',
-            appInfo: 'アプリケーションとデーモン情報',
+            appInfo: 'アプリケーション情報とツール',
             appInfoDesc:
-                'ロゴをクリックしてアプリ情報、デーモンステータス、ログを表示。ステータスバッジが問題をお知らせします。',
+                'ロゴをクリックしてアプリ情報、デーモンステータス、ログおよび熱負荷ツールを表示。ステータスバッジが問題をお知らせします。',
             quickAdd: 'クイック追加',
             quickAddDesc: '新しいダッシュボード、プロファイル、機能などをすばやく作成。',
             dashboardQuick: 'ダッシュボードクイックメニュー',
@@ -1195,6 +1220,13 @@ export default {
         channelType: {
             lcd: 'LCD',
             lighting: 'ライティング',
+        },
+    },
+    daemon: {
+        status: {
+            ok: 'OK',
+            hasWarnings: '警告あり',
+            hasErrors: 'エラーあり',
         },
     },
 }

@@ -18,21 +18,20 @@
 
 //! Prefer [`ShellCommand`] for commands needing shell features (pipes, globs), and
 //! [`DirectCommand`] for direct binary execution. Avoid using `tokio::process::Command`
-//! directly except in `liqctld_service.rs` which requires stdin piping and process-group
-//! lifecycle management.
+//! directly except where process lifecycle management is needed (e.g. `liqctld_service.rs`
+//! for stdin piping, `stress_test.rs` for long-running child processes).
 
 use std::collections::HashMap;
-use std::ops::Add;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::cc_fs;
 use anyhow::{anyhow, Result};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
+use nu_glob::{glob, Uninterruptible};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tokio::time::sleep;
 
 const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
 const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
@@ -71,9 +70,6 @@ impl ShellCommand {
     }
 
     pub async fn run(&self) -> ShellCommandResult {
-        let mut successful = false;
-        let mut stdout = String::new();
-        let mut stderr = String::new();
         let mut shell_command = Command::new("sh");
         shell_command
             .arg("-c")
@@ -84,72 +80,56 @@ impl ShellCommand {
         for (key, value) in &self.env {
             shell_command.env(key, value);
         }
-        let spawned_process = shell_command.spawn();
-        let timeout_time = Instant::now().add(self.timeout);
-        match spawned_process {
-            Ok(mut child) => {
-                while Instant::now() < timeout_time {
-                    sleep(Duration::from_millis(50)).await;
-                    match child.try_wait() {
-                        Ok(Some(_)) => break,
-                        Ok(None) => {} // loop
-                        Err(err) => {
-                            stderr = format!(
-                                "Error checking process status for command: {}, {err}",
-                                self.command
-                            );
-                            break;
-                        }
-                    }
-                }
-                successful = match child.try_wait() {
-                    Ok(None) => {
-                        warn!(
-                            "Shell command did not complete within the specified timeout: {:?} \
-                                Killing process for: {}",
-                            self.timeout, self.command
-                        );
-                        child.kill().await.ok();
-                        match child.wait().await {
-                            Ok(status) => status.success(),
-                            Err(err) => {
-                                warn!("Error waiting for killed process: {}, {err}", self.command);
-                                false
-                            }
-                        }
-                    }
-                    Ok(Some(status)) => status.success(),
-                    Err(err) => {
-                        warn!(
-                            "Error checking process status for command: {}, {err}",
-                            self.command
-                        );
-                        false
-                    }
-                };
-                if let Some(mut child_err) = child.stderr.take() {
-                    if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                        warn!("Error reading stderr for command: {}, {err}", self.command);
-                    }
-                    limit_output_length(&mut stderr);
-                    stderr = stderr.trim().to_string();
-                }
-                if let Some(mut child_out) = child.stdout.take() {
-                    if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                        warn!("Error reading stdout for command: {}, {err}", self.command);
-                    }
-                    limit_output_length(&mut stdout);
-                    stdout = stdout.trim().to_string();
-                }
-            }
+
+        let mut child = match shell_command.spawn() {
+            Ok(child) => child,
             Err(err) => {
                 error!(
                     "Unexpected Error spawning process for command: {}, {err}",
                     self.command
                 );
-                stderr = err.to_string();
+                return ShellCommandResult::Error(err.to_string());
             }
+        };
+
+        let successful = match tokio::time::timeout(self.timeout, child.wait()).await {
+            Ok(Ok(status)) => status.success(),
+            Ok(Err(err)) => {
+                warn!(
+                    "Error waiting for process for command: {}, {err}",
+                    self.command
+                );
+                false
+            }
+            Err(_) => {
+                warn!(
+                    "Shell command did not complete within the specified \
+                        timeout: {:?} Killing process for: {}",
+                    self.timeout, self.command
+                );
+                child.kill().await.ok();
+                let _ = child.wait().await;
+                false
+            }
+        };
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        if let Some(mut child_err) = child.stderr.take() {
+            if let Err(err) = child_err.read_to_string(&mut stderr).await {
+                warn!("Error reading stderr for command: {}, {err}", self.command);
+            }
+            limit_output_length(&mut stderr);
+            stderr = stderr.trim().to_string();
         }
+        if let Some(mut child_out) = child.stdout.take() {
+            if let Err(err) = child_out.read_to_string(&mut stdout).await {
+                warn!("Error reading stdout for command: {}, {err}", self.command);
+            }
+            limit_output_length(&mut stdout);
+            stdout = stdout.trim().to_string();
+        }
+
         if successful {
             ShellCommandResult::Success { stdout, stderr }
         } else {
@@ -201,61 +181,50 @@ impl DirectCommand {
             .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let timeout_time = Instant::now().add(self.timeout);
-        match cmd.spawn() {
-            Ok(mut child) => {
-                while Instant::now() < timeout_time {
-                    sleep(Duration::from_millis(50)).await;
-                    match child.try_wait() {
-                        Ok(Some(_)) => break,
-                        Ok(None) => {}
-                        Err(err) => {
-                            warn!("Error checking process status for {}: {err}", self.binary);
-                            break;
-                        }
-                    }
-                }
-                let exit_code = match child.try_wait() {
-                    Ok(None) => {
-                        debug!(
-                            "DirectCommand did not complete within timeout: {:?} Killing: {}",
-                            self.timeout, self.binary
-                        );
-                        child.kill().await.ok();
-                        return Err(anyhow!(
-                            "Command {} timed out after {:?}",
-                            self.binary,
-                            self.timeout
-                        ));
-                    }
-                    Ok(Some(status)) => status.code().unwrap_or(-1),
-                    Err(err) => {
-                        return Err(anyhow!(
-                            "Error checking process status for {}: {err}",
-                            self.binary
-                        ));
-                    }
-                };
-                let mut stdout = String::new();
-                let mut stderr = String::new();
-                if let Some(mut child_err) = child.stderr.take() {
-                    if let Err(err) = child_err.read_to_string(&mut stderr).await {
-                        warn!("Error reading stderr for {}: {err}", &self.binary);
-                    }
-                    limit_output_length(&mut stderr);
-                    stderr = stderr.trim().to_string();
-                }
-                if let Some(mut child_out) = child.stdout.take() {
-                    if let Err(err) = child_out.read_to_string(&mut stdout).await {
-                        warn!("Error reading stdout for {}: {err}", self.binary);
-                    }
-                    limit_output_length(&mut stdout);
-                    stdout = stdout.trim().to_string();
-                }
-                Ok((exit_code, stdout, stderr))
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|err| anyhow!("Failed to spawn {}: {err}", self.binary))?;
+
+        let exit_code = match tokio::time::timeout(self.timeout, child.wait()).await {
+            Ok(Ok(status)) => status.code().unwrap_or(-1),
+            Ok(Err(err)) => {
+                return Err(anyhow!("Error waiting for process {}: {err}", self.binary));
             }
-            Err(err) => Err(anyhow!("Failed to spawn {}: {err}", self.binary)),
+            Err(_) => {
+                debug!(
+                    "DirectCommand did not complete within timeout: {:?} \
+                        Killing: {}",
+                    self.timeout, self.binary
+                );
+                child.kill().await.ok();
+                let _ = child.wait().await;
+                return Err(anyhow!(
+                    "Command {} timed out after {:?}",
+                    self.binary,
+                    self.timeout
+                ));
+            }
+        };
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        if let Some(mut child_err) = child.stderr.take() {
+            if let Err(err) = child_err.read_to_string(&mut stderr).await {
+                warn!("Error reading stderr for {}: {err}", self.binary);
+            }
+            limit_output_length(&mut stderr);
+            stderr = stderr.trim().to_string();
         }
+        if let Some(mut child_out) = child.stdout.take() {
+            if let Err(err) = child_out.read_to_string(&mut stdout).await {
+                warn!("Error reading stdout for {}: {err}", self.binary);
+            }
+            limit_output_length(&mut stdout);
+            stdout = stdout.trim().to_string();
+        }
+
+        Ok((exit_code, stdout, stderr))
     }
 }
 
@@ -293,6 +262,40 @@ fn limit_output_length(output: &mut String) {
         output.truncate(MAX_OUTPUT_LENGTH_BYTES);
         *output = format!("{output}... (truncated)");
     }
+}
+
+const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
+const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
+const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
+const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
+const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
+const GLOB_XAUTHORITY_PATH_ROOT: &str = "/root/.Xauthority";
+
+/// Searches for the Xauthority magic cookie on the system. Checks the XAUTHORITY
+/// environment variable first, then searches common file paths used by various
+/// display managers (GDM, SDDM, mutter-xwayland, etc.).
+pub fn find_xauthority_path() -> Option<String> {
+    if let Ok(environment_xauthority) = std::env::var("XAUTHORITY") {
+        info!("Found existing Xauthority in the environment: {environment_xauthority}");
+        return Some(environment_xauthority);
+    }
+    // glob() only fails for invalid pattern syntax; these are compile-time constants.
+    let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
+        .unwrap()
+        .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, Uninterruptible).unwrap())
+        .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, Uninterruptible).unwrap())
+        .filter_map(Result::ok)
+        .find(|path| path.is_absolute());
+    if let Some(xauthority_path) = xauthority_path_opt {
+        if let Some(xauthority_str) = xauthority_path.to_str() {
+            info!("Xauthority found in file path: {xauthority_str}");
+            return Some(xauthority_str.to_owned());
+        }
+    }
+    None
 }
 
 /// Sanitizes a string for safe use in shell commands and notification displays.

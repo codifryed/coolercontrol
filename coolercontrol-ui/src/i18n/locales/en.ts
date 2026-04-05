@@ -115,7 +115,7 @@ export default {
             shutdownSuccess: 'Daemon shutdown signal accepted',
             shutdownError: 'Unknown error sending shutdown signal. See logs for details.',
             quitDesktopApp: 'Quit Desktop App',
-            applicationInfo: 'Application Info',
+            applicationInfo: 'Info & Tools',
             back: 'Back',
             expandMenu: 'Expand Menu',
             collapseMenu: 'Collapse Menu',
@@ -458,7 +458,7 @@ export default {
             duplicateDashboard: 'Duplicate Dashboard',
         },
         appInfo: {
-            title: 'Application Information',
+            title: 'Info & Tools',
             noWarranty: 'This program comes with absolutely no warranty.',
             daemonStatus: 'Daemon Status',
             acknowledgeIssues: 'Acknowledge Issues',
@@ -483,6 +483,32 @@ export default {
             discordDesc: 'Join our Discord community',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
+            stressTest: 'Thermal Stress Tests',
+            stressTestTooltip:
+                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>Install stress-ng for improved results.',
+            cpuStress: 'CPU Stress',
+            gpuStress: 'GPU Stress',
+            gpuStressTooltip:
+                'May require Vulkan or OpenGL ES drivers<br>when using the built-in backend.',
+            ramStress: 'RAM Stress',
+            driveStress: 'Drive Stress',
+            driveStressTooltip:
+                'I/O stress on a block device to generate<br>heat on drive controllers.',
+            builtInBackend: 'built-in',
+            selectDrive: 'Select drive',
+            threadCount: 'Threads',
+            duration: 'Duration (s)',
+
+            start: 'Start',
+            stop: 'Stop',
+            stopAll: 'Stop All',
+            active: 'Active',
+            inactive: 'Inactive',
+            allCores: 'All Cores',
+            psuWarningHeader: 'High Power Warning',
+            psuWarningMessage:
+                'Running both CPU and GPU stress tests simultaneously will put significant load on your PSU. If overclocking or using a low wattage PSU, system instability can occur. Are you sure you want to proceed?',
+            proceed: 'Proceed',
         },
         alerts: {
             createAlert: 'Create Alert',
@@ -888,9 +914,9 @@ export default {
             functions: 'Functions',
             functionsDesc:
                 'Functions are applied to Profiles to smooth out fan speed transitions and reduce noise.',
-            appInfo: 'Application and Daemon Information',
+            appInfo: 'Application Info & Tools',
             appInfoDesc:
-                'Click the logo to view app info, daemon status, and logs. A status badge here alerts you to any issues.',
+                'Click the logo to view app info, daemon status, logs, and thermal load tools. A status badge here alerts you to any issues.',
             quickAdd: 'Quick Add',
             quickAddDesc: 'Quickly create new Dashboards, Profiles, Functions, and more.',
             dashboardQuick: 'Dashboard Quick Menu',

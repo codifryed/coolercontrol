@@ -1375,4 +1375,169 @@ export default class DaemonClient {
             }
         }
     }
+
+    /* Stress Test */
+
+    private handleStressTestError(err: any): ErrorResponse {
+        if (err.response?.status === 404) {
+            return new ErrorResponse('Stress testing requires a daemon update')
+        }
+        this.logError(err)
+        if (err.response) {
+            return plainToInstance(ErrorResponse, err.response.data as object)
+        }
+        return new ErrorResponse('Daemon communication error')
+    }
+
+    async startCpuStress(
+        threadCount?: number,
+        durationSecs?: number,
+    ): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/cpu', {
+                thread_count: threadCount,
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start CPU Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopCpuStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/cpu')
+            this.logDaemonResponse(response, 'Stop CPU Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async startGpuStress(durationSecs?: number): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/gpu', {
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start GPU Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopGpuStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/gpu')
+            this.logDaemonResponse(response, 'Stop GPU Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async startRamStress(durationSecs?: number): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/ram', {
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start RAM Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopRamStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/ram')
+            this.logDaemonResponse(response, 'Stop RAM Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async listDrivesForStress(): Promise<
+        Array<{ device_path: string; model?: string; size_bytes: number }>
+    > {
+        try {
+            const response = await this.getClient().get('/stress-test/drives')
+            this.logDaemonResponse(response, 'List Drives')
+            return response.data
+        } catch {
+            return []
+        }
+    }
+
+    async startDriveStress(
+        devicePath: string,
+        threads?: number,
+        durationSecs?: number,
+    ): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/stress-test/drive', {
+                device_path: devicePath,
+                threads: threads,
+                duration_secs: durationSecs,
+            })
+            this.logDaemonResponse(response, 'Start Drive Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopDriveStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test/drive')
+            this.logDaemonResponse(response, 'Stop Drive Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stopAllStress(): Promise<undefined | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete('/stress-test')
+            this.logDaemonResponse(response, 'Stop All Stress')
+            return undefined
+        } catch (err: any) {
+            return this.handleStressTestError(err)
+        }
+    }
+
+    async stressTestStatus(): Promise<{
+        cpu_active: boolean
+        cpu_duration_secs?: number
+        cpu_backend: string
+        gpu_active: boolean
+        gpu_duration_secs?: number
+        gpu_backend: string
+        ram_active: boolean
+        ram_duration_secs?: number
+        ram_backend: string
+        drive_active: boolean
+        drive_duration_secs?: number
+        drive_backend: string
+    }> {
+        try {
+            const response = await this.getClient().get('/stress-test')
+            this.logDaemonResponse(response, 'Stress Test Status')
+            return response.data
+        } catch {
+            return {
+                cpu_active: false,
+                cpu_backend: 'built_in',
+                gpu_active: false,
+                gpu_backend: 'built_in',
+                ram_active: false,
+                ram_backend: 'built_in',
+                drive_active: false,
+                drive_backend: 'built_in',
+            }
+        }
+    }
 }

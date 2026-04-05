@@ -417,6 +417,34 @@ enum SubCommands {
         #[arg(long)]
         load: bool,
     },
+    #[command(hide = true)]
+    StressCpu {
+        #[arg(long)]
+        threads: Option<u16>,
+        #[arg(long)]
+        timeout: u16,
+    },
+    #[command(hide = true)]
+    StressGpu {
+        #[arg(long)]
+        timeout: u16,
+    },
+    #[command(hide = true)]
+    StressRam {
+        #[arg(long)]
+        bytes: u64,
+        #[arg(long)]
+        timeout: u16,
+    },
+    #[command(hide = true)]
+    StressDrive {
+        #[arg(long)]
+        device: String,
+        #[arg(long)]
+        threads: Option<u16>,
+        #[arg(long)]
+        timeout: u16,
+    },
 }
 
 async fn handle_non_root_commands(args: &Args) -> Result<()> {
@@ -437,6 +465,31 @@ async fn handle_non_root_commands(args: &Args) -> Result<()> {
             args.debug,
         )
         .await?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressCpu { threads, timeout }) = &args.command {
+        cc_stress::run_cpu_stress(*threads, *timeout)?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressGpu { timeout }) = &args.command {
+        cc_stress::run_gpu_stress(*timeout).await?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressRam { bytes, timeout }) = &args.command {
+        cc_stress::run_ram_stress(*bytes, *timeout)?;
+        exit_successfully();
+    }
+    if let Some(SubCommands::StressDrive {
+        device,
+        threads,
+        timeout,
+    }) = &args.command
+    {
+        cc_stress::run_drive_stress(
+            device,
+            threads.unwrap_or(cc_stress::DRIVE_STRESS_DEFAULT_THREADS),
+            *timeout,
+        )?;
         exit_successfully();
     }
     Ok(())

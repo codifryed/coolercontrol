@@ -119,7 +119,7 @@ export default {
             shutdownError:
                 "Erreur inconnue lors de l'envoi du signal d'arrêt. Consultez les journaux pour plus de détails.",
             quitDesktopApp: "Quitter l'application",
-            applicationInfo: "Informations sur l'application",
+            applicationInfo: 'Info & Outils',
             back: 'Retour',
             expandMenu: 'Développer le menu',
             collapseMenu: 'Réduire le menu',
@@ -474,7 +474,7 @@ export default {
             duplicateDashboard: 'Dupliquer le Tableau de Bord',
         },
         appInfo: {
-            title: "Informations sur l'Application",
+            title: 'Info & Outils',
             noWarranty: 'Ce programme est fourni sans absolument aucune garantie.',
             daemonStatus: 'État du Daemon',
             acknowledgeIssues: 'Reconnaître les Problèmes',
@@ -499,6 +499,31 @@ export default {
             discordDesc: 'Rejoignez notre communauté Discord',
             logsAndDiagnostics: 'Journaux et Diagnostics',
             downloadCurrentLog: 'Télécharger le Journal Actuel',
+            stressTest: 'Tests de stress thermique',
+            stressTestTooltip:
+                'Génère une charge thermique soutenue pour valider<br>les courbes de ventilateur et les profils de refroidissement.<br>Les résultats peuvent varier selon le matériel.<br>Installez stress-ng pour de meilleurs résultats.',
+            cpuStress: 'Stress CPU',
+            gpuStress: 'Stress GPU',
+            gpuStressTooltip:
+                "Peut nécessiter des pilotes Vulkan ou OpenGL ES<br>lors de l'utilisation du backend intégré.",
+            ramStress: 'Stress RAM',
+            driveStress: 'Stress disque',
+            driveStressTooltip:
+                "Stress d'E/S sur un périphérique bloc pour générer<br>de la chaleur sur les contrôleurs de disque.",
+            builtInBackend: 'intégré',
+            selectDrive: 'Sélectionner un disque',
+            threadCount: 'Threads',
+            duration: 'Durée (s)',
+            start: 'Démarrer',
+            stop: 'Arrêter',
+            stopAll: 'Tout arrêter',
+            active: 'Actif',
+            inactive: 'Inactif',
+            allCores: 'Tous les cœurs',
+            psuWarningHeader: 'Avertissement: consommation élevée',
+            psuWarningMessage:
+                "L'exécution simultanée des tests de stress CPU et GPU sollicitera fortement votre alimentation. En cas d'overclocking ou avec une alimentation de faible puissance, une instabilité système peut survenir. Voulez-vous continuer ?",
+            proceed: 'Continuer',
         },
         alerts: {
             createAlert: 'Créer une Alerte',
@@ -911,9 +936,9 @@ export default {
             functions: 'Fonctions',
             functionsDesc:
                 'Les fonctions sont appliquées aux profils pour lisser les transitions de vitesse des ventilateurs et réduire le bruit.',
-            appInfo: "Informations sur l'Application et le Daemon",
+            appInfo: "Informations sur l'Application et les Outils",
             appInfoDesc:
-                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon et les journaux. Un badge de statut vous alerte en cas de problème.",
+                "Cliquez sur le logo pour voir les infos de l'app, le statut du daemon, les journaux et les outils de charge thermique. Un badge de statut vous alerte en cas de problème.",
             quickAdd: 'Ajout Rapide',
             quickAddDesc:
                 'Créez rapidement de nouveaux tableaux de bord, profils, fonctions et plus.',

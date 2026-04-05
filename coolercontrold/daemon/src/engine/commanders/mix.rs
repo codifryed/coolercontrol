@@ -367,7 +367,7 @@ impl MixProfileCommander {
         // parent(s). These channels should not be applied by the child directly.
         let mut parent_owned_channels: HashMap<&ProfileUID, HashSet<&DeviceChannelProfileSetting>> =
             HashMap::new();
-        for (mix_profile, parent_device_channels) in scheduled.iter() {
+        for (mix_profile, parent_device_channels) in scheduled {
             for child_uid in &mix_profile.member_mix_profile_uids {
                 parent_owned_channels
                     .entry(child_uid)
@@ -375,7 +375,7 @@ impl MixProfileCommander {
                     .extend(parent_device_channels);
             }
         }
-        for (mix_profile, device_channels) in scheduled.iter() {
+        for (mix_profile, device_channels) in scheduled {
             let optional_duty_to_set = output_cache[&mix_profile.profile_uid].as_ref().copied();
             let Some(duty_to_set) = optional_duty_to_set else {
                 continue;

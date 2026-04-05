@@ -23,9 +23,9 @@ use std::ops::{Add, Not, RangeInclusive, Sub};
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::repositories::utils::find_xauthority_path;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
-use nu_glob::{glob, Uninterruptible};
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
 use nvml_wrapper::enums::device::SampleValue;
 use nvml_wrapper::structs::device::FieldId;
@@ -62,12 +62,6 @@ const NVIDIA_CLOCK_GRAPHICS: &str = "freq_graphics";
 const NVIDIA_CLOCK_SM: &str = "freq_sm";
 const NVIDIA_CLOCK_MEMORY: &str = "freq_memory";
 const NVIDIA_CLOCK_VIDEO: &str = "freq_video";
-const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
-const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
-const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
-const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
-const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
-const GLOB_XAUTHORITY_PATH_ROOT: &str = "/root/.Xauthority";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 const PATTERN_FAN_CHANNEL_INDEX: &str = r"^fan(?P<index>\d+)";
@@ -969,24 +963,8 @@ impl GpuNVidia {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
             sleep(Duration::from_millis(500)).await;
-            if let Ok(environment_xauthority) = std::env::var("XAUTHORITY") {
-                info!("Found existing Xauthority in the environment: {environment_xauthority}");
-                return Some(environment_xauthority);
-            }
-            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM, Uninterruptible)
-                .unwrap()
-                .chain(glob(GLOB_XAUTHORITY_PATH_USER, Uninterruptible).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM, Uninterruptible).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER, Uninterruptible).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER, Uninterruptible).unwrap())
-                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT, Uninterruptible).unwrap())
-                .filter_map(Result::ok)
-                .find(|path| path.is_absolute());
-            if let Some(xauthority_path) = xauthority_path_opt {
-                if let Some(xauthority_str) = xauthority_path.to_str() {
-                    info!("Xauthority found in file path: {xauthority_str}");
-                    return Some(xauthority_str.to_owned());
-                }
+            if let Some(path) = find_xauthority_path() {
+                return Some(path);
             }
         }
         error!("Xauthority not found within {XAUTHORITY_SEARCH_TIMEOUT:?}.");

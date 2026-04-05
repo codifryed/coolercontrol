@@ -116,7 +116,7 @@ export default {
             shutdownError:
                 '종료 신호를 보내는 동안 알 수 없는 오류가 발생했습니다. 자세한 내용은 로그를 참조하세요.',
             quitDesktopApp: '데스크톱 앱 종료',
-            applicationInfo: '애플리케이션 정보',
+            applicationInfo: '정보 및 도구',
             back: '뒤로',
             expandMenu: '확장 메뉴',
             collapseMenu: '메뉴 접기',
@@ -453,7 +453,7 @@ export default {
             duplicateDashboard: '대시보드 복제',
         },
         appInfo: {
-            title: '애플리케이션 정보',
+            title: '정보 및 도구',
             noWarranty: '이 프로그램에는 어떠한 보증도 제공되지 않습니다.',
             daemonStatus: '데몬 상태',
             acknowledgeIssues: '문제 인지',
@@ -478,6 +478,31 @@ export default {
             discordDesc: '디스코드 커뮤니티 참여',
             logsAndDiagnostics: '로그 및 진단',
             downloadCurrentLog: '현재 로그 다운로드',
+            stressTest: '열 스트레스 테스트',
+            stressTestTooltip:
+                '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>더 나은 결과를 위해 stress-ng를 설치하세요.',
+            cpuStress: 'CPU 스트레스',
+            gpuStress: 'GPU 스트레스',
+            gpuStressTooltip:
+                '내장 백엔드 사용 시<br>Vulkan 또는 OpenGL ES 드라이버가 필요할 수 있습니다.',
+            ramStress: 'RAM 스트레스',
+            driveStress: '드라이브 스트레스',
+            driveStressTooltip:
+                '블록 장치에 대한 I/O 스트레스로<br>드라이브 컨트롤러에 열을 발생시킵니다.',
+            builtInBackend: '내장',
+            selectDrive: '드라이브 선택',
+            threadCount: '스레드',
+            duration: '지속 시간 (초)',
+            start: '시작',
+            stop: '중지',
+            stopAll: '모두 중지',
+            active: '활성',
+            inactive: '비활성',
+            allCores: '모든 코어',
+            psuWarningHeader: '높은 전력 경고',
+            psuWarningMessage:
+                'CPU와 GPU 스트레스 테스트를 동시에 실행하면 PSU에 상당한 부하가 걸립니다. 오버클럭 중이거나 저전력 PSU를 사용하는 경우 시스템 불안정이 발생할 수 있습니다. 계속하시겠습니까?',
+            proceed: '계속',
         },
         alerts: {
             createAlert: '경고 생성',
@@ -879,9 +904,9 @@ export default {
             functions: '기능',
             functionsDesc:
                 '프로파일에 기능을 적용하여 팬 속도 전환을 부드럽게 하고 소음을 줄입니다.',
-            appInfo: '애플리케이션 및 데몬 정보',
+            appInfo: '애플리케이션 정보 및 도구',
             appInfoDesc:
-                '로고를 클릭하면 앱 정보, 데몬 상태 및 로그를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
+                '로고를 클릭하면 앱 정보, 데몬 상태, 로그 및 열 부하 도구를 볼 수 있습니다. 문제 발생 시 상태 배지가 표시됩니다.',
             quickAdd: '빠른 추가',
             quickAddDesc: '대시보드, 프로파일, 기능 등을 빠르게 생성하세요.',
             dashboardQuick: '대시보드 빠른 메뉴',

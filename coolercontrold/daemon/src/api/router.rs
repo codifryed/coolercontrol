@@ -18,7 +18,7 @@
 
 use crate::api::{
     alerts, auth, base, custom_sensors, detect, functions, metrics, modes, plugins, profiles,
-    settings, sse, status, tokens,
+    settings, sse, status, stress_test, tokens,
 };
 use crate::api::{devices, AppState};
 #[cfg(debug_assertions)]
@@ -44,6 +44,7 @@ pub fn init(app_state: AppState) -> ApiRouter {
         .merge(plugins_routes())
         .merge(alert_routes())
         .merge(detect_routes())
+        .merge(stress_test_routes())
         .merge(metrics_routes())
         .merge(sse_routes());
     // Only add API doc route for debug builds (safer for production)
@@ -955,6 +956,115 @@ fn detect_routes() -> ApiRouter<AppState> {
                     .security_requirement("BearerAuth")
             })
             .layer(axum::middleware::from_fn(auth::auth_write_middleware)),
+        )
+}
+
+#[allow(clippy::too_many_lines)] // Declarative route registration; splitting hurts readability.
+fn stress_test_routes() -> ApiRouter<AppState> {
+    ApiRouter::new()
+        .api_route(
+            "/stress-test/cpu",
+            post_with(stress_test::start_cpu, |o| {
+                o.summary("Start CPU Stress Test")
+                    .description(
+                        "Spawns a CPU stress subprocess with tight FMA loops \
+                         on the requested number of threads.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_cpu, |o| {
+                o.summary("Stop CPU Stress Test")
+                    .description("Stops the running CPU stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test/gpu",
+            post_with(stress_test::start_gpu, |o| {
+                o.summary("Start GPU Stress Test")
+                    .description(
+                        "Spawns a GPU stress subprocess using wgpu compute \
+                         shaders (Vulkan or OpenGL ES via ANGLE).",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_gpu, |o| {
+                o.summary("Stop GPU Stress Test")
+                    .description("Stops the running GPU stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test/ram",
+            post_with(stress_test::start_ram, |o| {
+                o.summary("Start RAM Stress Test")
+                    .description(
+                        "Spawns a RAM stress subprocess that streams data \
+                         through system memory to maximize bandwidth.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_ram, |o| {
+                o.summary("Stop RAM Stress Test")
+                    .description("Stops the running RAM stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test/drive",
+            post_with(stress_test::start_drive, |o| {
+                o.summary("Start Drive Stress Test")
+                    .description(
+                        "Spawns a drive stress subprocess that performs random \
+                         read-only I/O on the specified block device using O_DIRECT.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_drive, |o| {
+                o.summary("Stop Drive Stress Test")
+                    .description("Stops the running drive stress test.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test/drives",
+            get_with(stress_test::list_drives, |o| {
+                o.summary("List Available Drives")
+                    .description("Returns block devices available for drive stress testing.")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/stress-test",
+            get_with(stress_test::status, |o| {
+                o.summary("Stress Test Status")
+                    .description(
+                        "Returns the current status of CPU, GPU, RAM, and Drive stress tests.",
+                    )
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .delete_with(stress_test::stop_all, |o| {
+                o.summary("Stop All Stress Tests")
+                    .description("Stops all running stress tests (CPU, GPU, RAM, and Drive).")
+                    .tag("stress-test")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
 }
 
