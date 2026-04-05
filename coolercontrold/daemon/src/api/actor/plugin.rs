@@ -17,7 +17,7 @@
  */
 
 use crate::api::actor::{run_api_actor, ApiActor};
-use crate::api::plugins::{PluginDto, PluginsDto};
+use crate::api::plugins::{PluginDto, PluginStatusDto, PluginsDto};
 use crate::repositories::service_plugin::plugin_controller::PluginController;
 use crate::repositories::service_plugin::service_manifest::ConnectionType;
 use anyhow::Result;
@@ -48,6 +48,22 @@ enum PluginMessage {
     GetUiDir {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<PathBuf>>,
+    },
+    StartPlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    StopPlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    RestartPlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    GetStatus {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<PluginStatusDto>>,
     },
 }
 impl PluginActor {
@@ -122,6 +138,38 @@ impl ApiActor<PluginMessage> for PluginActor {
                 let ui_dir = self.plugin_controller.get_plugin_ui_dir(&plugin_id);
                 let _ = respond_to.send(ui_dir);
             }
+            PluginMessage::StartPlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.start_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::StopPlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.stop_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::RestartPlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.restart_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::GetStatus {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self
+                    .plugin_controller
+                    .get_plugin_status(&plugin_id)
+                    .await
+                    .map(|status| status.into());
+                let _ = respond_to.send(result);
+            }
         }
     }
 }
@@ -174,6 +222,46 @@ impl PluginHandle {
     pub async fn get_ui_dir(&self, plugin_id: String) -> Result<PathBuf> {
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::GetUiDir {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn start_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::StartPlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn stop_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::StopPlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn restart_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::RestartPlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn get_plugin_status(&self, plugin_id: String) -> Result<PluginStatusDto> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::GetStatus {
             plugin_id,
             respond_to: tx,
         };

@@ -731,6 +731,11 @@ impl ServicePluginRepo {
         self.service_manager.is_open_rc()
     }
 
+    /// Returns a clone of the service manager for use by the plugin controller.
+    pub fn service_manager(&self) -> Manager {
+        self.service_manager.clone()
+    }
+
     /// Returns a copy of the plugins information, used by the plugin controller.
     pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
         let mut plugins = HashMap::new();

@@ -18,8 +18,11 @@
 
 use crate::api::CCError;
 use crate::cc_fs;
+use crate::repositories::service_plugin::service_management::manager::{
+    Manager, ServiceManager, ServiceStatus,
+};
 use crate::repositories::service_plugin::service_management::ServiceId;
-use crate::repositories::service_plugin::service_manifest::ServiceManifest;
+use crate::repositories::service_plugin::service_manifest::{ServiceManifest, ServiceType};
 use crate::repositories::service_plugin::service_plugin_repo::{ServicePluginRepo, CC_PLUGIN_USER};
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use anyhow::{anyhow, Context, Result};
@@ -35,9 +38,9 @@ pub const PLUGIN_CONFIG_FILE_NAME: &str = "config.json";
 const PLUGIN_UI_DIR_NAME: &str = "ui";
 const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 
-#[derive(Default)]
 pub struct PluginController {
     pub plugins: HashMap<ServiceId, ServiceManifest>,
+    service_manager: Manager,
     is_systemd: bool,
     is_open_rc: bool,
 }
@@ -45,13 +48,26 @@ pub struct PluginController {
 impl PluginController {
     pub fn new(
         service_plugin_repo: &ServicePluginRepo,
+        service_manager: Manager,
         is_systemd: bool,
         is_open_rc: bool,
     ) -> Self {
         Self {
             plugins: service_plugin_repo.get_plugins(),
+            service_manager,
             is_systemd,
             is_open_rc,
+        }
+    }
+
+    /// Create a disabled controller with no plugins and no service manager.
+    /// Used when the service plugin repo fails to initialize.
+    pub fn new_disabled() -> Self {
+        Self {
+            plugins: HashMap::with_capacity(0),
+            service_manager: Manager::Disabled,
+            is_systemd: false,
+            is_open_rc: false,
         }
     }
 
@@ -144,6 +160,72 @@ impl PluginController {
                 }
             })?;
         Ok(dir)
+    }
+
+    /// Start a managed integration plugin's service.
+    pub async fn start_plugin(&self, plugin_id: &str) -> Result<()> {
+        let service_id = self.get_integration_service_id(plugin_id)?;
+        self.service_manager
+            .start(&service_id)
+            .await
+            .with_context(|| format!("Starting plugin service: {plugin_id}"))
+    }
+
+    /// Stop a managed integration plugin's service.
+    pub async fn stop_plugin(&self, plugin_id: &str) -> Result<()> {
+        let service_id = self.get_integration_service_id(plugin_id)?;
+        self.service_manager
+            .stop(&service_id)
+            .await
+            .with_context(|| format!("Stopping plugin service: {plugin_id}"))
+    }
+
+    /// Restart a managed integration plugin's service (stop then start).
+    pub async fn restart_plugin(&self, plugin_id: &str) -> Result<()> {
+        let service_id = self.get_integration_service_id(plugin_id)?;
+        self.service_manager
+            .stop(&service_id)
+            .await
+            .with_context(|| format!("Stopping plugin service for restart: {plugin_id}"))?;
+        self.service_manager
+            .start(&service_id)
+            .await
+            .with_context(|| format!("Starting plugin service for restart: {plugin_id}"))
+    }
+
+    /// Get the status of a plugin's service.
+    pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
+        let manifest = self.plugins.get(plugin_id).ok_or_else(|| CCError::NotFound {
+            msg: "Plugin not found".to_string(),
+        })?;
+        if manifest.is_managed().not() {
+            return Ok(ServiceStatus::NotInstalled);
+        }
+        let service_id = plugin_id.to_string();
+        self.service_manager
+            .status(&service_id)
+            .await
+            .with_context(|| format!("Getting plugin service status: {plugin_id}"))
+    }
+
+    /// Validate that a plugin is an integration type and return its service ID.
+    fn get_integration_service_id(&self, plugin_id: &str) -> Result<ServiceId> {
+        let manifest = self.plugins.get(plugin_id).ok_or_else(|| CCError::NotFound {
+            msg: "Plugin not found".to_string(),
+        })?;
+        if manifest.service_type != ServiceType::Integration {
+            return Err(CCError::UserError {
+                msg: "Lifecycle control is only available for integration plugins".to_string(),
+            }
+            .into());
+        }
+        if manifest.is_managed().not() {
+            return Err(CCError::UserError {
+                msg: "Plugin is not managed by the service manager".to_string(),
+            }
+            .into());
+        }
+        Ok(plugin_id.to_string())
     }
 }
 

@@ -859,6 +859,46 @@ fn plugins_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
+            "/plugins/{plugin_id}/start",
+            post_with(plugins::start_plugin, |o| {
+                o.summary("Start CoolerControl Plugin")
+                    .description("Starts a managed integration plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/stop",
+            post_with(plugins::stop_plugin, |o| {
+                o.summary("Stop CoolerControl Plugin")
+                    .description("Stops a managed integration plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/restart",
+            post_with(plugins::restart_plugin, |o| {
+                o.summary("Restart CoolerControl Plugin")
+                    .description("Restarts a managed integration plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/status",
+            get_with(plugins::get_plugin_status, |o| {
+                o.summary("CoolerControl Plugin Status")
+                    .description("Returns the status of a plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
             "/plugins/{plugin_id}/ui",
             get_with(plugins::has_ui, |o| {
                 o.summary("CoolerControl Plugin UI Check")
@@ -869,11 +909,11 @@ fn plugins_routes() -> ApiRouter<AppState> {
             .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
         )
         .api_route(
-            "/plugins/{plugin_id}/ui/{file_name}",
+            "/plugins/{plugin_id}/ui/{*file_path}",
             get_with(plugins::get_ui_files, |o| {
                 o.summary("CoolerControl Plugin UI")
                     .description(
-                        "Returns the CoolerControl plugin UI file for the given plugin ID.",
+                        "Returns the CoolerControl plugin UI file for the given plugin ID. Supports nested paths.",
                     )
                     .tag("plugins")
                     .security_requirement("CookieAuth")
