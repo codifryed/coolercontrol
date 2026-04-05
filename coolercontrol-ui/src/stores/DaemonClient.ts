@@ -1512,12 +1512,16 @@ export default class DaemonClient {
     async stressTestStatus(): Promise<{
         cpu_active: boolean
         cpu_duration_secs?: number
+        cpu_backend: string
         gpu_active: boolean
         gpu_duration_secs?: number
+        gpu_backend: string
         ram_active: boolean
         ram_duration_secs?: number
+        ram_backend: string
         drive_active: boolean
         drive_duration_secs?: number
+        drive_backend: string
     }> {
         try {
             const response = await this.getClient().get('/stress-test')
@@ -1526,9 +1530,13 @@ export default class DaemonClient {
         } catch {
             return {
                 cpu_active: false,
+                cpu_backend: 'built_in',
                 gpu_active: false,
+                gpu_backend: 'built_in',
                 ram_active: false,
+                ram_backend: 'built_in',
                 drive_active: false,
+                drive_backend: 'built_in',
             }
         }
     }

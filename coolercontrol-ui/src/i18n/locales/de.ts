@@ -494,14 +494,16 @@ export default {
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             stressTest: 'Thermische Stresstests',
             stressTestTooltip:
-                'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Für gründliche Tests verwenden Sie Ihr bevorzugtes<br>Stress- oder Benchmarking-Tool.',
+                'Erzeugt anhaltende Thermallast zur Validierung<br>von Lüfterkurven und Kühlprofilen.<br>Ergebnisse können je nach Hardware variieren.<br>Installieren Sie stress-ng für bessere Ergebnisse.',
             cpuStress: 'CPU-Stress',
             gpuStress: 'GPU-Stress',
-            gpuStressTooltip: 'Erfordert Vulkan- oder OpenGL ES-Treiber.',
+            gpuStressTooltip:
+                'Erfordert Vulkan- oder OpenGL ES-Treiber<br>bei Verwendung des eingebauten Backends.',
             ramStress: 'RAM-Stress',
             driveStress: 'Laufwerk-Stress',
             driveStressTooltip:
-                'Nur-Lese-I/O-Stress auf einem Blockgerät.<br>Verwendet zufällige O_DIRECT-Lesezugriffe zur Wärmeerzeugung<br>an Laufwerkscontrollern ohne Verschleiß.<br>Es werden keine Daten auf das Laufwerk geschrieben.',
+                'I/O-Stress auf einem Blockgerät zur<br>Wärmeerzeugung an Laufwerkscontrollern.',
+            builtInBackend: 'eingebaut',
             selectDrive: 'Laufwerk auswählen',
             threadCount: 'Threads',
             duration: 'Dauer (s)',

@@ -530,14 +530,16 @@ export default {
             downloadCurrentLog: '現在のログをダウンロード',
             stressTest: '熱ストレステスト',
             stressTestTooltip:
-                '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>本格的なテストには、お好みのストレステスト<br>またはベンチマークツールをご利用ください。',
+                '持続的な熱負荷を生成して<br>ファンカーブと冷却プロファイルを検証します。<br>結果はハードウェアにより異なる場合があります。<br>stress-ngをインストールするとより良い結果が得られます。',
             cpuStress: 'CPUストレス',
             gpuStress: 'GPUストレス',
-            gpuStressTooltip: 'VulkanまたはOpenGL ESドライバーが必要な場合があります。',
+            gpuStressTooltip:
+                '内蔵バックエンド使用時は<br>VulkanまたはOpenGL ESドライバーが必要な場合があります。',
             ramStress: 'RAMストレス',
             driveStress: 'ドライブストレス',
             driveStressTooltip:
-                'ブロックデバイスへの読み取り専用I/Oストレス。<br>O_DIRECTランダム読み取りを使用して<br>摩耗なしにドライブコントローラーの発熱を促進します。<br>ドライブにデータは書き込まれません。',
+                'ブロックデバイスへのI/Oストレスで<br>ドライブコントローラーの発熱を促進します。',
+            builtInBackend: '内蔵',
             selectDrive: 'ドライブを選択',
             threadCount: 'スレッド数',
             duration: '時間 (秒)',

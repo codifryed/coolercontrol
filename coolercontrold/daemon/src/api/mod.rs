@@ -614,7 +614,7 @@ async fn create_app_state<'s>(
     let setting_handle = SettingHandle::new(all_devices, config, cancel_token.clone(), main_scope);
     let alert_handle = AlertHandle::new(alert_controller.clone(), cancel_token.clone(), main_scope);
     let plugin_handle = PluginHandle::new(plugin_controller, cancel_token.clone(), main_scope);
-    let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope);
+    let stress_test_handle = StressTestHandle::new(cancel_token.clone(), main_scope).await;
     AppState {
         health,
         detect_handle,

@@ -147,6 +147,10 @@ const cpuActive = ref(false)
 const gpuActive = ref(false)
 const ramActive = ref(false)
 const driveActive = ref(false)
+const cpuBackend = ref<string>('built_in')
+const gpuBackend = ref<string>('built_in')
+const ramBackend = ref<string>('built_in')
+const driveBackend = ref<string>('built_in')
 const cpuLoading = ref(false)
 const gpuLoading = ref(false)
 const ramLoading = ref(false)
@@ -161,6 +165,10 @@ const pollStatus = async () => {
     gpuActive.value = status.gpu_active
     ramActive.value = status.ram_active
     driveActive.value = status.drive_active
+    cpuBackend.value = status.cpu_backend ?? 'built_in'
+    gpuBackend.value = status.gpu_backend ?? 'built_in'
+    ramBackend.value = status.ram_backend ?? 'built_in'
+    driveBackend.value = status.drive_backend ?? 'built_in'
     if (
         !status.cpu_active &&
         !status.gpu_active &&
@@ -172,6 +180,9 @@ const pollStatus = async () => {
         statusPollInterval = null
     }
 }
+
+const backendLabel = (backend: string) =>
+    backend === 'stress_ng' ? 'stress-ng' : t('views.appInfo.builtInBackend')
 
 const startPolling = () => {
     if (!statusPollInterval) {
@@ -572,6 +583,10 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
+                                            <span
+                                                class="text-xs text-text-color-secondary ml-1 opacity-70"
+                                                >[{{ backendLabel(cpuBackend) }}]</span
+                                            >
                                         </div>
                                     </td>
                                 </tr>
@@ -640,6 +655,10 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
+                                            <span
+                                                class="text-xs text-text-color-secondary ml-1 opacity-70"
+                                                >[{{ backendLabel(gpuBackend) }}]</span
+                                            >
                                         </div>
                                     </td>
                                 </tr>
@@ -704,6 +723,10 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
+                                            <span
+                                                class="text-xs text-text-color-secondary ml-1 opacity-70"
+                                                >[{{ backendLabel(ramBackend) }}]</span
+                                            >
                                         </div>
                                     </td>
                                 </tr>
@@ -788,6 +811,10 @@ onBeforeUnmount(() => {
                                                     ? t('views.appInfo.active')
                                                     : t('views.appInfo.inactive')
                                             }}</span>
+                                            <span
+                                                class="text-xs text-text-color-secondary ml-1 opacity-70"
+                                                >[{{ backendLabel(driveBackend) }}]</span
+                                            >
                                         </div>
                                     </td>
                                 </tr>

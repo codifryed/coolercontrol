@@ -485,14 +485,16 @@ export default {
             downloadCurrentLog: 'Download Current Log',
             stressTest: 'Thermal Stress Tests',
             stressTestTooltip:
-                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>For thorough testing, use your favorite<br>stress or benchmarking tool.',
+                'Generate sustained thermal load to validate<br>fan curves and cooling profiles.<br>Results may vary depending on hardware.<br>Install stress-ng for improved results.',
             cpuStress: 'CPU Stress',
             gpuStress: 'GPU Stress',
-            gpuStressTooltip: 'May require Vulkan or OpenGL ES drivers.',
+            gpuStressTooltip:
+                'May require Vulkan or OpenGL ES drivers<br>when using the built-in backend.',
             ramStress: 'RAM Stress',
             driveStress: 'Drive Stress',
             driveStressTooltip:
-                'Read-only I/O stress on a block device.<br>Uses O_DIRECT random reads to generate heat<br>on drive controllers without causing any wear.<br>No data is written to the drive.',
+                'I/O stress on a block device to generate<br>heat on drive controllers.',
+            builtInBackend: 'built-in',
             selectDrive: 'Select drive',
             threadCount: 'Threads',
             duration: 'Duration (s)',

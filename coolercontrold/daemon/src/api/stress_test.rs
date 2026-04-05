@@ -24,6 +24,7 @@ use log::warn;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::api::actor::StressBackend;
 use crate::api::{AppState, CCError};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -61,12 +62,16 @@ pub struct StartDriveStressRequest {
 pub struct StressTestStatusResponse {
     pub cpu_active: bool,
     pub cpu_duration_secs: Option<u16>,
+    pub cpu_backend: StressBackend,
     pub gpu_active: bool,
     pub gpu_duration_secs: Option<u16>,
+    pub gpu_backend: StressBackend,
     pub ram_active: bool,
     pub ram_duration_secs: Option<u16>,
+    pub ram_backend: StressBackend,
     pub drive_active: bool,
     pub drive_duration_secs: Option<u16>,
+    pub drive_backend: StressBackend,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -276,11 +281,15 @@ pub async fn status(
     Json(StressTestStatusResponse {
         cpu_active: s.cpu_active,
         cpu_duration_secs: s.cpu_duration_secs,
+        cpu_backend: s.cpu_backend,
         gpu_active: s.gpu_active,
         gpu_duration_secs: s.gpu_duration_secs,
+        gpu_backend: s.gpu_backend,
         ram_active: s.ram_active,
         ram_duration_secs: s.ram_duration_secs,
+        ram_backend: s.ram_backend,
         drive_active: s.drive_active,
         drive_duration_secs: s.drive_duration_secs,
+        drive_backend: s.drive_backend,
     })
 }

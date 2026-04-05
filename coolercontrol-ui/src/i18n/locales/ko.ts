@@ -480,14 +480,16 @@ export default {
             downloadCurrentLog: '현재 로그 다운로드',
             stressTest: '열 스트레스 테스트',
             stressTestTooltip:
-                '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>철저한 테스트를 위해서는 선호하는<br>스트레스 또는 벤치마킹 도구를 사용하세요.',
+                '지속적인 열 부하를 생성하여<br>팬 곡선과 냉각 프로파일을 검증합니다.<br>결과는 하드웨어에 따라 다를 수 있습니다.<br>더 나은 결과를 위해 stress-ng를 설치하세요.',
             cpuStress: 'CPU 스트레스',
             gpuStress: 'GPU 스트레스',
-            gpuStressTooltip: 'Vulkan 또는 OpenGL ES 드라이버가 필요할 수 있습니다.',
+            gpuStressTooltip:
+                '내장 백엔드 사용 시<br>Vulkan 또는 OpenGL ES 드라이버가 필요할 수 있습니다.',
             ramStress: 'RAM 스트레스',
             driveStress: '드라이브 스트레스',
             driveStressTooltip:
-                '블록 장치에 대한 읽기 전용 I/O 스트레스.<br>O_DIRECT 랜덤 읽기를 사용하여<br>마모 없이 드라이브 컨트롤러에 열을 발생시킵니다.<br>드라이브에 데이터가 기록되지 않습니다.',
+                '블록 장치에 대한 I/O 스트레스로<br>드라이브 컨트롤러에 열을 발생시킵니다.',
+            builtInBackend: '내장',
             selectDrive: '드라이브 선택',
             threadCount: '스레드',
             duration: '지속 시간 (초)',
