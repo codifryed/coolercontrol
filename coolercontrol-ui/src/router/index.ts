@@ -128,6 +128,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: '/plugins/:pluginId',
+                    name: 'plugin-page',
+                    component: () => import('@/views/PluginPageView.vue'),
+                    props: true,
+                },
+                {
                     path: '/:pathMatch(.*)', // match any other route
                     name: 'not-found',
                     component: () => import('@/components/NotFound.vue'),
