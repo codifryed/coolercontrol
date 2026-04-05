@@ -234,7 +234,10 @@ export function usePluginIframe(
             }
             case 'status': {
                 const status = new Map()
-                for (const [deviceUID, deviceChannelStatus] of deviceStore.currentDeviceStatus.entries()) {
+                for (const [
+                    deviceUID,
+                    deviceChannelStatus,
+                ] of deviceStore.currentDeviceStatus.entries()) {
                     status.set(deviceUID, deviceChannelStatus)
                 }
                 postToIframe('status', status)

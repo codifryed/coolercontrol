@@ -195,9 +195,12 @@ impl PluginController {
 
     /// Get the status of a plugin's service.
     pub async fn get_plugin_status(&self, plugin_id: &str) -> Result<ServiceStatus> {
-        let manifest = self.plugins.get(plugin_id).ok_or_else(|| CCError::NotFound {
-            msg: "Plugin not found".to_string(),
-        })?;
+        let manifest = self
+            .plugins
+            .get(plugin_id)
+            .ok_or_else(|| CCError::NotFound {
+                msg: "Plugin not found".to_string(),
+            })?;
         if manifest.is_managed().not() {
             return Ok(ServiceStatus::NotInstalled);
         }
@@ -210,9 +213,12 @@ impl PluginController {
 
     /// Validate that a plugin is an integration type and return its service ID.
     fn get_integration_service_id(&self, plugin_id: &str) -> Result<ServiceId> {
-        let manifest = self.plugins.get(plugin_id).ok_or_else(|| CCError::NotFound {
-            msg: "Plugin not found".to_string(),
-        })?;
+        let manifest = self
+            .plugins
+            .get(plugin_id)
+            .ok_or_else(|| CCError::NotFound {
+                msg: "Plugin not found".to_string(),
+            })?;
         if manifest.service_type != ServiceType::Integration {
             return Err(CCError::UserError {
                 msg: "Lifecycle control is only available for integration plugins".to_string(),

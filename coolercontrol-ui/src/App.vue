@@ -427,6 +427,7 @@ onMounted(async () => {
     await settingsStore.initializeSettings(deviceStore.allDevices())
     applyCustomTheme()
     await daemonState.init()
+    await deviceStore.loadAllPlugins()
     loaded.value = true
     loading.close()
     await deviceStore.loadLogs()

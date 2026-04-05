@@ -43,6 +43,7 @@ import {
     mdiPlus,
     mdiPlusBoxMultipleOutline,
     mdiPower,
+    mdiPowerPlugOutline,
     mdiSitemapOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
@@ -243,6 +244,23 @@ const activatePreviousMode = async (): Promise<void> => {
     }
     await settingsStore.activateMode(settingsStore.modeActivePrevious)
 }
+
+const pluginMenuRef = ref<DropdownInstance>()
+const pluginItems = computed(() => {
+    const items = []
+    for (const plugin of deviceStore.plugins) {
+        items.push({
+            id: plugin.id,
+            label: plugin.id,
+            mdiIcon: mdiPowerPlugOutline,
+            command: async () => {
+                pluginMenuRef.value?.handleClose()
+                await router.push({ name: 'plugin-page', params: { pluginId: plugin.id } })
+            },
+        })
+    }
+    return items
+})
 
 const accessMenuRef = ref<DropdownInstance>()
 const accessItems = computed(() => [
@@ -650,6 +668,65 @@ const addItems = computed(() => [
                 />
             </Button>
         </router-link>
+
+        <!--Plugins-->
+        <el-dropdown
+            v-if="pluginItems.length > 0"
+            id="plugins-quick"
+            ref="pluginMenuRef"
+            :show-timeout="0"
+            :hide-timeout="100"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
+            popper-class="ml-[3.75rem] mt-[-3.75rem]"
+        >
+            <Button
+                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                v-tooltip.right="{
+                    value: t('layout.topbar.plugins'),
+                    disabled: pluginItems.length > 0,
+                }"
+            >
+                <svg-icon
+                    type="mdi"
+                    :class="{
+                        'text-accent': router.currentRoute.value.name === 'plugin-page',
+                    }"
+                    :path="mdiPowerPlugOutline"
+                    :size="getREMSize(1.75)"
+                />
+            </Button>
+            <template #dropdown>
+                <Menu :model="pluginItems" append-to="self">
+                    <template #item="{ item, props }">
+                        <a
+                            v-bind="props.action"
+                            class="inline-flex items-center px-0.5 w-full h-full"
+                            :class="{
+                                'text-accent':
+                                    router.currentRoute.value.params.pluginId === item.id,
+                            }"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="item.mdiIcon ?? ''"
+                                :size="getREMSize(1.325)"
+                            />
+                            <span
+                                class="ml-1.5"
+                                :class="{
+                                    'text-accent':
+                                        router.currentRoute.value.params.pluginId === item.id,
+                                }"
+                            >
+                                {{ item.label }}
+                            </span>
+                        </a>
+                    </template>
+                </Menu>
+            </template>
+        </el-dropdown>
 
         <!--Settings-->
         <router-link exact :to="{ name: 'settings' }" class="outline-none" v-slot="{ isActive }">

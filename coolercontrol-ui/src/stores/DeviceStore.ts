@@ -39,6 +39,7 @@ import { Emitter, EventType } from 'mitt'
 import { ModeActivated } from '@/models/Mode.ts'
 import { useI18n } from 'vue-i18n'
 import { ChannelStatus, TempStatus } from '@/models/Status.ts'
+import { PluginDto, HasUiDto } from '@/models/Plugins.ts'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -94,6 +95,8 @@ export const useDeviceStore = defineStore('device', () => {
     const isDefaultPasswd: Ref<boolean> = ref(true)
     const accessDenied: Ref<boolean> = ref(false)
     const logs: Ref<string> = ref('')
+    const plugins: Ref<PluginDto[]> = ref([])
+    const pluginUiInfo: Ref<Map<string, HasUiDto>> = ref(new Map())
 
     // Getters ---------------------------------------------------------------------------------------------------------
     function allDevices(): IterableIterator<Device> {
@@ -712,6 +715,18 @@ export const useDeviceStore = defineStore('device', () => {
         return true
     }
 
+    async function loadAllPlugins(): Promise<void> {
+        const pluginsDto = await daemonClient.loadPlugins()
+        plugins.value = pluginsDto.plugins
+        const uiMap = new Map<string, HasUiDto>()
+        for (const plugin of pluginsDto.plugins) {
+            const uiInfo = await daemonClient.hasPluginUi(plugin.id)
+            uiMap.set(plugin.id, uiInfo)
+        }
+        pluginUiInfo.value = uiMap
+        console.debug('Loaded plugins:', plugins.value)
+    }
+
     async function handleAseTekResponse(deviceUID: UID, isLegacy690: boolean): Promise<void> {
         const response = await daemonClient.setAseTekDeviceType(deviceUID, isLegacy690)
         if (response instanceof ErrorResponse) {
@@ -1239,5 +1254,8 @@ export const useDeviceStore = defineStore('device', () => {
         isThinkPad,
         connectToQtIPC,
         reSortDevicesByMenuOrder,
+        plugins,
+        pluginUiInfo,
+        loadAllPlugins,
     }
 })

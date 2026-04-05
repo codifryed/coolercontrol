@@ -33,7 +33,11 @@ const pluginIframe = usePluginIframe(pluginId, 'modal', closeDialog)
 <template>
     <div class="flex flex-col min-w-[40vw] min-h-[40vw] w-[60vw] h-[80vh]">
         <iframe
-            :ref="(el: any) => { pluginIframe.iframeRef.value = el }"
+            :ref="
+                (el: any) => {
+                    pluginIframe.iframeRef.value = el
+                }
+            "
             :name="`iframe-${pluginId}`"
             :src="pluginIframe.pluginUrl()"
             class="w-full h-full"

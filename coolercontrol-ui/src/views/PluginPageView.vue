@@ -19,14 +19,7 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {
-    mdiCogs,
-    mdiLinkVariant,
-    mdiPlay,
-    mdiPowerPlugOutline,
-    mdiRestart,
-    mdiStop,
-} from '@mdi/js'
+import { mdiCogs, mdiLinkVariant, mdiPlay, mdiPowerPlugOutline, mdiRestart, mdiStop } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
@@ -55,7 +48,9 @@ const loading = ref(true)
 const pluginIframe = usePluginIframe(props.pluginId, 'full_page')
 
 const isIntegration = computed(() => plugin.value?.service_type === ServiceType.Integration)
-const isManaged = computed(() => isIntegration.value && pluginStatus.value !== PluginStatus.NotInstalled)
+const isManaged = computed(
+    () => isIntegration.value && pluginStatus.value !== PluginStatus.NotInstalled,
+)
 
 const statusSeverity = computed((): 'success' | 'danger' | 'secondary' => {
     switch (pluginStatus.value) {
@@ -87,9 +82,19 @@ const refreshStatus = async (): Promise<void> => {
 const startPlugin = async (): Promise<void> => {
     const success = await deviceStore.daemonClient.startPlugin(props.pluginId)
     if (success) {
-        toast.add({ severity: 'success', summary: t('common.success'), detail: t('layout.plugins.started'), life: 3000 })
+        toast.add({
+            severity: 'success',
+            summary: t('common.success'),
+            detail: t('layout.plugins.started'),
+            life: 3000,
+        })
     } else {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: t('layout.plugins.startFailed'), life: 3000 })
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: t('layout.plugins.startFailed'),
+            life: 3000,
+        })
     }
     await refreshStatus()
 }
@@ -97,9 +102,19 @@ const startPlugin = async (): Promise<void> => {
 const stopPlugin = async (): Promise<void> => {
     const success = await deviceStore.daemonClient.stopPlugin(props.pluginId)
     if (success) {
-        toast.add({ severity: 'success', summary: t('common.success'), detail: t('layout.plugins.stopped'), life: 3000 })
+        toast.add({
+            severity: 'success',
+            summary: t('common.success'),
+            detail: t('layout.plugins.stopped'),
+            life: 3000,
+        })
     } else {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: t('layout.plugins.stopFailed'), life: 3000 })
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: t('layout.plugins.stopFailed'),
+            life: 3000,
+        })
     }
     await refreshStatus()
 }
@@ -107,9 +122,19 @@ const stopPlugin = async (): Promise<void> => {
 const restartPlugin = async (): Promise<void> => {
     const success = await deviceStore.daemonClient.restartPlugin(props.pluginId)
     if (success) {
-        toast.add({ severity: 'success', summary: t('common.success'), detail: t('layout.plugins.restarted'), life: 3000 })
+        toast.add({
+            severity: 'success',
+            summary: t('common.success'),
+            detail: t('layout.plugins.restarted'),
+            life: 3000,
+        })
     } else {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: t('layout.plugins.restartFailed'), life: 3000 })
+        toast.add({
+            severity: 'error',
+            summary: t('common.error'),
+            detail: t('layout.plugins.restartFailed'),
+            life: 3000,
+        })
     }
     await refreshStatus()
 }
@@ -140,7 +165,9 @@ onMounted(loadPluginData)
     </div>
     <div v-else class="flex flex-col w-full h-full">
         <!-- Compact toolbar -->
-        <div class="flex items-center gap-3 px-4 py-2 border-b border-border-one bg-bg-two shrink-0">
+        <div
+            class="flex items-center gap-3 px-4 py-2 border-b border-border-one bg-bg-two shrink-0"
+        >
             <svg-icon type="mdi" :path="mdiPowerPlugOutline" :size="deviceStore.getREMSize(1.5)" />
             <span class="font-semibold text-lg">{{ plugin.id }}</span>
             <span v-if="plugin.version" class="text-text-color-secondary text-sm">
@@ -200,7 +227,11 @@ onMounted(loadPluginData)
         <!-- Full-page iframe or info page -->
         <div v-if="hasFullPageUi" class="flex-1 min-h-0">
             <iframe
-                :ref="(el: any) => { pluginIframe.iframeRef.value = el }"
+                :ref="
+                    (el: any) => {
+                        pluginIframe.iframeRef.value = el
+                    }
+                "
                 :name="`iframe-fullpage-${pluginId}`"
                 :src="pluginIframe.pluginUrl('app.html')"
                 class="w-full h-full border-0"
@@ -218,24 +249,45 @@ onMounted(loadPluginData)
                 <table class="bg-bg-two rounded-lg w-full">
                     <tbody>
                         <tr class="border-b border-border-one">
-                            <td class="py-3 px-4 font-semibold w-40">{{ t('layout.plugins.type') }}</td>
+                            <td class="py-3 px-4 font-semibold w-40">
+                                {{ t('layout.plugins.type') }}
+                            </td>
                             <td class="py-3 px-4">{{ plugin.service_type }}</td>
                         </tr>
                         <tr v-if="plugin.address" class="border-b border-border-one">
-                            <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.address') }}</td>
-                            <td class="py-3 px-4"><code>{{ plugin.address }}</code></td>
+                            <td class="py-3 px-4 font-semibold">
+                                {{ t('layout.plugins.address') }}
+                            </td>
+                            <td class="py-3 px-4">
+                                <code>{{ plugin.address }}</code>
+                            </td>
                         </tr>
                         <tr class="border-b border-border-one">
-                            <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.privileges') }}</td>
+                            <td class="py-3 px-4 font-semibold">
+                                {{ t('layout.plugins.privileges') }}
+                            </td>
                             <td class="py-3 px-4" :class="{ 'font-bold': plugin.privileged }">
-                                {{ plugin.privileged ? t('layout.settings.plugins.privileged') : t('layout.settings.plugins.restricted') }}
+                                {{
+                                    plugin.privileged
+                                        ? t('layout.settings.plugins.privileged')
+                                        : t('layout.settings.plugins.restricted')
+                                }}
                             </td>
                         </tr>
                         <tr v-if="plugin.url">
                             <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
                             <td class="py-3 px-4">
-                                <a class="inline-flex items-center gap-1 underline" :href="plugin.url" target="_blank" rel="noopener noreferrer">
-                                    <svg-icon type="mdi" :path="mdiLinkVariant" :size="deviceStore.getREMSize(1)" />
+                                <a
+                                    class="inline-flex items-center gap-1 underline"
+                                    :href="plugin.url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <svg-icon
+                                        type="mdi"
+                                        :path="mdiLinkVariant"
+                                        :size="deviceStore.getREMSize(1)"
+                                    />
                                     {{ t('layout.settings.plugins.pluginUrl') }}
                                 </a>
                             </td>
