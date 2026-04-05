@@ -853,19 +853,12 @@ fn storage_bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntr
 /// Returns (`compute_iters`, `ring_reps`) tuned for the GPU vendor.
 ///
 /// Different GPU architectures have different ALU-to-SFU ratios:
-/// - NVIDIA: Few SFUs (~4 per SM) vs many CUDA cores (~128 per SM).
-///   Heavy transcendental use bottlenecks on SFUs, leaving ALU idle.
-///   Higher iterations with the mixed shader keeps both busy longer.
-///   NVIDIA Linux drivers tolerate longer submissions (higher reps).
-/// - AMD: Transcendentals run on the VALU (same units as FMA). The
-///   mixed shader works well; moderate iterations keep utilization
-///   high without excessive per-dispatch time.
+/// - Tested basic `AMD` and `Nvidia`, good results with 64, 4
 /// - Others (Intel, etc.): Conservative defaults to avoid timeouts on
 ///   less capable or less tested hardware.
 fn gpu_stress_tuning(vendor: u32) -> (u32, u32) {
     match vendor {
-        PCI_VENDOR_NVIDIA => (128, 4),
-        PCI_VENDOR_AMD => (64, 4),
+        PCI_VENDOR_NVIDIA | PCI_VENDOR_AMD => (64, 4),
         _ => (32, 2),
     }
 }
