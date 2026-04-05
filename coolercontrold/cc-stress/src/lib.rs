@@ -57,14 +57,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
-/// Mildly reduced scheduling priority. High enough that the schedutil
-/// CPU frequency governor still sees significant utilization via PELT
-/// (Per-Entity Load Tracking) and boosts clock speeds, but low enough
-/// to yield to the daemon and desktop compositor when competing on the
-/// same core. Nice 19 suppresses PELT weight to ~1/68th of normal,
-/// causing the governor to select low P-states and defeating the
-/// purpose of a thermal stress test.
-const NICE_LEVEL: i32 = 5;
+/// Default scheduling priority. Nice 0 ensures the kernel's schedutil
+/// governor sees full PELT (Per-Entity Load Tracking) weight, driving
+/// maximum P-state and clock speed. This matches the priority that
+/// stress-ng children inherit from the daemon, keeping both backends
+/// consistent.
+const NICE_LEVEL: i32 = 0;
 
 /// Matrix dimension for CPU stress. Three 128x128 f64 matrices total
 /// 384 KiB, which fits in L2 cache (typically 256 KiB to 1 MiB per core)
