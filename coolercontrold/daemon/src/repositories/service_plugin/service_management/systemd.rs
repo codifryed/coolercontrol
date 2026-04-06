@@ -138,7 +138,7 @@ impl ServiceManager for SystemdManager {
     async fn status(&self, service_id: &ServiceId) -> Result<ServiceStatus> {
         let (code, _, _) = Self::systemctl("status", service_id).await?;
         match code {
-            4 => Ok(ServiceStatus::NotInstalled),
+            4 => Ok(ServiceStatus::Unmanaged),
             3 => Ok(ServiceStatus::Stopped(None)),
             0 => Ok(ServiceStatus::Running),
             _ => Err(anyhow!("Unexpected systemctl status exit code: {code}")),

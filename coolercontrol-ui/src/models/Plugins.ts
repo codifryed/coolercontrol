@@ -39,11 +39,11 @@ export enum ServiceType {
 export enum PluginStatus {
     Running = 'Running',
     Stopped = 'Stopped',
-    NotInstalled = 'NotInstalled',
+    Unmanaged = 'Unmanaged',
 }
 
 export class PluginStatusDto {
-    status: PluginStatus = PluginStatus.NotInstalled
+    status: PluginStatus = PluginStatus.Unmanaged
     reason?: string
 }
 

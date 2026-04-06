@@ -124,7 +124,7 @@ impl Manager {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ServiceStatus {
-    NotInstalled,
+    Unmanaged,
     Running,
     Stopped(Option<String>), // Provide a reason if possible
 }

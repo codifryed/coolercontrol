@@ -202,7 +202,7 @@ impl PluginController {
                 msg: "Plugin not found".to_string(),
             })?;
         if manifest.is_managed().not() {
-            return Ok(ServiceStatus::NotInstalled);
+            return Ok(ServiceStatus::Unmanaged);
         }
         let service_id = plugin_id.to_string();
         self.service_manager

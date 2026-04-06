@@ -227,8 +227,8 @@ impl From<ServiceStatus> for PluginStatusDto {
                 status: "Stopped".to_string(),
                 reason,
             },
-            ServiceStatus::NotInstalled => Self {
-                status: "NotInstalled".to_string(),
+            ServiceStatus::Unmanaged => Self {
+                status: "Unmanaged".to_string(),
                 reason: None,
             },
         }

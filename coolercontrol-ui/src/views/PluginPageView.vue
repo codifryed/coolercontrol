@@ -41,7 +41,7 @@ const { t } = useI18n()
 const plugin = ref<PluginDto | null>(null)
 const hasSettingsUi = ref(false)
 const hasFullPageUi = ref(false)
-const pluginStatus = ref<PluginStatus>(PluginStatus.NotInstalled)
+const pluginStatus = ref<PluginStatus>(PluginStatus.Unmanaged)
 const pluginStatusReason = ref<string | undefined>(undefined)
 const loading = ref(true)
 
@@ -49,7 +49,7 @@ const pluginIframe = usePluginIframe(props.pluginId, 'full_page')
 
 const isIntegration = computed(() => plugin.value?.service_type === ServiceType.Integration)
 const isManaged = computed(
-    () => isIntegration.value && pluginStatus.value !== PluginStatus.NotInstalled,
+    () => isIntegration.value && pluginStatus.value !== PluginStatus.Unmanaged,
 )
 
 const statusSeverity = computed((): 'success' | 'danger' | 'secondary' => {

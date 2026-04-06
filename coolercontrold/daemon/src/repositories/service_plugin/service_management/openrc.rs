@@ -115,7 +115,7 @@ impl ServiceManager for OpenRcManager {
             // Exit code 3 is the POSIX standard for "stopped".
             3 => Ok(ServiceStatus::Stopped(Some(status_text))),
             // Exit code 1: either "does not exist" or a crashed/unclear state.
-            1 if status_text.contains("does not exist") => Ok(ServiceStatus::NotInstalled),
+            1 if status_text.contains("does not exist") => Ok(ServiceStatus::Unmanaged),
             1 => Ok(ServiceStatus::Stopped(Some(status_text))),
             _ => Err(anyhow!(
                 "Unexpected rc-service status exit code {} for {}: {}",
