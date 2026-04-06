@@ -360,6 +360,33 @@ export default {
                 tags: 'タグを管理',
             },
         },
+        plugins: {
+            plugins: 'プラグイン',
+            notFound: 'プラグインが見つかりません',
+            type: 'タイプ',
+            address: 'アドレス',
+            privileges: '権限',
+            url: 'URL',
+            start: '開始',
+            stop: '停止',
+            restart: '再起動',
+            started: 'プラグインを開始しました',
+            stopped: 'プラグインを停止しました',
+            restarted: 'プラグインを再起動しました',
+            startFailed: 'プラグインの開始に失敗しました',
+            stopFailed: 'プラグインの停止に失敗しました',
+            restartFailed: 'プラグインの再起動に失敗しました',
+            overview: 'プラグイン概要',
+            gettingStarted:
+                'プラグインはCoolerControlに追加のデバイスサポート、統合、自動化を拡張します。新しいデバイスセンサーとコントロールの提供、外部サービスへの接続、カスタムUIページの追加が可能です。',
+            docsLink: 'プラグインドキュメント',
+            restartNote:
+                '最近新しいプラグインを追加してここに表示されない場合は、CoolerControlデーモンを再起動してください。',
+            containerNote:
+                'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
+            installedPlugins: 'インストール済みプラグイン',
+            noPlugins: 'プラグインがインストールされていません',
+        },
         add: {
             dashboard: 'ダッシュボード',
             mode: 'モード',
@@ -1201,6 +1228,11 @@ export default {
             active: 'アクティブ',
             inactive: '非アクティブ',
             error: 'エラー',
+        },
+        pluginStatus: {
+            running: '実行中',
+            stopped: '停止',
+            unmanaged: '非管理',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',

@@ -349,6 +349,33 @@ export default {
                 tags: 'Tags verwalten',
             },
         },
+        plugins: {
+            plugins: 'Plugins',
+            notFound: 'Plugin nicht gefunden',
+            type: 'Typ',
+            address: 'Adresse',
+            privileges: 'Berechtigungen',
+            url: 'URL',
+            start: 'Starten',
+            stop: 'Stoppen',
+            restart: 'Neustarten',
+            started: 'Plugin gestartet',
+            stopped: 'Plugin gestoppt',
+            restarted: 'Plugin neugestartet',
+            startFailed: 'Plugin konnte nicht gestartet werden',
+            stopFailed: 'Plugin konnte nicht gestoppt werden',
+            restartFailed: 'Plugin konnte nicht neugestartet werden',
+            overview: 'Plugins-Übersicht',
+            gettingStarted:
+                'Plugins erweitern CoolerControl um zusätzliche Geräteunterstützung, Integrationen und Automatisierung. Sie können neue Gerätesensoren und -steuerungen bereitstellen, sich mit externen Diensten verbinden oder benutzerdefinierte UI-Seiten hinzufügen.',
+            docsLink: 'Plugin-Dokumentation',
+            restartNote:
+                'Wenn Sie kürzlich ein neues Plugin hinzugefügt haben und es hier nicht angezeigt wird, starten Sie den CoolerControl-Daemon neu.',
+            containerNote:
+                'Wenn CoolerControl in einem Container ausgeführt wird, müssen Plugins im persistierten virtuellen freigegebenen Ordner abgelegt werden, damit sie Container-Neustarts überstehen.',
+            installedPlugins: 'Installierte Plugins',
+            noPlugins: 'Keine Plugins installiert',
+        },
         add: {
             dashboard: 'Dashboard',
             mode: 'Modus',
@@ -1218,6 +1245,11 @@ export default {
             active: 'Aktiv',
             inactive: 'Inaktiv',
             error: 'Fehler',
+        },
+        pluginStatus: {
+            running: 'Läuft',
+            stopped: 'Gestoppt',
+            unmanaged: 'Nicht verwaltet',
         },
         deviceType: {
             customSensors: 'Benutzerdefinierte Sensoren',

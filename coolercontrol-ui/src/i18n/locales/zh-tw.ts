@@ -335,6 +335,33 @@ export default {
                 tags: '管理標籤',
             },
         },
+        plugins: {
+            plugins: '外掛',
+            notFound: '找不到外掛',
+            type: '類型',
+            address: '地址',
+            privileges: '權限',
+            url: 'URL',
+            start: '啟動',
+            stop: '停止',
+            restart: '重新啟動',
+            started: '外掛已啟動',
+            stopped: '外掛已停止',
+            restarted: '外掛已重新啟動',
+            startFailed: '啟動外掛失敗',
+            stopFailed: '停止外掛失敗',
+            restartFailed: '重新啟動外掛失敗',
+            overview: '外掛概覽',
+            gettingStarted:
+                '外掛透過額外的裝置支援、整合和自動化來擴展 CoolerControl。它們可以提供新的裝置感測器和控制、連接外部服務或新增自訂 UI 頁面。',
+            docsLink: '外掛文件',
+            restartNote:
+                '如果您最近新增了外掛但它未顯示在此處，請重新啟動 CoolerControl 守護程式。',
+            containerNote:
+                '在容器中執行 CoolerControl 時，外掛必須放置在持久化的虛擬共享資料夾中，以便在容器重新啟動後保留。',
+            installedPlugins: '已安裝的外掛',
+            noPlugins: '未安裝外掛',
+        },
         add: {
             dashboard: '儀表板',
             mode: '模式',
@@ -1165,6 +1192,11 @@ export default {
             active: '激活',
             inactive: '未激活',
             error: '錯誤',
+        },
+        pluginStatus: {
+            running: '執行中',
+            stopped: '已停止',
+            unmanaged: '未託管',
         },
         deviceType: {
             customSensors: '自定義傳感器',

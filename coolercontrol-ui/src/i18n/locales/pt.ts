@@ -259,6 +259,33 @@ export default {
                 tags: 'Gerir Tags',
             },
         },
+        plugins: {
+            plugins: 'Plugins',
+            notFound: 'Plugin não encontrado',
+            type: 'Tipo',
+            address: 'Endereço',
+            privileges: 'Privilégios',
+            url: 'URL',
+            start: 'Iniciar',
+            stop: 'Parar',
+            restart: 'Reiniciar',
+            started: 'Plugin iniciado',
+            stopped: 'Plugin parado',
+            restarted: 'Plugin reiniciado',
+            startFailed: 'Falha ao iniciar o plugin',
+            stopFailed: 'Falha ao parar o plugin',
+            restartFailed: 'Falha ao reiniciar o plugin',
+            overview: 'Visão Geral dos Plugins',
+            gettingStarted:
+                'Os plugins estendem o CoolerControl com suporte adicional a dispositivos, integrações e automação. Eles podem fornecer novos sensores e controles de dispositivos, conectar-se a serviços externos ou adicionar páginas de interface personalizadas.',
+            docsLink: 'Documentação de Plugins',
+            restartNote:
+                'Se você adicionou recentemente um novo plugin e ele não aparece aqui, reinicie o daemon do CoolerControl.',
+            containerNote:
+                'Ao executar o CoolerControl em um contêiner, os plugins devem ser colocados na pasta compartilhada virtual persistente para que sobrevivam a reinicializações do contêiner.',
+            installedPlugins: 'Plugins Instalados',
+            noPlugins: 'Nenhum plugin instalado',
+        },
         add: {
             dashboard: 'Painel',
             mode: 'Modo',
@@ -1238,6 +1265,11 @@ export default {
             active: 'Ativo',
             inactive: 'Inativo',
             error: 'Erro',
+        },
+        pluginStatus: {
+            running: 'Em execução',
+            stopped: 'Parado',
+            unmanaged: 'Não gerenciado',
         },
         deviceType: {
             customSensors: 'Sensores Personalizados',

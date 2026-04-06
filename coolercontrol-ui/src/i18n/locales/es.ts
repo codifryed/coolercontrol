@@ -348,6 +348,33 @@ export default {
                 tags: 'Gestionar Etiquetas',
             },
         },
+        plugins: {
+            plugins: 'Plugins',
+            notFound: 'Plugin no encontrado',
+            type: 'Tipo',
+            address: 'Dirección',
+            privileges: 'Privilegios',
+            url: 'URL',
+            start: 'Iniciar',
+            stop: 'Detener',
+            restart: 'Reiniciar',
+            started: 'Plugin iniciado',
+            stopped: 'Plugin detenido',
+            restarted: 'Plugin reiniciado',
+            startFailed: 'Error al iniciar el plugin',
+            stopFailed: 'Error al detener el plugin',
+            restartFailed: 'Error al reiniciar el plugin',
+            overview: 'Vista General de Plugins',
+            gettingStarted:
+                'Los plugins amplían CoolerControl con soporte adicional de dispositivos, integraciones y automatización. Pueden proporcionar nuevos sensores y controles de dispositivos, conectarse a servicios externos o agregar páginas de interfaz personalizadas.',
+            docsLink: 'Documentación de Plugins',
+            restartNote:
+                'Si recientemente agregó un nuevo plugin y no aparece aquí, reinicie el demonio de CoolerControl.',
+            containerNote:
+                'Al ejecutar CoolerControl en un contenedor, los plugins deben colocarse en la carpeta compartida virtual persistente para que sobrevivan a los reinicios del contenedor.',
+            installedPlugins: 'Plugins Instalados',
+            noPlugins: 'No hay plugins instalados',
+        },
         add: {
             dashboard: 'Panel',
             mode: 'Modo',
@@ -1207,6 +1234,11 @@ export default {
             active: 'Activo',
             inactive: 'Inactivo',
             error: 'Error',
+        },
+        pluginStatus: {
+            running: 'En ejecución',
+            stopped: 'Detenido',
+            unmanaged: 'No gestionado',
         },
         deviceType: {
             customSensors: 'Sensores Personalizados',
