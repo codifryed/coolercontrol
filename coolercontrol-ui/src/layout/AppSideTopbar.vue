@@ -671,7 +671,6 @@ const addItems = computed(() => [
 
         <!--Plugins-->
         <el-dropdown
-            v-if="pluginItems.length > 0"
             id="plugins-quick"
             ref="pluginMenuRef"
             :show-timeout="0"
@@ -681,23 +680,31 @@ const addItems = computed(() => [
             }"
             popper-class="ml-[3.75rem] mt-[-3.75rem]"
         >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="{
-                    value: t('layout.topbar.plugins'),
-                    disabled: pluginItems.length > 0,
-                }"
+            <router-link
+                exact
+                :to="{ name: 'plugins-overview' }"
+                class="outline-none"
+                v-slot="{ isActive }"
             >
-                <svg-icon
-                    type="mdi"
-                    :class="{
-                        'text-accent': router.currentRoute.value.name === 'plugin-page',
+                <Button
+                    class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                    v-tooltip.right="{
+                        value: t('layout.topbar.plugins'),
+                        disabled: pluginItems.length > 0,
                     }"
-                    :path="mdiPowerPlugOutline"
-                    :size="getREMSize(1.75)"
-                />
-            </Button>
-            <template #dropdown>
+                >
+                    <svg-icon
+                        type="mdi"
+                        :class="{
+                            'text-accent':
+                                isActive || router.currentRoute.value.name === 'plugin-page',
+                        }"
+                        :path="mdiPowerPlugOutline"
+                        :size="getREMSize(1.75)"
+                    />
+                </Button>
+            </router-link>
+            <template v-if="pluginItems.length > 0" #dropdown>
                 <Menu :model="pluginItems" append-to="self">
                     <template #item="{ item, props }">
                         <a

@@ -26,7 +26,12 @@ import { usePluginIframe } from '@/composables/usePluginIframe.ts'
 import { useDialog } from 'primevue/usedialog'
 import { useToast } from 'primevue/usetoast'
 import { useI18n } from 'vue-i18n'
-import { getPluginStatusDisplayName, PluginDto, PluginStatus, ServiceType } from '@/models/Plugins.ts'
+import {
+    getPluginStatusDisplayName,
+    PluginDto,
+    PluginStatus,
+    ServiceType,
+} from '@/models/Plugins.ts'
 import pluginUiModal from '@/layout/PluginUi.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -176,7 +181,11 @@ onMounted(loadPluginData)
                 <span v-if="plugin.version" class="text-text-color-secondary text-sm">
                     v{{ plugin.version }}
                 </span>
-                <Tag :value="getPluginStatusDisplayName(pluginStatus)" :severity="statusSeverity" class="ml-2" />
+                <Tag
+                    :value="getPluginStatusDisplayName(pluginStatus)"
+                    :severity="statusSeverity"
+                    class="ml-2"
+                />
                 <span v-if="pluginStatusReason" class="text-text-color-secondary text-sm italic">
                     {{ pluginStatusReason }}
                 </span>
