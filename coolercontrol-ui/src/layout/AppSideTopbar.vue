@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, inject, ref } from 'vue'
+import { computed, defineAsyncComponent, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
@@ -412,13 +412,41 @@ const addItems = computed(() => [
         },
     },
 ])
+
+const scrollContainerRef = ref<HTMLDivElement>()
+const canScrollUp = ref(false)
+const canScrollDown = ref(false)
+
+const updateScrollIndicators = () => {
+    const el = scrollContainerRef.value
+    if (!el) return
+    canScrollUp.value = el.scrollTop > 0
+    canScrollDown.value = el.scrollTop + el.clientHeight < el.scrollHeight - 1
+}
+
+let resizeObserver: ResizeObserver | undefined
+
+onMounted(() => {
+    const el = scrollContainerRef.value
+    if (el) {
+        el.addEventListener('scroll', updateScrollIndicators, { passive: true })
+        resizeObserver = new ResizeObserver(updateScrollIndicators)
+        resizeObserver.observe(el)
+    }
+    updateScrollIndicators()
+})
+
+onBeforeUnmount(() => {
+    scrollContainerRef.value?.removeEventListener('scroll', updateScrollIndicators)
+    resizeObserver?.disconnect()
+})
 </script>
 
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
             id="logo"
-            class="mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
+            class="shrink-0 mt-0.5 mx-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover/15"
             v-tooltip.right="t('layout.topbar.applicationInfo')"
         >
             <router-link :to="{ name: 'app-info' }" class="outline-none">
@@ -431,433 +459,477 @@ const addItems = computed(() => [
             </router-link>
         </Button>
 
-        <!--Add-->
-        <el-dropdown
-            id="add"
-            ref="addMenuRef"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.75rem] mt-[-3.75rem]"
-        >
-            <Button
-                class="mt-3 mx-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-                aria-haspopup="true"
-                aria-controls="modes-overlay-menu"
-            >
-                <svg-icon type="mdi" :path="mdiPlus" :size="getREMSize(2.0)" />
-            </Button>
-            <template #dropdown>
-                <Menu :model="addItems" append-to="self">
-                    <template #item="{ item, props }">
-                        <a
-                            v-bind="props.action"
-                            class="inline-flex items-center px-0.5 w-full h-full"
-                        >
-                            <svg-icon type="mdi" :path="item.mdiIcon" :size="getREMSize(1.5)" />
-                            <span class="ml-1.5">{{ item.label }}</span>
-                        </a>
-                    </template>
-                </Menu>
-            </template>
-        </el-dropdown>
-
-        <!--Back-->
-        <Button
-            id="back"
-            class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-            v-tooltip.right="t('layout.topbar.back')"
-            @click="router.back()"
-        >
-            <svg-icon type="mdi" :path="mdiArrowLeft" :size="getREMSize(1.75)" />
-        </Button>
-
-        <div class="px-1 mt-3">
-            <div class="border-b border-text-color-secondary" />
-        </div>
-
-        <!--Dashboards Quick Menu-->
-        <el-dropdown
-            id="dashboard-quick"
-            ref="dashboardMenuRef"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.75rem] mt-[-3.75rem]"
-        >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                @click="router.push({ name: 'system-overview' })"
-            >
-                <svg-icon
-                    :class="{
-                        'text-accent':
-                            router.currentRoute.value.fullPath === '/' ||
-                            router.currentRoute.value.params.dashboardUID ===
-                                settingsStore.homeDashboard,
-                    }"
-                    type="mdi"
-                    :path="mdiHomeAnalytics"
-                    :size="getREMSize(1.75)"
-                />
-            </Button>
-            <template #dropdown>
-                <Menu :model="dashboardItems" append-to="self">
-                    <template #item="{ item, props }">
-                        <a
-                            v-bind="props.action"
-                            class="inline-flex items-center px-0.5 w-full h-full"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                :class="{
-                                    'text-accent':
-                                        router.currentRoute.value.params.dashboardUID ===
-                                            item.uid ||
-                                        (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === settingsStore.homeDashboard),
-                                }"
-                                :path="
-                                    item.uid === settingsStore.homeDashboard
-                                        ? mdiHomeAnalytics
-                                        : (item.mdiIcon ?? '')
-                                "
-                                :size="getREMSize(1.325)"
-                            />
-                            <span
-                                class="ml-1.5"
-                                :class="{
-                                    'text-accent':
-                                        router.currentRoute.value.params.dashboardUID ===
-                                            item.uid ||
-                                        (router.currentRoute.value.fullPath === '/' &&
-                                            item.uid === settingsStore.homeDashboard),
-                                }"
-                            >
-                                {{ item.label }}
-                            </span>
-                        </a>
-                    </template>
-                </Menu>
-            </template>
-        </el-dropdown>
-
-        <!--Controls-->
-        <router-link
-            exact
-            :to="{ name: 'system-controls' }"
-            class="outline-none"
-            v-slot="{ isActive }"
-        >
-            <Button
-                id="controls"
-                class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="t('layout.topbar.controls')"
-            >
-                <svg-icon
-                    type="mdi"
-                    :path="mdiSitemapOutline"
-                    :size="getREMSize(1.75)"
-                    :class="{ 'text-accent': isActive }"
-                />
-            </Button>
-        </router-link>
-
-        <!--Modes Quick Menu-->
-        <el-dropdown
-            id="modes-quick"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.75rem] mt-[-3.75rem]"
-        >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                @click="activatePreviousMode"
-                v-tooltip.right="{
-                    value: t('layout.topbar.modes'),
-                    disabled: modesItems.length > 0,
-                }"
-            >
-                <svg-icon
-                    type="mdi"
-                    :class="{ 'text-accent': settingsStore.modeActiveCurrent }"
-                    :path="mdiBookmarkOutline"
-                    :size="getREMSize(1.75)"
-                />
-            </Button>
-            <template #dropdown>
-                <Menu v-if="modesItems.length > 0" :model="modesItems" append-to="self">
-                    <template #item="{ item, props }">
-                        <a
-                            v-bind="props.action"
-                            class="inline-flex items-center px-0.5 w-full h-full"
-                            :class="{ 'text-accent': item.isActive }"
-                        >
-                            <svg-icon
-                                type="mdi"
-                                :class="{
-                                    'text-text-color-secondary/40':
-                                        !item.isRecentlyActive && !item.isActive,
-                                }"
-                                :path="item.mdiIcon ?? ''"
-                                :size="getREMSize(1.5)"
-                            />
-                            <span class="ml-1.5">{{ item.label }}</span>
-                        </a>
-                    </template>
-                </Menu>
-            </template>
-        </el-dropdown>
-
-        <!--Expand/Collapse Main Menu-->
-        <Button
-            v-if="!settingsStore.hideMenuCollapseIcon"
-            id="collapse-menu"
-            class="mt-2 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-            v-tooltip.right="{
-                value: settingsStore.collapsedMainMenu
-                    ? t('layout.topbar.expandMenu')
-                    : t('layout.topbar.collapseMenu'),
-            }"
-            @click="emitter.emit('toggle-side-menu')"
-        >
-            <svg-icon
-                type="mdi"
-                :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
-                :size="getREMSize(1.75)"
+        <div class="relative flex-1 min-h-0">
+            <div
+                v-show="canScrollUp"
+                class="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-bg-two z-10 pointer-events-none"
             />
-        </Button>
-
-        <!--Alerts-->
-        <router-link
-            exact
-            :to="{ name: 'alerts-overview' }"
-            class="outline-none"
-            v-slot="{ isActive }"
-        >
-            <Button
-                id="alerts-quick"
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="t('layout.topbar.alerts')"
+            <div
+                ref="scrollContainerRef"
+                class="h-full overflow-y-auto flex flex-col scrollbar-hidden"
             >
-                <OverlayBadge
-                    v-if="numberOfActiveAlerts > 0"
-                    :severity="'error'"
-                    :value="numberOfActiveAlerts"
-                >
-                    <svg-icon
-                        type="mdi"
-                        :class="isActive ? 'text-accent' : 'text-error'"
-                        :path="mdiBellRingOutline"
-                        :size="getREMSize(1.75)"
-                    />
-                </OverlayBadge>
-                <svg-icon
-                    v-else
-                    type="mdi"
-                    :path="mdiBellOutline"
-                    :size="getREMSize(1.75)"
-                    :class="{ 'text-accent': isActive }"
-                />
-            </Button>
-        </router-link>
-
-        <!--Plugins-->
-        <el-dropdown
-            id="plugins-quick"
-            ref="pluginMenuRef"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.75rem] mt-[-3.75rem]"
-        >
-            <router-link
-                exact
-                :to="{ name: 'plugins-overview' }"
-                class="outline-none"
-                v-slot="{ isActive }"
-            >
-                <Button
-                    class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                    v-tooltip.right="{
-                        value: t('layout.topbar.plugins'),
-                        disabled: pluginItems.length > 0,
+                <!--Add-->
+                <el-dropdown
+                    class="shrink-0"
+                    id="add"
+                    ref="addMenuRef"
+                    :show-timeout="0"
+                    :hide-timeout="100"
+                    :popper-options="{
+                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
                     }"
+                    popper-class="ml-[3.75rem] mt-[-3.75rem]"
+                >
+                    <Button
+                        class="mt-3 mx-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                        aria-haspopup="true"
+                        aria-controls="modes-overlay-menu"
+                    >
+                        <svg-icon type="mdi" :path="mdiPlus" :size="getREMSize(2.0)" />
+                    </Button>
+                    <template #dropdown>
+                        <Menu :model="addItems" append-to="self">
+                            <template #item="{ item, props }">
+                                <a
+                                    v-bind="props.action"
+                                    class="inline-flex items-center px-0.5 w-full h-full"
+                                >
+                                    <svg-icon
+                                        type="mdi"
+                                        :path="item.mdiIcon"
+                                        :size="getREMSize(1.5)"
+                                    />
+                                    <span class="ml-1.5">{{ item.label }}</span>
+                                </a>
+                            </template>
+                        </Menu>
+                    </template>
+                </el-dropdown>
+
+                <!--Back-->
+                <Button
+                    id="back"
+                    class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none overflow-hidden"
+                    v-tooltip.right="t('layout.topbar.back')"
+                    @click="router.back()"
+                >
+                    <svg-icon type="mdi" :path="mdiArrowLeft" :size="getREMSize(1.75)" />
+                </Button>
+
+                <div class="shrink-0 px-1 mt-3">
+                    <div class="border-b border-text-color-secondary" />
+                </div>
+
+                <!--Dashboards Quick Menu-->
+                <el-dropdown
+                    class="shrink-0"
+                    id="dashboard-quick"
+                    ref="dashboardMenuRef"
+                    :show-timeout="0"
+                    :hide-timeout="100"
+                    :popper-options="{
+                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+                    }"
+                    popper-class="ml-[3.75rem] mt-[-3.75rem]"
+                >
+                    <Button
+                        class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                        @click="router.push({ name: 'system-overview' })"
+                    >
+                        <svg-icon
+                            :class="{
+                                'text-accent':
+                                    router.currentRoute.value.fullPath === '/' ||
+                                    router.currentRoute.value.params.dashboardUID ===
+                                        settingsStore.homeDashboard,
+                            }"
+                            type="mdi"
+                            :path="mdiHomeAnalytics"
+                            :size="getREMSize(1.75)"
+                        />
+                    </Button>
+                    <template #dropdown>
+                        <Menu :model="dashboardItems" append-to="self">
+                            <template #item="{ item, props }">
+                                <a
+                                    v-bind="props.action"
+                                    class="inline-flex items-center px-0.5 w-full h-full"
+                                >
+                                    <svg-icon
+                                        type="mdi"
+                                        :class="{
+                                            'text-accent':
+                                                router.currentRoute.value.params.dashboardUID ===
+                                                    item.uid ||
+                                                (router.currentRoute.value.fullPath === '/' &&
+                                                    item.uid === settingsStore.homeDashboard),
+                                        }"
+                                        :path="
+                                            item.uid === settingsStore.homeDashboard
+                                                ? mdiHomeAnalytics
+                                                : (item.mdiIcon ?? '')
+                                        "
+                                        :size="getREMSize(1.325)"
+                                    />
+                                    <span
+                                        class="ml-1.5"
+                                        :class="{
+                                            'text-accent':
+                                                router.currentRoute.value.params.dashboardUID ===
+                                                    item.uid ||
+                                                (router.currentRoute.value.fullPath === '/' &&
+                                                    item.uid === settingsStore.homeDashboard),
+                                        }"
+                                    >
+                                        {{ item.label }}
+                                    </span>
+                                </a>
+                            </template>
+                        </Menu>
+                    </template>
+                </el-dropdown>
+
+                <!--Controls-->
+                <router-link
+                    exact
+                    :to="{ name: 'system-controls' }"
+                    class="shrink-0 outline-none"
+                    v-slot="{ isActive }"
+                >
+                    <Button
+                        id="controls"
+                        class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                        v-tooltip.right="t('layout.topbar.controls')"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiSitemapOutline"
+                            :size="getREMSize(1.75)"
+                            :class="{ 'text-accent': isActive }"
+                        />
+                    </Button>
+                </router-link>
+
+                <!--Modes Quick Menu-->
+                <el-dropdown
+                    class="shrink-0"
+                    id="modes-quick"
+                    :show-timeout="0"
+                    :hide-timeout="100"
+                    :popper-options="{
+                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+                    }"
+                    popper-class="ml-[3.75rem] mt-[-3.75rem]"
+                >
+                    <Button
+                        class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                        @click="activatePreviousMode"
+                        v-tooltip.right="{
+                            value: t('layout.topbar.modes'),
+                            disabled: modesItems.length > 0,
+                        }"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :class="{ 'text-accent': settingsStore.modeActiveCurrent }"
+                            :path="mdiBookmarkOutline"
+                            :size="getREMSize(1.75)"
+                        />
+                    </Button>
+                    <template #dropdown>
+                        <Menu v-if="modesItems.length > 0" :model="modesItems" append-to="self">
+                            <template #item="{ item, props }">
+                                <a
+                                    v-bind="props.action"
+                                    class="inline-flex items-center px-0.5 w-full h-full"
+                                    :class="{ 'text-accent': item.isActive }"
+                                >
+                                    <svg-icon
+                                        type="mdi"
+                                        :class="{
+                                            'text-text-color-secondary/40':
+                                                !item.isRecentlyActive && !item.isActive,
+                                        }"
+                                        :path="item.mdiIcon ?? ''"
+                                        :size="getREMSize(1.5)"
+                                    />
+                                    <span class="ml-1.5">{{ item.label }}</span>
+                                </a>
+                            </template>
+                        </Menu>
+                    </template>
+                </el-dropdown>
+
+                <!--Expand/Collapse Main Menu-->
+                <Button
+                    v-if="!settingsStore.hideMenuCollapseIcon"
+                    id="collapse-menu"
+                    class="shrink-0 mt-2 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                    v-tooltip.right="{
+                        value: settingsStore.collapsedMainMenu
+                            ? t('layout.topbar.expandMenu')
+                            : t('layout.topbar.collapseMenu'),
+                    }"
+                    @click="emitter.emit('toggle-side-menu')"
                 >
                     <svg-icon
                         type="mdi"
-                        :class="{
-                            'text-accent':
-                                isActive || router.currentRoute.value.name === 'plugin-page',
-                        }"
-                        :path="mdiPowerPlugOutline"
+                        :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
                         :size="getREMSize(1.75)"
                     />
                 </Button>
-            </router-link>
-            <template v-if="pluginItems.length > 0" #dropdown>
-                <Menu :model="pluginItems" append-to="self">
-                    <template #item="{ item, props }">
-                        <a
-                            v-bind="props.action"
-                            class="inline-flex items-center px-0.5 w-full h-full"
-                            :class="{
-                                'text-accent':
-                                    router.currentRoute.value.params.pluginId === item.id,
+
+                <div class="shrink-0 px-1 mt-3">
+                    <div class="border-b border-text-color-secondary" />
+                </div>
+
+                <!--Alerts-->
+                <router-link
+                    exact
+                    :to="{ name: 'alerts-overview' }"
+                    class="shrink-0 outline-none"
+                    v-slot="{ isActive }"
+                >
+                    <Button
+                        id="alerts-quick"
+                        class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                        v-tooltip.right="t('layout.topbar.alerts')"
+                    >
+                        <OverlayBadge
+                            v-if="numberOfActiveAlerts > 0"
+                            :severity="'error'"
+                            :value="numberOfActiveAlerts"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :class="isActive ? 'text-accent' : 'text-error'"
+                                :path="mdiBellRingOutline"
+                                :size="getREMSize(1.75)"
+                            />
+                        </OverlayBadge>
+                        <svg-icon
+                            v-else
+                            type="mdi"
+                            :path="mdiBellOutline"
+                            :size="getREMSize(1.75)"
+                            :class="{ 'text-accent': isActive }"
+                        />
+                    </Button>
+                </router-link>
+
+                <!--Plugins-->
+                <el-dropdown
+                    class="shrink-0"
+                    id="plugins-quick"
+                    ref="pluginMenuRef"
+                    :show-timeout="0"
+                    :hide-timeout="100"
+                    :popper-options="{
+                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+                    }"
+                    popper-class="ml-[3.75rem] mt-[-3.75rem]"
+                >
+                    <router-link
+                        exact
+                        :to="{ name: 'plugins-overview' }"
+                        class="outline-none"
+                        v-slot="{ isActive }"
+                    >
+                        <Button
+                            class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                            v-tooltip.right="{
+                                value: t('layout.topbar.plugins'),
+                                disabled: pluginItems.length > 0,
                             }"
                         >
                             <svg-icon
                                 type="mdi"
-                                :path="item.mdiIcon ?? ''"
-                                :size="getREMSize(1.325)"
-                            />
-                            <span
-                                class="ml-1.5"
                                 :class="{
                                     'text-accent':
-                                        router.currentRoute.value.params.pluginId === item.id,
+                                        isActive ||
+                                        router.currentRoute.value.name === 'plugin-page',
                                 }"
-                            >
-                                {{ item.label }}
-                            </span>
-                        </a>
+                                :path="mdiPowerPlugOutline"
+                                :size="getREMSize(1.75)"
+                            />
+                        </Button>
+                    </router-link>
+                    <template v-if="pluginItems.length > 0" #dropdown>
+                        <Menu :model="pluginItems" append-to="self">
+                            <template #item="{ item, props }">
+                                <a
+                                    v-bind="props.action"
+                                    class="inline-flex items-center px-0.5 w-full h-full"
+                                    :class="{
+                                        'text-accent':
+                                            router.currentRoute.value.params.pluginId === item.id,
+                                    }"
+                                >
+                                    <svg-icon
+                                        type="mdi"
+                                        :path="item.mdiIcon ?? ''"
+                                        :size="getREMSize(1.325)"
+                                    />
+                                    <span
+                                        class="ml-1.5"
+                                        :class="{
+                                            'text-accent':
+                                                router.currentRoute.value.params.pluginId ===
+                                                item.id,
+                                        }"
+                                    >
+                                        {{ item.label }}
+                                    </span>
+                                </a>
+                            </template>
+                        </Menu>
                     </template>
-                </Menu>
-            </template>
-        </el-dropdown>
+                </el-dropdown>
 
-        <!--Settings-->
-        <router-link exact :to="{ name: 'settings' }" class="outline-none" v-slot="{ isActive }">
-            <Button
-                id="settings"
-                class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="t('layout.topbar.settings')"
-            >
-                <svg-icon
-                    type="mdi"
-                    :path="mdiCogOutline"
-                    :size="getREMSize(1.75)"
-                    :class="{ 'text-accent': isActive }"
-                />
-            </Button>
-        </router-link>
+                <!--Settings-->
+                <router-link
+                    exact
+                    :to="{ name: 'settings' }"
+                    class="shrink-0 outline-none"
+                    v-slot="{ isActive }"
+                >
+                    <Button
+                        id="settings"
+                        class="mt-4 ml-0.5 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
+                        v-tooltip.right="t('layout.topbar.settings')"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiCogOutline"
+                            :size="getREMSize(1.75)"
+                            :class="{ 'text-accent': isActive }"
+                        />
+                    </Button>
+                </router-link>
 
-        <!--filler-->
-        <div
-            v-if="settingsStore.hideMenuCollapseIcon"
-            class="flex-1 h-full cursor-pointer text-bg-two hover:text-text-color-secondary/50"
-            @click="emitter.emit('toggle-side-menu')"
-        >
-            <div class="flex h-full items-center justify-center justify-items-center">
-                <svg-icon
-                    id="collapse-menu"
-                    type="mdi"
-                    :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
-                    :size="getREMSize(1.75)"
-                />
+                <!--filler-->
+                <div
+                    v-if="settingsStore.hideMenuCollapseIcon"
+                    class="flex-1 h-full cursor-pointer text-bg-two hover:text-text-color-secondary/50"
+                    @click="emitter.emit('toggle-side-menu')"
+                >
+                    <div class="flex h-full items-center justify-center justify-items-center">
+                        <svg-icon
+                            id="collapse-menu"
+                            type="mdi"
+                            :path="settingsStore.collapsedMainMenu ? mdiMenuClose : mdiMenuOpen"
+                            :size="getREMSize(1.75)"
+                        />
+                    </div>
+                </div>
+                <div v-else class="flex-1 h-full" />
+
+                <div class="shrink-0 px-1 mt-3">
+                    <div class="border-b border-text-color-secondary" />
+                </div>
+
+                <!--Open In Browser-->
+                <a
+                    v-if="deviceStore.isQtApp()"
+                    href="http://localhost:11987"
+                    target="_blank"
+                    class="!outline-none overflow-hidden"
+                >
+                    <Button
+                        class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                        v-tooltip.right="t('layout.topbar.openInBrowser')"
+                    >
+                        <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
+                    </Button>
+                </a>
+
+                <!--Access Protection-->
+                <el-dropdown
+                    class="shrink-0"
+                    id="access"
+                    ref="accessMenuRef"
+                    :show-timeout="0"
+                    :hide-timeout="100"
+                    :popper-options="{
+                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+                    }"
+                    :popper-class="
+                        deviceStore.loggedIn
+                            ? 'ml-[3.75rem] mb-[-3.8rem]'
+                            : 'ml-[3.75rem] mt-[-3.8rem]'
+                    "
+                >
+                    <Button
+                        class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                        aria-haspopup="true"
+                        aria-controls="access-overlay-menu"
+                    >
+                        <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiLockOffOutline"
+                                :size="getREMSize(1.75)"
+                            />
+                        </OverlayBadge>
+                        <OverlayBadge v-else-if="deviceStore.isDefaultPasswd" :severity="'warn'">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiLockOffOutline"
+                                :size="getREMSize(1.75)"
+                            />
+                        </OverlayBadge>
+                        <svg-icon
+                            v-else
+                            type="mdi"
+                            :path="mdiLockOutline"
+                            :size="getREMSize(1.75)"
+                        />
+                    </Button>
+                    <template #dropdown>
+                        <Menu :model="accessItems" append-to="self"> </Menu>
+                    </template>
+                </el-dropdown>
             </div>
+            <div
+                v-show="canScrollDown"
+                class="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-bg-two z-10 pointer-events-none"
+            />
         </div>
-        <div v-else class="flex-1 h-full" />
 
-        <!--Open In Browser-->
-        <a
-            v-if="deviceStore.isQtApp()"
-            href="http://localhost:11987"
-            target="_blank"
-            class="!outline-none"
-        >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                v-tooltip.right="t('layout.topbar.openInBrowser')"
+        <div class="shrink-0">
+            <!--Power-->
+            <el-dropdown
+                id="restart"
+                :show-timeout="0"
+                :hide-timeout="100"
+                :popper-options="{
+                    modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+                }"
+                popper-class="ml-[3.75rem] mb-[-4rem]"
             >
-                <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
-            </Button>
-        </a>
+                <Button
+                    class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
+                    @click="deviceStore.reloadUI()"
+                >
+                    <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
+                </Button>
+                <template #dropdown>
+                    <Menu :model="restartItems" append-to="self" />
+                </template>
+            </el-dropdown>
 
-        <!--Access Protection-->
-        <el-dropdown
-            id="access"
-            ref="accessMenuRef"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            :popper-class="
-                deviceStore.loggedIn ? 'ml-[3.75rem] mb-[-3.8rem]' : 'ml-[3.75rem] mt-[-3.8rem]'
-            "
-        >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                aria-haspopup="true"
-                aria-controls="access-overlay-menu"
-            >
-                <OverlayBadge v-if="!deviceStore.loggedIn" :severity="'error'">
-                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
-                </OverlayBadge>
-                <OverlayBadge v-else-if="deviceStore.isDefaultPasswd" :severity="'warn'">
-                    <svg-icon type="mdi" :path="mdiLockOffOutline" :size="getREMSize(1.75)" />
-                </OverlayBadge>
-                <svg-icon v-else type="mdi" :path="mdiLockOutline" :size="getREMSize(1.75)" />
-            </Button>
-            <template #dropdown>
-                <Menu :model="accessItems" append-to="self">
-                    <!--                    <template #start>-->
-                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
-                    <!--                            <svg-icon-->
-                    <!--                                class="text-text-color"-->
-                    <!--                                type="mdi"-->
-                    <!--                                :path="-->
-                    <!--                                    deviceStore.loggedIn-->
-                    <!--                                        ? mdiShieldLockOpenOutline-->
-                    <!--                                        : mdiShieldLockOutline-->
-                    <!--                                "-->
-                    <!--                                :size="getREMSize(1.5)"-->
-                    <!--                            />-->
-                    <!--                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span-->
-                    <!--                            ><br />-->
-                    <!--                        </span>-->
-                    <!--                        <div class="px-1">-->
-                    <!--                            <div class="border-b border-border-one" />-->
-                    <!--                        </div>-->
-                    <!--                    </template>-->
-                </Menu>
-            </template>
-        </el-dropdown>
-
-        <!--Power-->
-        <el-dropdown
-            id="restart"
-            :show-timeout="0"
-            :hide-timeout="100"
-            :popper-options="{
-                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-            }"
-            popper-class="ml-[3.75rem] mb-[-4rem]"
-        >
-            <Button
-                class="mt-4 ml-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
-                @click="deviceStore.reloadUI()"
-            >
-                <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
-            </Button>
-            <template #dropdown>
-                <Menu :model="restartItems" append-to="self" />
-            </template>
-        </el-dropdown>
-
-        <!--bottom filler-->
-        <div class="h-0.5" />
+            <!--bottom filler-->
+            <div class="h-0.5" />
+        </div>
     </div>
 </template>
 
-<style></style>
+<style scoped>
+.scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+</style>
