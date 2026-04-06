@@ -207,7 +207,10 @@ impl LcdCommander {
                         .expect("lcd scheduler metadata by channel should be present")
                         .last_temp_set;
                     if last_temp_set == current_source_temp_data.temp {
-                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_data.temp);
+                        trace!(
+                            "lcd scheduler skipping image update as there is no temperature change: {}",
+                            current_source_temp_data.temp
+                        );
                     } else {
                         temps_to_display.push((
                             device_uid.clone(),
@@ -449,7 +452,9 @@ impl LcdCommander {
                     temp_source: None,
                 };
                 let device_type = self.all_devices[device_uid].borrow().d_type;
-                debug!("Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}");
+                debug!(
+                    "Applying scheduled LCD setting. Device: {device_uid}, Setting: {lcd_settings:?}"
+                );
                 let device_uid = device_uid.to_owned();
                 let channel_name = channel_name.to_owned();
                 scope.spawn(async move {

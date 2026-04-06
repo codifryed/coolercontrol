@@ -748,7 +748,9 @@ impl Engine {
         {
             Ok((_, data)) => data,
             Err(err) => {
-                warn!("Failed to process default shutdown image for {device_uid}:{channel_name}: {err}");
+                warn!(
+                    "Failed to process default shutdown image for {device_uid}:{channel_name}: {err}"
+                );
                 return;
             }
         };
@@ -779,13 +781,17 @@ impl Engine {
                     .apply_setting_lcd(device_uid, channel_name, &lcd_settings)
                     .await
                 {
-                    warn!("Failed to apply default shutdown image for {device_uid}:{channel_name}: {err}");
+                    warn!(
+                        "Failed to apply default shutdown image for {device_uid}:{channel_name}: {err}"
+                    );
                 } else {
                     debug!("Applied default shutdown image for {device_uid}:{channel_name}");
                 }
             }
             Err(err) => {
-                warn!("Device not found for default shutdown image {device_uid}:{channel_name}: {err}");
+                warn!(
+                    "Device not found for default shutdown image {device_uid}:{channel_name}: {err}"
+                );
             }
         }
     }

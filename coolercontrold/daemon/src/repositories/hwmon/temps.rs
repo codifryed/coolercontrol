@@ -95,12 +95,11 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>
             .and_then(check_parsing_32)
             // hwmon temps are in millidegrees:
             .map(|degrees| f64::from(degrees) / 1000.0f64);
-        let temp = match result {
-            Ok(t) => t,
-            Err(_) => {
-                any_failure = true;
-                0f64
-            }
+        let temp = if let Ok(t) = result {
+            t
+        } else {
+            any_failure = true;
+            0f64
         };
         temps.push(TempStatus {
             name: channel.name.clone(),

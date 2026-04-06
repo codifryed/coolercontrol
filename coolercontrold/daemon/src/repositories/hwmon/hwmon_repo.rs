@@ -418,6 +418,8 @@ impl HwmonRepo {
     fn handle_device_read_failure(&self, type_index: TypeIndex, driver_name: &str) {
         let mut fsd_map = self.failsafe_statuses.borrow_mut();
         let Some(fsd) = fsd_map.get_mut(&type_index) else {
+            // Failsafe data must exist for every initialized device.
+            debug_assert!(false, "Missing failsafe data for device index {type_index}");
             return;
         };
         if fsd.record_failure() {

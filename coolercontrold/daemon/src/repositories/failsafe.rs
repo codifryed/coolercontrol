@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::ops::Not;
 
 use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
 
@@ -48,12 +49,19 @@ pub struct FailsafeStatusData {
     pub temp_failsafes: HashMap<ChannelName, TempStatus>,
 }
 
+/// Upper bound on the failure counter. Once the threshold is exceeded,
+/// further increments serve no purpose and this cap prevents overflow.
+const MAX_FAILURE_COUNT: usize = MISSING_STATUS_THRESHOLD + 1;
+const _: () = assert!(MAX_FAILURE_COUNT > MISSING_STATUS_THRESHOLD);
+
 impl FailsafeStatusData {
     pub fn new(
         channel_failsafes: HashMap<ChannelName, ChannelStatus>,
         temp_failsafes: HashMap<ChannelName, TempStatus>,
     ) -> Self {
-        assert!(channel_failsafes.len() + temp_failsafes.len() > 0);
+        // At least one failsafe entry is required. A device may have
+        // only temps (pure sensor) or only channels (fan-only controller).
+        assert!(channel_failsafes.is_empty().not() || temp_failsafes.is_empty().not());
         Self {
             count: 0,
             logged: false,
@@ -65,7 +73,10 @@ impl FailsafeStatusData {
     /// Records a missing status reading. Returns whether the threshold
     /// has been exceeded after this failure.
     pub fn record_failure(&mut self) -> bool {
-        self.count += 1;
+        if self.count < MAX_FAILURE_COUNT {
+            self.count += 1;
+        }
+        debug_assert!(self.count <= MAX_FAILURE_COUNT);
         self.count > MISSING_STATUS_THRESHOLD
     }
 
@@ -94,9 +105,17 @@ impl FailsafeStatusData {
 
     /// Builds a complete `Status` from the stored failsafe data.
     pub fn build_failsafe_status(&self) -> Status {
+        let channel_count = self.channel_failsafes.len();
+        let temp_count = self.temp_failsafes.len();
+        let mut channels = Vec::with_capacity(channel_count);
+        channels.extend(self.channel_failsafes.values().cloned());
+        let mut temps = Vec::with_capacity(temp_count);
+        temps.extend(self.temp_failsafes.values().cloned());
+        debug_assert_eq!(channels.len(), channel_count);
+        debug_assert_eq!(temps.len(), temp_count);
         Status {
-            channels: self.channel_failsafes.values().cloned().collect(),
-            temps: self.temp_failsafes.values().cloned().collect(),
+            temps,
+            channels,
             ..Default::default()
         }
     }
@@ -300,6 +319,39 @@ mod tests {
         }
         assert_eq!(fsd.count, MISSING_STATUS_THRESHOLD + 1);
         assert!(fsd.threshold_exceeded());
+    }
+
+    #[test]
+    fn record_failure_caps_at_max() {
+        // The counter must not grow beyond MAX_FAILURE_COUNT to
+        // prevent theoretical overflow from unbounded increment.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te);
+        for _ in 0..1000 {
+            fsd.record_failure();
+        }
+        assert_eq!(fsd.count, super::MAX_FAILURE_COUNT);
+        assert!(fsd.threshold_exceeded());
+    }
+
+    #[test]
+    fn build_failsafe_status_has_correct_values() {
+        // The built status must contain the actual failsafe constant
+        // values, not the original device readings.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te);
+        let status = fsd.build_failsafe_status();
+        for temp in &status.temps {
+            assert!((temp.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+        }
+        for channel in &status.channels {
+            if let Some(duty) = channel.duty {
+                assert!((duty - MISSING_DUTY_FAILSAFE).abs() < f64::EPSILON);
+            }
+            if let Some(rpm) = channel.rpm {
+                assert_eq!(rpm, MISSING_RPM_FAILSAFE);
+            }
+        }
     }
 
     use std::ops::Not;

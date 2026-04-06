@@ -184,7 +184,7 @@ fn is_hwmon_applicable(device_name: &str) -> bool {
 
 /// Captures liquidctl device descriptions from the current device map.
 fn build_liquidctl_baseline(all_devices: &AllDevices) -> HashSet<String> {
-    let mut baseline = HashSet::new();
+    let mut baseline = HashSet::with_capacity(all_devices.len());
     for device_lock in all_devices.values() {
         let device = device_lock.borrow();
         if device.d_type == crate::device::DeviceType::Liquidctl {
@@ -519,7 +519,7 @@ mod tests {
     fn deaf_listener_reports_no_changes() {
         // A deaf listener must always report no changes.
         let listener = DeviceListener::deaf();
-        assert!(!listener.has_device_changed());
+        assert!(listener.has_device_changed().not());
     }
 
     // --- is_relevant_uevent positive space: accepted events ---
@@ -563,7 +563,7 @@ mod tests {
         // Network subsystem events have no cooling devices.
         let uevent = b"add@/devices/virtual/net/eth0\0\
             ACTION=add\0SUBSYSTEM=net\0DEVPATH=/devices/virtual\0";
-        assert!(!is_relevant_uevent(uevent));
+        assert!(is_relevant_uevent(uevent).not());
     }
 
     #[test]
@@ -571,7 +571,7 @@ mod tests {
         // Only add/remove trigger scans; change events do not.
         let uevent = b"change@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=change\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
-        assert!(!is_relevant_uevent(uevent));
+        assert!(is_relevant_uevent(uevent).not());
     }
 
     #[test]
@@ -579,26 +579,26 @@ mod tests {
         // Block device events are not cooling-related.
         let uevent = b"add@/devices/pci0000:00/block/sda\0\
             ACTION=add\0SUBSYSTEM=block\0DEVPATH=/devices/pci\0";
-        assert!(!is_relevant_uevent(uevent));
+        assert!(is_relevant_uevent(uevent).not());
     }
 
     #[test]
     fn empty_buffer_is_not_relevant() {
         // Empty buffers must be safely rejected.
-        assert!(!is_relevant_uevent(b""));
+        assert!(is_relevant_uevent(b"").not());
     }
 
     #[test]
     fn malformed_buffer_is_not_relevant() {
         // Non-null-separated data must be safely rejected.
-        assert!(!is_relevant_uevent(b"garbage data with no null bytes"));
+        assert!(is_relevant_uevent(b"garbage data with no null bytes").not());
     }
 
     #[test]
     fn action_without_subsystem_is_not_relevant() {
         // A matching action without a matching subsystem is not enough.
         let uevent = b"add@/devices/something\0ACTION=add\0";
-        assert!(!is_relevant_uevent(uevent));
+        assert!(is_relevant_uevent(uevent).not());
     }
 
     #[test]
@@ -607,7 +607,7 @@ mod tests {
         // must be rejected.
         let uevent = b"bind@/devices/something\0\
             ACTION=bind\0SUBSYSTEM=hwmon\0";
-        assert!(!is_relevant_uevent(uevent));
+        assert!(is_relevant_uevent(uevent).not());
     }
 
     // --- is_hwmon_applicable ---
@@ -615,7 +615,7 @@ mod tests {
     #[test]
     fn blacklisted_hwmon_device_is_not_applicable() {
         // GPU hwmon devices are managed by the GPU repo, not hwmon.
-        assert!(!is_hwmon_applicable("amdgpu"));
+        assert!(is_hwmon_applicable("amdgpu").not());
     }
 
     #[test]
@@ -651,7 +651,7 @@ mod tests {
         // ENV_DBUS="1" enables D-Bus features.
         // Safety: test is single-threaded; no concurrent env reads.
         unsafe { env::set_var(ENV_DBUS, "1") };
-        assert!(!is_listener_disabled());
+        assert!(is_listener_disabled().not());
         unsafe { env::remove_var(ENV_DBUS) };
     }
 }

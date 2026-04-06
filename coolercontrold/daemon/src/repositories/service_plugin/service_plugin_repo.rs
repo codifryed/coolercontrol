@@ -364,7 +364,9 @@ impl ServicePluginRepo {
                         }
                     }
                     if retries == TIMEOUT_SERVICE_START_SECONDS {
-                        error!("Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds");
+                        error!(
+                            "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds"
+                        );
                         if service_manifest.is_managed() {
                             let _ = service_manager.remove(&service_id).await;
                         }
@@ -411,7 +413,9 @@ impl ServicePluginRepo {
                 Err(err) => {
                     connect_wait_secs += 1;
                     if connect_wait_secs < TIMEOUT_SERVICE_CONNECTION_SECONDS {
-                        info!("Could not establish a connection to the plugin service: {service_id}. Retrying...");
+                        info!(
+                            "Could not establish a connection to the plugin service: {service_id}. Retrying..."
+                        );
                         sleep(Duration::from_secs(1)).await;
                     } else {
                         error!(

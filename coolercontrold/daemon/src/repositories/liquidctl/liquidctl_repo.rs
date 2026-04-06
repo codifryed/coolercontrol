@@ -314,24 +314,18 @@ impl LiquidctlRepo {
     /// Builds a normal status from preloaded data for the given device.
     fn build_normal_status(&self, device: &Device) -> Result<Status> {
         let preloaded_statuses = self.preloaded_statuses.borrow();
-        let lc_status = preloaded_statuses.get(&device.type_index);
-        if lc_status.is_none() {
+        let Some(lc_status) = preloaded_statuses.get(&device.type_index) else {
             error!(
                 "There is no status preloaded for this device: {}",
                 device.uid
             );
             return Err(anyhow!("No preloaded status for device: {}", device.uid));
-        }
-        let status = self.map_status(
-            &device
-                .lc_info
-                .as_ref()
-                .expect("Should always be present for LC devices")
-                .driver_type,
-            &device.uid,
-            lc_status.unwrap(),
-            device.type_index,
-        );
+        };
+        let Some(lc_info) = device.lc_info.as_ref() else {
+            return Err(anyhow!("Missing lc_info for device: {}", device.uid));
+        };
+        let driver_type = &lc_info.driver_type;
+        let status = self.map_status(driver_type, &device.uid, lc_status, device.type_index);
         trace!("Device: {} status updated: {status:?}", device.name);
         Ok(status)
     }
@@ -937,15 +931,13 @@ impl Repository for LiquidctlRepo {
             let status = {
                 let device = device_lock.borrow();
                 let fsd_map = self.failsafe_statuses.borrow();
-                let use_failsafe = fsd_map
+                let failsafe_status = fsd_map
                     .get(&device.type_index)
-                    .is_some_and(|fsd| fsd.threshold_exceeded());
-                if use_failsafe {
+                    .filter(|fsd| fsd.threshold_exceeded())
+                    .map(FailsafeStatusData::build_failsafe_status);
+                if let Some(status) = failsafe_status {
                     trace!("Device: {} using failsafe status", device.name);
-                    fsd_map
-                        .get(&device.type_index)
-                        .unwrap()
-                        .build_failsafe_status()
+                    status
                 } else {
                     drop(fsd_map);
                     match self.build_normal_status(&device) {
