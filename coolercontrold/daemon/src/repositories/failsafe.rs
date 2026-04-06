@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelName, ChannelStatus, Mhz, RPM, Status, Temp, TempStatus, Watts};
+use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
 
 /// Consecutive missing status readings before failsafe values activate.
 pub const MISSING_STATUS_THRESHOLD: usize = 8;
@@ -108,7 +108,10 @@ impl FailsafeStatusData {
 pub fn create_failsafe_data(
     channel_statuses: &[ChannelStatus],
     temp_statuses: &[TempStatus],
-) -> (HashMap<ChannelName, ChannelStatus>, HashMap<ChannelName, TempStatus>) {
+) -> (
+    HashMap<ChannelName, ChannelStatus>,
+    HashMap<ChannelName, TempStatus>,
+) {
     let channel_failsafes = channel_statuses
         .iter()
         .map(|s| {

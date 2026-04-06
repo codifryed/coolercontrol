@@ -76,13 +76,12 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
     Ok(temps)
 }
 
-/// Return the temp statuses for all channels.
-/// Defaults to 0 for all temps, to handle temporary issues,
-/// as they were correctly detected on startup.
-/// This function calls all temp channels sequentially. See the `concurrently`
-/// version of this function for concurrent execution.
-pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> {
+/// Returns temp statuses for all channels and whether any read failed.
+/// Defaults to 0 for failed reads so the cache remains usable until
+/// the failsafe threshold is exceeded upstream.
+pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
     let mut temps = vec![];
+    let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
@@ -91,18 +90,24 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
             Some(path) => path,
             None => &driver.path.join(format_temp_input!(channel.number)),
         };
-        let temp = cc_fs::read_sysfs(temp_path)
+        let result = cc_fs::read_sysfs(temp_path)
             .await
             .and_then(check_parsing_32)
             // hwmon temps are in millidegrees:
-            .map(|degrees| f64::from(degrees) / 1000.0f64)
-            .unwrap_or(0f64);
+            .map(|degrees| f64::from(degrees) / 1000.0f64);
+        let temp = match result {
+            Ok(t) => t,
+            Err(_) => {
+                any_failure = true;
+                0f64
+            }
+        };
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
         });
     }
-    temps
+    (temps, any_failure)
 }
 
 #[allow(dead_code)]

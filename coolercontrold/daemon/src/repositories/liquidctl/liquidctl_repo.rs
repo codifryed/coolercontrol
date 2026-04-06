@@ -29,6 +29,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
+use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -61,6 +62,7 @@ pub struct LiquidctlRepo {
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
 }
 
@@ -126,6 +128,7 @@ impl LiquidctlRepo {
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: RefCell::new(HashMap::new()),
         })
     }
@@ -306,6 +309,31 @@ impl LiquidctlRepo {
             status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
         }
         status_map
+    }
+
+    /// Builds a normal status from preloaded data for the given device.
+    fn build_normal_status(&self, device: &Device) -> Result<Status> {
+        let preloaded_statuses = self.preloaded_statuses.borrow();
+        let lc_status = preloaded_statuses.get(&device.type_index);
+        if lc_status.is_none() {
+            error!(
+                "There is no status preloaded for this device: {}",
+                device.uid
+            );
+            return Err(anyhow!("No preloaded status for device: {}", device.uid));
+        }
+        let status = self.map_status(
+            &device
+                .lc_info
+                .as_ref()
+                .expect("Should always be present for LC devices")
+                .driver_type,
+            &device.uid,
+            lc_status.unwrap(),
+            device.type_index,
+        );
+        trace!("Device: {} status updated: {status:?}", device.name);
+        Ok(status)
     }
 
     fn map_status(
@@ -783,12 +811,20 @@ impl LiquidctlRepo {
         }
     }
 
-    /// The function initializes the status history of all devices with their current status.
-    /// This is to be called on startup only.
+    /// Initializes the status history of all devices with their current
+    /// status and builds failsafe data. To be called on startup only.
     pub fn initialize_all_device_status_histories_with_current_status(&self) -> Result<()> {
         let poll_rate = self.config.get_settings()?.poll_rate;
         for device_lock in self.devices.values() {
-            let recent_status = device_lock.borrow().status_current().unwrap();
+            let device = device_lock.borrow();
+            let recent_status = device.status_current().unwrap();
+            let (channel_failsafes, temp_failsafes) =
+                failsafe::create_failsafe_data(&recent_status.channels, &recent_status.temps);
+            self.failsafe_statuses.borrow_mut().insert(
+                device.type_index,
+                FailsafeStatusData::new(channel_failsafes, temp_failsafes),
+            );
+            drop(device);
             device_lock
                 .borrow_mut()
                 .initialize_status_history_with(recent_status, poll_rate);
@@ -865,10 +901,25 @@ impl Repository for LiquidctlRepo {
                             self.preloaded_statuses
                                 .borrow_mut()
                                 .insert(device_id, status);
+                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
+                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
+                                fsd.record_success();
+                            }
                         }
-                        // this leaves the previous status in the map as backup for temporary issues
                         Err(err) => {
                             error!("Error getting status from device #{device_id}: {err}");
+                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
+                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
+                                if fsd.record_failure() {
+                                    if fsd.log_once() {
+                                        error!(
+                                            "Significant issue retrieving status for \
+                                             liquidctl device #{device_id}. \
+                                             Setting failsafe values."
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                 });
@@ -885,27 +936,23 @@ impl Repository for LiquidctlRepo {
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.borrow();
-                let preloaded_statuses = self.preloaded_statuses.borrow();
-                let lc_status = preloaded_statuses.get(&device.type_index);
-                if lc_status.is_none() {
-                    error!(
-                        "There is no status preloaded for this device: {}",
-                        device.uid
-                    );
-                    continue;
+                let fsd_map = self.failsafe_statuses.borrow();
+                let use_failsafe = fsd_map
+                    .get(&device.type_index)
+                    .is_some_and(|fsd| fsd.threshold_exceeded());
+                if use_failsafe {
+                    trace!("Device: {} using failsafe status", device.name);
+                    fsd_map
+                        .get(&device.type_index)
+                        .unwrap()
+                        .build_failsafe_status()
+                } else {
+                    drop(fsd_map);
+                    match self.build_normal_status(&device) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    }
                 }
-                let status = self.map_status(
-                    &device
-                        .lc_info
-                        .as_ref()
-                        .expect("Should always be present for LC devices")
-                        .driver_type,
-                    &device.uid,
-                    lc_status.unwrap(),
-                    device.type_index,
-                );
-                trace!("Device: {} status updated: {status:?}", device.name);
-                status
             };
             device_lock.borrow_mut().set_status(status);
         }

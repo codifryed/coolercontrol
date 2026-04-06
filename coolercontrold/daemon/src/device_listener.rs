@@ -21,7 +21,7 @@ use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::utils::{sanitize_for_shell, ShellCommand};
 use crate::{cc_fs, AllDevices, ENV_DBUS};
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use moro_local::Scope;
 use nix::sys::socket::{
     bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
@@ -201,8 +201,8 @@ fn build_liquidctl_baseline(all_devices: &AllDevices) -> HashSet<String> {
 /// into one trailing scan after the window expires.
 async fn run_event_loop(
     async_fd: AsyncFd<OwnedFd>,
-    hwmon_baseline: HashSet<PathBuf>,
-    lc_baseline: HashSet<String>,
+    mut hwmon_baseline: HashSet<PathBuf>,
+    mut lc_baseline: HashSet<String>,
     liquidctl_repo: Option<Rc<LiquidctlRepo>>,
     bin_path: String,
     device_changed: Rc<Cell<bool>>,
@@ -233,8 +233,8 @@ async fn run_event_loop(
                 debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
             }
             perform_scan(
-                &hwmon_baseline,
-                &lc_baseline,
+                &mut hwmon_baseline,
+                &mut lc_baseline,
                 liquidctl_repo.as_ref(),
                 &bin_path,
                 &device_changed,
@@ -325,10 +325,11 @@ fn is_relevant_uevent(buf: &[u8]) -> bool {
     false
 }
 
-/// Scans for device changes compared to the baselines.
+/// Scans for device changes compared to the baselines. Updates
+/// baselines to the current state so changes are only reported once.
 async fn perform_scan(
-    hwmon_baseline: &HashSet<PathBuf>,
-    lc_baseline: &HashSet<String>,
+    hwmon_baseline: &mut HashSet<PathBuf>,
+    lc_baseline: &mut HashSet<String>,
     liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
     bin_path: &str,
     device_changed: &Rc<Cell<bool>>,
@@ -342,8 +343,9 @@ async fn perform_scan(
     }
 }
 
-/// Compares current hwmon devices against the baseline.
-async fn scan_hwmon_changes(baseline: &HashSet<PathBuf>, bin_path: &str) -> bool {
+/// Compares current hwmon devices against the baseline. Updates
+/// the baseline to the current state when changes are detected.
+async fn scan_hwmon_changes(baseline: &mut HashSet<PathBuf>, bin_path: &str) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
     for path in &current_paths {
@@ -362,12 +364,15 @@ async fn scan_hwmon_changes(baseline: &HashSet<PathBuf>, bin_path: &str) -> bool
         }
     }
     // Check for removed devices.
-    for path in baseline {
+    for path in baseline.iter() {
         if current_applicable.contains(path).not() {
             let name = device_name_for_removed(path).await;
             notify_device_removed(&name, bin_path);
             detected = true;
         }
+    }
+    if detected {
+        *baseline = current_applicable;
     }
     detected
 }
@@ -384,9 +389,10 @@ async fn device_name_for_removed(path: &Path) -> String {
     path.display().to_string()
 }
 
-/// Compares current liquidctl devices against the baseline.
+/// Compares current liquidctl devices against the baseline. Updates
+/// the baseline to the current state when changes are detected.
 async fn scan_liquidctl_changes(
-    baseline: &HashSet<String>,
+    baseline: &mut HashSet<String>,
     liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
     bin_path: &str,
 ) -> bool {
@@ -410,11 +416,14 @@ async fn scan_liquidctl_changes(
         }
     }
     // Check for removed devices.
-    for desc in baseline {
+    for desc in baseline.iter() {
         if current_set.contains(desc).not() {
             notify_device_removed(desc, bin_path);
             detected = true;
         }
+    }
+    if detected {
+        *baseline = current_descriptions.into_iter().collect();
     }
     detected
 }
@@ -435,7 +444,7 @@ fn notify_device_added(name: &str, bin_path: &str) {
 }
 
 fn notify_device_removed(name: &str, bin_path: &str) {
-    warn!(
+    error!(
         "Known device removed: {name}. \
          Restart the daemon to update the device list."
     );

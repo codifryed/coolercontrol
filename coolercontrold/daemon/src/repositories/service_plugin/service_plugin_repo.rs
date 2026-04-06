@@ -21,8 +21,8 @@ use crate::device::{
     ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Status, TempStatus,
     UID,
 };
-use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::grpc_api::device_service::v1::health_response;
+use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::plugin_controller::{
