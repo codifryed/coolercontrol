@@ -21,7 +21,7 @@ use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::utils::{sanitize_for_shell, ShellCommand};
 use crate::{cc_fs, AllDevices, ENV_DBUS};
 use anyhow::Result;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use moro_local::Scope;
 use nix::sys::socket::{
     bind, recv, socket, AddressFamily, MsgFlags, NetlinkAddr, SockFlag, SockProtocol, SockType,
@@ -430,7 +430,7 @@ fn notify_device_added(name: &str, bin_path: &str) {
          Restart the daemon to use this device."
     );
     send_desktop_notification(
-        "CoolerControl: New Device Detected",
+        "New Device Detected",
         &format!(
             "New applicable device detected: {name}. \
              Restart the daemon to use this device."
@@ -440,12 +440,12 @@ fn notify_device_added(name: &str, bin_path: &str) {
 }
 
 fn notify_device_removed(name: &str, bin_path: &str) {
-    error!(
+    warn!(
         "Known device removed: {name}. \
-         Restart the daemon to update the device list."
+         Sensors will be set to failsafe levels. Restart the daemon to update the device list."
     );
     send_desktop_notification(
-        "CoolerControl: Device Removed",
+        "Device Removed",
         &format!(
             "Known device removed: {name}. \
              Restart the daemon to update the device list."
