@@ -213,6 +213,7 @@ async fn run_event_loop(
     let mut buf = vec![0u8; UEVENT_BUF_SIZE];
     let mut debounce_deadline: Option<Instant> = None;
     let mut pending = PendingScans::default();
+    let lc_available = liquidctl_repo.is_some();
 
     loop {
         let scan_now = tokio::select! {
@@ -228,6 +229,7 @@ async fn run_event_loop(
                     &mut buf,
                     &mut debounce_deadline,
                     &mut pending,
+                    lc_available,
                 );
                 continue;
             },
@@ -260,13 +262,15 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
 
 /// Drains pending uevent messages (up to `MAX_DRAIN_PER_WAKE`), accumulates
 /// which device categories were affected, and sets or extends the debounce
-/// deadline.
+/// deadline. Liquidctl events are ignored when `lc_available` is false
+/// (the liqctld service is not running).
 fn handle_readable_event(
     result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
     async_fd: &AsyncFd<OwnedFd>,
     buf: &mut [u8],
     debounce_deadline: &mut Option<Instant>,
     pending: &mut PendingScans,
+    lc_available: bool,
 ) {
     debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
     let mut any_relevant = false;
@@ -279,11 +283,11 @@ fn handle_readable_event(
                         pending.hwmon = true;
                         any_relevant = true;
                     }
-                    UeventKind::Liquidctl => {
+                    UeventKind::Liquidctl if lc_available => {
                         pending.liquidctl = true;
                         any_relevant = true;
                     }
-                    UeventKind::Irrelevant => {}
+                    UeventKind::Liquidctl | UeventKind::Irrelevant => {}
                 },
                 _ => break,
             }
