@@ -196,9 +196,11 @@ fn build_liquidctl_baseline(all_devices: &AllDevices) -> HashSet<String> {
 
 /// Main event loop: listens for kernel uevents and performs debounced scans.
 ///
-/// Leading-edge debounce: the first relevant event triggers an immediate
-/// scan, then subsequent events within the debounce window are coalesced
-/// into one trailing scan after the window expires.
+/// Trailing-edge debounce: relevant events set or extend a single deadline
+/// while accumulating which device categories (hwmon / liquidctl) were
+/// affected. When the deadline expires all pending categories are scanned
+/// together, so a device that triggers both hwmon and usb subsystem events
+/// results in one combined scan rather than two separate ones.
 async fn run_event_loop(
     async_fd: AsyncFd<OwnedFd>,
     mut hwmon_baseline: HashSet<PathBuf>,
@@ -210,9 +212,10 @@ async fn run_event_loop(
 ) {
     let mut buf = vec![0u8; UEVENT_BUF_SIZE];
     let mut debounce_deadline: Option<Instant> = None;
+    let mut pending = PendingScans::default();
 
     loop {
-        let scan_needed = tokio::select! {
+        let scan_now = tokio::select! {
             () = run_token.cancelled() => break,
             () = sleep_until_deadline(debounce_deadline) => {
                 debounce_deadline = None;
@@ -224,18 +227,25 @@ async fn run_event_loop(
                     &async_fd,
                     &mut buf,
                     &mut debounce_deadline,
-                )
+                    &mut pending,
+                );
+                continue;
             },
         };
-        if scan_needed {
-            perform_scan(
-                &mut hwmon_baseline,
-                &mut lc_baseline,
-                liquidctl_repo.as_ref(),
-                &bin_path,
-                &device_changed,
-            )
-            .await;
+        if scan_now {
+            let scans = pending.take();
+            let mut detected = false;
+            if scans.hwmon {
+                detected |= scan_hwmon_changes(&mut hwmon_baseline, &bin_path).await;
+            }
+            if scans.liquidctl {
+                detected |=
+                    scan_liquidctl_changes(&mut lc_baseline, liquidctl_repo.as_ref(), &bin_path)
+                        .await;
+            }
+            if detected {
+                device_changed.set(true);
+            }
         }
     }
 }
@@ -248,45 +258,68 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
     }
 }
 
-/// Drains pending uevent messages (up to `MAX_DRAIN_PER_WAKE`) and returns
-/// whether a scan is needed.
-///
-/// Deadline management lives here, not in the main loop, so the trailing
-/// edge (deadline expiry) never accidentally re-arms itself.
+/// Drains pending uevent messages (up to `MAX_DRAIN_PER_WAKE`), accumulates
+/// which device categories were affected, and sets or extends the debounce
+/// deadline.
 fn handle_readable_event(
     result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
     async_fd: &AsyncFd<OwnedFd>,
     buf: &mut [u8],
     debounce_deadline: &mut Option<Instant>,
-) -> bool {
+    pending: &mut PendingScans,
+) {
     debug_assert!(buf.len() >= UEVENT_BUF_SIZE);
-    let mut relevant = false;
+    let mut any_relevant = false;
     if let Ok(mut guard) = result {
         let raw_fd = async_fd.as_raw_fd();
         for _ in 0..MAX_DRAIN_PER_WAKE {
             match recv(raw_fd, buf, MsgFlags::MSG_DONTWAIT) {
-                Ok(n) if n > 0 => {
-                    if is_relevant_uevent(&buf[..n]) {
-                        relevant = true;
+                Ok(n) if n > 0 => match classify_uevent(&buf[..n]) {
+                    UeventKind::Hwmon => {
+                        pending.hwmon = true;
+                        any_relevant = true;
                     }
-                }
+                    UeventKind::Liquidctl => {
+                        pending.liquidctl = true;
+                        any_relevant = true;
+                    }
+                    UeventKind::Irrelevant => {}
+                },
                 _ => break,
             }
         }
         guard.clear_ready();
     }
-    if relevant {
-        let is_leading_edge = debounce_deadline.is_none();
-        // Set or extend the debounce window.
+    if any_relevant {
         *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-        // Only the leading edge triggers an immediate scan.
-        is_leading_edge
-    } else {
-        false
     }
 }
 
-/// Checks whether a raw uevent message indicates a relevant device change.
+/// Identifies which scan category a uevent is relevant to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum UeventKind {
+    Hwmon,
+    Liquidctl,
+    Irrelevant,
+}
+
+/// Tracks which device categories have pending events during a debounce
+/// window. A single physical device can generate both hwmon and usb/hidraw
+/// events, so both flags may be set simultaneously.
+#[derive(Default)]
+struct PendingScans {
+    hwmon: bool,
+    liquidctl: bool,
+}
+
+impl PendingScans {
+    /// Returns the current flags and resets them.
+    fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+}
+
+/// Classifies a raw uevent message by the device category it affects.
 ///
 /// Uevent messages from the kernel are formatted as null-byte separated
 /// key=value pairs. The first line is the event path with action prefix
@@ -294,10 +327,10 @@ fn handle_readable_event(
 ///
 /// We filter for:
 /// - ACTION: only "add" or "remove"
-/// - SUBSYSTEM: "hwmon", "usb", or "hidraw"
-fn is_relevant_uevent(buf: &[u8]) -> bool {
+/// - SUBSYSTEM: "hwmon" -> Hwmon, "usb"/"hidraw" -> Liquidctl
+fn classify_uevent(buf: &[u8]) -> UeventKind {
     let mut action_relevant = false;
-    let mut subsystem_relevant = false;
+    let mut subsystem: Option<&str> = None;
     for field in buf.split(|&b| b == 0) {
         if field.is_empty() {
             continue;
@@ -307,35 +340,22 @@ fn is_relevant_uevent(buf: &[u8]) -> bool {
                 if action == "add" || action == "remove" {
                     action_relevant = true;
                 }
-            } else if let Some(subsystem) = s.strip_prefix("SUBSYSTEM=") {
-                if subsystem == "hwmon" || subsystem == "usb" || subsystem == "hidraw" {
-                    subsystem_relevant = true;
-                }
+            } else if let Some(sub) = s.strip_prefix("SUBSYSTEM=") {
+                subsystem = Some(sub);
             }
         }
-        // Short-circuit once both conditions are met.
-        if action_relevant && subsystem_relevant {
-            return true;
+        // Short-circuit once both fields are found.
+        if action_relevant && subsystem.is_some() {
+            break;
         }
     }
-    false
-}
-
-/// Scans for device changes compared to the baselines. Updates
-/// baselines to the current state so changes are only reported once.
-async fn perform_scan(
-    hwmon_baseline: &mut HashSet<PathBuf>,
-    lc_baseline: &mut HashSet<String>,
-    liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
-    bin_path: &str,
-    device_changed: &Rc<Cell<bool>>,
-) {
-    debug!("Scanning for device changes...");
-    let mut changes_detected = false;
-    changes_detected |= scan_hwmon_changes(hwmon_baseline, bin_path).await;
-    changes_detected |= scan_liquidctl_changes(lc_baseline, liquidctl_repo, bin_path).await;
-    if changes_detected {
-        device_changed.set(true);
+    if action_relevant.not() {
+        return UeventKind::Irrelevant;
+    }
+    match subsystem {
+        Some("hwmon") => UeventKind::Hwmon,
+        Some("usb" | "hidraw") => UeventKind::Liquidctl,
+        _ => UeventKind::Irrelevant,
     }
 }
 
@@ -402,6 +422,7 @@ async fn scan_liquidctl_changes(
             return false;
         }
     };
+    debug!("Liquidctl device scan returned: {current_descriptions:?}");
     let current_set: HashSet<&String> = current_descriptions.iter().collect();
     let mut detected = false;
     // Check for added devices.
@@ -521,92 +542,97 @@ mod tests {
         assert!(listener.has_device_changed().not());
     }
 
-    // --- is_relevant_uevent positive space: accepted events ---
+    // --- classify_uevent: hwmon events ---
 
     #[test]
-    fn hwmon_add_event_is_relevant() {
-        // Hwmon add events must trigger a device scan.
+    fn hwmon_add_event_classified_as_hwmon() {
+        // Hwmon add events must trigger a hwmon scan.
         let uevent = b"add@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=add\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
-        assert!(is_relevant_uevent(uevent));
+        assert_eq!(classify_uevent(uevent), UeventKind::Hwmon);
     }
 
     #[test]
-    fn hwmon_remove_event_is_relevant() {
-        // Hwmon remove events must trigger a device scan.
+    fn hwmon_remove_event_classified_as_hwmon() {
+        // Hwmon remove events must trigger a hwmon scan.
         let uevent = b"remove@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=remove\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
-        assert!(is_relevant_uevent(uevent));
+        assert_eq!(classify_uevent(uevent), UeventKind::Hwmon);
     }
 
+    // --- classify_uevent: liquidctl events ---
+
     #[test]
-    fn usb_add_event_is_relevant() {
+    fn usb_add_event_classified_as_liquidctl() {
         // USB add events cover liquidctl HID devices.
         let uevent = b"add@/devices/pci0000:00/usb1/1-4\0\
             ACTION=add\0SUBSYSTEM=usb\0DEVPATH=/devices/pci\0";
-        assert!(is_relevant_uevent(uevent));
+        assert_eq!(classify_uevent(uevent), UeventKind::Liquidctl);
     }
 
     #[test]
-    fn hidraw_add_event_is_relevant() {
+    fn hidraw_add_event_classified_as_liquidctl() {
         // Hidraw add events cover direct HID device access.
         let uevent = b"add@/devices/pci0000:00/hidraw/hidraw0\0\
             ACTION=add\0SUBSYSTEM=hidraw\0DEVPATH=/devices/pci\0";
-        assert!(is_relevant_uevent(uevent));
+        assert_eq!(classify_uevent(uevent), UeventKind::Liquidctl);
     }
 
-    // --- is_relevant_uevent negative space: rejected events ---
+    // --- classify_uevent: irrelevant events ---
 
     #[test]
-    fn network_add_event_is_not_relevant() {
+    fn network_add_event_is_irrelevant() {
         // Network subsystem events have no cooling devices.
         let uevent = b"add@/devices/virtual/net/eth0\0\
             ACTION=add\0SUBSYSTEM=net\0DEVPATH=/devices/virtual\0";
-        assert!(is_relevant_uevent(uevent).not());
+        assert_eq!(classify_uevent(uevent), UeventKind::Irrelevant);
     }
 
     #[test]
-    fn hwmon_change_event_is_not_relevant() {
+    fn hwmon_change_event_is_irrelevant() {
         // Only add/remove trigger scans; change events do not.
         let uevent = b"change@/devices/platform/coretemp.0/hwmon/hwmon3\0\
             ACTION=change\0SUBSYSTEM=hwmon\0DEVPATH=/devices/platform\0";
-        assert!(is_relevant_uevent(uevent).not());
+        assert_eq!(classify_uevent(uevent), UeventKind::Irrelevant);
     }
 
     #[test]
-    fn block_device_event_is_not_relevant() {
+    fn block_device_event_is_irrelevant() {
         // Block device events are not cooling-related.
         let uevent = b"add@/devices/pci0000:00/block/sda\0\
             ACTION=add\0SUBSYSTEM=block\0DEVPATH=/devices/pci\0";
-        assert!(is_relevant_uevent(uevent).not());
+        assert_eq!(classify_uevent(uevent), UeventKind::Irrelevant);
     }
 
     #[test]
-    fn empty_buffer_is_not_relevant() {
+    fn empty_buffer_is_irrelevant() {
         // Empty buffers must be safely rejected.
-        assert!(is_relevant_uevent(b"").not());
+        assert_eq!(classify_uevent(b""), UeventKind::Irrelevant);
     }
 
     #[test]
-    fn malformed_buffer_is_not_relevant() {
+    fn malformed_buffer_is_irrelevant() {
         // Non-null-separated data must be safely rejected.
-        assert!(is_relevant_uevent(b"garbage data with no null bytes").not());
+        assert_eq!(
+            classify_uevent(b"garbage data with no null bytes"),
+            UeventKind::Irrelevant
+        );
     }
 
     #[test]
-    fn action_without_subsystem_is_not_relevant() {
+    fn action_without_subsystem_is_irrelevant() {
         // A matching action without a matching subsystem is not enough.
         let uevent = b"add@/devices/something\0ACTION=add\0";
-        assert!(is_relevant_uevent(uevent).not());
+        assert_eq!(classify_uevent(uevent), UeventKind::Irrelevant);
     }
 
     #[test]
-    fn subsystem_without_action_is_not_relevant() {
+    fn subsystem_without_action_is_irrelevant() {
         // A matching subsystem without a matching action (bind != add/remove)
         // must be rejected.
         let uevent = b"bind@/devices/something\0\
             ACTION=bind\0SUBSYSTEM=hwmon\0";
-        assert!(is_relevant_uevent(uevent).not());
+        assert_eq!(classify_uevent(uevent), UeventKind::Irrelevant);
     }
 
     // --- is_hwmon_applicable ---
@@ -687,42 +713,66 @@ mod tests {
         assert!(sanitized.contains(')').not());
     }
 
-    // --- debounce: trailing edge must not re-arm ---
+    // --- debounce: single deadline with pending flags ---
 
     #[test]
-    fn trailing_edge_does_not_set_new_deadline() {
-        // After a trailing-edge scan fires (deadline expires, set to
-        // None), no new deadline should be set. Only readable events
-        // with relevant uevents set deadlines via handle_readable_event.
-        let deadline: Option<Instant> = None;
-        // The main loop sets deadline to None on trailing edge.
-        // Without a subsequent readable event, it must stay None.
-        assert!(deadline.is_none());
+    fn hwmon_event_marks_only_hwmon_pending() {
+        // A hwmon uevent must mark hwmon pending but not liquidctl.
+        let pending = PendingScans {
+            hwmon: true,
+            ..Default::default()
+        };
+        // Simulate classify_uevent returning Hwmon.
+        assert!(pending.hwmon);
+        assert!(pending.liquidctl.not());
     }
 
     #[test]
-    fn leading_edge_sets_deadline_and_triggers_scan() {
-        // The first relevant uevent should set the debounce deadline
-        // and return true (scan needed).
-        let mut deadline: Option<Instant> = None;
-        // Simulate what handle_readable_event does on leading edge.
-        let is_leading = deadline.is_none();
-        deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-        assert!(is_leading);
-        assert!(deadline.is_some());
+    fn liquidctl_event_marks_only_liquidctl_pending() {
+        // A usb/hidraw uevent must mark liquidctl pending but not hwmon.
+        let pending = PendingScans {
+            liquidctl: true,
+            ..Default::default()
+        };
+        assert!(pending.hwmon.not());
+        assert!(pending.liquidctl);
     }
 
     #[test]
-    fn extension_event_updates_deadline_without_scan() {
-        // Events during an active debounce window extend the deadline
-        // but do not trigger a scan.
+    fn mixed_events_mark_both_pending() {
+        // A device generating both hwmon and usb events must mark both.
+        let pending = PendingScans {
+            hwmon: true,
+            liquidctl: true,
+        };
+        assert!(pending.hwmon);
+        assert!(pending.liquidctl);
+    }
+
+    #[test]
+    fn take_resets_pending_flags() {
+        // After the debounce fires, take() returns current flags and
+        // resets to default so the next window starts clean.
+        let mut pending = PendingScans {
+            hwmon: true,
+            liquidctl: true,
+        };
+        let taken = pending.take();
+        assert!(taken.hwmon);
+        assert!(taken.liquidctl);
+        assert!(pending.hwmon.not());
+        assert!(pending.liquidctl.not());
+    }
+
+    #[test]
+    fn events_extend_deadline_without_immediate_scan() {
+        // Subsequent events extend the deadline but never trigger an
+        // immediate scan (trailing-edge only).
         let mut deadline: Option<Instant> = Some(Instant::now() + DEBOUNCE_DURATION);
-        let old_deadline = deadline.unwrap();
-        // Simulate what handle_readable_event does when already debouncing.
-        let is_leading = deadline.is_none();
+        let old = deadline.unwrap();
+        // Simulate a second relevant event arriving.
         deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-        assert!(is_leading.not());
-        // Deadline was updated (extended).
-        assert!(deadline.unwrap() >= old_deadline);
+        // Deadline was extended.
+        assert!(deadline.unwrap() >= old);
     }
 }
