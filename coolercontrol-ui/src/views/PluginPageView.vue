@@ -164,64 +164,78 @@ onMounted(loadPluginData)
         <span class="text-text-color-secondary text-lg">{{ t('layout.plugins.notFound') }}</span>
     </div>
     <div v-else class="flex flex-col w-full h-full">
-        <!-- Compact toolbar -->
-        <div
-            class="flex items-center gap-3 px-4 py-2 border-b border-border-one bg-bg-two shrink-0"
-        >
-            <svg-icon type="mdi" :path="mdiPowerPlugOutline" :size="deviceStore.getREMSize(1.5)" />
-            <span class="font-semibold text-lg">{{ plugin.id }}</span>
-            <span v-if="plugin.version" class="text-text-color-secondary text-sm">
-                v{{ plugin.version }}
-            </span>
-            <Tag :value="pluginStatus" :severity="statusSeverity" class="ml-2" />
-            <span v-if="pluginStatusReason" class="text-text-color-secondary text-sm italic">
-                {{ pluginStatusReason }}
-            </span>
+        <!-- Header toolbar -->
+        <div class="flex h-[3.5rem] border-b-4 border-border-one items-center justify-between">
+            <div class="pl-4 py-2 flex items-center gap-3">
+                <svg-icon
+                    type="mdi"
+                    :path="mdiPowerPlugOutline"
+                    :size="deviceStore.getREMSize(1.75)"
+                />
+                <span class="text-2xl font-bold">{{ plugin.id }}</span>
+                <span v-if="plugin.version" class="text-text-color-secondary text-sm">
+                    v{{ plugin.version }}
+                </span>
+                <Tag :value="pluginStatus" :severity="statusSeverity" class="ml-2" />
+                <span v-if="pluginStatusReason" class="text-text-color-secondary text-sm italic">
+                    {{ pluginStatusReason }}
+                </span>
+            </div>
 
-            <div class="flex-1" />
+            <div class="pr-4 flex items-center gap-1">
+                <!-- Lifecycle controls (integration plugins only) -->
+                <template v-if="isManaged">
+                    <Button
+                        v-tooltip.bottom="t('layout.plugins.start')"
+                        class="!p-1.5"
+                        :disabled="pluginStatus === PluginStatus.Running"
+                        severity="success"
+                        text
+                        @click="startPlugin"
+                    >
+                        <svg-icon type="mdi" :path="mdiPlay" :size="deviceStore.getREMSize(1.5)" />
+                    </Button>
+                    <Button
+                        v-tooltip.bottom="t('layout.plugins.stop')"
+                        class="!p-1.5"
+                        :disabled="pluginStatus === PluginStatus.Stopped"
+                        severity="danger"
+                        text
+                        @click="stopPlugin"
+                    >
+                        <svg-icon type="mdi" :path="mdiStop" :size="deviceStore.getREMSize(1.5)" />
+                    </Button>
+                    <Button
+                        v-tooltip.bottom="t('layout.plugins.restart')"
+                        class="!p-1.5"
+                        text
+                        @click="restartPlugin"
+                    >
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiRestart"
+                            :size="deviceStore.getREMSize(1.5)"
+                        />
+                    </Button>
+                </template>
 
-            <!-- Lifecycle controls (integration plugins only) -->
-            <template v-if="isManaged">
+                <!-- Settings gear -->
                 <Button
-                    v-tooltip.bottom="t('layout.plugins.start')"
-                    class="!p-1.5"
-                    :disabled="pluginStatus === PluginStatus.Running"
-                    severity="success"
+                    v-if="hasSettingsUi"
+                    v-tooltip.bottom="t('layout.topbar.settings')"
+                    class="!bg-accent/80 hover:!bg-accent w-32 h-[2.375rem] !border !border-border-one"
                     text
-                    @click="startPlugin"
+                    @click="openSettingsModal"
                 >
-                    <svg-icon type="mdi" :path="mdiPlay" :size="deviceStore.getREMSize(1.25)" />
+                    <!--                    class="!p-1.5 !border !border-border-one"-->
+                    <svg-icon
+                        type="mdi"
+                        class=""
+                        :path="mdiCogs"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
                 </Button>
-                <Button
-                    v-tooltip.bottom="t('layout.plugins.stop')"
-                    class="!p-1.5"
-                    :disabled="pluginStatus === PluginStatus.Stopped"
-                    severity="danger"
-                    text
-                    @click="stopPlugin"
-                >
-                    <svg-icon type="mdi" :path="mdiStop" :size="deviceStore.getREMSize(1.25)" />
-                </Button>
-                <Button
-                    v-tooltip.bottom="t('layout.plugins.restart')"
-                    class="!p-1.5"
-                    text
-                    @click="restartPlugin"
-                >
-                    <svg-icon type="mdi" :path="mdiRestart" :size="deviceStore.getREMSize(1.25)" />
-                </Button>
-            </template>
-
-            <!-- Settings gear -->
-            <Button
-                v-if="hasSettingsUi"
-                v-tooltip.bottom="t('layout.topbar.settings')"
-                class="!p-1.5"
-                text
-                @click="openSettingsModal"
-            >
-                <svg-icon type="mdi" :path="mdiCogs" :size="deviceStore.getREMSize(1.25)" />
-            </Button>
+            </div>
         </div>
 
         <!-- Full-page iframe or info page -->
