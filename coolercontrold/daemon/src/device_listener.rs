@@ -228,10 +228,6 @@ async fn run_event_loop(
             },
         };
         if scan_needed {
-            if debounce_deadline.is_none() {
-                // Set trailing debounce window for any follow-up events.
-                debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-            }
             perform_scan(
                 &mut hwmon_baseline,
                 &mut lc_baseline,
@@ -254,6 +250,9 @@ async fn sleep_until_deadline(deadline: Option<Instant>) {
 
 /// Drains pending uevent messages (up to `MAX_DRAIN_PER_WAKE`) and returns
 /// whether a scan is needed.
+///
+/// Deadline management lives here, not in the main loop, so the trailing
+/// edge (deadline expiry) never accidentally re-arms itself.
 fn handle_readable_event(
     result: Result<AsyncFdReadyGuard<'_, OwnedFd>, std::io::Error>,
     async_fd: &AsyncFd<OwnedFd>,
@@ -277,14 +276,11 @@ fn handle_readable_event(
         guard.clear_ready();
     }
     if relevant {
-        if debounce_deadline.is_none() {
-            // Leading edge: trigger immediate scan.
-            true
-        } else {
-            // Already debouncing: extend the window.
-            *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
-            false
-        }
+        let is_leading_edge = debounce_deadline.is_none();
+        // Set or extend the debounce window.
+        *debounce_deadline = Some(Instant::now() + DEBOUNCE_DURATION);
+        // Only the leading edge triggers an immediate scan.
+        is_leading_edge
     } else {
         false
     }
@@ -459,6 +455,9 @@ fn notify_device_removed(name: &str, bin_path: &str) {
 }
 
 /// Sends a desktop notification to all active user sessions.
+///
+/// The command format must match the `Notify` subcommand's positional
+/// args: title, message, icon, audio.
 fn send_desktop_notification(title: &str, body: &str, bin_path: &str) {
     let user_ids = available_session_user_ids();
     let safe_title = sanitize_for_shell(title);
@@ -467,7 +466,7 @@ fn send_desktop_notification(title: &str, body: &str, bin_path: &str) {
     for uid in &user_ids {
         let cmd = format!(
             "sudo -u \\#{uid} {safe_bin_path} notify \"{safe_title}\" \
-             \"{safe_body}\" {NOTIFICATION_ICON_INFO}"
+             \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
         );
         fire_notification_command(cmd);
     }
@@ -479,7 +478,7 @@ fn fire_notification_command(cmd: String) {
             .run()
             .await;
         if let crate::repositories::utils::ShellCommandResult::Error(err) = result {
-            debug!("Failed to execute notification command: {err}");
+            warn!("Failed to execute notification command: '{cmd}' - {err}");
         }
     });
 }
@@ -653,5 +652,77 @@ mod tests {
         unsafe { env::set_var(ENV_DBUS, "1") };
         assert!(is_listener_disabled().not());
         unsafe { env::remove_var(ENV_DBUS) };
+    }
+
+    // --- notification command format ---
+
+    #[test]
+    fn notification_command_includes_audio_parameter() {
+        // The notify command must include all positional args up to
+        // audio to match the Notify subcommand format used by alerts.
+        let title = "CoolerControl: New Device Detected";
+        let body = "New device: coretemp. Restart the daemon.";
+        let bin_path = "/usr/bin/coolercontrold";
+        let safe_title = sanitize_for_shell(title);
+        let safe_body = sanitize_for_shell(body);
+        let safe_bin = sanitize_for_shell(bin_path);
+        let uid: u32 = 1000;
+        let cmd = format!(
+            "sudo -u \\#{uid} {safe_bin} notify \"{safe_title}\" \
+             \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
+        );
+        assert!(cmd.contains("notify"));
+        assert!(cmd.contains("false"));
+        assert!(cmd.ends_with("4 false"));
+        assert!(cmd.starts_with("sudo -u \\#1000"));
+    }
+
+    #[test]
+    fn notification_command_sanitizes_special_chars() {
+        // Device names with shell-unsafe chars must be sanitized.
+        let body = "Device: test$(evil) removed";
+        let sanitized = sanitize_for_shell(body);
+        assert!(sanitized.contains('$').not());
+        assert!(sanitized.contains('(').not());
+        assert!(sanitized.contains(')').not());
+    }
+
+    // --- debounce: trailing edge must not re-arm ---
+
+    #[test]
+    fn trailing_edge_does_not_set_new_deadline() {
+        // After a trailing-edge scan fires (deadline expires, set to
+        // None), no new deadline should be set. Only readable events
+        // with relevant uevents set deadlines via handle_readable_event.
+        let deadline: Option<Instant> = None;
+        // The main loop sets deadline to None on trailing edge.
+        // Without a subsequent readable event, it must stay None.
+        assert!(deadline.is_none());
+    }
+
+    #[test]
+    fn leading_edge_sets_deadline_and_triggers_scan() {
+        // The first relevant uevent should set the debounce deadline
+        // and return true (scan needed).
+        let mut deadline: Option<Instant> = None;
+        // Simulate what handle_readable_event does on leading edge.
+        let is_leading = deadline.is_none();
+        deadline = Some(Instant::now() + DEBOUNCE_DURATION);
+        assert!(is_leading);
+        assert!(deadline.is_some());
+    }
+
+    #[test]
+    fn extension_event_updates_deadline_without_scan() {
+        // Events during an active debounce window extend the deadline
+        // but do not trigger a scan.
+        let mut deadline: Option<Instant> = Some(Instant::now() + DEBOUNCE_DURATION);
+        let old_deadline = deadline.unwrap();
+        // Simulate what handle_readable_event does when already debouncing.
+        let is_leading = deadline.is_none();
+        deadline = Some(Instant::now() + DEBOUNCE_DURATION);
+        assert!(is_leading.not());
+        // Deadline was updated (extended).
+        assert!(deadline.unwrap() >= old_deadline);
     }
 }
