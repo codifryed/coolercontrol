@@ -19,6 +19,7 @@
 mod cpu_percent;
 pub mod cpu_repo;
 pub mod custom_sensors_repo;
+pub mod failsafe;
 pub mod gpu;
 pub mod hwmon;
 pub mod liquidctl;
