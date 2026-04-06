@@ -76,7 +76,7 @@ const tabValue = ref(props.tabNumber != null && props.tabNumber ? props.tabNumbe
 const { t } = useI18n()
 
 const tabStyle = computed(() => {
-    let tabCount = 4
+    let tabCount = 3
     if (deviceStore.isQtApp()) {
         tabCount += 1
     }
