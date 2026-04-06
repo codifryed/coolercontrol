@@ -482,15 +482,22 @@ fn notify_device_removed(name: &str, bin_path: &str) {
 /// Sends a desktop notification to all active user sessions.
 ///
 /// The command format must match the `Notify` subcommand's positional
-/// args: title, message, icon, audio.
+/// args: title, message, icon, audio. We explicitly set
+/// `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` because `sudo -u`
+/// strips the environment, which prevents zbus from finding the session
+/// bus on some desktops (e.g. Gnome on Arch).
 fn send_desktop_notification(title: &str, body: &str, bin_path: &str) {
-    let user_ids = available_session_user_ids();
+    let sessions = available_session_users();
     let safe_title = sanitize_for_shell(title);
     let safe_body = sanitize_for_shell(body);
     let safe_bin_path = sanitize_for_shell(bin_path);
-    for uid in &user_ids {
+    for (uid, runtime_dir) in &sessions {
+        let runtime = runtime_dir.display();
         let cmd = format!(
-            "sudo -u \\#{uid} {safe_bin_path} notify \"{safe_title}\" \
+            "sudo -u \\#{uid} env \
+             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
+             XDG_RUNTIME_DIR={runtime} \
+             {safe_bin_path} notify \"{safe_title}\" \
              \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
         );
         fire_notification_command(cmd);
@@ -508,15 +515,16 @@ fn fire_notification_command(cmd: String) {
     });
 }
 
-/// Finds active user session IDs by checking for D-Bus session sockets.
-fn available_session_user_ids() -> HashSet<u32> {
-    let mut user_ids = HashSet::new();
+/// Finds active user sessions by checking for D-Bus session sockets.
+/// Returns (uid, runtime_dir) pairs for each active session.
+fn available_session_users() -> Vec<(u32, PathBuf)> {
+    let mut sessions = Vec::new();
     let mut path = PathBuf::from("/run/user");
     if path.exists().not() {
         path = PathBuf::from("/var/run/user");
     }
     let Ok(entries) = cc_fs::read_dir(path) else {
-        return user_ids;
+        return sessions;
     };
     for entry in entries.flatten() {
         let user_dir = entry.path();
@@ -527,12 +535,12 @@ fn available_session_user_ids() -> HashSet<u32> {
                 .and_then(|id| id.parse::<u32>().ok())
             {
                 if uid >= MIN_USER_UID {
-                    user_ids.insert(uid);
+                    sessions.push((uid, user_dir));
                 }
             }
         }
     }
-    user_ids
+    sessions
 }
 
 #[cfg(test)]
@@ -687,9 +695,9 @@ mod tests {
     // --- notification command format ---
 
     #[test]
-    fn notification_command_includes_audio_parameter() {
-        // The notify command must include all positional args up to
-        // audio to match the Notify subcommand format used by alerts.
+    fn notification_command_includes_dbus_env_and_audio() {
+        // The notify command must set DBUS_SESSION_BUS_ADDRESS and
+        // XDG_RUNTIME_DIR, and include all positional args up to audio.
         let title = "CoolerControl: New Device Detected";
         let body = "New device: coretemp. Restart the daemon.";
         let bin_path = "/usr/bin/coolercontrold";
@@ -697,14 +705,19 @@ mod tests {
         let safe_body = sanitize_for_shell(body);
         let safe_bin = sanitize_for_shell(bin_path);
         let uid: u32 = 1000;
+        let runtime = format!("/run/user/{uid}");
         let cmd = format!(
-            "sudo -u \\#{uid} {safe_bin} notify \"{safe_title}\" \
+            "sudo -u \\#{uid} env \
+             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
+             XDG_RUNTIME_DIR={runtime} \
+             {safe_bin} notify \"{safe_title}\" \
              \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
         );
+        assert!(cmd.starts_with("sudo -u \\#1000 env"));
+        assert!(cmd.contains("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"));
+        assert!(cmd.contains("XDG_RUNTIME_DIR=/run/user/1000"));
         assert!(cmd.contains("notify"));
-        assert!(cmd.contains("false"));
         assert!(cmd.ends_with("4 false"));
-        assert!(cmd.starts_with("sudo -u \\#1000"));
     }
 
     #[test]

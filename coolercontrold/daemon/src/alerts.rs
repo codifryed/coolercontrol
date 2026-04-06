@@ -33,10 +33,10 @@ use schemars::JsonSchema;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use strum::{Display, EnumString};
@@ -643,16 +643,17 @@ impl AlertController {
 
     /// Handle all notifications and system shutdowns for an alert.
     fn send_notifications(&self, alert: &Alert, message: &str) {
-        let user_ids = Self::available_session_user_ids();
+        let sessions = Self::available_session_users();
         match alert.state {
             AlertState::Active => {
                 if alert.desktop_notify {
-                    for uid in &user_ids {
+                    for (uid, runtime_dir) in &sessions {
                         if alert.shutdown_on_activation {
                             let title = format!("Shutdown Alert Triggered: {}!", alert.name);
                             let body = format!("Shutdown will commence in 1 Minute.\n{message}");
                             self.fire_notification(
                                 *uid,
+                                runtime_dir,
                                 &title,
                                 &body,
                                 NotificationIcon::Shutdown,
@@ -663,6 +664,7 @@ impl AlertController {
                             let title = format!("Alert Triggered: {}!", alert.name);
                             self.fire_notification(
                                 *uid,
+                                runtime_dir,
                                 &title,
                                 message,
                                 NotificationIcon::Triggered,
@@ -689,10 +691,11 @@ impl AlertController {
                     );
                 }
                 if alert.desktop_notify && alert.desktop_notify_recovery {
-                    for uid in &user_ids {
+                    for (uid, runtime_dir) in &sessions {
                         let title = format!("Alert Resolved: {}", alert.name);
                         self.fire_notification(
                             *uid,
+                            runtime_dir,
                             &title,
                             message,
                             NotificationIcon::Resolved,
@@ -704,10 +707,11 @@ impl AlertController {
             }
             AlertState::Error => {
                 if alert.desktop_notify {
-                    for uid in &user_ids {
+                    for (uid, runtime_dir) in &sessions {
                         let title = format!("Alert Error: {}", alert.name);
                         self.fire_notification(
                             *uid,
+                            runtime_dir,
                             &title,
                             message,
                             NotificationIcon::Error,
@@ -725,9 +729,12 @@ impl AlertController {
     }
 
     /// Fires a desktop notification with automatic sanitization of title and message.
+    /// Sets DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR so zbus can find
+    /// the user's session bus (sudo strips the environment).
     fn fire_notification(
         &self,
         uid: u32,
+        runtime_dir: &Path,
         title: &str,
         message: &str,
         icon: NotificationIcon,
@@ -736,15 +743,20 @@ impl AlertController {
     ) {
         let safe_title = sanitize_for_shell(title);
         let safe_message = sanitize_for_shell(message);
-
+        let runtime = runtime_dir.display();
+        let env_prefix = format!(
+            "sudo -u \\#{uid} env \
+             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
+             XDG_RUNTIME_DIR={runtime}"
+        );
         let cmd = match urgency_lvl {
             Some(urgency) => format!(
-                "sudo -u \\#{} {} notify \"{}\" \"{}\" {} {} {}",
-                uid, self.bin_path, safe_title, safe_message, icon as u8, audio, urgency
+                "{env_prefix} {} notify \"{}\" \"{}\" {} {} {}",
+                self.bin_path, safe_title, safe_message, icon as u8, audio, urgency
             ),
             None => format!(
-                "sudo -u \\#{} {} notify \"{}\" \"{}\" {} {}",
-                uid, self.bin_path, safe_title, safe_message, icon as u8, audio
+                "{env_prefix} {} notify \"{}\" \"{}\" {} {}",
+                self.bin_path, safe_title, safe_message, icon as u8, audio
             ),
         };
         Self::fire_command(&cmd);
@@ -763,15 +775,15 @@ impl AlertController {
         });
     }
 
-    fn available_session_user_ids() -> HashSet<u32> {
-        let mut user_ids = HashSet::new();
+    fn available_session_users() -> Vec<(u32, PathBuf)> {
+        let mut sessions = Vec::new();
         // Search for /run/user/*/bus for user IDs with open dbus sessions.
         let mut path = PathBuf::from("/run/user");
         if path.exists().not() {
             path = PathBuf::from("/var/run/user");
         }
         let Ok(entries) = cc_fs::read_dir(path) else {
-            return user_ids;
+            return sessions;
         };
         for entry in entries.flatten() {
             let user_dir = entry.path();
@@ -783,12 +795,12 @@ impl AlertController {
                 {
                     // do not notify root or system users
                     if uid >= 1000 {
-                        user_ids.insert(uid);
+                        sessions.push((uid, user_dir));
                     }
                 }
             }
         }
-        user_ids
+        sessions
     }
 }
 
