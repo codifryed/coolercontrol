@@ -136,6 +136,7 @@ nix = { version = "0.31.2", default-features = false, features = [
   "signal",
   "process",
   "sched",
+  "net",
 ] }
 libdrm_amdgpu_sys = { version = "0.8.11", default-features = false, features = [
   "dynamic_loading",

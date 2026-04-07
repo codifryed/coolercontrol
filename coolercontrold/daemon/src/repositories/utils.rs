@@ -250,7 +250,9 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
             if stderr.is_empty() {
                 Ok(())
             } else {
-                Err(anyhow!("Error output received when trying to reload the thinkpad_acpi kernel module: {stderr}"))
+                Err(anyhow!(
+                    "Error output received when trying to reload the thinkpad_acpi kernel module: {stderr}"
+                ))
             }
         }
     }
@@ -298,98 +300,16 @@ pub fn find_xauthority_path() -> Option<String> {
     None
 }
 
-/// Sanitizes a string for safe use in shell commands and notification displays.
-/// Removes characters that could enable command injection or XSS attacks.
-pub fn sanitize_for_shell(input: &str) -> String {
-    input
-        .chars()
-        .filter(|c| {
-            // Allowlist: alphanumeric, spaces, and safe punctuation
-            c.is_alphanumeric()
-                || matches!(c, ' ' | '.' | ',' | ':' | '-' | '_' | '/' | '%' | '°' | '+')
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::repositories::utils::{limit_output_length, sanitize_for_shell};
-
-    #[test]
-    fn sanitize_allows_alphanumeric() {
-        assert_eq!(sanitize_for_shell("Hello123"), "Hello123");
-        assert_eq!(sanitize_for_shell("ABCxyz"), "ABCxyz");
-    }
-
-    #[test]
-    fn sanitize_allows_safe_punctuation() {
-        assert_eq!(sanitize_for_shell("temp: 45.5°C"), "temp: 45.5°C");
-        assert_eq!(sanitize_for_shell("fan_1, fan-2"), "fan_1, fan-2");
-        assert_eq!(sanitize_for_shell("path/to/file"), "path/to/file");
-        assert_eq!(sanitize_for_shell("100% +5"), "100% +5");
-    }
-
-    #[test]
-    fn sanitize_removes_shell_injection_chars() {
-        assert_eq!(sanitize_for_shell("test; rm -rf /"), "test rm -rf /");
-        assert_eq!(sanitize_for_shell("$(whoami)"), "whoami");
-        assert_eq!(sanitize_for_shell("`id`"), "id");
-        assert_eq!(sanitize_for_shell("a && b || c"), "a  b  c");
-        assert_eq!(
-            sanitize_for_shell("cat /etc/passwd | grep root"),
-            "cat /etc/passwd  grep root"
-        );
-    }
-
-    #[test]
-    fn sanitize_removes_quotes() {
-        assert_eq!(sanitize_for_shell("it's a \"test\""), "its a test");
-        assert_eq!(sanitize_for_shell("name='value'"), "namevalue");
-    }
-
-    #[test]
-    fn sanitize_removes_xss_chars() {
-        assert_eq!(
-            sanitize_for_shell("<script>alert(1)</script>"),
-            "scriptalert1/script"
-        );
-        assert_eq!(sanitize_for_shell("a > b < c"), "a  b  c");
-    }
-
-    #[test]
-    fn sanitize_removes_newlines_and_special_whitespace() {
-        assert_eq!(sanitize_for_shell("line1\nline2"), "line1line2");
-        assert_eq!(sanitize_for_shell("tab\there"), "tabhere");
-        assert_eq!(sanitize_for_shell("cr\rhere"), "crhere");
-    }
-
-    #[test]
-    fn sanitize_handles_empty_input() {
-        assert_eq!(sanitize_for_shell(""), "");
-    }
-
-    #[test]
-    fn sanitize_handles_only_dangerous_chars() {
-        assert_eq!(sanitize_for_shell("$;|&`'\"<>()[]{}!#*?\\~^"), "");
-    }
-
-    #[test]
-    fn sanitize_realistic_alert_message() {
-        let input = "CPU Temp: 85.5°C is greater than allowed maximum: 80";
-        assert_eq!(sanitize_for_shell(input), input);
-
-        let malicious = "Alert: $(reboot); test & echo pwned";
-        assert_eq!(
-            sanitize_for_shell(malicious),
-            "Alert: reboot test  echo pwned"
-        );
-    }
+    use crate::repositories::utils::limit_output_length;
 
     // Should truncate the output string if it exceeds the maximum length and is ASCII-encoded
     #[test]
     fn should_truncate_output_if_exceeds_max_length_and_is_ascii() {
-        let mut output =
-            String::from("nMy\n\r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");
+        let mut output = String::from(
+            "nMy\n\rhNKPeX3FaVY5B4Z2yrZQhwRuPl1tLad2BWatY8946P0mWyYHDI6b2yPSb3h1wOeuCARUm2NqHk2srdXTBHUfLVgDXtSWttfWAoG8SI9ov2RKrDf9kcqkrCRrjfNuSQfQ4hsqbyfJb5CMMwoGVk7BtmbRkE9iH0qsfqd7NQGfUWv0Og2Mh9b1oZ4JsjF74hjlh7hmoqjgXxT35z4L6W7hTebrAXa8cVOWo7j0ZSJpOnXh9UBXRfsv0uBWykwo1uqiRzbeI0vp4Wwdnm40eWXA1H9J80pOQ5ooqGI9YUoeTCBLfFuu7Lwy6JkeqgSVQbKBHagZ6HXv4en5CAFN4mQGCSOlevkwHAcQIlCRcFNARRdtuIHGClovIczbSc17kckcvXnaPyRO2yScK0SAqdxtyvuW3YXZ1bTXAuHe5oT42hloGGfGycoT693L2HMPZAsnN4hLcc5fLKLW6R0UQWLDNnrLeiFyrV7MtDwdGoQVsH5Rhkwv3lIgCkShPqggrSMIV6joDg87SjQZhVBNcQAe1ZcCNzaGmqYrIg1mt2h3cyXZdMD8iMz6cyx3jUViMscgniegtgr1EmmmmMxgEGivwFTgoxFNdAC1a6ZoJbv9e6uqRNJ19OOpVxZeLrRfKVrwBTmUvmHO9040FLgPq1x1lZxXTC4NLLbdiNUxM5h0Z5fVn9xrta9hSv6B3NvgNMKbKZWVbOpD3C7NjlnS3e72IlLI2KIfv73DERk1jIf625TOSEAzUFG8uJfOr3nrNZGVKa8SlEoVPsghm1Yfsfn6oufQyyF9aKL9Apcw5jsmNJOcLelf7fd9xS8KyoZtyePCLvJbpS9kTzolSLdZmEVSlRs6xum4a7gnzSrBHmRQNtSB7oJfFMDJyWlb1ppOcWPKxn0IhRLQfLXwsUbsi5Q4MDOz2du0ScW45kAQejtNAzT8XljLo6lVQCFwti6vPZIPqOeThfPGaH678EgVNos27x7JSzI2SfsNjoaIgas7CWViXkDgh5aH7eJdFzJvn2OdNDQvDge6oCgWuRxj3oIhZ7ADH2vAdKM6v2EV6wgmD7Ihie2bQ2nI6EtwGAr6Hi2sv27xJYq45zsV9FvoeRNHQotJpYXJrgFZrpffvPiVCMbUw5XEsNgH4VtaaIHofL6ol0THeSxefmEBFeggfL2GR4H6JJ4YOfaIttLVbbgspsNWJyiBzCPGnxTw86Y26PW51vuwAuY68waUy9xsCqia7xxQizk1625NqC09mXD6BmvhTct4lUwzon8WTNnmB4SNmwHzOsRJj5UkQcJUl0emjAxEkObAKqU5woaPCcsZrucyu81C1yiVT6n3TUSN6ecx9M1exdw1bylfOXrs5tV9CsNM0GWqh2fEbEctEzcBWFivB9oPOXOGKYQ6CYLg3fWQNnyUGv73lvuipD84pxtloZM25KqSPaYg6EFgtTeCbV7Ozm4MFfifN7RWVkgGS2NXrANuMDc9cr6OtFTCTPnpMchMegOTrbhAabyrwpFsmrYsoW8YDxDAx2hvEfvyiXp64iNLKx5hVubriSDW4UTLdf1DvNbl5jIJLCq8eWsXGijWHLEljNl9xy8F9tmuMcsEgGvB8t30JmDsRt7FJESomJ8lVNeO7Y7Tv3PM5ajhLnSpiNRx4uJcZ6XLRsFkiIEHrC2JubSUkVFoptX6NNEbPzsiGwDZbwMk7KBimQM2yA0JFfQEb8LxyOQLpQpM4bD70dMfRJ4Y5rLN9HzSbwC1pFpY4w9pUS1P0dlZy77lq357wkz62I49dl8z1CKcZIkuXfZkyVn4qg26fAeRccz0QYAxnxIvPsruSt0i0EAMKg6cN7ay5JE60XMwGwNDc2KgYAys0y1xQt9xx4XaaF5aVhFVf1oG9nRUVH2bn9JIDwjFxgca1qBCZs5mzZH1TeXNFIbpJzPBAQ9iNr9P4l19jVI5v8l5jLpDyJfY4yCyjmMKsu3gpli1OC6M3ve3V8tDEs41ZTKHg3JlQpRuG8",
+        );
         limit_output_length(&mut output);
         assert_eq!(
             output,

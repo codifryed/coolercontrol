@@ -48,5 +48,6 @@ const std::string ENDPOINT_ALERTS = "/alerts";
 const std::string ENDPOINT_SSE_LOGS = "/sse/logs";
 const std::string ENDPOINT_SSE_MODES = "/sse/modes";
 const std::string ENDPOINT_SSE_ALERTS = "/sse/alerts";
+const std::string ENDPOINT_SSE_NOTIFICATIONS = "/sse/notifications";
 
 #endif  // CONSTANTS_H

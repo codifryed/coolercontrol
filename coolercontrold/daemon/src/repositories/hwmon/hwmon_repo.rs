@@ -22,6 +22,7 @@ use crate::device::{
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
     TypeIndex, UID,
 };
+use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
@@ -163,6 +164,7 @@ pub struct HwmonRepo {
     config: Rc<Config>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
 
     /// Permits for each `HWMon` device. This is useful for slower devices.
     /// `liqctld` already has an in-built device queue - where only one read or write
@@ -184,6 +186,7 @@ impl HwmonRepo {
             config,
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            failsafe_statuses: RefCell::new(HashMap::new()),
             device_permits: HashMap::new(),
             delay_logged: HashMap::new(),
             lc_hwmon_paths: lc_locations
@@ -314,7 +317,13 @@ impl HwmonRepo {
             let type_index = (index + 1) as u8;
             let mut channel_statuses = fans::extract_fan_statuses(&driver).await;
             channel_statuses.extend(power::extract_power_status(&driver).await);
-            let temp_statuses = temps::extract_temp_statuses(&driver).await;
+            let (temp_statuses, _) = temps::extract_temp_statuses(&driver).await;
+            let (channel_failsafes, temp_failsafes) =
+                failsafe::create_failsafe_data(&channel_statuses, &temp_statuses);
+            self.failsafe_statuses.borrow_mut().insert(
+                type_index,
+                FailsafeStatusData::new(channel_failsafes, temp_failsafes),
+            );
             self.preloaded_statuses.borrow_mut().insert(
                 type_index,
                 (channel_statuses.clone(), temp_statuses.clone()),
@@ -376,6 +385,66 @@ impl HwmonRepo {
             locations.push(hid_phys);
         }
         locations
+    }
+
+    /// Reads channel and temp statuses for one device and stores them
+    /// in the preloaded map. Tracks read failures for failsafe logic.
+    async fn preload_device_statuses(&self, type_index: TypeIndex, driver: &Rc<HwmonDriverInfo>) {
+        let mut channel_statuses = if driver.apple_smc.detected {
+            driver.apple_smc.extract_fan_statuses(driver).await
+        } else {
+            fans::extract_fan_statuses(driver).await
+        };
+        channel_statuses.extend(power::extract_power_status(driver).await);
+        let (temp_statuses, any_temp_failure) =
+            if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
+                (drivetemp::default_suspended_temps(driver), false)
+            } else {
+                temps::extract_temp_statuses(driver).await
+            };
+        if any_temp_failure {
+            self.handle_device_read_failure(type_index, &driver.name);
+        } else {
+            self.handle_device_read_success(type_index);
+        }
+        self.preloaded_statuses
+            .borrow_mut()
+            .insert(type_index, (channel_statuses, temp_statuses));
+    }
+
+    /// Records a read failure for the device. If the threshold is
+    /// exceeded, inserts failsafe values into the preloaded map and
+    /// logs an error once.
+    fn handle_device_read_failure(&self, type_index: TypeIndex, driver_name: &str) {
+        let mut fsd_map = self.failsafe_statuses.borrow_mut();
+        let Some(fsd) = fsd_map.get_mut(&type_index) else {
+            // Failsafe data must exist for every initialized device.
+            debug_assert!(false, "Missing failsafe data for device index {type_index}");
+            return;
+        };
+        if fsd.record_failure() {
+            if fsd.log_once() {
+                error!(
+                    "Significant issue retrieving status for hwmon \
+                     device: {driver_name}. Setting failsafe values."
+                );
+            }
+            self.preloaded_statuses.borrow_mut().insert(
+                type_index,
+                (
+                    fsd.channel_failsafes.values().cloned().collect(),
+                    fsd.temp_failsafes.values().cloned().collect(),
+                ),
+            );
+        }
+    }
+
+    /// Records a successful status read, resetting the failure counter.
+    fn handle_device_read_success(&self, type_index: TypeIndex) {
+        let mut fsd_map = self.failsafe_statuses.borrow_mut();
+        if let Some(fsd) = fsd_map.get_mut(&type_index) {
+            fsd.record_success();
+        }
     }
 
     /// Logging slow devices is triggered once the polling loop overlaps and the
@@ -599,22 +668,12 @@ impl Repository for HwmonRepo {
                 let self = Rc::clone(&self);
                 scope.spawn(async move {
                     tokio::select! {
-                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => self.log_slow_device(type_index, &driver.name),
+                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => {
+                            self.log_slow_device(type_index, &driver.name);
+                            self.handle_device_read_failure(type_index, &driver.name);
+                        },
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
-                            let mut channel_statuses = if driver.apple_smc.detected {
-                                driver.apple_smc.extract_fan_statuses(driver).await
-                            } else {
-                                fans::extract_fan_statuses(driver).await
-                            };
-                            channel_statuses.extend(power::extract_power_status(driver).await);
-                            let temp_statuses = if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
-                                drivetemp::default_suspended_temps(driver)
-                            } else {
-                                temps::extract_temp_statuses(driver).await
-                            };
-                            self.preloaded_statuses
-                                .borrow_mut()
-                                .insert(type_index, (channel_statuses, temp_statuses));
+                            self.preload_device_statuses(type_index, driver).await;
                             drop(device_permit);
                         },
                     }

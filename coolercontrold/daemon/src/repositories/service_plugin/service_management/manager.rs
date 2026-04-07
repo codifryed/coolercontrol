@@ -107,7 +107,9 @@ impl Manager {
         } else if OpenRcManager::detected() {
             Ok(Self::OpenRc(OpenRcManager::default()))
         } else {
-            Err(anyhow!("Failed to detect System Service Manager. The daemon will not be able to manage the plugin processes."))
+            Err(anyhow!(
+                "Failed to detect System Service Manager. The daemon will not be able to manage the plugin processes."
+            ))
         }
     }
 

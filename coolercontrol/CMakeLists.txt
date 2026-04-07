@@ -15,6 +15,8 @@ qt_add_executable(
   # WIN32 MACOSX_BUNDLE
   main.cpp
   dbus_listener.h
+  notifier.cpp
+  notifier.h
   main_window.cpp
   main_window.h
   address_wizard.cpp
@@ -36,6 +38,24 @@ qt_add_resources(
   coolercontrol "coolercontrol" PREFIX "/"
   # BASE "icons"
   FILES ${cc_resource_files})
+
+# Notification icons from packaging/metadata, mapped to :/icons/*.png
+set(cc_notification_icons
+    "../packaging/metadata/alert-triggered.png"
+    "../packaging/metadata/alert-resolved.png"
+    "../packaging/metadata/alert-error.png"
+    "../packaging/metadata/information.png"
+    "../packaging/metadata/shutdown.png")
+
+qt_add_resources(
+  coolercontrol
+  "notification_icons"
+  PREFIX
+  "/icons"
+  BASE
+  "../packaging/metadata"
+  FILES
+  ${cc_notification_icons})
 
 include(GNUInstallDirs)
 

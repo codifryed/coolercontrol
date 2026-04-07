@@ -148,6 +148,8 @@ class MainWindow final : public QMainWindow {
 
   void watchModeActivation() const;
 
+  void watchNotifications() const;
+
   void watchAlerts() const;
 
   void showVersionMismatchDialog(const QString& daemonVersion) const;

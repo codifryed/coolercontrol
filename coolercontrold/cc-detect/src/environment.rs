@@ -29,6 +29,7 @@ const LOCKDOWN_PATH: &str = "/sys/kernel/security/lockdown";
 
 /// Runtime environment capabilities.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Environment {
     pub is_container: bool,
     pub is_secure_boot: bool,
@@ -72,12 +73,9 @@ impl Environment {
     }
 
     fn check_secure_boot() -> bool {
-        let content = match std::fs::read_to_string(LOCKDOWN_PATH) {
-            Ok(c) => c,
-            Err(_) => {
-                debug!("Lockdown file not available ({LOCKDOWN_PATH})");
-                return false;
-            }
+        let Ok(content) = std::fs::read_to_string(LOCKDOWN_PATH) else {
+            debug!("Lockdown file not available ({LOCKDOWN_PATH})");
+            return false;
         };
         parse_lockdown_active(&content)
     }

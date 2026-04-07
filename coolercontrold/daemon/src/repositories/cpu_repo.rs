@@ -548,8 +548,8 @@ impl CpuRepo {
         if contains_freq {
             Self::get_filtered_freqs(phys_cpu_id, driver, cpu_freqs, &mut status_channels);
         }
-        let temps = temps::extract_temp_statuses(driver)
-            .await
+        let (extracted_temps, _) = temps::extract_temp_statuses(driver).await;
+        let temps = extracted_temps
             .iter()
             .map(|temp| TempStatus {
                 name: temp.name.clone(),

@@ -29,6 +29,7 @@ use crate::config::Config;
 use crate::device::{
     ChannelName, DeviceType, DeviceUID, Duty, LcInfo, Status, Temp, TempInfo, TypeIndex, UID,
 };
+use crate::repositories::failsafe::{self, FailsafeStatusData};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{
@@ -52,15 +53,19 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
+/// Time to wait for the liqctld Python service to start listening on its socket.
+const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
     liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
-    liqctld_stop_token: CancellationToken,
+    liqctld_stop_token: RefCell<CancellationToken>,
+    run_token: CancellationToken,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
+    failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
     disabled_channels: RefCell<HashMap<UID, Vec<ChannelName>>>,
 }
 
@@ -91,9 +96,9 @@ impl LiquidctlRepo {
         }
         let stop_token = CancellationToken::new();
         let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(run_token, stop_token.clone()));
-        // give the service a moment to come up and detect devices
-        sleep(Duration::from_millis(300)).await;
+            tokio::task::spawn_local(liqctld_service::run(run_token.clone(), stop_token.clone()));
+        // Allow the Python service to start listening on the Unix socket.
+        sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
             Ok(client) => client,
             Err(err) => {
@@ -122,10 +127,12 @@ impl LiquidctlRepo {
             config,
             liqctld_client,
             liqctld_service_handle: RefCell::new(Some(service_handle)),
-            liqctld_stop_token: stop_token,
+            liqctld_stop_token: RefCell::new(stop_token),
+            run_token,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
+            failsafe_statuses: RefCell::new(HashMap::new()),
             disabled_channels: RefCell::new(HashMap::new()),
         })
     }
@@ -207,6 +214,74 @@ impl LiquidctlRepo {
             self.devices.len()
         );
         Ok(())
+    }
+
+    /// Performs a fresh scan for currently connected liquidctl devices without
+    /// modifying any cached state. Used for device change detection.
+    /// Filters out devices with empty descriptions as they are not usable.
+    pub async fn scan_devices(&self) -> Result<Vec<String>> {
+        let response = self.liqctld_client.scan_devices().await?;
+        Ok(response
+            .devices
+            .into_iter()
+            .map(|d| d.description)
+            .filter(|desc| desc.is_empty().not())
+            .collect())
+    }
+
+    /// Returns whether the liqctld service task is alive.
+    pub fn is_service_running(&self) -> bool {
+        let handle = self.liqctld_service_handle.borrow();
+        let running = handle.as_ref().is_some_and(|h| h.is_finished().not());
+        debug_assert!(
+            running || handle.is_none() || handle.as_ref().unwrap().is_finished(),
+            "Service handle must be None, finished, or running."
+        );
+        running
+    }
+
+    /// Spawns the liqctld service and verifies the client can reach it.
+    /// Precondition: the service must not already be running.
+    async fn start_service(&self) -> Result<()> {
+        debug_assert!(
+            self.is_service_running().not(),
+            "start_service called while service is already running."
+        );
+        let stop_token = CancellationToken::new();
+        *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
+        let service_handle =
+            tokio::task::spawn_local(liqctld_service::run(self.run_token.clone(), stop_token));
+        *self.liqctld_service_handle.borrow_mut() = Some(service_handle);
+        // Allow the Python service to start listening on the Unix socket.
+        sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
+        self.liqctld_client.handshake().await?;
+        debug_assert!(
+            self.is_service_running(),
+            "Service must be running after successful start."
+        );
+        Ok(())
+    }
+
+    /// Temporarily starts the service, scans for devices, and shuts down.
+    /// Returns an empty Vec on any failure.
+    pub async fn scan_devices_with_restart(&self) -> Vec<String> {
+        debug_assert!(
+            self.is_service_running().not(),
+            "scan_devices_with_restart called while service is running."
+        );
+        if let Err(err) = self.start_service().await {
+            debug!("Failed to start liqctld for on-demand scan: {err}");
+            return Vec::new();
+        }
+        let descriptions = self.scan_devices().await.unwrap_or_default();
+        if let Err(err) = self.shutdown_service_and_client().await {
+            debug!("Failed to shut down liqctld after on-demand scan: {err}");
+        }
+        debug_assert!(
+            self.is_service_running().not(),
+            "Service must be stopped after scan_devices_with_restart."
+        );
+        descriptions
     }
 
     /// Returns a vector of all driver locations for devices managed by this
@@ -293,6 +368,25 @@ impl LiquidctlRepo {
             status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
         }
         status_map
+    }
+
+    /// Builds a normal status from preloaded data for the given device.
+    fn build_normal_status(&self, device: &Device) -> Result<Status> {
+        let preloaded_statuses = self.preloaded_statuses.borrow();
+        let Some(lc_status) = preloaded_statuses.get(&device.type_index) else {
+            error!(
+                "There is no status preloaded for this device: {}",
+                device.uid
+            );
+            return Err(anyhow!("No preloaded status for device: {}", device.uid));
+        };
+        let Some(lc_info) = device.lc_info.as_ref() else {
+            return Err(anyhow!("Missing lc_info for device: {}", device.uid));
+        };
+        let driver_type = &lc_info.driver_type;
+        let status = self.map_status(driver_type, &device.uid, lc_status, device.type_index);
+        trace!("Device: {} status updated: {status:?}", device.name);
+        Ok(status)
     }
 
     fn map_status(
@@ -708,7 +802,7 @@ impl LiquidctlRepo {
 
     async fn shutdown_service_and_client(&self) -> Result<()> {
         // sometimes we want to shut the service down before the daemon, hence the stop token:
-        self.liqctld_stop_token.cancel();
+        self.liqctld_stop_token.borrow().cancel();
         self.liqctld_client.post_quit().await?;
         // proper shutdown of liqctld service child process:
         let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();
@@ -770,12 +864,20 @@ impl LiquidctlRepo {
         }
     }
 
-    /// The function initializes the status history of all devices with their current status.
-    /// This is to be called on startup only.
+    /// Initializes the status history of all devices with their current
+    /// status and builds failsafe data. To be called on startup only.
     pub fn initialize_all_device_status_histories_with_current_status(&self) -> Result<()> {
         let poll_rate = self.config.get_settings()?.poll_rate;
         for device_lock in self.devices.values() {
-            let recent_status = device_lock.borrow().status_current().unwrap();
+            let device = device_lock.borrow();
+            let recent_status = device.status_current().unwrap();
+            let (channel_failsafes, temp_failsafes) =
+                failsafe::create_failsafe_data(&recent_status.channels, &recent_status.temps);
+            self.failsafe_statuses.borrow_mut().insert(
+                device.type_index,
+                FailsafeStatusData::new(channel_failsafes, temp_failsafes),
+            );
+            drop(device);
             device_lock
                 .borrow_mut()
                 .initialize_status_history_with(recent_status, poll_rate);
@@ -852,10 +954,25 @@ impl Repository for LiquidctlRepo {
                             self.preloaded_statuses
                                 .borrow_mut()
                                 .insert(device_id, status);
+                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
+                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
+                                fsd.record_success();
+                            }
                         }
-                        // this leaves the previous status in the map as backup for temporary issues
                         Err(err) => {
                             error!("Error getting status from device #{device_id}: {err}");
+                            let mut fsd_map = self.failsafe_statuses.borrow_mut();
+                            if let Some(fsd) = fsd_map.get_mut(&device_id) {
+                                if fsd.record_failure() {
+                                    if fsd.log_once() {
+                                        error!(
+                                            "Significant issue retrieving status for \
+                                             liquidctl device #{device_id}. \
+                                             Setting failsafe values."
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                 });
@@ -872,27 +989,21 @@ impl Repository for LiquidctlRepo {
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.borrow();
-                let preloaded_statuses = self.preloaded_statuses.borrow();
-                let lc_status = preloaded_statuses.get(&device.type_index);
-                if lc_status.is_none() {
-                    error!(
-                        "There is no status preloaded for this device: {}",
-                        device.uid
-                    );
-                    continue;
+                let fsd_map = self.failsafe_statuses.borrow();
+                let failsafe_status = fsd_map
+                    .get(&device.type_index)
+                    .filter(|fsd| fsd.threshold_exceeded())
+                    .map(FailsafeStatusData::build_failsafe_status);
+                if let Some(status) = failsafe_status {
+                    trace!("Device: {} using failsafe status", device.name);
+                    status
+                } else {
+                    drop(fsd_map);
+                    match self.build_normal_status(&device) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    }
                 }
-                let status = self.map_status(
-                    &device
-                        .lc_info
-                        .as_ref()
-                        .expect("Should always be present for LC devices")
-                        .driver_type,
-                    &device.uid,
-                    lc_status.unwrap(),
-                    device.type_index,
-                );
-                trace!("Device: {} status updated: {status:?}", device.name);
-                status
             };
             device_lock.borrow_mut().set_status(status);
         }

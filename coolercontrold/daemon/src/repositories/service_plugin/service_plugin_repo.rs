@@ -18,10 +18,11 @@
 
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Mhz, Status, Temp,
-    TempStatus, Watts, RPM, UID,
+    ChannelExtensionNames, ChannelName, ChannelStatus, DeviceType, DeviceUID, Status, TempStatus,
+    UID,
 };
 use crate::grpc_api::device_service::v1::health_response;
+use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::service_plugin::client::DeviceServiceClient;
 use crate::repositories::service_plugin::plugin_controller::{
@@ -56,12 +57,6 @@ pub const CC_PLUGIN_USER: &str = "cc-plugin-user";
 const TIMEOUT_SERVICE_START_SECONDS: usize = 5;
 const TIMEOUT_SERVICE_CONNECTION_SECONDS: usize = 10;
 const TIMEOUT_API_UP_SECONDS: u64 = 60; // We have a 30-second max startup delay
-const MISSING_STATUS_THRESHOLD: usize = 8;
-const MISSING_TEMP_FAILSAFE: Temp = 100.;
-const MISSING_DUTY_FAILSAFE: f64 = 0.;
-const MISSING_RPM_FAILSAFE: RPM = 0;
-const MISSING_WATTS_FAILSAFE: Watts = 0.;
-const MISSING_FREQ_FAILSAFE: Mhz = 0;
 
 #[derive(Debug)]
 struct DeviceServiceConnection {
@@ -86,15 +81,6 @@ pub struct ServicePluginRepo {
 struct PreloadData {
     channels: HashMap<ChannelName, ChannelStatus>,
     temps: HashMap<ChannelName, TempStatus>,
-}
-
-struct FailsafeStatusData {
-    count: usize,
-    logged: bool,
-
-    /// These are failsafes metrics for each channel, should it's status be missing.
-    channel_failsafes: HashMap<ChannelName, ChannelStatus>,
-    temp_failsafes: HashMap<ChannelName, TempStatus>,
 }
 
 impl ServicePluginRepo {
@@ -378,7 +364,9 @@ impl ServicePluginRepo {
                         }
                     }
                     if retries == TIMEOUT_SERVICE_START_SECONDS {
-                        error!("Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds");
+                        error!(
+                            "Service {service_id} did not start within {TIMEOUT_SERVICE_START_SECONDS} seconds"
+                        );
                         if service_manifest.is_managed() {
                             let _ = service_manager.remove(&service_id).await;
                         }
@@ -425,7 +413,9 @@ impl ServicePluginRepo {
                 Err(err) => {
                     connect_wait_secs += 1;
                     if connect_wait_secs < TIMEOUT_SERVICE_CONNECTION_SECONDS {
-                        info!("Could not establish a connection to the plugin service: {service_id}. Retrying...");
+                        info!(
+                            "Could not establish a connection to the plugin service: {service_id}. Retrying..."
+                        );
                         sleep(Duration::from_secs(1)).await;
                     } else {
                         error!(
@@ -597,15 +587,10 @@ impl ServicePluginRepo {
         }
 
         let (channel_failsafes, temp_failsafes) =
-            Self::create_failsafe_data(&channel_statuses, &temp_statuses);
+            failsafe::create_failsafe_data(&channel_statuses, &temp_statuses);
         failsafe_statuses.borrow_mut().insert(
             device_uid.clone(),
-            FailsafeStatusData {
-                count: 0,
-                logged: false,
-                channel_failsafes,
-                temp_failsafes,
-            },
+            FailsafeStatusData::new(channel_failsafes, temp_failsafes),
         );
         let preload_data = PreloadData {
             channels: channel_statuses
@@ -630,40 +615,6 @@ impl ServicePluginRepo {
         device
             .borrow_mut()
             .initialize_status_history_with(status, poll_rate);
-    }
-
-    /// Creates failsafe data for all channels with initial status output.
-    fn create_failsafe_data(
-        channel_statuses: &[ChannelStatus],
-        temp_statuses: &[TempStatus],
-    ) -> (HashMap<String, ChannelStatus>, HashMap<String, TempStatus>) {
-        let channel_failsafes = channel_statuses
-            .iter()
-            .map(|s| {
-                let status = ChannelStatus {
-                    name: s.name.clone(),
-                    rpm: s.rpm.and(Some(MISSING_RPM_FAILSAFE)),
-                    duty: s.duty.and(Some(MISSING_DUTY_FAILSAFE)),
-                    freq: s.freq.and(Some(MISSING_FREQ_FAILSAFE)),
-                    watts: s.watts.and(Some(MISSING_WATTS_FAILSAFE)),
-                    pwm_mode: s.pwm_mode,
-                };
-                (s.name.clone(), status)
-            })
-            .collect();
-        let temp_failsafes = temp_statuses
-            .iter()
-            .map(|t| {
-                (
-                    t.name.clone(),
-                    TempStatus {
-                        name: t.name.clone(),
-                        temp: MISSING_TEMP_FAILSAFE,
-                    },
-                )
-            })
-            .collect();
-        (channel_failsafes, temp_failsafes)
     }
 
     async fn preload_device_status(

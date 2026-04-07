@@ -538,8 +538,8 @@ impl GpuAMD {
         status_channels.extend(Self::extract_load_status(amd_driver).await);
         status_channels.extend(freqs::extract_freq_statuses(&amd_driver.hwmon).await);
         status_channels.extend(power::extract_power_status(&amd_driver.hwmon).await);
-        let temps = temps::extract_temp_statuses(&amd_driver.hwmon)
-            .await
+        let (extracted_temps, _) = temps::extract_temp_statuses(&amd_driver.hwmon).await;
+        let temps = extracted_temps
             .iter()
             .map(|temp| TempStatus {
                 name: temp.name.clone(),

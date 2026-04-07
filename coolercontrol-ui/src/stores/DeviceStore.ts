@@ -1058,6 +1058,95 @@ export const useDeviceStore = defineStore('device', () => {
         return await startAlertSSE()
     }
 
+    async function initNotificationWorker(): Promise<void> {
+        if (isQtApp()) {
+            // The Qt app handles notifications via coolercontrold notify subprocess.
+            return
+        }
+        if (!('Notification' in window)) {
+            console.warn('Notification API not supported; browser notifications disabled.')
+            return
+        }
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+            console.info('Notification permission denied by user.')
+            return
+        }
+        // Try Service Worker first for background-independent notifications.
+        // Falls back to in-page SSE when SW is unavailable (self-signed SSL,
+        // insecure context, or browser without SW support).
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.register('/notification-sw.js')
+                const sw = registration.active || registration.waiting || registration.installing
+                if (sw && sw.state === 'activated') {
+                    sw.postMessage({
+                        type: 'start',
+                        url: `${daemonClient.daemonURL}sse/notifications`,
+                    })
+                } else if (sw) {
+                    sw.addEventListener('statechange', function listener() {
+                        if (sw.state === 'activated') {
+                            sw.removeEventListener('statechange', listener)
+                            sw.postMessage({
+                                type: 'start',
+                                url: `${daemonClient.daemonURL}sse/notifications`,
+                            })
+                        }
+                    })
+                }
+                console.info('Notification Service Worker registered.')
+                return
+            } catch (err) {
+                console.warn('Service Worker registration failed, using in-page fallback:', err)
+            }
+        }
+        startInPageNotificationSSE()
+    }
+
+    const NOTIFICATION_ICON_MAP: Record<string, string> = {
+        triggered: '/icons/alert-triggered.png',
+        resolved: '/icons/alert-resolved.png',
+        error: '/icons/alert-error.png',
+        info: '/icons/information.png',
+        shutdown: '/icons/shutdown.png',
+    }
+
+    function startInPageNotificationSSE(): void {
+        fetchEventSource(`${daemonClient.daemonURL}sse/notifications`, {
+            credentials: 'include',
+            onmessage(event) {
+                if (event.data.length === 0) return
+                try {
+                    const notification = JSON.parse(event.data)
+                    new Notification(notification.title || 'CoolerControl', {
+                        body: notification.body || '',
+                        icon:
+                            NOTIFICATION_ICON_MAP[notification.icon] ||
+                            NOTIFICATION_ICON_MAP['info'],
+                        silent: !notification.audio,
+                        requireInteraction: notification.urgency >= 2,
+                    })
+                } catch (_) {
+                    // Ignore malformed messages.
+                }
+            },
+            onclose() {
+                console.warn('Notification SSE closed.')
+            },
+            onerror(err) {
+                if (
+                    isChromeNetworkError(err) &&
+                    chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                ) {
+                    return
+                }
+                throw err
+            },
+        })
+        console.info('Listening for Notification Events (in-page fallback)')
+    }
+
     function updateRecentDeviceStatus(): void {
         for (const [uid, device] of devices) {
             if (!currentDeviceStatus.value.has(uid)) {
@@ -1140,6 +1229,7 @@ export const useDeviceStore = defineStore('device', () => {
         updateLogsFromSSE,
         updateAlertsFromSSE,
         updateActiveModeFromSSE,
+        initNotificationWorker,
         currentDeviceStatus,
         round,
         sanitizeString,

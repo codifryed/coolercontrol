@@ -120,6 +120,7 @@ pub async fn start_server<'s>(
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
+    notification_handle: crate::notifier::NotificationHandle,
     cancel_token: CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> Result<()> {
@@ -162,6 +163,7 @@ pub async fn start_server<'s>(
         plugin_controller,
         log_buf_handle,
         status_handle,
+        notification_handle,
         &cancel_token,
         main_scope,
     )
@@ -570,6 +572,7 @@ async fn create_app_state<'s>(
     plugin_controller: Rc<PluginController>,
     log_buf_handle: LogBufHandle,
     status_handle: StatusHandle,
+    notification_handle: crate::notifier::NotificationHandle,
     cancel_token: &CancellationToken,
     main_scope: &'s Scope<'s, 's, Result<()>>,
 ) -> AppState {
@@ -631,6 +634,7 @@ async fn create_app_state<'s>(
         plugin_handle,
         stress_test_handle,
         log_buf_handle,
+        notification_handle,
     }
 }
 
@@ -1095,6 +1099,7 @@ pub struct AppState {
     pub plugin_handle: PluginHandle,
     pub stress_test_handle: StressTestHandle,
     pub log_buf_handle: LogBufHandle,
+    pub notification_handle: crate::notifier::NotificationHandle,
 }
 
 #[cfg(test)]

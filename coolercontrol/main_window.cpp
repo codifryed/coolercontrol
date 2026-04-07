@@ -29,7 +29,6 @@
 #include <QMessageBox>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
-#include <QProcess>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringBuilder>  // for % operator
@@ -45,6 +44,7 @@
 #include <QWizardPage>
 
 #include "constants.h"
+#include "notifier.h"
 
 class PersistentCookieJar final : public QNetworkCookieJar {
  public:
@@ -493,44 +493,20 @@ void MainWindow::showVersionMismatchDialog(const QString& daemonVersion) const {
 void MainWindow::notifyDaemonConnectionError() {
   // Qt has some issues around message icons, and we now use DBus notifications
   // now directly to handle the important ones better.
-  // Better to the default message icons here, as Gnome and Ubuntu have funny issues
-  // in the system tray when using custom icons.
-  // m_sysTrayIcon->showMessage("Daemon Connection Error",
-  //                            "Connection with the daemon could not be established");
-  QProcess::startDetached("coolercontrold",
-                          QStringList() << "notify"
-                                        << "Daemon Connection Error"
-                                        << "Connection with the daemon could not be established"
-                                        << "1");
+  Notifier::send("Daemon Connection Error", "Connection with the daemon could not be established",
+                 1);
 }
 
 void MainWindow::notifyDaemonErrors() {
-  // m_sysTrayIcon->showMessage("Daemon Errors",
-  //                            "The daemon logs contain errors. You should investigate.");
-  QProcess::startDetached("coolercontrold",
-                          QStringList() << "notify"
-                                        << "Daemon Errors"
-                                        << "The daemon logs contain errors. You should investigate."
-                                        << "4");
+  Notifier::send("Daemon Errors", "The daemon logs contain errors. You should investigate.", 4);
 }
 
 void MainWindow::notifyDaemonDisconnected() {
-  // m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
-  QProcess::startDetached("coolercontrold", QStringList()
-                                                << "notify"
-                                                << "Daemon Disconnected"
-                                                << "Connection with the daemon has been lost"
-                                                << "1");
+  Notifier::send("Daemon Disconnected", "Connection with the daemon has been lost", 1);
 }
 
 void MainWindow::notifyDaemonConnectionRestored() {
-  // m_sysTrayIcon->showMessage("Daemon Connection Restored",
-  //                            "Connection with the daemon has been restored.");
-  QProcess::startDetached("coolercontrold", QStringList()
-                                                << "notify"
-                                                << "Daemon Connection Restored"
-                                                << "Connection with the daemon has been restored."
-                                                << "2");
+  Notifier::send("Daemon Connection Restored", "Connection with the daemon has been restored.", 2);
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
@@ -746,6 +722,7 @@ void MainWindow::startWatchingSSE() const {
   watchConnectionAndLogs();
   watchModeActivation();
   watchAlerts();
+  watchNotifications();
 }
 
 void MainWindow::watchConnectionAndLogs() const {
@@ -886,15 +863,56 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    // m_sysTrayIcon->showMessage(msgTitle, "");
-    QProcess::startDetached("coolercontrold", QStringList() << "notify" << msgTitle << ""
-                                                            << "4");
+    Notifier::send(msgTitle, "", 4);
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.
     const auto status = sseModesReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qDebug() << "Modes SSE closed with status: " << status;
     sseModesReply->deleteLater();
+  });
+}
+
+void MainWindow::watchNotifications() const {
+  QNetworkRequest notifyRequest;
+  notifyRequest.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
+                             QNetworkRequest::AlwaysNetwork);
+  notifyRequest.setUrl(getEndpointUrl(ENDPOINT_SSE_NOTIFICATIONS.data(), false));
+  const auto notifyReply = m_manager->get(notifyRequest);
+  connect(notifyReply, &QNetworkReply::sslErrors, notifyReply,
+          qOverload<>(&QNetworkReply::ignoreSslErrors));
+  connect(this, &MainWindow::dropConnections, notifyReply, &QNetworkReply::abort,
+          Qt::DirectConnection);
+  connect(notifyReply, &QNetworkReply::readyRead, [notifyReply]() {
+    const QString raw =
+        QString(notifyReply->readAll()).simplified().replace("event: notification data: ", "");
+    const QJsonObject obj = QJsonDocument::fromJson(raw.toUtf8()).object();
+    if (obj.isEmpty()) {
+      // Keep-alive ticks produce semi-empty messages.
+      return;
+    }
+    const auto title = obj.value("title").toString();
+    const auto body = obj.value("body").toString();
+    const auto iconStr = obj.value("icon").toString();
+    const auto audio = obj.value("audio").toBool();
+    const auto urgency = obj.value("urgency").toInt(1);
+    // Map icon string to u8 matching NotificationIcon enum values.
+    int iconNum = 4;  // default: info
+    if (iconStr == "triggered") {
+      iconNum = 1;
+    } else if (iconStr == "resolved") {
+      iconNum = 2;
+    } else if (iconStr == "error") {
+      iconNum = 3;
+    } else if (iconStr == "shutdown") {
+      iconNum = 5;
+    }
+    Notifier::send(title, body, iconNum, audio, urgency);
+  });
+  connect(notifyReply, &QNetworkReply::finished, [notifyReply]() {
+    const auto status = notifyReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qDebug() << "Notifications SSE closed with status: " << status;
+    notifyReply->deleteLater();
   });
 }
 
@@ -918,19 +936,12 @@ void MainWindow::watchAlerts() const {
     }
     const auto alertState = rootObj.value("state").toString();
     const auto isActive = alertState == tr("Active");
-    // const auto alertName = rootObj.value("name").toString();
-    // const auto alertMessage = rootObj.value("message").toString();
-    // const auto msgTitle = isActive ? QString("Alert: %1 Triggered").arg(alertName)
-    //                                : QString("Alert: %1 Resolved").arg(alertName);
-    // const auto msgIcon = isActive ? tr("dialog-warning") : tr("emblem-default");
     if (!isActive && m_alertCount > 0) {
       m_alertCount--;
     } else if (isActive) {
       m_alertCount++;
     }
     applyTrayIconNotificationBadge();
-    // The daemon now handles alert notifications
-    // m_sysTrayIcon->showMessage(msgTitle, alertMessage, QIcon::fromTheme(msgIcon, QIcon()));
   });
   connect(alertsReply, &QNetworkReply::finished, [alertsReply]() {
     const auto status = alertsReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();

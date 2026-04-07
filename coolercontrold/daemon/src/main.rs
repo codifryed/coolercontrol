@@ -52,6 +52,7 @@ mod api;
 mod cc_fs;
 mod config;
 mod device;
+mod device_listener;
 mod engine;
 mod grpc_api;
 mod hashutil;
@@ -236,6 +237,7 @@ struct Args {
 /// `coolercontrold` uses a single-threaded asynchronous runtime with optional `io_uring` support.
 /// It uses a structured concurrency model for consistent and efficient performance while
 /// concurrently handling varying device latencies.
+#[allow(clippy::too_many_lines)] // Entry point with linear startup orchestration.
 fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     cc_fs::runtime(async {
@@ -255,7 +257,7 @@ fn main() -> Result<()> {
         pause_before_startup(&config).await?;
         run_sensors_detection(&config);
 
-        let (repos, custom_sensors_repo, plugin_controller, api_up_token) =
+        let (repos, custom_sensors_repo, plugin_controller, api_up_token, lc_repo) =
             initialize_device_repos(&config, &cmd_args, run_token.clone()).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(&all_devices);
@@ -288,6 +290,20 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
+                let notification_handle = notifier::NotificationHandle::new(run_token.clone());
+                alert_controller.set_notification_handle(notification_handle.clone());
+                let _device_listener = device_listener::DeviceListener::new(
+                    Rc::clone(&all_devices),
+                    lc_repo,
+                    notification_handle.clone(),
+                    run_token.clone(),
+                    main_scope,
+                )
+                .await
+                .unwrap_or_else(|err| {
+                    info!("Device change listener failed to start: {err}");
+                    device_listener::DeviceListener::deaf()
+                });
                 match api::start_server(
                     Rc::clone(&all_devices),
                     Rc::clone(&repos),
@@ -299,6 +315,7 @@ fn main() -> Result<()> {
                     plugin_controller,
                     log_buf_handle,
                     status_handle.clone(),
+                    notification_handle,
                     run_token.clone(),
                     main_scope,
                 )
@@ -590,14 +607,17 @@ async fn initialize_device_repos(
     Rc<CustomSensorsRepo>,
     Rc<PluginController>,
     CancellationToken,
+    Option<Rc<LiquidctlRepo>>,
 )> {
     info!("Initializing Devices...");
     let mut repos = Repositories::default();
     let mut lc_locations = Vec::new();
+    let mut lc_repo_typed: Option<Rc<LiquidctlRepo>> = None;
     // liquidctl should be first
     match init_liquidctl_repo(config.clone(), run_token).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
+            lc_repo_typed = Some(Rc::clone(&repo));
             repos.liquidctl = Some(repo);
         }
         Err(err) => match err.downcast_ref() {
@@ -656,6 +676,7 @@ async fn initialize_device_repos(
         custom_sensors_repo,
         Rc::new(plugin_controller),
         api_up_token,
+        lc_repo_typed,
     ))
 }
 
