@@ -29,7 +29,6 @@
 #include <QMessageBox>
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
-#include <QProcess>
 #include <QSettings>
 #include <QShortcut>
 #include <QStringBuilder>  // for % operator
@@ -45,6 +44,7 @@
 #include <QWizardPage>
 
 #include "constants.h"
+#include "notifier.h"
 
 class PersistentCookieJar final : public QNetworkCookieJar {
  public:
@@ -493,44 +493,20 @@ void MainWindow::showVersionMismatchDialog(const QString& daemonVersion) const {
 void MainWindow::notifyDaemonConnectionError() {
   // Qt has some issues around message icons, and we now use DBus notifications
   // now directly to handle the important ones better.
-  // Better to the default message icons here, as Gnome and Ubuntu have funny issues
-  // in the system tray when using custom icons.
-  // m_sysTrayIcon->showMessage("Daemon Connection Error",
-  //                            "Connection with the daemon could not be established");
-  QProcess::startDetached("coolercontrold",
-                          QStringList() << "notify"
-                                        << "Daemon Connection Error"
-                                        << "Connection with the daemon could not be established"
-                                        << "1");
+  Notifier::send("Daemon Connection Error", "Connection with the daemon could not be established",
+                 1);
 }
 
 void MainWindow::notifyDaemonErrors() {
-  // m_sysTrayIcon->showMessage("Daemon Errors",
-  //                            "The daemon logs contain errors. You should investigate.");
-  QProcess::startDetached("coolercontrold",
-                          QStringList() << "notify"
-                                        << "Daemon Errors"
-                                        << "The daemon logs contain errors. You should investigate."
-                                        << "4");
+  Notifier::send("Daemon Errors", "The daemon logs contain errors. You should investigate.", 4);
 }
 
 void MainWindow::notifyDaemonDisconnected() {
-  // m_sysTrayIcon->showMessage("Daemon Disconnected", "Connection with the daemon has been lost");
-  QProcess::startDetached("coolercontrold", QStringList()
-                                                << "notify"
-                                                << "Daemon Disconnected"
-                                                << "Connection with the daemon has been lost"
-                                                << "1");
+  Notifier::send("Daemon Disconnected", "Connection with the daemon has been lost", 1);
 }
 
 void MainWindow::notifyDaemonConnectionRestored() {
-  // m_sysTrayIcon->showMessage("Daemon Connection Restored",
-  //                            "Connection with the daemon has been restored.");
-  QProcess::startDetached("coolercontrold", QStringList()
-                                                << "notify"
-                                                << "Daemon Connection Restored"
-                                                << "Connection with the daemon has been restored."
-                                                << "2");
+  Notifier::send("Daemon Connection Restored", "Connection with the daemon has been restored.", 2);
 }
 
 QIcon MainWindow::createIconWithNotificationBadge(const QIcon& baseIcon, const bool redColor) {
@@ -887,9 +863,7 @@ void MainWindow::watchModeActivation() const {
     }
     const auto msgTitle = modeAlreadyActive ? QString("Mode %1 Already Active").arg(currentModeName)
                                             : QString("Mode %1 Activated").arg(currentModeName);
-    // m_sysTrayIcon->showMessage(msgTitle, "");
-    QProcess::startDetached("coolercontrold", QStringList() << "notify" << msgTitle << ""
-                                                            << "4");
+    Notifier::send(msgTitle, "", 4);
   });
   connect(sseModesReply, &QNetworkReply::finished, [sseModesReply]() {
     // on error or dropped connection will be re-connected once connection is re-established.
@@ -933,10 +907,7 @@ void MainWindow::watchNotifications() const {
     } else if (iconStr == "shutdown") {
       iconNum = 5;
     }
-    QStringList args;
-    args << "notify" << title << body << QString::number(iconNum) << (audio ? "true" : "false")
-         << QString::number(urgency);
-    QProcess::startDetached("coolercontrold", args);
+    Notifier::send(title, body, iconNum, audio, urgency);
   });
   connect(notifyReply, &QNetworkReply::finished, [notifyReply]() {
     const auto status = notifyReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
