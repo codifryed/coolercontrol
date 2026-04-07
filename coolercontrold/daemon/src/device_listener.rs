@@ -494,6 +494,8 @@ fn notify_device_removed(name: &str, notification_handle: &NotificationHandle) {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[test]
@@ -615,6 +617,7 @@ mod tests {
     // --- is_listener_disabled ---
 
     #[test]
+    #[serial]
     fn listener_disabled_when_env_is_zero() {
         // ENV_DEVICE_EVENTS="0" explicitly disables the device change listener.
         // Safety: test is single-threaded; no concurrent env reads.
@@ -624,6 +627,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn listener_disabled_when_env_is_off() {
         // ENV_DEVICE_EVENTS="off" (case-insensitive) disables the device change listener.
         // Safety: test is single-threaded; no concurrent env reads.
@@ -633,6 +637,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn listener_enabled_when_env_is_one() {
         // ENV_DEVICE_EVENTS="1" keeps the device change listener enabled.
         // Safety: test is single-threaded; no concurrent env reads.
