@@ -1063,10 +1063,6 @@ export const useDeviceStore = defineStore('device', () => {
             // The Qt app handles notifications via coolercontrold notify subprocess.
             return
         }
-        if (!('serviceWorker' in navigator)) {
-            console.warn('Service Workers not supported; browser notifications disabled.')
-            return
-        }
         if (!('Notification' in window)) {
             console.warn('Notification API not supported; browser notifications disabled.')
             return
@@ -1076,30 +1072,68 @@ export const useDeviceStore = defineStore('device', () => {
             console.info('Notification permission denied by user.')
             return
         }
-        try {
-            const registration = await navigator.serviceWorker.register('/notification-sw.js')
-            // Wait for the SW to become active before posting the start message.
-            const sw = registration.active || registration.waiting || registration.installing
-            if (sw && sw.state === 'activated') {
-                sw.postMessage({
-                    type: 'start',
-                    url: `${daemonClient.daemonURL}sse/notifications`,
-                })
-            } else if (sw) {
-                sw.addEventListener('statechange', function listener() {
-                    if (sw.state === 'activated') {
-                        sw.removeEventListener('statechange', listener)
-                        sw.postMessage({
-                            type: 'start',
-                            url: `${daemonClient.daemonURL}sse/notifications`,
-                        })
-                    }
-                })
+        // Try Service Worker first for background-independent notifications.
+        // Falls back to in-page SSE when SW is unavailable (self-signed SSL,
+        // insecure context, or browser without SW support).
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.register('/notification-sw.js')
+                const sw = registration.active || registration.waiting || registration.installing
+                if (sw && sw.state === 'activated') {
+                    sw.postMessage({
+                        type: 'start',
+                        url: `${daemonClient.daemonURL}sse/notifications`,
+                    })
+                } else if (sw) {
+                    sw.addEventListener('statechange', function listener() {
+                        if (sw.state === 'activated') {
+                            sw.removeEventListener('statechange', listener)
+                            sw.postMessage({
+                                type: 'start',
+                                url: `${daemonClient.daemonURL}sse/notifications`,
+                            })
+                        }
+                    })
+                }
+                console.info('Notification Service Worker registered.')
+                return
+            } catch (err) {
+                console.warn('Service Worker registration failed, using in-page fallback:', err)
             }
-            console.info('Notification Service Worker registered.')
-        } catch (err) {
-            console.warn('Failed to register notification Service Worker:', err)
         }
+        startInPageNotificationSSE()
+    }
+
+    function startInPageNotificationSSE(): void {
+        fetchEventSource(`${daemonClient.daemonURL}sse/notifications`, {
+            credentials: 'include',
+            onmessage(event) {
+                if (event.data.length === 0) return
+                try {
+                    const notification = JSON.parse(event.data)
+                    new Notification(notification.title || 'CoolerControl', {
+                        body: notification.body || '',
+                        icon: '/icon/favicon.ico',
+                        requireInteraction: notification.urgency >= 2,
+                    })
+                } catch (_) {
+                    // Ignore malformed messages.
+                }
+            },
+            onclose() {
+                console.warn('Notification SSE closed.')
+            },
+            onerror(err) {
+                if (
+                    isChromeNetworkError(err) &&
+                    chromeNetworkErrorCount < chromeNetworkErrorThreshold
+                ) {
+                    return
+                }
+                throw err
+            },
+        })
+        console.info('Listening for Notification Events (in-page fallback)')
     }
 
     function updateRecentDeviceStatus(): void {
