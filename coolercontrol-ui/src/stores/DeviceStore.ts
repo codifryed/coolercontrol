@@ -1058,6 +1058,50 @@ export const useDeviceStore = defineStore('device', () => {
         return await startAlertSSE()
     }
 
+    async function initNotificationWorker(): Promise<void> {
+        if (isQtApp()) {
+            // The Qt app handles notifications via coolercontrold notify subprocess.
+            return
+        }
+        if (!('serviceWorker' in navigator)) {
+            console.warn('Service Workers not supported; browser notifications disabled.')
+            return
+        }
+        if (!('Notification' in window)) {
+            console.warn('Notification API not supported; browser notifications disabled.')
+            return
+        }
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') {
+            console.info('Notification permission denied by user.')
+            return
+        }
+        try {
+            const registration = await navigator.serviceWorker.register('/notification-sw.js')
+            // Wait for the SW to become active before posting the start message.
+            const sw = registration.active || registration.waiting || registration.installing
+            if (sw && sw.state === 'activated') {
+                sw.postMessage({
+                    type: 'start',
+                    url: `${daemonClient.daemonURL}sse/notifications`,
+                })
+            } else if (sw) {
+                sw.addEventListener('statechange', function listener() {
+                    if (sw.state === 'activated') {
+                        sw.removeEventListener('statechange', listener)
+                        sw.postMessage({
+                            type: 'start',
+                            url: `${daemonClient.daemonURL}sse/notifications`,
+                        })
+                    }
+                })
+            }
+            console.info('Notification Service Worker registered.')
+        } catch (err) {
+            console.warn('Failed to register notification Service Worker:', err)
+        }
+    }
+
     function updateRecentDeviceStatus(): void {
         for (const [uid, device] of devices) {
             if (!currentDeviceStatus.value.has(uid)) {
@@ -1140,6 +1184,7 @@ export const useDeviceStore = defineStore('device', () => {
         updateLogsFromSSE,
         updateAlertsFromSSE,
         updateActiveModeFromSSE,
+        initNotificationWorker,
         currentDeviceStatus,
         round,
         sanitizeString,
