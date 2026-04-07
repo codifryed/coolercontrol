@@ -217,6 +217,8 @@ export default {
             liquidctlDeviceInit: 'Liquidctl设备初始化',
             hideDuplicateDevices: '隐藏重复设备',
             drivePowerState: '磁盘驱动器电源状态',
+            sensorsAutoDetect: '传感器自动检测',
+            deviceListener: '设备变更监听器',
             customTheme: {
                 title: '自定义主题',
                 accent: '强调色',
@@ -261,6 +263,10 @@ export default {
                     '某些设备同时受Liquidctl和HWMon驱动程序支持。\nLiquidctl默认用于其额外功能。要改用HWMon驱动程序，\n请禁用此功能和liquidctl设备以避免驱动程序冲突。',
                 drivePowerState:
                     'SSD和HDD尤其可以停止旋转并进入低功耗状态。\n当启用此选项且驱动器支持时，驱动器温度将报告为0°C\n在停止旋转时，以便风扇配置文件可以相应调整。',
+                sensorsAutoDetect:
+                    '在启动时自动检测Super-I/O硬件传感器并加载\n内核模块。（仅限x86_64）',
+                deviceListener:
+                    '监听设备添加/移除事件（例如USB热插拔）\n并在检测到硬件变更时发送通知。',
                 daemonAddress:
                     '用于与后台服务建立连接的IP地址或域名。\n支持IPv4、IPv6和可解析DNS的主机名。',
                 daemonPort: '用于与后台服务建立连接的端口。',

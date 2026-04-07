@@ -222,6 +222,8 @@ export default {
             liquidctlDeviceInit: 'Inicialización de dispositivos Liquidctl',
             hideDuplicateDevices: 'Ocultar dispositivos duplicados',
             drivePowerState: 'Estado de energía del disco',
+            sensorsAutoDetect: 'Detección automática de sensores',
+            deviceListener: 'Listener de cambios de dispositivos',
             customTheme: {
                 title: 'Tema Personalizado',
                 accent: 'Color de Acento',
@@ -271,6 +273,10 @@ export default {
                     'Algunos dispositivos son compatibles tanto con los controladores Liquidctl como con los HWMon.\nLiquidctl se usa por defecto por sus características adicionales. Para usar controladores HWMon en su lugar,\ndeshabilite esto y el dispositivo liquidctl para evitar conflictos de controladores.',
                 drivePowerState:
                     'Los SSD y los HDD en particular pueden detenerse y entrar en un estado de bajo consumo.\nEsta opción, cuando está habilitada y la unidad lo soporta, informará las temperaturas de la unidad\ncomo 0°C cuando esté detenida para que los perfiles del ventilador puedan ajustarse en consecuencia.',
+                sensorsAutoDetect:
+                    'Detectar automáticamente sensores de hardware Super-I/O y cargar\nmódulos del kernel al iniciar. (solo x86_64)',
+                deviceListener:
+                    'Escuchar eventos de adición/eliminación de dispositivos (ej. conexión USB)\ny notificar cuando se detecten cambios de hardware.',
                 daemonAddress:
                     'La dirección IP o el nombre de dominio del daemon para establecer una conexión.\nAdmite IPv4, IPv6 y nombres de host resolubles por DNS.',
                 daemonPort: 'El puerto utilizado para establecer una conexión con el daemon.',

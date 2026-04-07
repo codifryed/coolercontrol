@@ -219,6 +219,8 @@ export default {
             liquidctlDeviceInit: 'Liquidctl 장치 초기화',
             hideDuplicateDevices: '중복 장치 숨기기',
             drivePowerState: '드라이버 전원 상태',
+            sensorsAutoDetect: '센서 자동 감지',
+            deviceListener: '장치 변경 리스너',
             customTheme: {
                 title: '커스텀 테마',
                 accent: '강조색',
@@ -266,6 +268,10 @@ export default {
                     '일부 장치는 Liquidctl 및 HWMon 드라이버 모두에서 지원됩니다.\nLiquidctl은 추가 기능 때문에 기본적으로 사용됩니다. HWMon 드라이버를 사용하려면,\n드라이버 충돌을 방지하기 위해 Liquidctl과 HWMon 드라이버를 모두 비활성화하세요.',
                 drivePowerState:
                     '특히 SSD와 HDD는 회전을 멈추고 저전력 상태로 전환할 수 있습니다.\n이 옵션을 활성화하고 드라이브가 이를 지원하는 경우, 드라이브가 회전을 멈췄을 때\n드라이브 온도를 0°C로 보고하므로 팬 프로파일을 그에 맞게 조정할 수 있습니다.',
+                sensorsAutoDetect:
+                    '시작 시 Super-I/O 하드웨어 센서를 자동으로 감지하고\n커널 모듈을 로드합니다. (x86_64 전용)',
+                deviceListener:
+                    '장치 추가/제거 이벤트(예: USB 핫플러그)를 감지하고\n하드웨어 변경이 감지되면 알림을 보냅니다.',
                 daemonAddress:
                     '연결을 설정할 데몬의 IP 주소 또는 도메인 이름입니다.\nIPv4, IPv6, DNS로 확인 가능한 호스트 이름을 지원합니다.',
                 daemonPort: '데몬과의 연결을 설정하는 데 사용되는 포트입니다.',

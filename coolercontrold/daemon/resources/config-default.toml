@@ -163,6 +163,11 @@ drivetemp_suspend = false
 # modules at startup. This helps ensure all hwmon chips are available. (x86_64 only)
 # sensors_auto_detect = true
 
+# Whether to listen for kernel device add/remove events (e.g. USB hotplug) at startup.
+# When enabled, the daemon watches for hardware changes and notifies connected clients.
+# Disable this in containers or environments without netlink socket access.
+# device_listener_enabled = true
+
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true

@@ -19,7 +19,7 @@
 use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
-use crate::{cc_fs, AllDevices, ENV_DBUS};
+use crate::{cc_fs, AllDevices, ENV_DEVICE_EVENTS};
 use anyhow::Result;
 use log::{debug, info, warn};
 use moro_local::Scope;
@@ -64,9 +64,10 @@ impl<'s> DeviceListener {
         liquidctl_repo: Option<Rc<LiquidctlRepo>>,
         notification_handle: NotificationHandle,
         run_token: CancellationToken,
+        device_listener_enabled: bool,
         scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Result<Self> {
-        if is_listener_disabled() {
+        if device_listener_enabled.not() || is_listener_disabled() {
             info!("Device change listener disabled.");
             return Ok(Self::deaf());
         }
@@ -127,19 +128,19 @@ impl<'s> DeviceListener {
     }
 }
 
-/// The listener is disabled when the D-Bus env var explicitly disables it
-/// (set to "0" or "off"). Enabled by default when unset.
+/// The listener is disabled when the device events env var explicitly disables
+/// it (set to "0" or "off"). Enabled by default when unset.
 fn is_listener_disabled() -> bool {
-    let Ok(env_dbus) = env::var(ENV_DBUS) else {
+    let Ok(env_device_events) = env::var(ENV_DEVICE_EVENTS) else {
         // Not set: listener enabled by default.
         return false;
     };
     // Numeric check first (e.g. "0" disables, any non-zero enables).
-    if let Ok(value) = env_dbus.parse::<u8>() {
+    if let Ok(value) = env_device_events.parse::<u8>() {
         return value == 0;
     }
     // Fall back to string comparison.
-    env_dbus.trim().eq_ignore_ascii_case("off")
+    env_device_events.trim().eq_ignore_ascii_case("off")
 }
 
 fn create_netlink_socket() -> Result<OwnedFd> {
@@ -615,29 +616,29 @@ mod tests {
 
     #[test]
     fn listener_disabled_when_env_is_zero() {
-        // ENV_DBUS="0" explicitly disables D-Bus features including the listener.
+        // ENV_DEVICE_EVENTS="0" explicitly disables the device change listener.
         // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DBUS, "0") };
+        unsafe { env::set_var(ENV_DEVICE_EVENTS, "0") };
         assert!(is_listener_disabled());
-        unsafe { env::remove_var(ENV_DBUS) };
+        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
     }
 
     #[test]
     fn listener_disabled_when_env_is_off() {
-        // ENV_DBUS="off" (case-insensitive) disables the listener.
+        // ENV_DEVICE_EVENTS="off" (case-insensitive) disables the device change listener.
         // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DBUS, "OFF") };
+        unsafe { env::set_var(ENV_DEVICE_EVENTS, "OFF") };
         assert!(is_listener_disabled());
-        unsafe { env::remove_var(ENV_DBUS) };
+        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
     }
 
     #[test]
     fn listener_enabled_when_env_is_one() {
-        // ENV_DBUS="1" enables D-Bus features.
+        // ENV_DEVICE_EVENTS="1" keeps the device change listener enabled.
         // Safety: test is single-threaded; no concurrent env reads.
-        unsafe { env::set_var(ENV_DBUS, "1") };
+        unsafe { env::set_var(ENV_DEVICE_EVENTS, "1") };
         assert!(is_listener_disabled().not());
-        unsafe { env::remove_var(ENV_DBUS) };
+        unsafe { env::remove_var(ENV_DEVICE_EVENTS) };
     }
 
     // --- debounce: single deadline with pending flags ---

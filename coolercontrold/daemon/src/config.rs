@@ -1111,6 +1111,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
                 .with_context(|| "sensors_auto_detect should be a boolean value")?;
+            let device_listener_enabled = settings
+                .get("device_listener_enabled")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool()
+                .with_context(|| "device_listener_enabled should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1131,6 +1136,7 @@ impl Config {
                 allow_unencrypted,
                 protocol_header,
                 sensors_auto_detect,
+                device_listener_enabled,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1191,6 +1197,9 @@ impl Config {
         }
         base_settings["sensors_auto_detect"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.sensors_auto_detect,
+        )));
+        base_settings["device_listener_enabled"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.device_listener_enabled,
         )));
     }
 

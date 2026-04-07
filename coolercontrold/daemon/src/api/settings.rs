@@ -121,6 +121,10 @@ pub struct CoolerControlSettingsDto {
     allow_unencrypted: Option<bool>,
     /// Header to check for proxy client protocol (e.g., "X-Forwarded-Proto")
     protocol_header: Option<String>,
+    /// Whether to auto-detect Super-I/O sensors at startup (`x86_64` only)
+    sensors_auto_detect: Option<bool>,
+    /// Whether to listen for device add/remove events at startup
+    device_listener_enabled: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -190,6 +194,16 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.protocol_header
         };
+        let sensors_auto_detect = if let Some(detect) = self.sensors_auto_detect {
+            detect
+        } else {
+            current_settings.sensors_auto_detect
+        };
+        let device_listener_enabled = if let Some(listener) = self.device_listener_enabled {
+            listener
+        } else {
+            current_settings.device_listener_enabled
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -209,7 +223,8 @@ impl CoolerControlSettingsDto {
             origins,
             allow_unencrypted,
             protocol_header,
-            sensors_auto_detect: current_settings.sensors_auto_detect,
+            sensors_auto_detect,
+            device_listener_enabled,
         }
     }
 }
@@ -230,6 +245,8 @@ impl From<CoolerControlSettings> for CoolerControlSettingsDto {
             origins: Some(settings.origins),
             allow_unencrypted: Some(settings.allow_unencrypted),
             protocol_header: settings.protocol_header,
+            sensors_auto_detect: Some(settings.sensors_auto_detect),
+            device_listener_enabled: Some(settings.device_listener_enabled),
         }
     }
 }
@@ -246,4 +263,82 @@ pub struct CoolerControlDeviceSettingsDto {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct CoolerControlAllDeviceSettingsDto {
     devices: Vec<CoolerControlDeviceSettingsDto>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ops::Not;
+
+    /// Builds a DTO with all fields set to None (partial update with no changes).
+    fn empty_dto() -> CoolerControlSettingsDto {
+        CoolerControlSettingsDto::from(CoolerControlSettings::default()).into_all_none()
+    }
+
+    impl CoolerControlSettingsDto {
+        /// Returns a copy with every field set to None.
+        fn into_all_none(self) -> Self {
+            Self {
+                apply_on_boot: None,
+                no_init: None,
+                startup_delay: None,
+                thinkpad_full_speed: None,
+                liquidctl_integration: None,
+                hide_duplicate_devices: None,
+                compress: None,
+                poll_rate: None,
+                drivetemp_suspend: None,
+                origins: None,
+                allow_unencrypted: None,
+                protocol_header: None,
+                sensors_auto_detect: None,
+                device_listener_enabled: None,
+            }
+        }
+    }
+
+    #[test]
+    fn merge_preserves_defaults_when_none() {
+        // When no fields are set in the DTO, merge must preserve all current values.
+        let current = CoolerControlSettings {
+            sensors_auto_detect: true,
+            device_listener_enabled: true,
+            apply_on_boot: true,
+            ..Default::default()
+        };
+        let dto = empty_dto();
+        let merged = dto.merge(current);
+        assert!(merged.sensors_auto_detect);
+        assert!(merged.device_listener_enabled);
+        assert!(merged.apply_on_boot);
+    }
+
+    #[test]
+    fn merge_overrides_when_some() {
+        // When DTO fields are Some, merge must use the DTO values.
+        let current = CoolerControlSettings {
+            sensors_auto_detect: true,
+            device_listener_enabled: true,
+            ..Default::default()
+        };
+        let mut dto = empty_dto();
+        dto.sensors_auto_detect = Some(false);
+        dto.device_listener_enabled = Some(false);
+        let merged = dto.merge(current);
+        assert!(merged.sensors_auto_detect.not());
+        assert!(merged.device_listener_enabled.not());
+    }
+
+    #[test]
+    fn from_settings_includes_all_fields() {
+        // The From conversion must include both new fields.
+        let settings = CoolerControlSettings {
+            sensors_auto_detect: true,
+            device_listener_enabled: false,
+            ..Default::default()
+        };
+        let dto = CoolerControlSettingsDto::from(settings);
+        assert_eq!(dto.sensors_auto_detect, Some(true));
+        assert_eq!(dto.device_listener_enabled, Some(false));
+    }
 }

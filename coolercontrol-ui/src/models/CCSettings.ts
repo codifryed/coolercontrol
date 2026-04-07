@@ -33,6 +33,8 @@ export class CoolerControlSettingsDTO {
     compress: boolean = false
     poll_rate: number = 1.0
     drivetemp_suspend: boolean = false
+    sensors_auto_detect: boolean = true
+    device_listener_enabled: boolean = true
 }
 
 /**

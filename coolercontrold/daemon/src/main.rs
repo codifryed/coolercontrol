@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::env;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -149,6 +150,24 @@ const ENV_KEY_PATH: &str = "CC_KEY_PATH";
 /// ```
 const ENV_DBUS: &str = "CC_DBUS";
 
+/// Environment Variable: To disable device change listener (netlink uevent monitoring)
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_DEVICE_EVENTS=OFF coolercontrold
+/// ```
+const ENV_DEVICE_EVENTS: &str = "CC_DEVICE_EVENTS";
+
+/// Environment Variable: To disable Super-I/O sensor auto-detection
+/// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
+///
+/// # Example
+/// ```
+/// CC_SENSORS_DETECT=OFF coolercontrold
+/// ```
+const ENV_SENSORS_DETECT: &str = "CC_SENSORS_DETECT";
+
 /// Environment Variable: To disable service manager integration
 /// Takes one of: [`1`, `0`, `ON`, `on`, `OFF`, `off`]
 ///
@@ -196,6 +215,18 @@ pub const ENV_DATA_DIR: &str = "CC_DATA_DIR";
 
 type Repos = Rc<Repositories>;
 type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
+
+/// Returns true when the given env var explicitly disables a feature
+/// (set to "0" or "off"). Returns false when unset or set to any other value.
+fn is_env_disabled(env_var: &str) -> bool {
+    let Ok(value) = env::var(env_var) else {
+        return false;
+    };
+    if let Ok(num) = value.parse::<u8>() {
+        return num == 0;
+    }
+    value.trim().eq_ignore_ascii_case("off")
+}
 
 /// A program to control your cooling devices
 #[allow(clippy::struct_excessive_bools)]
@@ -292,11 +323,16 @@ fn main() -> Result<()> {
                 );
                 let notification_handle = notifier::NotificationHandle::new(run_token.clone());
                 alert_controller.set_notification_handle(notification_handle.clone());
+                let device_listener_enabled = config
+                    .get_settings()
+                    .map(|s| s.device_listener_enabled)
+                    .unwrap_or(true);
                 let _device_listener = device_listener::DeviceListener::new(
                     Rc::clone(&all_devices),
                     lc_repo,
                     notification_handle.clone(),
                     run_token.clone(),
+                    device_listener_enabled,
                     main_scope,
                 )
                 .await
@@ -557,6 +593,10 @@ fn exit_successfully() -> ! {
 /// Run Super-I/O hardware detection and load kernel modules if enabled.
 #[cfg(target_arch = "x86_64")]
 fn run_sensors_detection(config: &Rc<Config>) {
+    if is_env_disabled(ENV_SENSORS_DETECT) {
+        info!("Super-I/O hardware detection disabled by environment variable");
+        return;
+    }
     match config.get_settings() {
         Ok(settings) if settings.sensors_auto_detect => {
             debug!("Running Super-I/O hardware detection");

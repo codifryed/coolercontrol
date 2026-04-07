@@ -1082,6 +1082,78 @@ onUnmounted(() => {
                                 <tr
                                     v-tooltip.right="{
                                         escape: false,
+                                        value: t('layout.settings.tooltips.sensorsAutoDetect'),
+                                    }"
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestart"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.sensorsAutoDetect') }}
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.sensors_auto_detect"
+                                            size="large"
+                                            @change="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
+                                        value: t('layout.settings.tooltips.deviceListener'),
+                                    }"
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="
+                                                t('layout.settings.tooltips.triggersDaemonRestart')
+                                            "
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestart"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            {{ t('layout.settings.deviceListener') }}
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2 border-t-2"
+                                    >
+                                        <el-switch
+                                            v-model="
+                                                settingsStore.ccSettings.device_listener_enabled
+                                            "
+                                            size="large"
+                                            @change="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="{
+                                        escape: false,
                                         value: t('layout.settings.tooltips.liquidctlIntegration'),
                                     }"
                                 >
