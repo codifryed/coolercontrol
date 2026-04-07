@@ -53,6 +53,7 @@ use crate::repositories::utils::ShellCommandResult::{Error, Success};
 // See: https://github.com/Cldfire/nvml-wrapper/issues/21
 static NVML: OnceCell<Nvml> = OnceCell::const_new();
 const GPU_TEMP_MEMORY_NAME: &str = "GPU Temp Memory";
+const GPU_TEMP_HOTSPOT_NAME: &str = "GPU Temp Hotspot";
 
 // synonymous with amd hwmon fan names:
 const NVIDIA_FAN_NAME: &str = "fan1";
@@ -81,6 +82,7 @@ pub struct GpuNVidia {
     xauthority_path: RefCell<Option<String>>,
     nvidia_smi_disabled_channels: RefCell<HashMap<GpuIndex, Vec<ChannelName>>>,
     nvidia_nvml_load_enabled: Cell<bool>,
+    nvapi: Option<super::nvapi::NvApi>,
 }
 
 impl GpuNVidia {
@@ -94,6 +96,7 @@ impl GpuNVidia {
             xauthority_path: RefCell::new(None),
             nvidia_smi_disabled_channels: RefCell::new(HashMap::new()),
             nvidia_nvml_load_enabled: Cell::new(false),
+            nvapi: None,
         }
     }
 
@@ -219,6 +222,7 @@ impl GpuNVidia {
             warn!("No NVML accessible devices found, falling back to CLI tools");
             None
         } else {
+            self.nvapi = super::nvapi::NvApi::try_init();
             Some(self.nvidia_nvml_devices.len() as u8)
         }
     }
@@ -284,6 +288,23 @@ impl GpuNVidia {
                         temp: mem_temp,
                     });
                     nvidia_temp_infos.push(mem_temp_name);
+                }
+            }
+            let hotspot_temp_name = GPU_TEMP_HOTSPOT_NAME.to_string();
+            if disabled_channels.contains(&hotspot_temp_name).not() {
+                if let Some(hotspot_temp) = self.get_hotspot_temp(&device_lock) {
+                    temp_infos.insert(
+                        hotspot_temp_name.clone(),
+                        TempInfo {
+                            label: hotspot_temp_name.clone(),
+                            number: 3,
+                        },
+                    );
+                    temp_status.push(TempStatus {
+                        name: hotspot_temp_name.clone(),
+                        temp: hotspot_temp,
+                    });
+                    nvidia_temp_infos.push(hotspot_temp_name);
                 }
             }
             let mut channel_infos = HashMap::new();
@@ -540,6 +561,12 @@ impl GpuNVidia {
         f64::from(milli_watts / 1_000)
     }
 
+    fn get_hotspot_temp(&self, nvml_device: &Ref<nvml_wrapper::Device>) -> Option<f64> {
+        let nvapi = self.nvapi.as_ref()?;
+        let pci_bus = nvml_device.pci_info().ok()?.bus;
+        nvapi.get_hotspot_temp(pci_bus)
+    }
+
     #[allow(clippy::cast_precision_loss)]
     fn get_memory_temp(nvml_device: &Ref<nvml_wrapper::Device>) -> Option<Temp> {
         let field_values = nvml_device
@@ -566,7 +593,8 @@ impl GpuNVidia {
             .get(&nv_info.gpu_index)
             .expect("Device should exist")
             .borrow();
-        let temp_status = Self::get_nvml_temp_status(&nvml_device_lock, nv_info);
+        let temp_status =
+            Self::get_nvml_temp_status(&nvml_device_lock, nv_info, self.nvapi.as_ref());
         let mut channel_status = Vec::new();
         for fan_index in &nv_info.fan_indices {
             let fan_index_u32 = u32::from(*fan_index);
@@ -609,6 +637,7 @@ impl GpuNVidia {
     fn get_nvml_temp_status(
         nvml_device: &Ref<nvml_wrapper::Device>,
         nv_info: &Rc<NvidiaDeviceInfo>,
+        nvapi: Option<&super::nvapi::NvApi>,
     ) -> Vec<TempStatus> {
         let mut temp_status = Vec::new();
         for nvidia_temp_name in &nv_info.temps {
@@ -626,6 +655,17 @@ impl GpuNVidia {
                         temp_status.push(TempStatus {
                             name: GPU_TEMP_MEMORY_NAME.to_string(),
                             temp: mem_temp,
+                        });
+                    }
+                }
+                GPU_TEMP_HOTSPOT_NAME => {
+                    if let Some(temp) = nvapi.and_then(|api| {
+                        let bus = nvml_device.pci_info().ok()?.bus;
+                        api.get_hotspot_temp(bus)
+                    }) {
+                        temp_status.push(TempStatus {
+                            name: GPU_TEMP_HOTSPOT_NAME.to_string(),
+                            temp,
                         });
                     }
                 }
