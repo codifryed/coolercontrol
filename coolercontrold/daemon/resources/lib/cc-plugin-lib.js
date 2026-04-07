@@ -73,6 +73,7 @@ const _processMessages = (messageEvent) => {
             if (messageEvent.data.body == null) break
             const linkEl = document.createElement('link')
             linkEl.rel = 'stylesheet'
+            linkEl.setAttribute('charset', 'utf-8')
             linkEl.href = messageEvent.data.body
             document.head.appendChild(linkEl)
             break

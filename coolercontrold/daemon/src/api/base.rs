@@ -66,6 +66,9 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
     let path = request.uri().path();
     // index.html should not be cached, all other assets have hashes and can be heavily cached.
     let is_index = path == "/" || path == "/index.html";
+    let extension = std::path::Path::new(path).extension();
+    let is_css = extension.is_some_and(|ext| ext.eq_ignore_ascii_case("css"));
+    let is_js = extension.is_some_and(|ext| ext.eq_ignore_ascii_case("js"));
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     let cache_value = if is_index {
@@ -75,6 +78,22 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
         );
         axum::http::HeaderValue::from_static("no-cache")
     } else {
+        // Ensure text-based assets declare UTF-8 encoding explicitly.
+        // lightningcss converts CSS escapes (e.g. \e909) to raw UTF-8 bytes,
+        // which requires correct charset to render in sandboxed plugin iframes.
+        if is_css {
+            headers.insert(
+                axum::http::header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("text/css; charset=utf-8"),
+            );
+        } else if is_js {
+            headers.insert(
+                axum::http::header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static(
+                    "text/javascript; charset=utf-8",
+                ),
+            );
+        }
         axum::http::HeaderValue::from_static("public, max-age=31536000, immutable")
     };
     headers.insert(axum::http::header::CACHE_CONTROL, cache_value);
@@ -149,6 +168,8 @@ pub struct SystemDetails {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
+
     use axum::body::Body;
     use axum::http;
     use axum::routing::get;
@@ -218,5 +239,82 @@ mod tests {
 
         assert!(response.headers().get("content-security-policy").is_some());
         assert_eq!(response.headers().get("cache-control").unwrap(), "no-cache");
+    }
+
+    #[tokio::test]
+    async fn test_css_charset_utf8() {
+        let app = Router::new()
+            .route("/assets/style-abc123.css", get(|| async { "body{}" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/style-abc123.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/css; charset=utf-8"
+        );
+        assert_eq!(
+            response.headers().get("cache-control").unwrap(),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_js_charset_utf8() {
+        let app = Router::new()
+            .route("/assets/app-abc123.js", get(|| async { "console.log(1)" }))
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/app-abc123.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/javascript; charset=utf-8"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_non_text_assets_no_charset_override() {
+        let app = Router::new()
+            .route(
+                "/assets/primeicons-abc123.svg",
+                get(|| async { "<svg/>" }),
+            )
+            .layer(middleware::from_fn(cache_control_middleware));
+
+        let response = app
+            .oneshot(
+                http::Request::builder()
+                    .uri("/assets/primeicons-abc123.svg")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // The middleware should not override Content-Type for non-CSS/JS assets.
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .map(|ct| ct.to_str().unwrap().to_owned())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/css").not());
+        assert!(content_type.starts_with("text/javascript").not());
     }
 }
