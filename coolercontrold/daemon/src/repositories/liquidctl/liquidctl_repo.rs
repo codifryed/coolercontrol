@@ -53,12 +53,15 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
+/// Time to wait for the liqctld Python service to start listening on its socket.
+const LIQCTLD_STARTUP_WAIT_MS: u64 = 300;
 
 pub struct LiquidctlRepo {
     config: Rc<Config>,
     liqctld_client: LiqctldClient,
     liqctld_service_handle: RefCell<Option<JoinHandle<Result<()>>>>,
-    liqctld_stop_token: CancellationToken,
+    liqctld_stop_token: RefCell<CancellationToken>,
+    run_token: CancellationToken,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RefCell<HashMap<u8, LCStatus>>,
@@ -93,9 +96,9 @@ impl LiquidctlRepo {
         }
         let stop_token = CancellationToken::new();
         let service_handle =
-            tokio::task::spawn_local(liqctld_service::run(run_token, stop_token.clone()));
-        // give the service a moment to come up and detect devices
-        sleep(Duration::from_millis(300)).await;
+            tokio::task::spawn_local(liqctld_service::run(run_token.clone(), stop_token.clone()));
+        // Allow the Python service to start listening on the Unix socket.
+        sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
         let liqctld_client = match LiqctldClient::new(LIQCTLD_CONNECTION_TRIES).await {
             Ok(client) => client,
             Err(err) => {
@@ -124,7 +127,8 @@ impl LiquidctlRepo {
             config,
             liqctld_client,
             liqctld_service_handle: RefCell::new(Some(service_handle)),
-            liqctld_stop_token: stop_token,
+            liqctld_stop_token: RefCell::new(stop_token),
+            run_token,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RefCell::new(HashMap::new()),
@@ -223,6 +227,61 @@ impl LiquidctlRepo {
             .map(|d| d.description)
             .filter(|desc| desc.is_empty().not())
             .collect())
+    }
+
+    /// Returns whether the liqctld service task is alive.
+    pub fn is_service_running(&self) -> bool {
+        let handle = self.liqctld_service_handle.borrow();
+        let running = handle.as_ref().is_some_and(|h| h.is_finished().not());
+        debug_assert!(
+            running || handle.is_none() || handle.as_ref().unwrap().is_finished(),
+            "Service handle must be None, finished, or running."
+        );
+        running
+    }
+
+    /// Spawns the liqctld service and verifies the client can reach it.
+    /// Precondition: the service must not already be running.
+    async fn start_service(&self) -> Result<()> {
+        debug_assert!(
+            self.is_service_running().not(),
+            "start_service called while service is already running."
+        );
+        let stop_token = CancellationToken::new();
+        *self.liqctld_stop_token.borrow_mut() = stop_token.clone();
+        let service_handle =
+            tokio::task::spawn_local(liqctld_service::run(self.run_token.clone(), stop_token));
+        *self.liqctld_service_handle.borrow_mut() = Some(service_handle);
+        // Allow the Python service to start listening on the Unix socket.
+        sleep(Duration::from_millis(LIQCTLD_STARTUP_WAIT_MS)).await;
+        self.liqctld_client.handshake().await?;
+        debug_assert!(
+            self.is_service_running(),
+            "Service must be running after successful start."
+        );
+        Ok(())
+    }
+
+    /// Temporarily starts the service, scans for devices, and shuts down.
+    /// Returns an empty Vec on any failure.
+    pub async fn scan_devices_with_restart(&self) -> Vec<String> {
+        debug_assert!(
+            self.is_service_running().not(),
+            "scan_devices_with_restart called while service is running."
+        );
+        if let Err(err) = self.start_service().await {
+            debug!("Failed to start liqctld for on-demand scan: {err}");
+            return Vec::new();
+        }
+        let descriptions = self.scan_devices().await.unwrap_or_default();
+        if let Err(err) = self.shutdown_service_and_client().await {
+            debug!("Failed to shut down liqctld after on-demand scan: {err}");
+        }
+        debug_assert!(
+            self.is_service_running().not(),
+            "Service must be stopped after scan_devices_with_restart."
+        );
+        descriptions
     }
 
     /// Returns a vector of all driver locations for devices managed by this
@@ -743,7 +802,7 @@ impl LiquidctlRepo {
 
     async fn shutdown_service_and_client(&self) -> Result<()> {
         // sometimes we want to shut the service down before the daemon, hence the stop token:
-        self.liqctld_stop_token.cancel();
+        self.liqctld_stop_token.borrow().cancel();
         self.liqctld_client.post_quit().await?;
         // proper shutdown of liqctld service child process:
         let liqctld_service_handle = self.liqctld_service_handle.borrow_mut().take();

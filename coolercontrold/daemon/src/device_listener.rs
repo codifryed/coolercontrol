@@ -73,7 +73,7 @@ impl<'s> DeviceListener {
         let fd = match create_netlink_socket() {
             Ok(fd) => fd,
             Err(err) => {
-                warn!(
+                info!(
                     "Could not create netlink socket for device change \
                      detection: {err}"
                 );
@@ -83,7 +83,7 @@ impl<'s> DeviceListener {
         let async_fd = match AsyncFd::new(fd) {
             Ok(afd) => afd,
             Err(err) => {
-                warn!("Could not register netlink socket with tokio: {err}");
+                info!("Could not register netlink socket with tokio: {err}");
                 return Ok(Self::deaf());
             }
         };
@@ -421,12 +421,16 @@ async fn scan_liquidctl_changes(
     let Some(repo) = liquidctl_repo else {
         return false;
     };
-    let current_descriptions = match repo.scan_devices().await {
-        Ok(descriptions) => descriptions,
-        Err(err) => {
-            debug!("Liquidctl device scan failed: {err}");
-            return false;
+    let current_descriptions = if repo.is_service_running() {
+        match repo.scan_devices().await {
+            Ok(descriptions) => descriptions,
+            Err(err) => {
+                debug!("Liquidctl device scan failed: {err}");
+                return false;
+            }
         }
+    } else {
+        repo.scan_devices_with_restart().await
     };
     debug!("Liquidctl device scan returned: {current_descriptions:?}");
     let current_set: HashSet<&String> = current_descriptions.iter().collect();

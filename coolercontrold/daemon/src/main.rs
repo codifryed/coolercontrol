@@ -301,7 +301,7 @@ fn main() -> Result<()> {
                 )
                 .await
                 .unwrap_or_else(|err| {
-                    warn!("Device change listener failed to start: {err}");
+                    info!("Device change listener failed to start: {err}");
                     device_listener::DeviceListener::deaf()
                 });
                 match api::start_server(
