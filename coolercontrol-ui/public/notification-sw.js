@@ -21,11 +21,11 @@
 // notifications arrive even when the browser tab is suspended.
 
 const ICON_MAP = {
-    triggered: '/icon/favicon.ico',
-    resolved: '/icon/favicon.ico',
-    error: '/icon/favicon.ico',
-    info: '/icon/favicon.ico',
-    shutdown: '/icon/favicon.ico',
+    triggered: '/icons/alert-triggered.png',
+    resolved: '/icons/alert-resolved.png',
+    error: '/icons/alert-error.png',
+    info: '/icons/information.png',
+    shutdown: '/icons/shutdown.png',
 }
 
 const MAX_RECONNECT_DELAY_MS = 30000
@@ -140,7 +140,9 @@ function processSSEMessage(raw) {
     self.registration.showNotification(notification.title || 'CoolerControl', {
         body: notification.body || '',
         icon: iconUrl,
+        badge: '/icons/information.png',
         tag,
+        silent: !notification.audio,
         requireInteraction: notification.urgency >= 2,
     })
 }

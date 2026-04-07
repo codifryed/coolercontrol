@@ -1104,6 +1104,14 @@ export const useDeviceStore = defineStore('device', () => {
         startInPageNotificationSSE()
     }
 
+    const NOTIFICATION_ICON_MAP: Record<string, string> = {
+        triggered: '/icons/alert-triggered.png',
+        resolved: '/icons/alert-resolved.png',
+        error: '/icons/alert-error.png',
+        info: '/icons/information.png',
+        shutdown: '/icons/shutdown.png',
+    }
+
     function startInPageNotificationSSE(): void {
         fetchEventSource(`${daemonClient.daemonURL}sse/notifications`, {
             credentials: 'include',
@@ -1113,7 +1121,10 @@ export const useDeviceStore = defineStore('device', () => {
                     const notification = JSON.parse(event.data)
                     new Notification(notification.title || 'CoolerControl', {
                         body: notification.body || '',
-                        icon: '/icon/favicon.ico',
+                        icon:
+                            NOTIFICATION_ICON_MAP[notification.icon] ||
+                            NOTIFICATION_ICON_MAP['info'],
+                        silent: !notification.audio,
                         requireInteraction: notification.urgency >= 2,
                     })
                 } catch (_) {
