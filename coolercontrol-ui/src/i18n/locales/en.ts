@@ -218,6 +218,8 @@ export default {
             liquidctlDeviceInit: 'Liquidctl Device Initialization',
             hideDuplicateDevices: 'Hide Duplicate Devices',
             drivePowerState: 'Drive Power State',
+            sensorsAutoDetect: 'Sensors Auto-Detect',
+            deviceListener: 'Device Change Listener',
             customTheme: {
                 title: 'Custom Theme',
                 accent: 'Accent Color',
@@ -267,6 +269,10 @@ export default {
                     'Some devices are supported by both Liquidctl and HWMon drivers.\nLiquidctl is used by default for its extra features. To use HWMon drivers instead,\ndisable this and the liquidctl device to avoid driver conflicts.',
                 drivePowerState:
                     'SSDs and HDDs in particular can spin down and enter a low power state.\nThis option, when enabled and the drive supports it, will report drive temperatures\nas 0°C when spun down so that fan Profiles can be adjusted accordingly.',
+                sensorsAutoDetect:
+                    'Automatically detect Super-I/O hardware sensors and load\nkernel modules at startup. (x86_64 only)',
+                deviceListener:
+                    'Listen for device add/remove events (e.g. USB hotplug)\nand notify when hardware changes are detected.',
                 daemonAddress:
                     'The IP address or domain name of the daemon to establish a connection with.\nSupports IPv4, IPv6, and DNS-resolvable hostnames.',
                 daemonPort: 'The port used to establish a connection with the daemon.',

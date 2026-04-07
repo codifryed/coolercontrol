@@ -187,6 +187,8 @@ pub struct CoolerControlSettings {
     pub protocol_header: Option<String>,
     /// Whether to auto-detect Super-I/O sensors and load kernel modules at startup
     pub sensors_auto_detect: bool,
+    /// Whether to listen for kernel device add/remove events at startup
+    pub device_listener_enabled: bool,
 }
 
 /// Device Specific settings that generally apply to how the application deals with the device.
