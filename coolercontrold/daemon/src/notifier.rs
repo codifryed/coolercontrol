@@ -45,7 +45,7 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 16;
 
 /// Icon types for desktop notifications.
 /// Each variant maps to a specific icon image displayed in the notification.
-/// Serialized as snake_case strings for SSE consumers (Qt app, web UI).
+/// Serialized as `snake_case` strings for SSE consumers (Qt app, web UI).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationIcon {
