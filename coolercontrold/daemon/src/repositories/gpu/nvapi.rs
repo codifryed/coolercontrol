@@ -319,7 +319,7 @@ fn error_message(query_interface: QueryInterfaceFn, status: NvStatus) -> String 
         return format!("status {status:#x}");
     };
 
-    let mut error_text = [0i8; SHORT_STRING_MAX];
+    let mut error_text = [0 as c_char; SHORT_STRING_MAX];
     // SAFETY: error_fn writes a null-terminated C string into the fixed-size buffer.
     let result = unsafe { error_fn(status, &raw mut error_text) };
     if result != 0 {
