@@ -16,9 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::repositories::hwmon::devices::{self, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
-use crate::repositories::utils::{sanitize_for_shell, ShellCommand};
 use crate::{cc_fs, AllDevices, ENV_DBUS};
 use anyhow::Result;
 use log::{debug, info, warn};
@@ -39,15 +39,11 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
-const NOTIFICATION_CMD_TIMEOUT: Duration = Duration::from_secs(20);
 /// Standard kernel uevent buffer size. Messages exceeding this are truncated.
 const UEVENT_BUF_SIZE: usize = 4096;
 /// Maximum uevent messages to drain per readable notification. Prevents
 /// starvation if the kernel produces events faster than we consume them.
 const MAX_DRAIN_PER_WAKE: usize = 256;
-/// Icon 4 = `NotificationIcon::Info` in notifier.rs.
-const NOTIFICATION_ICON_INFO: u8 = 4;
-const MIN_USER_UID: u32 = 1000;
 // Static assertions documenting constant relationships.
 const _: () = assert!(UEVENT_BUF_SIZE >= 1024);
 const _: () = assert!(MAX_DRAIN_PER_WAKE > 0);
@@ -66,7 +62,7 @@ impl<'s> DeviceListener {
     pub async fn new(
         all_devices: AllDevices,
         liquidctl_repo: Option<Rc<LiquidctlRepo>>,
-        bin_path: String,
+        notification_handle: NotificationHandle,
         run_token: CancellationToken,
         scope: &'s Scope<'s, 's, Result<()>>,
     ) -> Result<Self> {
@@ -108,7 +104,7 @@ impl<'s> DeviceListener {
                 hwmon_baseline,
                 lc_baseline,
                 liquidctl_repo,
-                bin_path,
+                notification_handle,
                 device_changed,
                 run_token,
             )
@@ -206,7 +202,7 @@ async fn run_event_loop(
     mut hwmon_baseline: HashSet<PathBuf>,
     mut lc_baseline: HashSet<String>,
     liquidctl_repo: Option<Rc<LiquidctlRepo>>,
-    bin_path: String,
+    notification_handle: NotificationHandle,
     device_changed: Rc<Cell<bool>>,
     run_token: CancellationToken,
 ) {
@@ -238,12 +234,15 @@ async fn run_event_loop(
             let scans = pending.take();
             let mut detected = false;
             if scans.hwmon {
-                detected |= scan_hwmon_changes(&mut hwmon_baseline, &bin_path).await;
+                detected |= scan_hwmon_changes(&mut hwmon_baseline, &notification_handle).await;
             }
             if scans.liquidctl {
-                detected |=
-                    scan_liquidctl_changes(&mut lc_baseline, liquidctl_repo.as_ref(), &bin_path)
-                        .await;
+                detected |= scan_liquidctl_changes(
+                    &mut lc_baseline,
+                    liquidctl_repo.as_ref(),
+                    &notification_handle,
+                )
+                .await;
             }
             if detected {
                 device_changed.set(true);
@@ -365,7 +364,10 @@ fn classify_uevent(buf: &[u8]) -> UeventKind {
 
 /// Compares current hwmon devices against the baseline. Updates
 /// the baseline to the current state when changes are detected.
-async fn scan_hwmon_changes(baseline: &mut HashSet<PathBuf>, bin_path: &str) -> bool {
+async fn scan_hwmon_changes(
+    baseline: &mut HashSet<PathBuf>,
+    notification_handle: &NotificationHandle,
+) -> bool {
     let current_paths = devices::find_all_hwmon_device_paths();
     let mut current_applicable = HashSet::with_capacity(current_paths.len());
     for path in &current_paths {
@@ -379,7 +381,7 @@ async fn scan_hwmon_changes(baseline: &mut HashSet<PathBuf>, bin_path: &str) -> 
     for path in &current_applicable {
         if baseline.contains(path).not() {
             let name = devices::get_device_name(path).await;
-            notify_device_added(&name, bin_path);
+            notify_device_added(&name, notification_handle);
             detected = true;
         }
     }
@@ -387,7 +389,7 @@ async fn scan_hwmon_changes(baseline: &mut HashSet<PathBuf>, bin_path: &str) -> 
     for path in baseline.iter() {
         if current_applicable.contains(path).not() {
             let name = device_name_for_removed(path).await;
-            notify_device_removed(&name, bin_path);
+            notify_device_removed(&name, notification_handle);
             detected = true;
         }
     }
@@ -414,7 +416,7 @@ async fn device_name_for_removed(path: &Path) -> String {
 async fn scan_liquidctl_changes(
     baseline: &mut HashSet<String>,
     liquidctl_repo: Option<&Rc<LiquidctlRepo>>,
-    bin_path: &str,
+    notification_handle: &NotificationHandle,
 ) -> bool {
     let Some(repo) = liquidctl_repo else {
         return false;
@@ -432,14 +434,14 @@ async fn scan_liquidctl_changes(
     // Check for added devices.
     for desc in &current_descriptions {
         if baseline.contains(desc).not() {
-            notify_device_added(desc, bin_path);
+            notify_device_added(desc, notification_handle);
             detected = true;
         }
     }
     // Check for removed devices.
     for desc in baseline.iter() {
         if current_set.contains(desc).not() {
-            notify_device_removed(desc, bin_path);
+            notify_device_removed(desc, notification_handle);
             detected = true;
         }
     }
@@ -449,98 +451,40 @@ async fn scan_liquidctl_changes(
     detected
 }
 
-fn notify_device_added(name: &str, bin_path: &str) {
+fn notify_device_added(name: &str, notification_handle: &NotificationHandle) {
     warn!(
         "New applicable device detected: {name}. \
          Restart the daemon to use this device."
     );
-    send_desktop_notification(
+    notifier::notify_all_sessions(
         "New Device Detected",
         &format!(
             "New applicable device detected: {name}. \
              Restart the daemon to use this device."
         ),
-        bin_path,
+        NotificationIcon::Info,
+        false,
+        None,
+        Some(notification_handle),
     );
 }
 
-fn notify_device_removed(name: &str, bin_path: &str) {
+fn notify_device_removed(name: &str, notification_handle: &NotificationHandle) {
     warn!(
         "Known device removed: {name}. \
          Sensors will be set to failsafe levels. Restart the daemon to update the device list."
     );
-    send_desktop_notification(
+    notifier::notify_all_sessions(
         "Device Removed",
         &format!(
             "Known device removed: {name}. \
              Restart the daemon to update the device list."
         ),
-        bin_path,
+        NotificationIcon::Info,
+        false,
+        None,
+        Some(notification_handle),
     );
-}
-
-/// Sends a desktop notification to all active user sessions.
-///
-/// The command format must match the `Notify` subcommand's positional
-/// args: title, message, icon, audio. We explicitly set
-/// `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` because `sudo -u`
-/// strips the environment, which prevents zbus from finding the session
-/// bus on some desktops (e.g. Gnome on Arch).
-fn send_desktop_notification(title: &str, body: &str, bin_path: &str) {
-    let sessions = available_session_users();
-    let safe_title = sanitize_for_shell(title);
-    let safe_body = sanitize_for_shell(body);
-    let safe_bin_path = sanitize_for_shell(bin_path);
-    for (uid, runtime_dir) in &sessions {
-        let runtime = runtime_dir.display();
-        let cmd = format!(
-            "sudo -u \\#{uid} env \
-             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
-             XDG_RUNTIME_DIR={runtime} \
-             {safe_bin_path} notify \"{safe_title}\" \
-             \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
-        );
-        fire_notification_command(cmd);
-    }
-}
-
-fn fire_notification_command(cmd: String) {
-    tokio::task::spawn_local(async move {
-        let result = ShellCommand::new(&cmd, NOTIFICATION_CMD_TIMEOUT)
-            .run()
-            .await;
-        if let crate::repositories::utils::ShellCommandResult::Error(err) = result {
-            warn!("Failed to execute notification command: '{cmd}' - {err}");
-        }
-    });
-}
-
-/// Finds active user sessions by checking for D-Bus session sockets.
-/// Returns (uid, runtime_dir) pairs for each active session.
-fn available_session_users() -> Vec<(u32, PathBuf)> {
-    let mut sessions = Vec::new();
-    let mut path = PathBuf::from("/run/user");
-    if path.exists().not() {
-        path = PathBuf::from("/var/run/user");
-    }
-    let Ok(entries) = cc_fs::read_dir(path) else {
-        return sessions;
-    };
-    for entry in entries.flatten() {
-        let user_dir = entry.path();
-        if user_dir.join("bus").exists() {
-            if let Some(uid) = user_dir
-                .file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|id| id.parse::<u32>().ok())
-            {
-                if uid >= MIN_USER_UID {
-                    sessions.push((uid, user_dir));
-                }
-            }
-        }
-    }
-    sessions
 }
 
 #[cfg(test)]
@@ -690,44 +634,6 @@ mod tests {
         unsafe { env::set_var(ENV_DBUS, "1") };
         assert!(is_listener_disabled().not());
         unsafe { env::remove_var(ENV_DBUS) };
-    }
-
-    // --- notification command format ---
-
-    #[test]
-    fn notification_command_includes_dbus_env_and_audio() {
-        // The notify command must set DBUS_SESSION_BUS_ADDRESS and
-        // XDG_RUNTIME_DIR, and include all positional args up to audio.
-        let title = "CoolerControl: New Device Detected";
-        let body = "New device: coretemp. Restart the daemon.";
-        let bin_path = "/usr/bin/coolercontrold";
-        let safe_title = sanitize_for_shell(title);
-        let safe_body = sanitize_for_shell(body);
-        let safe_bin = sanitize_for_shell(bin_path);
-        let uid: u32 = 1000;
-        let runtime = format!("/run/user/{uid}");
-        let cmd = format!(
-            "sudo -u \\#{uid} env \
-             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
-             XDG_RUNTIME_DIR={runtime} \
-             {safe_bin} notify \"{safe_title}\" \
-             \"{safe_body}\" {NOTIFICATION_ICON_INFO} false"
-        );
-        assert!(cmd.starts_with("sudo -u \\#1000 env"));
-        assert!(cmd.contains("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"));
-        assert!(cmd.contains("XDG_RUNTIME_DIR=/run/user/1000"));
-        assert!(cmd.contains("notify"));
-        assert!(cmd.ends_with("4 false"));
-    }
-
-    #[test]
-    fn notification_command_sanitizes_special_chars() {
-        // Device names with shell-unsafe chars must be sanitized.
-        let body = "Device: test$(evil) removed";
-        let sanitized = sanitize_for_shell(body);
-        assert!(sanitized.contains('$').not());
-        assert!(sanitized.contains('(').not());
-        assert!(sanitized.contains(')').not());
     }
 
     // --- debounce: single deadline with pending flags ---

@@ -19,9 +19,9 @@
 use crate::api::actor::AlertHandle;
 use crate::api::CCError;
 use crate::device::UID;
-use crate::notifier::NotificationIcon;
+use crate::notifier::{self, NotificationHandle, NotificationIcon};
 use crate::paths;
-use crate::repositories::utils::{sanitize_for_shell, ShellCommand, ShellCommandResult};
+use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::setting::{ChannelMetric, ChannelSource};
 use crate::{cc_fs, AllDevices};
 use anyhow::{anyhow, Result};
@@ -36,7 +36,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::ops::Not;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use strum::{Display, EnumString};
@@ -212,25 +211,25 @@ pub struct AlertController {
     all_devices: AllDevices,
     alerts: RefCell<IndexMap<UID, Alert>>,
     alert_handle: RefCell<Option<AlertHandle>>,
+    notification_handle: RefCell<Option<NotificationHandle>>,
     logs: RefCell<VecDeque<AlertLog>>,
     logs_dirty: Cell<bool>,
     last_log_flush: Cell<Instant>,
-    bin_path: String,
 }
 
 impl AlertController {
     /// A controller for managing and handling Alerts.
-    pub async fn init(all_devices: AllDevices, bin_path: String) -> Result<Self> {
+    pub async fn init(all_devices: AllDevices) -> Result<Self> {
         let alert_controller = Self {
             all_devices,
             alerts: RefCell::new(IndexMap::new()),
             alert_handle: RefCell::new(None),
+            notification_handle: RefCell::new(None),
             logs: RefCell::new(VecDeque::with_capacity(LOG_BUFFER_SIZE)),
             logs_dirty: Cell::new(false),
             // Set to a past time so the first state change always flushes immediately.
             #[allow(clippy::unchecked_time_subtraction)]
             last_log_flush: Cell::new(Instant::now() - LOG_FLUSH_COOLDOWN),
-            bin_path,
         };
         alert_controller.load_data_from_alert_config_file().await?;
         Ok(alert_controller)
@@ -256,6 +255,12 @@ impl AlertController {
     /// The `AlertHandle` is used to broadcast notifications when an `Alert` state changes.
     pub fn set_alert_handle(&self, alert_handle: AlertHandle) {
         self.alert_handle.replace(Some(alert_handle));
+    }
+
+    /// Sets the `NotificationHandle` for broadcasting desktop notification
+    /// events to connected SSE clients.
+    pub fn set_notification_handle(&self, handle: NotificationHandle) {
+        self.notification_handle.replace(Some(handle));
     }
 
     /// Reads the Alert configuration file and fills the alert map and log buffer.
@@ -643,35 +648,32 @@ impl AlertController {
 
     /// Handle all notifications and system shutdowns for an alert.
     fn send_notifications(&self, alert: &Alert, message: &str) {
-        let sessions = Self::available_session_users();
+        let handle_ref = self.notification_handle.borrow();
+        let handle = handle_ref.as_ref();
         match alert.state {
             AlertState::Active => {
                 if alert.desktop_notify {
-                    for (uid, runtime_dir) in &sessions {
-                        if alert.shutdown_on_activation {
-                            let title = format!("Shutdown Alert Triggered: {}!", alert.name);
-                            let body = format!("Shutdown will commence in 1 Minute.\n{message}");
-                            self.fire_notification(
-                                *uid,
-                                runtime_dir,
-                                &title,
-                                &body,
-                                NotificationIcon::Shutdown,
-                                alert.desktop_notify_audio,
-                                Some(2),
-                            );
-                        } else {
-                            let title = format!("Alert Triggered: {}!", alert.name);
-                            self.fire_notification(
-                                *uid,
-                                runtime_dir,
-                                &title,
-                                message,
-                                NotificationIcon::Triggered,
-                                alert.desktop_notify_audio,
-                                None,
-                            );
-                        }
+                    if alert.shutdown_on_activation {
+                        let title = format!("Shutdown Alert Triggered: {}!", alert.name);
+                        let body = format!("Shutdown will commence in 1 Minute.\n{message}");
+                        notifier::notify_all_sessions(
+                            &title,
+                            &body,
+                            NotificationIcon::Shutdown,
+                            alert.desktop_notify_audio,
+                            Some(2),
+                            handle,
+                        );
+                    } else {
+                        let title = format!("Alert Triggered: {}!", alert.name);
+                        notifier::notify_all_sessions(
+                            &title,
+                            message,
+                            NotificationIcon::Triggered,
+                            alert.desktop_notify_audio,
+                            None,
+                            handle,
+                        );
                     }
                 }
                 if alert.shutdown_on_activation {
@@ -691,34 +693,28 @@ impl AlertController {
                     );
                 }
                 if alert.desktop_notify && alert.desktop_notify_recovery {
-                    for (uid, runtime_dir) in &sessions {
-                        let title = format!("Alert Resolved: {}", alert.name);
-                        self.fire_notification(
-                            *uid,
-                            runtime_dir,
-                            &title,
-                            message,
-                            NotificationIcon::Resolved,
-                            false,
-                            None,
-                        );
-                    }
+                    let title = format!("Alert Resolved: {}", alert.name);
+                    notifier::notify_all_sessions(
+                        &title,
+                        message,
+                        NotificationIcon::Resolved,
+                        false,
+                        None,
+                        handle,
+                    );
                 }
             }
             AlertState::Error => {
                 if alert.desktop_notify {
-                    for (uid, runtime_dir) in &sessions {
-                        let title = format!("Alert Error: {}", alert.name);
-                        self.fire_notification(
-                            *uid,
-                            runtime_dir,
-                            &title,
-                            message,
-                            NotificationIcon::Error,
-                            alert.desktop_notify_audio,
-                            None,
-                        );
-                    }
+                    let title = format!("Alert Error: {}", alert.name);
+                    notifier::notify_all_sessions(
+                        &title,
+                        message,
+                        NotificationIcon::Error,
+                        alert.desktop_notify_audio,
+                        None,
+                        handle,
+                    );
                 }
                 if alert.desktop_notify || alert.shutdown_on_activation {
                     warn!("Alert in Error State: {} = {}", alert.name, message);
@@ -726,40 +722,6 @@ impl AlertController {
             }
             AlertState::WarmUp(_) => {} // Warmup state is never fired.
         }
-    }
-
-    /// Fires a desktop notification with automatic sanitization of title and message.
-    /// Sets DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR so zbus can find
-    /// the user's session bus (sudo strips the environment).
-    fn fire_notification(
-        &self,
-        uid: u32,
-        runtime_dir: &Path,
-        title: &str,
-        message: &str,
-        icon: NotificationIcon,
-        audio: bool,
-        urgency_lvl: Option<u8>,
-    ) {
-        let safe_title = sanitize_for_shell(title);
-        let safe_message = sanitize_for_shell(message);
-        let runtime = runtime_dir.display();
-        let env_prefix = format!(
-            "sudo -u \\#{uid} env \
-             DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus \
-             XDG_RUNTIME_DIR={runtime}"
-        );
-        let cmd = match urgency_lvl {
-            Some(urgency) => format!(
-                "{env_prefix} {} notify \"{}\" \"{}\" {} {} {}",
-                self.bin_path, safe_title, safe_message, icon as u8, audio, urgency
-            ),
-            None => format!(
-                "{env_prefix} {} notify \"{}\" \"{}\" {} {}",
-                self.bin_path, safe_title, safe_message, icon as u8, audio
-            ),
-        };
-        Self::fire_command(&cmd);
     }
 
     fn fire_command(cmd: &str) {
@@ -773,34 +735,6 @@ impl AlertController {
                 }
             }
         });
-    }
-
-    fn available_session_users() -> Vec<(u32, PathBuf)> {
-        let mut sessions = Vec::new();
-        // Search for /run/user/*/bus for user IDs with open dbus sessions.
-        let mut path = PathBuf::from("/run/user");
-        if path.exists().not() {
-            path = PathBuf::from("/var/run/user");
-        }
-        let Ok(entries) = cc_fs::read_dir(path) else {
-            return sessions;
-        };
-        for entry in entries.flatten() {
-            let user_dir = entry.path();
-            if user_dir.join("bus").exists() {
-                if let Some(uid) = user_dir
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .and_then(|id| id.parse::<u32>().ok())
-                {
-                    // do not notify root or system users
-                    if uid >= 1000 {
-                        sessions.push((uid, user_dir));
-                    }
-                }
-            }
-        }
-        sessions
     }
 }
 

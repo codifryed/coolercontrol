@@ -1134,4 +1134,18 @@ fn sse_routes() -> ApiRouter<AppState> {
             })
             .layer(axum::middleware::from_fn(auth::auth_middleware)),
         )
+        .api_route(
+            "/sse/notifications",
+            get_with(sse::notifications, |o| {
+                o.summary("Desktop Notification Events")
+                    .description(
+                        "Subscribes and returns Events for desktop notifications \
+                         that should be displayed to the user",
+                    )
+                    .tag("sse")
+                    .security_requirement("CookieAuth")
+                    .security_requirement("BearerAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::auth_middleware)),
+        )
 }

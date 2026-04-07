@@ -92,3 +92,24 @@ pub async fn alerts(
         KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
     ))
 }
+
+pub async fn notifications(
+    State(AppState {
+        notification_handle,
+        ..
+    }): State<AppState>,
+) -> NoApi<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    let cancel_token = notification_handle.cancel_token();
+    let notification_stream = BroadcastStream::new(notification_handle.broadcaster().subscribe())
+        .take_until(async move { cancel_token.cancelled().await })
+        .filter_map(|result| async { result.ok() })
+        .map(|notification| {
+            Ok(Event::default()
+                .event("notification")
+                .json_data(notification)
+                .unwrap())
+        });
+    NoApi(Sse::new(notification_stream).keep_alive(
+        KeepAlive::new().interval(Duration::from_secs(DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS)),
+    ))
+}

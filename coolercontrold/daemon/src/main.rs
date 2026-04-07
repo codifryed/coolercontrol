@@ -283,19 +283,19 @@ fn main() -> Result<()> {
                     run_token.clone(),
                     main_scope,
                 );
-                let bin_path = daemon_bin_path();
-                let alert_controller = Rc::new(
-                    AlertController::init(Rc::clone(&all_devices), bin_path.clone()).await?,
-                );
+                let alert_controller =
+                    Rc::new(AlertController::init(Rc::clone(&all_devices)).await?);
                 AlertController::watch_for_shutdown(
                     &alert_controller,
                     run_token.clone(),
                     main_scope,
                 );
+                let notification_handle = notifier::NotificationHandle::new(run_token.clone());
+                alert_controller.set_notification_handle(notification_handle.clone());
                 let _device_listener = device_listener::DeviceListener::new(
                     Rc::clone(&all_devices),
                     lc_repo,
-                    bin_path,
+                    notification_handle.clone(),
                     run_token.clone(),
                     main_scope,
                 )
@@ -315,6 +315,7 @@ fn main() -> Result<()> {
                     plugin_controller,
                     log_buf_handle,
                     status_handle.clone(),
+                    notification_handle,
                     run_token.clone(),
                     main_scope,
                 )
@@ -769,14 +770,6 @@ fn set_cpu_affinity() -> Result<()> {
     cpu_set.set(current_cpu)?;
     sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
     Ok(())
-}
-
-/// Returns the path to the current daemon binary for use in subprocess
-/// notification commands. Falls back to "coolercontrold" if unavailable.
-fn daemon_bin_path() -> String {
-    std::env::current_exe()
-        .ok()
-        .map_or_else(|| "coolercontrold".to_string(), |p| p.display().to_string())
 }
 
 async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
