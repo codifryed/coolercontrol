@@ -166,6 +166,7 @@ const ENV_DEVICE_EVENTS: &str = "CC_DEVICE_EVENTS";
 /// ```
 /// CC_SENSORS_DETECT=OFF coolercontrold
 /// ```
+#[cfg(target_arch = "x86_64")]
 const ENV_SENSORS_DETECT: &str = "CC_SENSORS_DETECT";
 
 /// Environment Variable: To disable service manager integration
@@ -218,6 +219,7 @@ type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 
 /// Returns true when the given env var explicitly disables a feature
 /// (set to "0" or "off"). Returns false when unset or set to any other value.
+#[cfg(target_arch = "x86_64")]
 fn is_env_disabled(env_var: &str) -> bool {
     let Ok(value) = env::var(env_var) else {
         return false;
