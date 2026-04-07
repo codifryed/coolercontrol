@@ -89,9 +89,7 @@ async fn cache_control_middleware(request: Request, next: Next) -> axum::respons
         } else if is_js {
             headers.insert(
                 axum::http::header::CONTENT_TYPE,
-                axum::http::HeaderValue::from_static(
-                    "text/javascript; charset=utf-8",
-                ),
+                axum::http::HeaderValue::from_static("text/javascript; charset=utf-8"),
             );
         }
         axum::http::HeaderValue::from_static("public, max-age=31536000, immutable")
@@ -292,10 +290,7 @@ mod tests {
     #[tokio::test]
     async fn test_non_text_assets_no_charset_override() {
         let app = Router::new()
-            .route(
-                "/assets/primeicons-abc123.svg",
-                get(|| async { "<svg/>" }),
-            )
+            .route("/assets/primeicons-abc123.svg", get(|| async { "<svg/>" }))
             .layer(middleware::from_fn(cache_control_middleware));
 
         let response = app
