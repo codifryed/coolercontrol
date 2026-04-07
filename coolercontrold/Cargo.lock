@@ -969,6 +969,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "libdrm_amdgpu_sys",
+ "libloading",
  "log",
  "mime",
  "moro-local",

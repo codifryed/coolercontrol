@@ -18,4 +18,5 @@
 
 mod amd;
 pub mod gpu_repo;
+mod nvapi;
 mod nvidia;
