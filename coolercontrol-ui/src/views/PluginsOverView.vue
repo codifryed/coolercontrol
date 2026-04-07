@@ -80,7 +80,7 @@ onMounted(loadStatuses)
         <div class="pl-4 py-2 text-2xl font-bold">{{ t('layout.plugins.overview') }}</div>
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
-        <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+        <ScrollAreaViewport class="p-4 pb-16 h-screen w-full whitespace-normal">
             <!-- Getting Started -->
             <div class="mt-8 flex flex-col max-w-3xl">
                 <span class="pb-3 ml-1 font-semibold text-xl text-text-color">
