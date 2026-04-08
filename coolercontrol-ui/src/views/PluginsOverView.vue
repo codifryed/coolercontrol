@@ -86,6 +86,7 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
 }
 
 onMounted(async () => {
+    await deviceStore.loadAllPlugins()
     await loadStatuses()
     statusPollTimer = setInterval(loadStatuses, STATUS_POLL_INTERVAL_MS)
 })

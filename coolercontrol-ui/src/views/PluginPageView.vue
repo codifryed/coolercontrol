@@ -202,6 +202,7 @@ const togglePlugin = async (): Promise<void> => {
         }
     }
     await loadPluginData()
+    await deviceStore.loadAllPlugins()
 }
 
 const openMetadataModal = (): void => {
