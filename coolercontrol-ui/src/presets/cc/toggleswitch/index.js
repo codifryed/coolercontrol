@@ -47,7 +47,7 @@ export default {
             // Colors
             'border',
             {
-                'bg-bg-two': !(props.modelValue == props.trueValue),
+                'bg-accent/60': !(props.modelValue == props.trueValue),
                 'bg-accent': props.modelValue == props.trueValue,
             },
 
@@ -57,14 +57,14 @@ export default {
             { 'border-red': props.invalid },
 
             // States
-            {
-                'peer-hover:bg-border-one':
-                    !(props.modelValue == props.trueValue) && !props.disabled,
-            },
-            {
-                'peer-hover:bg-accent/80': props.modelValue == props.trueValue && !props.disabled,
-            },
-            'peer-focus-visible:ring peer-focus-visible:ring-accent/50',
+            // {
+            //     'peer-hover:bg-border-one':
+            //         !(props.modelValue == props.trueValue) && !props.disabled,
+            // },
+            // {
+            //     'peer-hover:bg-accent/80': props.modelValue == props.trueValue && !props.disabled,
+            // },
+            // 'peer-focus-visible:ring peer-focus-visible:ring-accent/50',
 
             // Transition
             'transition-colors duration-200',
