@@ -36,36 +36,35 @@ export default {
             // Shape
             'rounded-2xl',
 
-            // Before:
+            // Before (handle):
             'before:absolute before:top-1/2 before:left-1',
             'before:-mt-2.5',
             'before:h-5 before:w-5',
             'before:rounded-full',
             'before:duration-200',
-            'before:bg-surface-0 before:dark:bg-surface-900',
+            'before:bg-bg-two',
 
             // Colors
             'border',
             {
-                'bg-surface-200 dark:bg-surface-700': !(props.modelValue == props.trueValue),
-                'bg-primary': props.modelValue == props.trueValue,
+                'bg-accent/60': !(props.modelValue == props.trueValue),
+                'bg-accent': props.modelValue == props.trueValue,
             },
 
-            { 'border-transparent': !props.invalid },
+            { 'border-border-one': !props.invalid },
 
             // Invalid State
-            { 'border-red-500 dark:border-red-400': props.invalid },
+            { 'border-red': props.invalid },
 
             // States
-            {
-                'peer-hover:bg-surface-300 dark:peer-hover:bg-surface-600 ':
-                    !(props.modelValue == props.trueValue) && !props.disabled,
-            },
-            {
-                'peer-hover:bg-primary-hover ':
-                    props.modelValue == props.trueValue && !props.disabled,
-            },
-            'peer-focus-visible:ring peer-focus-visible:ring-primary-400/50 dark:peer-focus-visible:ring-primary-300/50',
+            // {
+            //     'peer-hover:bg-border-one':
+            //         !(props.modelValue == props.trueValue) && !props.disabled,
+            // },
+            // {
+            //     'peer-hover:bg-accent/80': props.modelValue == props.trueValue && !props.disabled,
+            // },
+            // 'peer-focus-visible:ring peer-focus-visible:ring-accent/50',
 
             // Transition
             'transition-colors duration-200',

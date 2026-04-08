@@ -18,6 +18,6 @@
 
 mod client;
 pub mod plugin_controller;
-mod service_management;
+pub mod service_management;
 pub mod service_manifest;
 pub mod service_plugin_repo;

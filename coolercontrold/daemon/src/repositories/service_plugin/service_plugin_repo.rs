@@ -731,6 +731,11 @@ impl ServicePluginRepo {
         self.service_manager.is_open_rc()
     }
 
+    /// Returns a clone of the service manager for use by the plugin controller.
+    pub fn service_manager(&self) -> Manager {
+        self.service_manager.clone()
+    }
+
     /// Returns a copy of the plugins information, used by the plugin controller.
     pub fn get_plugins(&self) -> HashMap<ServiceId, ServiceManifest> {
         let mut plugins = HashMap::new();
@@ -764,8 +769,17 @@ impl Repository for ServicePluginRepo {
                 warn!("Failed to delete plugin user '{CC_PLUGIN_USER}': {err}");
             }
         }
+        let disabled_plugins: HashSet<String> =
+            self.config.get_disabled_plugins().into_iter().collect();
         moro_local::async_scope!(|service_init_scope| {
             for (service_id, service_manifest) in Self::find_service_manifests().await {
+                if disabled_plugins.contains(&service_id) {
+                    info!("Skipping disabled plugin: {service_id}");
+                    services
+                        .borrow_mut()
+                        .insert(service_id, (None, service_manifest));
+                    continue;
+                }
                 let service_manager = Rc::clone(&service_manager);
                 let services = Rc::clone(&services);
                 let devices = Rc::clone(&devices);

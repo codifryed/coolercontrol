@@ -19,279 +19,79 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { useToast } from 'primevue/usetoast'
+import { mdiLinkVariant } from '@mdi/js'
+import { inject, Ref } from 'vue'
+import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
-import { inject, onMounted, onUnmounted, ref, Ref } from 'vue'
-import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { ErrorResponse } from '@/models/ErrorResponse.ts'
-import { ThemeMode } from '@/models/UISettings.ts'
-import { useConfirm } from 'primevue/useconfirm'
+import { PluginDto } from '@/models/Plugins.ts'
 
-const { t } = useI18n()
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
-const toast = useToast()
+const { t } = useI18n()
+
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
-const closeDialog = () => {
-    dialogRef.value.close()
-}
-const confirm = useConfirm()
-const pluginId = dialogRef.value.data.pluginId ?? 'Unknown'
-const iframeRef = ref<HTMLIFrameElement | null>(null)
-const nullOriginTarget: string = '*'
-const pluginUrl = (): string => {
-    return `${deviceStore.daemonClient.daemonURL}plugins/${pluginId}/ui/index.html`
-}
-
-const mainStyleLinkEl = (): string | undefined => {
-    for (const styleSheet of Array.from(document.styleSheets)) {
-        // NOTE: the dev server will not serve the compiled stylesheet:
-        // Also, complex elements are not cloneable.
-        if (
-            styleSheet.href &&
-            styleSheet.href.includes('style') &&
-            styleSheet.href.endsWith('.css')
-        ) {
-            return styleSheet.href
-        }
-    }
-    console.warn('No styles found to send to plugin iframe. Are you running a dev server?')
-    return undefined
-}
-const onIframeLoad = (): void => {}
-const handleIframeMessage = async (event: MessageEvent): Promise<void> => {
-    // We are sandboxing the same-origin iframe, and it will have a 'null' origin because of this.
-    // We still need to verify to prevent malicious intent.
-    if (
-        !event.isTrusted ||
-        event.origin !== 'null' ||
-        event.source == null ||
-        event.source !== iframeRef.value?.contentWindow ||
-        event.data == null ||
-        event.data.type == null
-    ) {
-        console.debug('Received Invalid Message')
-        return
-    }
-    switch (event.data.type) {
-        case 'style':
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'style',
-                    body: mainStyleLinkEl(),
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'customStyle':
-            // We need to send the custom color scheme to the plugin (overrides)
-            const customStyle =
-                settingsStore.themeMode === ThemeMode.CUSTOM
-                    ? {
-                          '--colors-accent': settingsStore.customTheme.accent,
-                          '--colors-bg-one': settingsStore.customTheme.bgOne,
-                          '--colors-bg-two': settingsStore.customTheme.bgTwo,
-                          '--colors-border-one': settingsStore.customTheme.borderOne,
-                          '--colors-text-color': settingsStore.customTheme.textColor,
-                          '--colors-text-color-secondary':
-                              settingsStore.customTheme.textColorSecondary,
-                      }
-                    : undefined
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'customStyle',
-                    body: customStyle,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'loadConfig':
-            const pluginConfig = await deviceStore.daemonClient.loadPluginConfig(pluginId)
-            if (pluginConfig instanceof ErrorResponse) {
-                console.error('Failed to load plugin config:', pluginConfig.error)
-                break
-            }
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'config',
-                    body: pluginConfig,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'saveConfig':
-            if (event.data.body == null) {
-                console.error('Failed to save plugin config: No config provided')
-                break
-            }
-            let newPluginConfig = event.data.body
-            const response = await deviceStore.daemonClient.savePluginConfig(
-                pluginId,
-                newPluginConfig,
-            )
-            if (response instanceof ErrorResponse) {
-                console.error('Failed to save plugin config:', response.error)
-                newPluginConfig = null
-                toast.add({
-                    severity: 'error',
-                    summary: t('common.error'),
-                    detail: t('layout.settings.plugins.settingsNotSaved'),
-                    life: 3000,
-                })
-            }
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'configSaved',
-                    body: newPluginConfig,
-                },
-                nullOriginTarget,
-            )
-            toast.add({
-                severity: 'success',
-                summary: t('common.success'),
-                detail: t('layout.settings.plugins.settingsSaved'),
-                life: 3000,
-            })
-            break
-        case 'close':
-            closeDialog()
-            break
-        case 'restart':
-            // will cause all plugins to be restarted
-            closeDialog()
-            confirm.require({
-                message: t('layout.topbar.restartConfirmMessage'),
-                header: t('layout.topbar.restartConfirmHeader'),
-                icon: 'pi pi-exclamation-triangle',
-                defaultFocus: 'accept',
-                accept: async () => {
-                    const successful = await deviceStore.daemonClient.shutdownDaemon()
-                    if (successful) {
-                        toast.add({
-                            severity: 'success',
-                            summary: t('common.success'),
-                            detail: t('layout.topbar.shutdownSuccess'),
-                            life: 6000,
-                        })
-                        await deviceStore.waitAndReload()
-                    } else {
-                        toast.add({
-                            severity: 'error',
-                            summary: t('common.error'),
-                            detail: t('layout.topbar.shutdownError'),
-                            life: 4000,
-                        })
-                    }
-                },
-            })
-            break
-        case 'modes':
-            const modes = settingsStore.modes.map((mode) => {
-                return { name: mode.name, uid: mode.uid }
-            })
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'modes',
-                    body: modes,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'alerts':
-            const alerts = settingsStore.alerts.map((alert) => {
-                return { name: alert.name, uid: alert.uid }
-            })
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'alerts',
-                    body: alerts,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'profiles':
-            const profiles = settingsStore.profiles.map((profile) => {
-                return { name: profile.name, uid: profile.uid, p_type: profile.p_type }
-            })
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'profiles',
-                    body: profiles,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'functions':
-            const functions = settingsStore.functions.map((fn) => {
-                return { name: fn.name, uid: fn.uid, p_type: fn.f_type }
-            })
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'functions',
-                    body: functions,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'devices':
-            const devices = []
-            for (const device of deviceStore.allDevices()) {
-                devices.push({
-                    name: device.name,
-                    uid: device.uid,
-                    type: device.type,
-                    info: device.info,
-                })
-            }
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'devices',
-                    body: devices,
-                },
-                nullOriginTarget,
-            )
-            break
-        case 'status':
-            const status = new Map()
-            for (const [
-                deviceUID,
-                deviceChannelStatus,
-            ] of deviceStore.currentDeviceStatus.entries()) {
-                status.set(deviceUID, deviceChannelStatus)
-            }
-            iframeRef.value?.contentWindow?.postMessage(
-                {
-                    type: 'status',
-                    body: status,
-                },
-                nullOriginTarget,
-            )
-            break
-    }
-}
-
-onMounted(() => {
-    window.addEventListener('message', handleIframeMessage)
-})
-onUnmounted(() => {
-    window.removeEventListener('message', handleIframeMessage)
-})
+const plugin: PluginDto = dialogRef.value.data.plugin
 </script>
 
 <template>
-    <div class="flex flex-col min-w-[40vw] min-h-[40vw] w-[60vw] h-[80vh]">
-        <iframe
-            ref="iframeRef"
-            :name="`iframe-${pluginId}`"
-            :src="pluginUrl()"
-            class="w-full h-full"
-            @load="onIframeLoad"
-            sandbox="allow-scripts"
-        >
-            This browser does not support iframes.
-        </iframe>
+    <div class="flex flex-col min-w-[30vw] p-2">
+        <div v-if="plugin.description" class="text-wrap italic text-text-color-secondary mb-4">
+            {{ plugin.description }}
+        </div>
+        <table class="bg-bg-two rounded-lg w-full">
+            <tbody>
+                <tr class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold w-40">
+                        {{ t('layout.plugins.type') }}
+                    </td>
+                    <td class="py-3 px-4">{{ plugin.service_type }}</td>
+                </tr>
+                <tr v-if="plugin.version" class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('views.appInfo.version') }}
+                    </td>
+                    <td class="py-3 px-4">{{ plugin.version }}</td>
+                </tr>
+                <tr v-if="plugin.address" class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('layout.plugins.address') }}
+                    </td>
+                    <td class="py-3 px-4">
+                        <code>{{ plugin.address }}</code>
+                    </td>
+                </tr>
+                <tr class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('layout.plugins.privileges') }}
+                    </td>
+                    <td class="py-3 px-4" :class="{ 'font-bold': plugin.privileged }">
+                        {{
+                            plugin.privileged
+                                ? t('layout.settings.plugins.privileged')
+                                : t('layout.settings.plugins.restricted')
+                        }}
+                    </td>
+                </tr>
+                <tr v-if="plugin.url">
+                    <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
+                    <td class="py-3 px-4">
+                        <a
+                            class="inline-flex items-center gap-1 underline"
+                            :href="plugin.url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiLinkVariant"
+                                :size="deviceStore.getREMSize(1)"
+                            />
+                            {{ t('layout.settings.plugins.pluginUrl') }}
+                        </a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 </template>
 

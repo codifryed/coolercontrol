@@ -27,7 +27,6 @@ import {
     mdiLaptop,
     mdiMonitor,
     mdiRestart,
-    mdiToyBrickOutline,
     mdiViewQuiltOutline,
 } from '@mdi/js'
 import { computed, inject, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
@@ -59,7 +58,6 @@ import _ from 'lodash'
 import AppSettingsDevices from '@/layout/AppSettingsDevices.vue'
 import CCColorPicker from '@/components/CCColorPicker.vue'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
-import AppSettingsPlugins from '@/layout/AppSettingsPlugins.vue'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -78,7 +76,7 @@ const tabValue = ref(props.tabNumber != null && props.tabNumber ? props.tabNumbe
 const { t } = useI18n()
 
 const tabStyle = computed(() => {
-    let tabCount = 4
+    let tabCount = 3
     if (deviceStore.isQtApp()) {
         tabCount += 1
     }
@@ -476,19 +474,6 @@ onUnmounted(() => {
                             :size="deviceStore.getREMSize(1.5)"
                         />
                         {{ t('layout.settings.thinkpad', 'ThinkPad') }}
-                    </Tab>
-                    <Tab
-                        value="5"
-                        as="div"
-                        class="flex justify-center items-center gap-2"
-                        :style="tabStyle"
-                    >
-                        <svg-icon
-                            type="mdi"
-                            :path="mdiToyBrickOutline"
-                            :size="deviceStore.getREMSize(1.5)"
-                        />
-                        {{ t('layout.settings.plugin', 'Plugins') }}
                     </Tab>
                 </TabList>
                 <TabPanels class="mt-2">
@@ -1566,9 +1551,6 @@ onUnmounted(() => {
                     </TabPanel>
                     <TabPanel value="4" class="flex flex-col lg:flex-row">
                         <AppSettingsDevices />
-                    </TabPanel>
-                    <TabPanel value="5" class="flex flex-col lg:flex-row">
-                        <AppSettingsPlugins />
                     </TabPanel>
                 </TabPanels>
             </Tabs>

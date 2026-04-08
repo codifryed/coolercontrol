@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import i18n from '@/i18n'
+
 export default class PluginsDto {
     plugins: Array<PluginDto> = []
 }
@@ -29,9 +31,39 @@ export class PluginDto {
     address: String = ''
     privileged: boolean = false
     path: String = ''
+    disabled: boolean = false
 }
 
 export enum ServiceType {
     Device = 'Device',
     Integration = 'Integration',
+}
+
+export enum PluginStatus {
+    Running = 'Running',
+    Stopped = 'Stopped',
+    Unmanaged = 'Unmanaged',
+}
+
+export function getPluginStatusDisplayName(status: PluginStatus): string {
+    const { t } = i18n.global
+    switch (status) {
+        case PluginStatus.Running:
+            return t('models.pluginStatus.running')
+        case PluginStatus.Stopped:
+            return t('models.pluginStatus.stopped')
+        case PluginStatus.Unmanaged:
+            return t('models.pluginStatus.unmanaged')
+        default:
+            return String(status)
+    }
+}
+
+export class PluginStatusDto {
+    status: PluginStatus = PluginStatus.Unmanaged
+    reason?: string
+}
+
+export class HasUiDto {
+    has_ui: boolean = false
 }

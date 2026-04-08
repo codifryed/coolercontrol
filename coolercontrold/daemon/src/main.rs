@@ -668,7 +668,7 @@ async fn initialize_device_repos(
             _ => warn!("Error initializing LIQUIDCTL Repo: {err}"),
         },
     }
-    let mut plugin_controller = PluginController::default();
+    let mut plugin_controller = PluginController::new_disabled();
     let api_up_token = CancellationToken::new();
     // init these concurrently:
     moro_local::async_scope!(|init_scope| {
@@ -699,8 +699,13 @@ async fn initialize_device_repos(
             .await
             {
                 Ok(repo) => {
-                    plugin_controller =
-                        PluginController::new(&repo, repo.is_systemd(), repo.is_open_rc());
+                    plugin_controller = PluginController::new(
+                        &repo,
+                        config.clone(),
+                        repo.service_manager(),
+                        repo.is_systemd(),
+                        repo.is_open_rc(),
+                    );
                     repos.external = Some(Rc::new(repo));
                 }
                 Err(err) => error!("Error initializing Service Plugin Repo: {err}"),

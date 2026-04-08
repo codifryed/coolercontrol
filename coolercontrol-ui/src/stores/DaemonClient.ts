@@ -50,7 +50,7 @@ import defaultHealthCheck, { HealthCheck } from '@/models/HealthCheck.ts'
 import { Alert, AlertsDTO } from '@/models/Alert.ts'
 // @ts-ignore
 import { AbortSignal } from 'abortcontroller-polyfill/dist/abortsignal-ponyfill'
-import PluginsDto from '@/models/Plugins.ts'
+import PluginsDto, { HasUiDto, PluginStatusDto } from '@/models/Plugins.ts'
 import type {
     AccessTokenInfo,
     CreateTokenRequest,
@@ -1264,7 +1264,9 @@ export default class DaemonClient {
         try {
             const response = await this.getClient().get(`/plugins`)
             this.logDaemonResponse(response, 'Load Plugins')
-            return plainToInstance(PluginsDto, response.data as object)
+            const dto = plainToInstance(PluginsDto, response.data as object)
+            dto.plugins.sort((a, b) => a.id.localeCompare(b.id))
+            return dto
         } catch (err: any) {
             this.logError(err)
             return new PluginsDto()
@@ -1305,11 +1307,77 @@ export default class DaemonClient {
         }
     }
 
-    async hasPluginUi(pluginId: string): Promise<boolean> {
+    async hasPluginUi(pluginId: string): Promise<HasUiDto> {
         try {
-            let response = await this.getClient().get(`/plugins/${pluginId}/ui`)
+            const response = await this.getClient().get(`/plugins/${pluginId}/ui`)
             this.logDaemonResponse(response, 'Plugin Has UI')
-            return response.data.has_ui ?? false
+            return plainToInstance(HasUiDto, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            return new HasUiDto()
+        }
+    }
+
+    async startPlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/start`)
+            this.logDaemonResponse(response, 'Start Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async stopPlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/stop`)
+            this.logDaemonResponse(response, 'Stop Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async restartPlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/restart`)
+            this.logDaemonResponse(response, 'Restart Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async getPluginStatus(pluginId: string): Promise<PluginStatusDto> {
+        try {
+            const response = await this.getClient().get(`/plugins/${pluginId}/status`)
+            this.logDaemonResponse(response, 'Plugin Status')
+            return plainToInstance(PluginStatusDto, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            return new PluginStatusDto()
+        }
+    }
+
+    async disablePlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/disable`)
+            this.logDaemonResponse(response, 'Disable Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async enablePlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/enable`)
+            this.logDaemonResponse(response, 'Enable Plugin')
+            return true
         } catch (err: any) {
             this.logError(err)
             return false

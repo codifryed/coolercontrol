@@ -25,7 +25,9 @@
 /////////////////////////////////////////////////////////////
 let _messageCount = 0
 let _successfulConfigSaveCallback = () => {}
+let _pluginRestarted = null
 let _pluginConfig = {}
+let _context = {}
 const _modes = []
 const _alerts = []
 const _profiles = []
@@ -71,6 +73,7 @@ const _processMessages = (messageEvent) => {
             if (messageEvent.data.body == null) break
             const linkEl = document.createElement('link')
             linkEl.rel = 'stylesheet'
+            linkEl.setAttribute('charset', 'utf-8')
             linkEl.href = messageEvent.data.body
             document.head.appendChild(linkEl)
             break
@@ -121,6 +124,13 @@ const _processMessages = (messageEvent) => {
         case 'status':
             if (messageEvent.data.body == null) break
             _status = messageEvent.data.body
+            break
+        case 'context':
+            if (messageEvent.data.body == null) break
+            _context = messageEvent.data.body
+            break
+        case 'pluginRestarted':
+            _pluginRestarted = messageEvent.data.body
             break
         default:
             console.log('Unknown message type', messageEvent)
@@ -175,7 +185,7 @@ const successfulConfigSaveCallback = async (callback) => {
     _successfulConfigSaveCallback = callback
 }
 
-/* Close the plugin modal. This will end the plugin session. */
+/* Close the plugin UI. In modal mode this closes the dialog. In full-page mode this navigates back. */
 const close = () => {
     window.parent.postMessage({ type: 'close' }, document.location.origin)
 }
@@ -183,6 +193,15 @@ const close = () => {
 /* Restart the daemon & UI. This has the effect of applying any plugin changes to service configs. */
 const restart = () => {
     window.parent.postMessage({ type: 'restart' }, document.location.origin)
+}
+
+/* Restart only this plugin's service (integration plugins only). Returns true on success. */
+const restartPlugin = async () => {
+    _pluginRestarted = null
+    _increaseMessageCount()
+    window.parent.postMessage({ type: 'restartPlugin' }, document.location.origin)
+    await waitTillAllMessagesReceived()
+    return _pluginRestarted
 }
 
 // Data Exchange Functions

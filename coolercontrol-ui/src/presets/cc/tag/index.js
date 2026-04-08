@@ -38,14 +38,11 @@ export default {
             'text-text-color',
             {
                 'bg-accent/40': props.severity == null || props.severity === 'primary',
-                // 'text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-500/20':
-                //     props.severity === 'secondary',
+                'bg-border-one': props.severity === 'secondary',
                 'bg-green/40': props.severity === 'success',
                 'bg-blue/40': props.severity === 'info',
                 'bg-yellow/40': props.severity === 'warn',
                 'bg-red/40': props.severity === 'danger',
-                // 'text-surface-0 dark:text-surface-900 bg-surface-900 dark:bg-surface-0':
-                //     props.severity === 'contrast',
             },
         ],
     }),
