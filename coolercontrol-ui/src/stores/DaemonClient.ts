@@ -1264,7 +1264,9 @@ export default class DaemonClient {
         try {
             const response = await this.getClient().get(`/plugins`)
             this.logDaemonResponse(response, 'Load Plugins')
-            return plainToInstance(PluginsDto, response.data as object)
+            const dto = plainToInstance(PluginsDto, response.data as object)
+            dto.plugins.sort((a, b) => a.id.localeCompare(b.id))
+            return dto
         } catch (err: any) {
             this.logError(err)
             return new PluginsDto()
