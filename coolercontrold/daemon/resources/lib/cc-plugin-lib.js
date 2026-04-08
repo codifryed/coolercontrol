@@ -204,15 +204,6 @@ const restartPlugin = async () => {
     return _pluginRestarted
 }
 
-/* Get the current rendering context. Returns { mode: 'modal' | 'full_page' }. */
-const getContext = async () => {
-    if (_context.mode != null) return _context
-    _increaseMessageCount()
-    window.parent.postMessage({ type: 'context' }, document.location.origin)
-    await waitTillAllMessagesReceived()
-    return _context
-}
-
 // Data Exchange Functions
 /////////////////////////////////////////////////////////////
 
