@@ -386,6 +386,19 @@ export default {
                 'コンテナでCoolerControlを実行する場合、プラグインはコンテナの再起動後も保持されるよう、永続化された仮想共有フォルダに配置する必要があります。',
             installedPlugins: 'インストール済みプラグイン',
             noPlugins: 'プラグインがインストールされていません',
+            info: '情報',
+            description: '説明',
+            enable: '有効化',
+            disable: '無効化',
+            disabled: '無効',
+            pluginDisabled: 'プラグインが無効化されました。',
+            pluginEnabled: 'プラグインが有効化されました。',
+            pluginDisabledRestart:
+                'プラグインが無効化されました。適用するにはデーモンを再起動してください。',
+            pluginEnabledRestart:
+                'プラグインが有効化されました。適用するにはデーモンを再起動してください。',
+            disableFailed: 'プラグインの無効化に失敗しました',
+            enableFailed: 'プラグインの有効化に失敗しました',
         },
         add: {
             dashboard: 'ダッシュボード',
@@ -1233,6 +1246,7 @@ export default {
             running: '実行中',
             stopped: '停止',
             unmanaged: '非管理',
+            disabled: '無効',
         },
         deviceType: {
             customSensors: 'カスタムセンサー',
