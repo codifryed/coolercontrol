@@ -491,6 +491,8 @@ export default {
             gitRepositoryDesc: 'Сообщить о проблемах или запросить функции',
             discord: 'Discord',
             discordDesc: 'Присоединяйтесь к нашему сообществу Discord',
+            whatsNew: 'Что нового',
+            whatsNewDesc: 'Смотрите последние примечания к выпуску',
             logsAndDiagnostics: 'Логи и диагностика',
             downloadCurrentLog: 'Скачать текущий лог',
             stressTest: 'Термические стресс-тесты',

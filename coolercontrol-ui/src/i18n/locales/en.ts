@@ -487,6 +487,8 @@ export default {
             gitRepositoryDesc: 'Submit Issues or Feature Requests',
             discord: 'Discord',
             discordDesc: 'Join our Discord community',
+            whatsNew: "What's New",
+            whatsNewDesc: 'See the latest release notes',
             logsAndDiagnostics: 'Logs and Diagnostics',
             downloadCurrentLog: 'Download Current Log',
             stressTest: 'Thermal Stress Tests',

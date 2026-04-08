@@ -532,6 +532,8 @@ export default {
             gitRepositoryDesc: '問題や機能リクエストを提出',
             discord: 'Discord',
             discordDesc: '私たちのDiscordコミュニティに参加',
+            whatsNew: '新着情報',
+            whatsNewDesc: '最新のリリースノートを見る',
             logsAndDiagnostics: 'ログと診断',
             downloadCurrentLog: '現在のログをダウンロード',
             stressTest: '熱ストレステスト',

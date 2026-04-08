@@ -25,6 +25,7 @@ import {
     mdiCircle,
     mdiGit,
     mdiHelpCircleOutline,
+    mdiNewBox,
     mdiToolboxOutline,
 } from '@mdi/js'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
@@ -492,6 +493,23 @@ onBeforeUnmount(() => {
                                 Discord
                             </div> </a
                         >&nbsp;- {{ t('views.appInfo.discordDesc') }}
+                    </p>
+                    <p class="mt-4 text-wrap flex flex-row items-center">
+                        <a
+                            target="_blank"
+                            href="https://gitlab.com/coolercontrol/coolercontrol/-/releases"
+                            class="text-accent"
+                        >
+                            <div class="flex flex-row items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    class="mr-2"
+                                    :path="mdiNewBox"
+                                    :size="deviceStore.getREMSize(2.0)"
+                                />
+                                {{ t('views.appInfo.whatsNew') }}
+                            </div> </a
+                        >&nbsp;- {{ t('views.appInfo.whatsNewDesc') }}
                     </p>
                 </div>
                 <!-- Stress Test -->

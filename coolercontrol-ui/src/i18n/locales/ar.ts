@@ -484,6 +484,8 @@ export default {
             gitRepositoryDesc: 'تقديم المشاكل أو طلبات الميزات',
             discord: 'Discord',
             discordDesc: 'انضم إلى مجتمعنا على Discord',
+            whatsNew: 'ما الجديد',
+            whatsNewDesc: 'اطلع على أحدث ملاحظات الإصدار',
             logsAndDiagnostics: 'السجلات والتشخيص',
             downloadCurrentLog: 'تنزيل السجل الحالي',
             stressTest: 'اختبارات الإجهاد الحراري',

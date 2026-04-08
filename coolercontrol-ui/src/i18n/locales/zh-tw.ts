@@ -397,6 +397,8 @@ export default {
             gitRepositoryDesc: '提交問題或功能請求',
             discord: 'Discord',
             discordDesc: '加入我們的Discord社群',
+            whatsNew: '最新動態',
+            whatsNewDesc: '查看最新版本說明',
             logsAndDiagnostics: '日誌和診斷',
             downloadCurrentLog: '下載當前日誌',
             stressTest: '熱壓力測試',
