@@ -17,34 +17,81 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiLinkVariant } from '@mdi/js'
 import { inject, Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
-import { usePluginIframe } from '@/composables/usePluginIframe.ts'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useI18n } from 'vue-i18n'
+import { PluginDto } from '@/models/Plugins.ts'
+
+const deviceStore = useDeviceStore()
+const { t } = useI18n()
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
-const pluginId = dialogRef.value.data.pluginId ?? 'Unknown'
-const closeDialog = () => {
-    dialogRef.value.close()
-}
-
-const pluginIframe = usePluginIframe(pluginId, 'modal', closeDialog)
+const plugin: PluginDto = dialogRef.value.data.plugin
 </script>
 
 <template>
-    <div class="flex flex-col min-w-[40vw] min-h-[40vw] w-[60vw] h-[80vh]">
-        <iframe
-            :ref="
-                (el: any) => {
-                    pluginIframe.iframeRef.value = el
-                }
-            "
-            :name="`iframe-${pluginId}`"
-            :src="pluginIframe.pluginUrl()"
-            class="w-full h-full"
-            sandbox="allow-scripts"
-        >
-            This browser does not support iframes.
-        </iframe>
+    <div class="flex flex-col min-w-[30vw] p-2">
+        <div v-if="plugin.description" class="text-wrap italic text-text-color-secondary mb-4">
+            {{ plugin.description }}
+        </div>
+        <table class="bg-bg-two rounded-lg w-full">
+            <tbody>
+                <tr class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold w-40">
+                        {{ t('layout.plugins.type') }}
+                    </td>
+                    <td class="py-3 px-4">{{ plugin.service_type }}</td>
+                </tr>
+                <tr v-if="plugin.version" class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('views.appInfo.version') }}
+                    </td>
+                    <td class="py-3 px-4">{{ plugin.version }}</td>
+                </tr>
+                <tr v-if="plugin.address" class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('layout.plugins.address') }}
+                    </td>
+                    <td class="py-3 px-4">
+                        <code>{{ plugin.address }}</code>
+                    </td>
+                </tr>
+                <tr class="border-b border-border-one">
+                    <td class="py-3 px-4 font-semibold">
+                        {{ t('layout.plugins.privileges') }}
+                    </td>
+                    <td class="py-3 px-4" :class="{ 'font-bold': plugin.privileged }">
+                        {{
+                            plugin.privileged
+                                ? t('layout.settings.plugins.privileged')
+                                : t('layout.settings.plugins.restricted')
+                        }}
+                    </td>
+                </tr>
+                <tr v-if="plugin.url">
+                    <td class="py-3 px-4 font-semibold">{{ t('layout.plugins.url') }}</td>
+                    <td class="py-3 px-4">
+                        <a
+                            class="inline-flex items-center gap-1 underline"
+                            :href="plugin.url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiLinkVariant"
+                                :size="deviceStore.getREMSize(1)"
+                            />
+                            {{ t('layout.settings.plugins.pluginUrl') }}
+                        </a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 </template>
 

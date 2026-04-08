@@ -32,14 +32,17 @@ import Tag from 'primevue/tag'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getPluginStatusDisplayName, PluginStatus } from '@/models/Plugins.ts'
+
+const STATUS_POLL_INTERVAL_MS = 30_000
 
 const deviceStore = useDeviceStore()
 const router = useRouter()
 const { t } = useI18n()
 
 const pluginStatuses = ref<Map<string, PluginStatus>>(new Map())
+let statusPollTimer: ReturnType<typeof setInterval> | undefined
 
 const pluginsList = computed(() => {
     return deviceStore.plugins.map((plugin) => ({
@@ -72,7 +75,16 @@ const onRowSelect = (event: DataTableRowSelectEvent) => {
     router.push({ name: 'plugin-page', params: { pluginId: event.data.id } })
 }
 
-onMounted(loadStatuses)
+onMounted(async () => {
+    await loadStatuses()
+    statusPollTimer = setInterval(loadStatuses, STATUS_POLL_INTERVAL_MS)
+})
+
+onUnmounted(() => {
+    if (statusPollTimer != null) {
+        clearInterval(statusPollTimer)
+    }
+})
 </script>
 
 <template>
@@ -166,6 +178,24 @@ onMounted(loadStatuses)
                     <Column field="version" :header="t('views.appInfo.version')">
                         <template #body="slotProps">
                             {{ slotProps.data.version ?? '-' }}
+                        </template>
+                    </Column>
+                    <Column field="description" :header="t('layout.plugins.description')">
+                        <template #body="slotProps">
+                            <span class="text-text-color-secondary text-sm">
+                                {{ slotProps.data.description ?? '-' }}
+                            </span>
+                        </template>
+                    </Column>
+                    <Column field="privileged" :header="t('layout.plugins.privileges')">
+                        <template #body="slotProps">
+                            <span :class="{ 'font-bold': slotProps.data.privileged }">
+                                {{
+                                    slotProps.data.privileged
+                                        ? t('layout.settings.plugins.privileged')
+                                        : t('layout.settings.plugins.restricted')
+                                }}
+                            </span>
                         </template>
                     </Column>
                 </DataTable>

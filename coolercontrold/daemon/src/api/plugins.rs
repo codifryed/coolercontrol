@@ -77,7 +77,6 @@ pub async fn has_ui(
         |plugin_ui_dir| {
             Json(HasUiDto {
                 has_ui: plugin_ui_dir.join("index.html").exists(),
-                has_full_page_ui: plugin_ui_dir.join("app.html").exists(),
             })
         },
     )
@@ -207,7 +206,6 @@ pub struct PluginDto {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct HasUiDto {
     pub has_ui: bool,
-    pub has_full_page_ui: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

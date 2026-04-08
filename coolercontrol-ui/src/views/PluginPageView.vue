@@ -19,8 +19,15 @@
 <script setup lang="ts">
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiCogs, mdiLinkVariant, mdiPlay, mdiPowerPlugOutline, mdiRestart, mdiStop } from '@mdi/js'
-import { computed, onMounted, ref } from 'vue'
+import {
+    mdiInformationOutline,
+    mdiLinkVariant,
+    mdiPlay,
+    mdiPowerPlugOutline,
+    mdiRestart,
+    mdiStop,
+} from '@mdi/js'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { usePluginIframe } from '@/composables/usePluginIframe.ts'
 import { useDialog } from 'primevue/usedialog'
@@ -32,9 +39,11 @@ import {
     PluginStatus,
     ServiceType,
 } from '@/models/Plugins.ts'
-import pluginUiModal from '@/layout/PluginUi.vue'
+import pluginMetadataModal from '@/layout/PluginUi.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+
+const STATUS_POLL_INTERVAL_MS = 30_000
 
 const props = defineProps<{ pluginId: string }>()
 
@@ -44,11 +53,11 @@ const toast = useToast()
 const { t } = useI18n()
 
 const plugin = ref<PluginDto | null>(null)
-const hasSettingsUi = ref(false)
-const hasFullPageUi = ref(false)
+const hasUi = ref(false)
 const pluginStatus = ref<PluginStatus>(PluginStatus.Unmanaged)
 const pluginStatusReason = ref<string | undefined>(undefined)
 const loading = ref(true)
+let statusPollTimer: ReturnType<typeof setInterval> | undefined
 
 const pluginIframe = usePluginIframe(props.pluginId, 'full_page')
 
@@ -72,10 +81,10 @@ const loadPluginData = async (): Promise<void> => {
     const pluginsDto = await deviceStore.daemonClient.loadPlugins()
     plugin.value = pluginsDto.plugins.find((p) => p.id === props.pluginId) ?? null
     const uiInfo = await deviceStore.daemonClient.hasPluginUi(props.pluginId)
-    hasSettingsUi.value = uiInfo.has_ui
-    hasFullPageUi.value = uiInfo.has_full_page_ui
+    hasUi.value = uiInfo.has_ui
     await refreshStatus()
     loading.value = false
+    statusPollTimer = setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS)
 }
 
 const refreshStatus = async (): Promise<void> => {
@@ -144,21 +153,27 @@ const restartPlugin = async (): Promise<void> => {
     await refreshStatus()
 }
 
-const openSettingsModal = (): void => {
-    dialog.open(pluginUiModal, {
+const openMetadataModal = (): void => {
+    if (plugin.value == null) return
+    dialog.open(pluginMetadataModal, {
         props: {
-            header: `${props.pluginId} ${t('layout.topbar.settings')}`,
+            header: `${props.pluginId} ${t('layout.plugins.info')}`,
             position: 'center',
             modal: true,
             dismissableMask: true,
         },
         data: {
-            pluginId: props.pluginId,
+            plugin: plugin.value,
         },
     })
 }
 
 onMounted(loadPluginData)
+onUnmounted(() => {
+    if (statusPollTimer != null) {
+        clearInterval(statusPollTimer)
+    }
+})
 </script>
 
 <template>
@@ -228,19 +243,17 @@ onMounted(loadPluginData)
                     </Button>
                 </template>
 
-                <!-- Settings gear -->
+                <!-- Plugin info button (visible for plugins with UI) -->
                 <Button
-                    v-if="hasSettingsUi"
-                    v-tooltip.bottom="t('layout.topbar.settings')"
-                    class="!bg-accent/80 hover:!bg-accent w-32 h-[2.375rem] !border !border-border-one"
+                    v-if="hasUi"
+                    v-tooltip.bottom="t('layout.plugins.info')"
+                    class="!bg-accent/80 hover:!bg-accent h-[2.375rem] !border !border-border-one"
                     text
-                    @click="openSettingsModal"
+                    @click="openMetadataModal"
                 >
-                    <!--                    class="!p-1.5 !border !border-border-one"-->
                     <svg-icon
                         type="mdi"
-                        class=""
-                        :path="mdiCogs"
+                        :path="mdiInformationOutline"
                         :size="deviceStore.getREMSize(1.5)"
                     />
                 </Button>
@@ -248,7 +261,7 @@ onMounted(loadPluginData)
         </div>
 
         <!-- Full-page iframe or info page -->
-        <div v-if="hasFullPageUi" class="flex-1 min-h-0">
+        <div v-if="hasUi" class="flex-1 min-h-0">
             <iframe
                 :ref="
                     (el: any) => {
@@ -256,7 +269,7 @@ onMounted(loadPluginData)
                     }
                 "
                 :name="`iframe-fullpage-${pluginId}`"
-                :src="pluginIframe.pluginUrl('app.html')"
+                :src="pluginIframe.pluginUrl()"
                 class="w-full h-full border-0"
                 sandbox="allow-scripts"
             >
@@ -264,7 +277,7 @@ onMounted(loadPluginData)
             </iframe>
         </div>
         <div v-else class="flex-1 p-6 overflow-auto">
-            <!-- Info/management page for plugins without app.html -->
+            <!-- Info/management page for plugins without a UI -->
             <div class="max-w-2xl mx-auto space-y-4">
                 <div v-if="plugin.description" class="text-wrap italic text-text-color-secondary">
                     {{ plugin.description }}

@@ -65,5 +65,4 @@ export class PluginStatusDto {
 
 export class HasUiDto {
     has_ui: boolean = false
-    has_full_page_ui: boolean = false
 }
