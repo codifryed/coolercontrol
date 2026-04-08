@@ -701,6 +701,7 @@ async fn initialize_device_repos(
                 Ok(repo) => {
                     plugin_controller = PluginController::new(
                         &repo,
+                        config.clone(),
                         repo.service_manager(),
                         repo.is_systemd(),
                         repo.is_open_rc(),

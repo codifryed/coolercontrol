@@ -42,6 +42,7 @@ import {
 import pluginMetadataModal from '@/layout/PluginUi.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 
 const STATUS_POLL_INTERVAL_MS = 30_000
 
@@ -62,11 +63,13 @@ let statusPollTimer: ReturnType<typeof setInterval> | undefined
 const pluginIframe = usePluginIframe(props.pluginId, 'full_page')
 
 const isIntegration = computed(() => plugin.value?.service_type === ServiceType.Integration)
+const isDisabled = computed(() => plugin.value?.disabled ?? false)
 const isManaged = computed(
-    () => isIntegration.value && pluginStatus.value !== PluginStatus.Unmanaged,
+    () => isIntegration.value && !isDisabled.value && pluginStatus.value !== PluginStatus.Unmanaged,
 )
 
-const statusSeverity = computed((): 'success' | 'danger' | 'secondary' => {
+const statusSeverity = computed((): 'success' | 'danger' | 'secondary' | 'warn' => {
+    if (isDisabled.value) return 'warn'
     switch (pluginStatus.value) {
         case PluginStatus.Running:
             return 'success'
@@ -75,6 +78,11 @@ const statusSeverity = computed((): 'success' | 'danger' | 'secondary' => {
         default:
             return 'secondary'
     }
+})
+
+const statusDisplayName = computed(() => {
+    if (isDisabled.value) return t('models.pluginStatus.disabled')
+    return getPluginStatusDisplayName(pluginStatus.value)
 })
 
 const loadPluginData = async (): Promise<void> => {
@@ -153,6 +161,49 @@ const restartPlugin = async (): Promise<void> => {
     await refreshStatus()
 }
 
+const togglePlugin = async (): Promise<void> => {
+    if (isDisabled.value) {
+        const success = await deviceStore.daemonClient.enablePlugin(props.pluginId)
+        if (success) {
+            toast.add({
+                severity: 'success',
+                summary: t('common.success'),
+                detail: isIntegration.value
+                    ? t('layout.plugins.pluginEnabled')
+                    : t('layout.plugins.pluginEnabledRestart'),
+                life: 4000,
+            })
+        } else {
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: t('layout.plugins.enableFailed'),
+                life: 3000,
+            })
+        }
+    } else {
+        const success = await deviceStore.daemonClient.disablePlugin(props.pluginId)
+        if (success) {
+            toast.add({
+                severity: 'success',
+                summary: t('common.success'),
+                detail: isIntegration.value
+                    ? t('layout.plugins.pluginDisabled')
+                    : t('layout.plugins.pluginDisabledRestart'),
+                life: 4000,
+            })
+        } else {
+            toast.add({
+                severity: 'error',
+                summary: t('common.error'),
+                detail: t('layout.plugins.disableFailed'),
+                life: 3000,
+            })
+        }
+    }
+    await loadPluginData()
+}
+
 const openMetadataModal = (): void => {
     if (plugin.value == null) return
     dialog.open(pluginMetadataModal, {
@@ -196,18 +247,23 @@ onUnmounted(() => {
                 <span v-if="plugin.version" class="text-text-color-secondary text-sm">
                     v{{ plugin.version }}
                 </span>
-                <Tag
-                    :value="getPluginStatusDisplayName(pluginStatus)"
-                    :severity="statusSeverity"
-                    class="ml-2"
-                />
+                <Tag :value="statusDisplayName" :severity="statusSeverity" class="ml-2" />
                 <span v-if="pluginStatusReason" class="text-text-color-secondary text-sm italic">
                     {{ pluginStatusReason }}
                 </span>
             </div>
 
-            <div class="pr-4 flex items-center gap-1">
-                <!-- Lifecycle controls (integration plugins only) -->
+            <div class="pr-4 flex items-center gap-2">
+                <!-- Enable/disable toggle -->
+                <ToggleSwitch
+                    v-tooltip.bottom="
+                        isDisabled ? t('layout.plugins.enable') : t('layout.plugins.disable')
+                    "
+                    :model-value="!isDisabled"
+                    @update:model-value="togglePlugin"
+                />
+
+                <!-- Lifecycle controls (managed integration plugins only, when enabled) -->
                 <template v-if="isManaged">
                     <Button
                         v-tooltip.bottom="t('layout.plugins.start')"
@@ -260,8 +316,8 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- Full-page iframe or info page -->
-        <div v-if="hasUi" class="flex-1 min-h-0">
+        <!-- Full-page iframe (only when enabled and has UI) -->
+        <div v-if="hasUi && !isDisabled" class="flex-1 min-h-0">
             <iframe
                 :ref="
                     (el: any) => {
@@ -277,7 +333,7 @@ onUnmounted(() => {
             </iframe>
         </div>
         <div v-else class="flex-1 p-6 overflow-auto">
-            <!-- Info/management page for plugins without a UI -->
+            <!-- Info/management page for disabled plugins or plugins without a UI -->
             <div class="max-w-2xl mx-auto space-y-4">
                 <div v-if="plugin.description" class="text-wrap italic text-text-color-secondary">
                     {{ plugin.description }}

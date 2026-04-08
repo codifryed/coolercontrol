@@ -51,7 +51,11 @@ const pluginsList = computed(() => {
     }))
 })
 
-const statusSeverity = (status: PluginStatus): 'success' | 'danger' | 'secondary' => {
+const statusSeverity = (
+    status: PluginStatus,
+    disabled: boolean,
+): 'success' | 'danger' | 'secondary' | 'warn' => {
+    if (disabled) return 'warn'
     switch (status) {
         case PluginStatus.Running:
             return 'success'
@@ -62,9 +66,15 @@ const statusSeverity = (status: PluginStatus): 'success' | 'danger' | 'secondary
     }
 }
 
+const statusDisplayName = (status: PluginStatus, disabled: boolean): string => {
+    if (disabled) return t('models.pluginStatus.disabled')
+    return getPluginStatusDisplayName(status)
+}
+
 const loadStatuses = async (): Promise<void> => {
     const statuses = new Map<string, PluginStatus>()
     for (const plugin of deviceStore.plugins) {
+        if (plugin.disabled) continue
         const statusDto = await deviceStore.daemonClient.getPluginStatus(plugin.id)
         statuses.set(plugin.id, statusDto.status as PluginStatus)
     }
@@ -170,8 +180,15 @@ onUnmounted(() => {
                     <Column field="status" :header="t('common.state')">
                         <template #body="slotProps">
                             <Tag
-                                :value="getPluginStatusDisplayName(slotProps.data.status)"
-                                :severity="statusSeverity(slotProps.data.status)"
+                                :value="
+                                    statusDisplayName(
+                                        slotProps.data.status,
+                                        slotProps.data.disabled,
+                                    )
+                                "
+                                :severity="
+                                    statusSeverity(slotProps.data.status, slotProps.data.disabled)
+                                "
                             />
                         </template>
                     </Column>

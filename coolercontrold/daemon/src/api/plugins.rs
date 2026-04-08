@@ -123,6 +123,26 @@ pub async fn get_plugin_status(
         .map_err(handle_error)
 }
 
+pub async fn disable_plugin(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    plugin_handle
+        .disable_plugin(path.plugin_id)
+        .await
+        .map_err(handle_error)
+}
+
+pub async fn enable_plugin(
+    Path(path): Path<PluginPath>,
+    State(AppState { plugin_handle, .. }): State<AppState>,
+) -> Result<(), CCError> {
+    plugin_handle
+        .enable_plugin(path.plugin_id)
+        .await
+        .map_err(handle_error)
+}
+
 pub async fn get_ui_files(
     Path(path): Path<PluginUiPath>,
     State(AppState { plugin_handle, .. }): State<AppState>,
@@ -201,6 +221,7 @@ pub struct PluginDto {
     pub address: String,
     pub privileged: bool,
     pub path: String,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

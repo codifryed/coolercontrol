@@ -815,6 +815,7 @@ fn settings_routes() -> ApiRouter<AppState> {
         )
 }
 
+#[allow(clippy::too_many_lines)]
 fn plugins_routes() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
@@ -893,6 +894,26 @@ fn plugins_routes() -> ApiRouter<AppState> {
             get_with(plugins::get_plugin_status, |o| {
                 o.summary("CoolerControl Plugin Status")
                     .description("Returns the status of a plugin's service.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/disable",
+            post_with(plugins::disable_plugin, |o| {
+                o.summary("Disable CoolerControl Plugin")
+                    .description("Disables a plugin persistently. Stops integration services immediately.")
+                    .tag("plugins")
+                    .security_requirement("CookieAuth")
+            })
+            .layer(axum::middleware::from_fn(auth::session_auth_middleware)),
+        )
+        .api_route(
+            "/plugins/{plugin_id}/enable",
+            post_with(plugins::enable_plugin, |o| {
+                o.summary("Enable CoolerControl Plugin")
+                    .description("Re-enables a disabled plugin. Starts integration services immediately.")
                     .tag("plugins")
                     .security_requirement("CookieAuth")
             })

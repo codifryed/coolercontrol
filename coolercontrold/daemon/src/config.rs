@@ -1203,6 +1203,41 @@ impl Config {
         )));
     }
 
+    /// Returns the list of disabled plugin IDs from config.
+    pub fn get_disabled_plugins(&self) -> Vec<String> {
+        let doc = self.document.borrow();
+        let Some(settings) = doc.get("settings") else {
+            return Vec::new();
+        };
+        let Some(value) = settings.get("disabled_plugins") else {
+            return Vec::new();
+        };
+        let Some(array) = value.as_array() else {
+            warn!("disabled_plugins should be an array");
+            return Vec::new();
+        };
+        array
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| s.is_empty().not())
+            .collect()
+    }
+
+    /// Persists the list of disabled plugin IDs to config.
+    pub fn set_disabled_plugins(&self, plugin_ids: &[String]) {
+        let mut doc = self.document.borrow_mut();
+        let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
+        if plugin_ids.is_empty() {
+            base_settings["disabled_plugins"] = Item::None;
+        } else {
+            let array: toml_edit::Array = plugin_ids
+                .iter()
+                .map(|s| Value::String(Formatted::new(s.clone())))
+                .collect();
+            base_settings["disabled_plugins"] = Item::Value(Value::Array(array));
+        }
+    }
+
     /// This gets the `CoolerControl` settings for specific devices
     /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
@@ -2449,6 +2484,89 @@ mod tests {
             assert!(all.is_empty(), "should be empty after removal");
 
             // teardown:
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_disabled_plugins_missing_key_returns_empty() {
+        cc_fs::test_runtime(async {
+            let path = Path::new("/tmp/config-disabled-plugins-empty.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-empty.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            let result = config.get_disabled_plugins();
+            assert!(
+                result.is_empty(),
+                "should return empty vec when key missing"
+            );
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_disabled_plugins_roundtrip() {
+        cc_fs::test_runtime(async {
+            let path = Path::new("/tmp/config-disabled-plugins-roundtrip.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-roundtrip.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            let ids = vec!["plugin-a".to_string(), "plugin-b".to_string()];
+            config.set_disabled_plugins(&ids);
+            let result = config.get_disabled_plugins();
+            assert_eq!(result, ids);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_disabled_plugins_empty_list_removes_key() {
+        cc_fs::test_runtime(async {
+            let path = Path::new("/tmp/config-disabled-plugins-remove.toml").to_path_buf();
+            let path_ui = Path::new("/tmp/config-ui-disabled-plugins-remove.json").to_path_buf();
+            let config_content = Config::create_new_config_file(&path).await.unwrap();
+            let document = config_content.parse::<DocumentMut>().unwrap();
+            let config = Config {
+                path: path.clone(),
+                path_ui,
+                document: RefCell::new(document),
+            };
+
+            // Set then clear
+            config.set_disabled_plugins(&["plugin-x".to_string()]);
+            assert_eq!(config.get_disabled_plugins().len(), 1);
+
+            config.set_disabled_plugins(&[]);
+            assert!(
+                config.get_disabled_plugins().is_empty(),
+                "should be empty after setting empty list"
+            );
+
+            // Verify the key is actually removed from the document
+            let doc = config.document.borrow();
+            assert!(
+                doc["settings"].get("disabled_plugins").is_none(),
+                "key should be removed from document"
+            );
+
+            drop(doc);
             cc_fs::remove_file(path).await.unwrap();
         });
     }

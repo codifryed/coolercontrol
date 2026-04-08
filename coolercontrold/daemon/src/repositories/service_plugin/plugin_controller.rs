@@ -18,6 +18,7 @@
 
 use crate::api::CCError;
 use crate::cc_fs;
+use crate::config::Config;
 use crate::repositories::service_plugin::service_management::manager::{
     Manager, ServiceManager, ServiceStatus,
 };
@@ -26,12 +27,13 @@ use crate::repositories::service_plugin::service_manifest::{ServiceManifest, Ser
 use crate::repositories::service_plugin::service_plugin_repo::{ServicePluginRepo, CC_PLUGIN_USER};
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::fs::Permissions;
 use std::ops::Not;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Duration;
 
 pub const PLUGIN_CONFIG_FILE_NAME: &str = "config.json";
@@ -40,6 +42,7 @@ const PLUGIN_CONFIG_FILE_PERMISSIONS: u32 = 0o600;
 
 pub struct PluginController {
     pub plugins: HashMap<ServiceId, ServiceManifest>,
+    config: Option<Rc<Config>>,
     service_manager: Manager,
     is_systemd: bool,
     is_open_rc: bool,
@@ -48,12 +51,14 @@ pub struct PluginController {
 impl PluginController {
     pub fn new(
         service_plugin_repo: &ServicePluginRepo,
+        config: Rc<Config>,
         service_manager: Manager,
         is_systemd: bool,
         is_open_rc: bool,
     ) -> Self {
         Self {
             plugins: service_plugin_repo.get_plugins(),
+            config: Some(config),
             service_manager,
             is_systemd,
             is_open_rc,
@@ -65,6 +70,7 @@ impl PluginController {
     pub fn new_disabled() -> Self {
         Self {
             plugins: HashMap::with_capacity(0),
+            config: None,
             service_manager: Manager::Disabled,
             is_systemd: false,
             is_open_rc: false,
@@ -209,6 +215,69 @@ impl PluginController {
             .status(&service_id)
             .await
             .with_context(|| format!("Getting plugin service status: {plugin_id}"))
+    }
+
+    /// Disable a plugin persistently.
+    /// Integration plugins have their service stopped immediately.
+    /// Device plugins require a daemon restart.
+    pub async fn disable_plugin(&self, plugin_id: &str) -> Result<()> {
+        let manifest = self
+            .plugins
+            .get(plugin_id)
+            .ok_or_else(|| CCError::NotFound {
+                msg: "Plugin not found".to_string(),
+            })?;
+        let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
+            msg: "No config available".to_string(),
+        })?;
+        let mut disabled = config.get_disabled_plugins();
+        if disabled.contains(&plugin_id.to_string()).not() {
+            disabled.push(plugin_id.to_string());
+            config.set_disabled_plugins(&disabled);
+            config.save_config_file().await?;
+        }
+        // Stop integration plugins immediately
+        if manifest.service_type == ServiceType::Integration && manifest.is_managed() {
+            if let Err(err) = self.stop_plugin(plugin_id).await {
+                info!("Could not stop plugin service on disable: {err}");
+            }
+        }
+        Ok(())
+    }
+
+    /// Enable a previously disabled plugin.
+    /// Integration plugins have their service started immediately.
+    /// Device plugins require a daemon restart.
+    pub async fn enable_plugin(&self, plugin_id: &str) -> Result<()> {
+        let manifest = self
+            .plugins
+            .get(plugin_id)
+            .ok_or_else(|| CCError::NotFound {
+                msg: "Plugin not found".to_string(),
+            })?;
+        let config = self.config.as_ref().ok_or_else(|| CCError::InternalError {
+            msg: "No config available".to_string(),
+        })?;
+        let mut disabled = config.get_disabled_plugins();
+        if let Some(pos) = disabled.iter().position(|id| id == plugin_id) {
+            disabled.swap_remove(pos);
+            config.set_disabled_plugins(&disabled);
+            config.save_config_file().await?;
+        }
+        // Start integration plugins immediately
+        if manifest.service_type == ServiceType::Integration && manifest.is_managed() {
+            if let Err(err) = self.start_plugin(plugin_id).await {
+                info!("Could not start plugin service on enable: {err}");
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if a plugin is disabled in config.
+    pub fn is_plugin_disabled(&self, plugin_id: &str) -> bool {
+        self.config
+            .as_ref()
+            .is_some_and(|c| c.get_disabled_plugins().contains(&plugin_id.to_string()))
     }
 
     /// Validate that a plugin is an integration type and return its service ID.

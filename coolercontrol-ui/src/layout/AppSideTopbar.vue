@@ -253,6 +253,7 @@ const pluginItems = computed(() => {
             id: plugin.id,
             label: plugin.id,
             mdiIcon: mdiPowerPlugOutline,
+            pluginDisabled: plugin.disabled,
             command: async () => {
                 pluginMenuRef.value?.handleClose()
                 await router.push({ name: 'plugin-page', params: { pluginId: plugin.id } })
@@ -757,6 +758,7 @@ onBeforeUnmount(() => {
                                     :class="{
                                         'text-accent':
                                             router.currentRoute.value.params.pluginId === item.id,
+                                        'opacity-50': item.pluginDisabled,
                                     }"
                                 >
                                     <svg-icon

@@ -31,6 +31,7 @@ export class PluginDto {
     address: String = ''
     privileged: boolean = false
     path: String = ''
+    disabled: boolean = false
 }
 
 export enum ServiceType {

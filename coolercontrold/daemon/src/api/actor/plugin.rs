@@ -65,6 +65,14 @@ enum PluginMessage {
         plugin_id: String,
         respond_to: oneshot::Sender<Result<PluginStatusDto>>,
     },
+    DisablePlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
+    EnablePlugin {
+        plugin_id: String,
+        respond_to: oneshot::Sender<Result<()>>,
+    },
 }
 impl PluginActor {
     pub fn new(
@@ -106,6 +114,7 @@ impl ApiActor<PluginMessage> for PluginActor {
                         address,
                         privileged: manifest.privileged,
                         path: manifest.path.display().to_string(),
+                        disabled: self.plugin_controller.is_plugin_disabled(&manifest.id),
                     });
                 }
                 let _ = respond_to.send(PluginsDto { plugins });
@@ -168,6 +177,20 @@ impl ApiActor<PluginMessage> for PluginActor {
                     .get_plugin_status(&plugin_id)
                     .await
                     .map(|status| status.into());
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::DisablePlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.disable_plugin(&plugin_id).await;
+                let _ = respond_to.send(result);
+            }
+            PluginMessage::EnablePlugin {
+                plugin_id,
+                respond_to,
+            } => {
+                let result = self.plugin_controller.enable_plugin(&plugin_id).await;
                 let _ = respond_to.send(result);
             }
         }
@@ -262,6 +285,26 @@ impl PluginHandle {
     pub async fn get_plugin_status(&self, plugin_id: String) -> Result<PluginStatusDto> {
         let (tx, rx) = oneshot::channel();
         let msg = PluginMessage::GetStatus {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn disable_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::DisablePlugin {
+            plugin_id,
+            respond_to: tx,
+        };
+        let _ = self.sender.send(msg).await;
+        rx.await?
+    }
+
+    pub async fn enable_plugin(&self, plugin_id: String) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        let msg = PluginMessage::EnablePlugin {
             plugin_id,
             respond_to: tx,
         };

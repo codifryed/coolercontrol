@@ -1362,6 +1362,28 @@ export default class DaemonClient {
         }
     }
 
+    async disablePlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/disable`)
+            this.logDaemonResponse(response, 'Disable Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async enablePlugin(pluginId: string): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(`/plugins/${pluginId}/enable`)
+            this.logDaemonResponse(response, 'Enable Plugin')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
     /* Access Tokens */
 
     async listTokens(): Promise<AccessTokenInfo[] | ErrorResponse> {

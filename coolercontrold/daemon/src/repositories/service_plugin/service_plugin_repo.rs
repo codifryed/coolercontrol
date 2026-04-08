@@ -769,8 +769,17 @@ impl Repository for ServicePluginRepo {
                 warn!("Failed to delete plugin user '{CC_PLUGIN_USER}': {err}");
             }
         }
+        let disabled_plugins: HashSet<String> =
+            self.config.get_disabled_plugins().into_iter().collect();
         moro_local::async_scope!(|service_init_scope| {
             for (service_id, service_manifest) in Self::find_service_manifests().await {
+                if disabled_plugins.contains(&service_id) {
+                    info!("Skipping disabled plugin: {service_id}");
+                    services
+                        .borrow_mut()
+                        .insert(service_id, (None, service_manifest));
+                    continue;
+                }
                 let service_manager = Rc::clone(&service_manager);
                 let services = Rc::clone(&services);
                 let devices = Rc::clone(&devices);
