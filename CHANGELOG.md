@@ -88,6 +88,10 @@ Release notes are automatically generated from this file and git tags.
 - Alert command inputs are now sanitized
 - CORS origin and related settings are now configurable
 - OpenAPI spec is only exposed in debug builds
+- Fixed command injection vulnerability CVE-2026-5208 (reported by lassi-3)
+- Fixed exposed hardware info vulnerability CVE-2026-5300 (reported by lassi-3)
+- Fixed XSS injection vulnerability CVE-2026-5301 (reported by lassi-3)
+- Fixed CORS vulnerability CVE-2026-5302 (reported by lassi-3)
 
 ### Added
 
