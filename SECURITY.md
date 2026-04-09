@@ -42,3 +42,12 @@ vulnerability:
 
 We appreciate responsible disclosure and will credit reporters in the CVE and release notes unless
 you prefer to remain anonymous.
+
+## Known Vulnerabilities
+
+| CVE           | Fixed In | Credit  | Report                                                          |
+| ------------- | -------- | ------- | --------------------------------------------------------------- |
+| CVE-2026-5208 | 4.0.0    | lassi-3 | [CVE-2026-5208](https://www.cve.org/CVERecord?id=CVE-2026-5208) |
+| CVE-2026-5300 | 4.0.0    | lassi-3 | [CVE-2026-5300](https://www.cve.org/CVERecord?id=CVE-2026-5300) |
+| CVE-2026-5301 | 4.0.0    | lassi-3 | [CVE-2026-5301](https://www.cve.org/CVERecord?id=CVE-2026-5301) |
+| CVE-2026-5302 | 4.0.0    | lassi-3 | [CVE-2026-5302](https://www.cve.org/CVERecord?id=CVE-2026-5302) |
