@@ -534,6 +534,8 @@ export default {
             gitRepositoryDesc: 'Probleme melden oder Funktionen anfragen',
             discord: 'Discord',
             discordDesc: 'Treten Sie unserer Discord-Community bei',
+            whatsNew: 'Was ist neu',
+            whatsNewDesc: 'Neueste Versionshinweise anzeigen',
             logsAndDiagnostics: 'Logs und Diagnose',
             downloadCurrentLog: 'Aktuelle Logs herunterladen',
             stressTest: 'Thermische Stresstests',

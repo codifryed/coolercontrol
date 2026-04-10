@@ -468,6 +468,8 @@ export default {
             gitRepositoryDesc: 'समस्याएं या सुविधा अनुरोध सबमिट करें',
             discord: 'Discord',
             discordDesc: 'हमारे Discord समुदाय से जुड़ें',
+            whatsNew: 'नया क्या है',
+            whatsNewDesc: 'नवीनतम रिलीज़ नोट्स देखें',
             logsAndDiagnostics: 'लॉग और डायग्नोस्टिक्स',
             downloadCurrentLog: 'वर्तमान लॉग डाउनलोड करें',
             stressTest: 'थर्मल स्ट्रेस टेस्ट',

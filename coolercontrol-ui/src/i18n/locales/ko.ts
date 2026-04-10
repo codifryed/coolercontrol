@@ -520,6 +520,8 @@ export default {
             gitRepositoryDesc: '문제 또는 기능 요청 제출',
             discord: '디스코드',
             discordDesc: '디스코드 커뮤니티 참여',
+            whatsNew: '새로운 소식',
+            whatsNewDesc: '최신 릴리스 노트 보기',
             logsAndDiagnostics: '로그 및 진단',
             downloadCurrentLog: '현재 로그 다운로드',
             stressTest: '열 스트레스 테스트',
