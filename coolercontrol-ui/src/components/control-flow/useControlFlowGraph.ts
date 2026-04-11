@@ -178,9 +178,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             profileUID: UID,
             fanNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): string | undefined {
-            if (depth > 2) return undefined
             const nodeId = `profile::${profileUID}`
             if (visited.has(nodeId)) {
                 addEdge(nodeId, fanNodeId)
@@ -237,11 +235,11 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 )
             } else if (profile.p_type === ProfileType.Mix) {
                 for (const memberUID of profile.member_profile_uids) {
-                    traceProfileChain(memberUID, nodeId, visited, depth + 1)
+                    traceProfileChain(memberUID, nodeId, visited)
                 }
             } else if (profile.p_type === ProfileType.Overlay) {
                 if (profile.member_profile_uids.length > 0) {
-                    traceProfileChain(profile.member_profile_uids[0], nodeId, visited, depth + 1)
+                    traceProfileChain(profile.member_profile_uids[0], nodeId, visited)
                 }
             }
 
@@ -253,10 +251,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             tempName: string,
             parentNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): void {
-            if (depth > 2) return
-
             // Check if temp source is from a custom sensor device
             let isCustomSensor = false
             for (const device of deviceStore.allDevices()) {
@@ -267,7 +262,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             }
 
             if (isCustomSensor) {
-                traceCustomSensor(tempName, deviceUID, parentNodeId, visited, depth)
+                traceCustomSensor(tempName, deviceUID, parentNodeId, visited)
             } else {
                 const tempNodeId = `temp::${deviceUID}::${tempName}`
                 if (!visited.has(tempNodeId)) {
@@ -302,9 +297,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             deviceUID: UID,
             parentNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): void {
-            if (depth > 2) return
             const csNodeId = `cs::${sensorId}`
             if (!visited.has(csNodeId)) {
                 visited.add(csNodeId)
@@ -333,7 +326,6 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                             source.temp_source.temp_name,
                             csNodeId,
                             visited,
-                            depth + 1,
                         )
                     }
                 }
