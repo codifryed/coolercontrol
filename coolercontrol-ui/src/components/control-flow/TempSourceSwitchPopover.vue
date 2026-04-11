@@ -48,7 +48,6 @@ interface TempOption {
     tempName: string
     tempLabel: string
     tempColor: string
-    temp?: string
 }
 
 interface DeviceGroup {
@@ -70,7 +69,6 @@ const deviceGroups = computed<DeviceGroup[]>(() => {
                 tempName: temp.name,
                 tempLabel: deviceSettings.sensorsAndChannels.get(temp.name)?.name ?? temp.name,
                 tempColor: deviceSettings.sensorsAndChannels.get(temp.name)?.color ?? '#568af2',
-                temp: temp.temp.toFixed(1),
             })
         }
         if (temps.length > 0) {
@@ -83,6 +81,10 @@ const deviceGroups = computed<DeviceGroup[]>(() => {
     }
     return groups
 })
+
+function liveTemp(deviceUID: string, tempName: string): string | undefined {
+    return deviceStore.currentDeviceStatus.get(deviceUID)?.get(tempName)?.temp
+}
 
 function toggle(event: Event) {
     popRef.value?.toggle(event)
@@ -142,8 +144,11 @@ defineExpose({ toggle })
                         <span class="flex-1 truncate text-sm text-text-color">
                             {{ temp.tempLabel }}
                         </span>
-                        <span v-if="temp.temp" class="text-xs text-text-color-secondary">
-                            {{ temp.temp }}{{ t('common.tempUnit') }}
+                        <span
+                            v-if="liveTemp(temp.deviceUID, temp.tempName)"
+                            class="text-xs text-text-color-secondary"
+                        >
+                            {{ liveTemp(temp.deviceUID, temp.tempName) }}{{ t('common.tempUnit') }}
                         </span>
                     </div>
                 </template>
