@@ -122,7 +122,7 @@ function onClick() {
             <div
                 v-if="showSwapButton"
                 v-tooltip.top="t('views.controls.switchProfile')"
-                class="flex size-8 items-center justify-center rounded-md opacity-0 transition-all hover:bg-accent/15 group-hover/node:opacity-100"
+                class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
                 @click="onSwapClick"
             >
                 <svg-icon

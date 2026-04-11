@@ -135,7 +135,7 @@ const typeBadgeClass: Record<string, string> = {
                           ? t('views.controls.switchMembers')
                           : t('views.controls.switchBaseProfile')
                 "
-                class="flex size-8 items-center justify-center rounded-md opacity-0 transition-all hover:bg-accent/15 group-hover/node:opacity-100"
+                class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
                 @click="
                     data.profileType === ProfileType.Graph
                         ? onSwapTempSource($event)
@@ -194,7 +194,7 @@ const typeBadgeClass: Record<string, string> = {
                 <div
                     v-if="showSwapButtons"
                     v-tooltip.top="t('views.controls.switchFunction')"
-                    class="flex size-6 items-center justify-center rounded opacity-0 transition-all hover:bg-accent/15 group-hover/node:opacity-100"
+                    class="flex size-6 items-center justify-center rounded transition-all hover:bg-accent/15"
                     @click="onSwapFunction"
                 >
                     <svg-icon
