@@ -103,7 +103,7 @@ const V_PADDING = deviceStore.getREMSize(4)
 
 const selectedFanKey = ref(`${props.deviceUID}/${props.channelName}`)
 const { nodes, edges, loadCustomSensors } = useControlFlowGraph(selectedFanKey)
-const { onPaneReady, setViewport, dimensions } = useVueFlow('channel-control-flow')
+const { onPaneReady, setViewport, dimensions, onMove } = useVueFlow('channel-control-flow')
 
 onMounted(async () => {
     await loadCustomSensors()
@@ -136,13 +136,51 @@ function fitToContent() {
     // can pan right to explore. This keeps nodes legible (~195px+ wide) even for
     // complex 5-column chains.
     const vpWidth = dimensions.value.width
-    const zoom = Math.min(Math.max((vpWidth - H_PADDING * 2) / contentWidth, DEFAULT_ZOOM), MAX_ZOOM)
+    const zoom = Math.min(
+        Math.max((vpWidth - H_PADDING * 2) / contentWidth, DEFAULT_ZOOM),
+        MAX_ZOOM,
+    )
     setViewport({
         x: H_PADDING - minX * zoom,
         y: V_PADDING - minY * zoom + V_PADDING,
         zoom,
     })
 }
+
+const contentBounds = computed(() => {
+    if (nodes.value.length === 0) return null
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    for (const node of nodes.value) {
+        minX = Math.min(minX, node.position.x)
+        maxX = Math.max(maxX, node.position.x + NODE_WIDTH)
+        minY = Math.min(minY, node.position.y)
+        maxY = Math.max(maxY, node.position.y + NODE_HEIGHT)
+    }
+    return { minX, maxX, minY, maxY }
+})
+
+// Clamp viewport so at least EXTENT_MARGIN screen-pixels of content remain visible
+const nodeWidth = NODE_WIDTH + H_PADDING
+const nodeHeight = NODE_HEIGHT + V_PADDING
+onMove(({ flowTransform }) => {
+    const bounds = contentBounds.value
+    if (!bounds) return
+    const { x, y, zoom } = flowTransform
+    const vpW = dimensions.value.width
+    const vpH = dimensions.value.height
+    const xMin = nodeWidth - bounds.maxX * zoom
+    const xMax = vpW - nodeWidth - bounds.minX * zoom
+    const yMin = nodeHeight - bounds.maxY * zoom
+    const yMax = vpH - nodeHeight - bounds.minY * zoom
+    const clampedX = Math.max(xMin, Math.min(xMax, x))
+    const clampedY = Math.max(yMin, Math.min(yMax, y))
+    if (clampedX !== x || clampedY !== y) {
+        setViewport({ x: clampedX, y: clampedY, zoom })
+    }
+})
 
 const channelLabel = computed(() => {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)
@@ -187,6 +225,7 @@ const channelLabel = computed(() => {
             pan-on-drag
             pan-on-scroll
             :zoom-on-scroll="false"
+            :zoom-on-pinch="true"
             :zoom-on-double-click="false"
             class="flex-1"
         >
