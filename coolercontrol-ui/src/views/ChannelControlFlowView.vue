@@ -78,10 +78,11 @@ provide('openNodeDrawer', openNodeDrawer)
 
 const flashEdges = ref(false)
 function onProfileSwitched() {
+    if (!settingsStore.eyeCandy) return
     flashEdges.value = true
     setTimeout(() => {
         flashEdges.value = false
-    }, 600)
+    }, 1500)
 }
 provide('onProfileSwitched', onProfileSwitched)
 
@@ -290,19 +291,27 @@ const channelLabel = computed(() => {
 }
 
 @keyframes edge-flash {
-    0% {
-        stroke: rgb(var(--colors-accent));
-        stroke-width: 3;
-        opacity: 1;
-    }
+    0%,
     100% {
         stroke: rgb(var(--colors-accent));
         stroke-width: 1.5;
-        opacity: 0.6;
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    15%,
+    55% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 5;
+        filter: drop-shadow(0 0 6px rgb(var(--colors-accent)));
+    }
+    35%,
+    75% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 2.5;
+        filter: drop-shadow(0 0 2px rgb(var(--colors-accent)));
     }
 }
 
 .vue-flow__edge.flash path {
-    animation: edge-flash 0.6s ease-out;
+    animation: edge-flash 1.5s ease-in-out;
 }
 </style>
