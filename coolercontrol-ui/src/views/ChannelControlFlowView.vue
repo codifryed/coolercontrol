@@ -258,12 +258,6 @@ const channelLabel = computed(() => {
                 :line-width="1"
                 :gap="deviceStore.getREMSize(6)"
             />
-            <MiniMap
-                pannable
-                zoomable
-                :mask-color="colorStore.rgbToHex(colorStore.themeColors.bg_two) + '50'"
-                :node-color="colorStore.rgbToHex(colorStore.themeColors.text_color_secondary)"
-            />
             <Controls :show-interactive="false" class="!bg-bg-two" />
         </VueFlow>
 
