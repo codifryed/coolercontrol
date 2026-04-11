@@ -153,28 +153,39 @@ const contentBounds = computed(() => {
     let maxX = -Infinity
     let minY = Infinity
     let maxY = -Infinity
+    const colSet = new Set<number>()
+    const rowsPerCol = new Map<number, number>()
     for (const node of nodes.value) {
         minX = Math.min(minX, node.position.x)
         maxX = Math.max(maxX, node.position.x + NODE_WIDTH)
         minY = Math.min(minY, node.position.y)
         maxY = Math.max(maxY, node.position.y + NODE_HEIGHT)
+        colSet.add(node.position.x)
+        rowsPerCol.set(node.position.x, (rowsPerCol.get(node.position.x) ?? 0) + 1)
     }
-    return { minX, maxX, minY, maxY }
+    const cols = colSet.size
+    const maxRows = Math.max(...rowsPerCol.values())
+    return { minX, maxX, minY, maxY, cols, maxRows }
 })
 
 // Clamp viewport so at least EXTENT_MARGIN screen-pixels of content remain visible
-const nodeWidth = NODE_WIDTH + H_PADDING
-const nodeHeight = NODE_HEIGHT + V_PADDING
 onMove(({ flowTransform }) => {
     const bounds = contentBounds.value
     if (!bounds) return
     const { x, y, zoom } = flowTransform
     const vpW = dimensions.value.width
     const vpH = dimensions.value.height
+    const nodesWidth = NODE_WIDTH * bounds.cols
+    const nodesHeight = NODE_HEIGHT * bounds.maxRows
+    const nodeWidth = Math.min(nodesWidth, vpW)
+    const nodeHeight = Math.min(nodesHeight, vpH)
+    const widthWithXMaxOffset = nodeWidth - (nodesWidth > vpW ? H_PADDING * bounds.cols : H_PADDING)
+    const heightWithYMinOffset = nodesHeight > vpH ? nodeHeight - V_PADDING : nodeHeight + V_PADDING
+    const heightWithYMaxOffset = nodesHeight > vpH ? nodeHeight - V_PADDING : nodeHeight + V_PADDING
     const xMin = nodeWidth - bounds.maxX * zoom
-    const xMax = vpW - nodeWidth - bounds.minX * zoom
-    const yMin = nodeHeight - bounds.maxY * zoom
-    const yMax = vpH - nodeHeight - bounds.minY * zoom
+    const xMax = vpW - widthWithXMaxOffset - bounds.minX * zoom
+    const yMin = heightWithYMinOffset - bounds.maxY * zoom
+    const yMax = vpH - heightWithYMaxOffset - bounds.minY * zoom
     const clampedX = Math.max(xMin, Math.min(xMax, x))
     const clampedY = Math.max(yMin, Math.min(yMax, y))
     if (clampedX !== x || clampedY !== y) {
