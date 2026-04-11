@@ -94,7 +94,8 @@ const styledEdges = computed(() =>
 )
 
 const MAX_ZOOM = 1.2
-const MIN_ZOOM = 1.0
+const DEFAULT_ZOOM = 1.0
+const MIN_ZOOM = 0.4
 const NODE_WIDTH = 260
 const H_PADDING = deviceStore.getREMSize(1)
 const V_PADDING = deviceStore.getREMSize(4)
@@ -126,12 +127,12 @@ function fitToWidth() {
     const contentWidth = maxRight - minX
     if (contentWidth === 0) return
 
-    // Clamp between MIN_ZOOM and MAX_ZOOM. When the chain is too wide to fit at
-    // MIN_ZOOM, start at MIN_ZOOM with the fan node (left side) visible — the user
+    // Clamp between DEFAULT_ZOOM and MAX_ZOOM. When the chain is too wide to fit at
+    // DEFAULT_ZOOM, start at DEFAULT_ZOOM with the fan node (left side) visible — the user
     // can pan right to explore. This keeps nodes legible (~195px+ wide) even for
     // complex 5-column chains.
     const vpWidth = dimensions.value.width
-    const zoom = Math.min(Math.max((vpWidth - H_PADDING * 2) / contentWidth, MIN_ZOOM), MAX_ZOOM)
+    const zoom = Math.min(Math.max((vpWidth - H_PADDING * 2) / contentWidth, DEFAULT_ZOOM), MAX_ZOOM)
     setViewport({
         x: H_PADDING - minX * zoom,
         y: V_PADDING - minY * zoom + V_PADDING,
@@ -173,7 +174,9 @@ const channelLabel = computed(() => {
             id="channel-control-flow"
             :nodes="nodes"
             :edges="styledEdges"
-            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MIN_ZOOM }"
+            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: DEFAULT_ZOOM }"
+            :min-zoom="MIN_ZOOM"
+            :max-zoom="MAX_ZOOM"
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
