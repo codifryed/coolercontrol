@@ -42,7 +42,7 @@
         "uuid": "^13.0.0",
         "v-onboarding": "^2.12.2",
         "vite-plugin-package-version": "^1.1.0",
-        "vue": "^3.5.32",
+        "vue": "3.5.31",
         "vue-color": "^3.3.3",
         "vue-draggable-plus": "^0.6.1",
         "vue-echarts": "^8.0.1",
