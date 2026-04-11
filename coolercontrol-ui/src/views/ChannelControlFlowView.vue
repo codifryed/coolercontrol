@@ -76,6 +76,22 @@ function openNodeDrawer(target: NodeDrawerTarget) {
 
 provide('openNodeDrawer', openNodeDrawer)
 
+const flashEdges = ref(false)
+function onProfileSwitched() {
+    flashEdges.value = true
+    setTimeout(() => {
+        flashEdges.value = false
+    }, 600)
+}
+provide('onProfileSwitched', onProfileSwitched)
+
+const styledEdges = computed(() =>
+    edges.value.map((e) => ({
+        ...e,
+        class: flashEdges.value ? 'flash' : '',
+    })),
+)
+
 const MAX_ZOOM = 1.2
 const MIN_ZOOM = 1.0
 const NODE_WIDTH = 260
@@ -155,7 +171,7 @@ const channelLabel = computed(() => {
             v-else
             id="channel-control-flow"
             :nodes="nodes"
-            :edges="edges"
+            :edges="styledEdges"
             :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MIN_ZOOM }"
             :nodes-draggable="false"
             :nodes-connectable="false"
@@ -271,5 +287,22 @@ const channelLabel = computed(() => {
 
 .vue-flow__minimap {
     background-color: rgb(var(--colors-bg-one));
+}
+
+@keyframes edge-flash {
+    0% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 3;
+        opacity: 1;
+    }
+    100% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 1.5;
+        opacity: 0.6;
+    }
+}
+
+.vue-flow__edge.flash path {
+    animation: edge-flash 0.6s ease-out;
 }
 </style>

@@ -660,6 +660,7 @@ export default {
             controlFlow: 'नियंत्रण प्रवाह',
             backToOverview: 'नियंत्रण अवलोकन पर वापस जाएं',
             viewControlFlow: 'नियंत्रण प्रवाह देखें',
+            switchProfile: 'प्रोफ़ाइल बदलें',
         },
         modes: {
             createMode: 'मोड बनाएं',

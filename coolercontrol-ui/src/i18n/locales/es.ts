@@ -663,6 +663,7 @@ export default {
             controlFlow: 'Flujo de Control',
             backToOverview: 'Volver a la vista de controles',
             viewControlFlow: 'Ver flujo de control',
+            switchProfile: 'Cambiar perfil',
         },
         modes: {
             createMode: 'Crear Modo',

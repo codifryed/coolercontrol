@@ -36,6 +36,7 @@ interface Props {
     deviceUID: UID
     channelName: string
     selectedProfileUID?: UID
+    isControlFlowView?: boolean
 }
 
 const emit = defineEmits<{
@@ -58,11 +59,13 @@ const getProfileOptions = (): any[] => settingsStore.profiles
 const saveSetting = async () => {
     const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
     await settingsStore.saveDaemonDeviceSettingProfile(props.deviceUID, props.channelName, setting)
-    await router.push({
-        name: 'device-speed',
-        params: { deviceUID: props.deviceUID, channelName: props.channelName },
-        query: { key: uuidV4() },
-    })
+    if (!props.isControlFlowView) {
+        await router.push({
+            name: 'device-speed',
+            params: { deviceUID: props.deviceUID, channelName: props.channelName },
+            query: { key: uuidV4() },
+        })
+    }
     emit('close')
 }
 </script>

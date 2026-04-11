@@ -650,6 +650,7 @@ export default {
             controlFlow: '제어 흐름',
             backToOverview: '제어 개요로 돌아가기',
             viewControlFlow: '제어 흐름 보기',
+            switchProfile: '프로필 전환',
         },
         modes: {
             createMode: '모드 생성',

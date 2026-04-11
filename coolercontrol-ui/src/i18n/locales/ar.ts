@@ -651,6 +651,7 @@ export default {
             controlFlow: 'تدفق التحكم',
             backToOverview: 'العودة إلى نظرة عامة على التحكم',
             viewControlFlow: 'عرض تدفق التحكم',
+            switchProfile: 'تبديل الملف الشخصي',
         },
         modes: {
             createMode: 'إنشاء وضع',

@@ -704,6 +704,7 @@ export default {
             controlFlow: '制御フロー',
             backToOverview: 'コントロール概要に戻る',
             viewControlFlow: '制御フローを表示',
+            switchProfile: 'プロファイルを切り替え',
         },
         modes: {
             createMode: 'モードを作成',

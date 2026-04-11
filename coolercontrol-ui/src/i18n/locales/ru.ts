@@ -661,6 +661,7 @@ export default {
             controlFlow: 'Поток управления',
             backToOverview: 'Вернуться к обзору управления',
             viewControlFlow: 'Просмотр потока управления',
+            switchProfile: 'Сменить профиль',
         },
         modes: {
             createMode: 'Создать режим',

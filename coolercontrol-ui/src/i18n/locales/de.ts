@@ -667,6 +667,7 @@ export default {
             controlFlow: 'Steuerungsfluss',
             backToOverview: 'Zurück zur Steuerungsübersicht',
             viewControlFlow: 'Steuerungsfluss anzeigen',
+            switchProfile: 'Profil wechseln',
         },
         modes: {
             createMode: 'Modus erstellen',

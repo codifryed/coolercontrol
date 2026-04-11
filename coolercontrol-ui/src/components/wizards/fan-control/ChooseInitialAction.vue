@@ -42,6 +42,7 @@ interface Props {
     channelName: string
     selectedProfileUID?: UID
     isControlView: boolean
+    isControlFlowView?: boolean
 }
 
 const props = defineProps<Props>()
@@ -87,8 +88,8 @@ const redirectSpeedViewAndClose = () => {
 const resetSettings = async (): Promise<void> => {
     const setting = new DeviceSettingWriteProfileDTO('0')
     await settingsStore.saveDaemonDeviceSettingProfile(props.deviceUID, props.channelName, setting)
-    if (!props.isControlView) {
-        // Only redirect if we are not on the control view
+    if (!props.isControlView && !props.isControlFlowView) {
+        // Only redirect if we are not on the control view or control flow view
         await router.push({
             name: 'device-speed',
             params: { deviceUID: props.deviceUID, channelName: props.channelName },
@@ -113,7 +114,7 @@ const channelLabel =
             </p>
             <div class="mt-0 flex flex-col place-items-center gap-y-3">
                 <Button
-                    v-if="isControlView"
+                    v-if="isControlView && !props.isControlFlowView"
                     class="!p-2 bg-bg-one w-full !justify-start"
                     @click="redirectSpeedViewAndClose"
                 >
@@ -129,7 +130,9 @@ const channelLabel =
                 </Button>
                 <div
                     v-if="
-                        props.selectedProfileUID !== undefined && props.selectedProfileUID !== '0'
+                        !props.isControlFlowView &&
+                        props.selectedProfileUID !== undefined &&
+                        props.selectedProfileUID !== '0'
                     "
                     class="flex flex-row w-full gap-x-3"
                 >

@@ -789,6 +789,7 @@ export default {
             controlFlow: '控制流',
             backToOverview: '返回控制總覽',
             viewControlFlow: '查看控制流程',
+            switchProfile: '切換設定檔',
         },
         devices: {
             detectionIssues: '檢測問題？請查看',

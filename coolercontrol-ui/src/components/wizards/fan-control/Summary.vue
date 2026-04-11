@@ -46,6 +46,7 @@ interface Props {
     newFunction: Function | undefined
     memberProfileIds: Array<UID>
     offsetProfile: Array<[number, number]>
+    isControlFlowView?: boolean
 }
 
 const props = defineProps<Props>()
@@ -146,11 +147,13 @@ const saveProfileAndFunction = async (): Promise<void> => {
         life: 3000,
     })
     emit('close')
-    await router.push({
-        name: 'device-speed',
-        params: { deviceUID: props.deviceUID, channelName: props.channelName },
-        query: { key: uuidV4() },
-    })
+    if (!props.isControlFlowView) {
+        await router.push({
+            name: 'device-speed',
+            params: { deviceUID: props.deviceUID, channelName: props.channelName },
+            query: { key: uuidV4() },
+        })
+    }
 }
 </script>
 

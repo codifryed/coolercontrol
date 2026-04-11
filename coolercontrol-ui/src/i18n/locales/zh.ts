@@ -788,6 +788,7 @@ export default {
             controlFlow: '控制流',
             backToOverview: '返回控制概览',
             viewControlFlow: '查看控制流程',
+            switchProfile: '切换配置',
         },
         devices: {
             detectionIssues: '检测问题？请查看',

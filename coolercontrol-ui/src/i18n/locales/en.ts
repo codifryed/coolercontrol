@@ -658,6 +658,7 @@ export default {
             controlFlow: 'Control Flow',
             backToOverview: 'Back to Controls Overview',
             viewControlFlow: 'View control flow',
+            switchProfile: 'Switch Profile',
         },
         modes: {
             createMode: 'Create Mode',
