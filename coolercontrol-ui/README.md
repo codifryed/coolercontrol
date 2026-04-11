@@ -63,9 +63,9 @@ make dev
   - https://tailwindcss.com/docs/upgrade-guide
   - Looks like 4.0 only works for Chrome 111+
   - https://wiki.qt.io/QtWebEngine/ChromiumVersions
-- `"vue": "3.5.31"` Vue 3.5.32 introduced a Teleport+Suspense regression
-  (vuejs/core#14642) that causes an infinite render loop with PrimeVue overlay
-  components inside our Suspense-wrapped router-view.
+- `"vue": "3.5.31"` Vue 3.5.32 introduced a Teleport+Suspense regression (vuejs/core#14642) that
+  causes an infinite render loop with PrimeVue overlay components inside our Suspense-wrapped
+  router-view.
 - "Overrides" section is to handle some current vulnerabilities in the dev dependencies.
 
 ## Formatting
