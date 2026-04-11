@@ -18,9 +18,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
-import { PanOnScrollMode, VueFlow } from '@vue-flow/core'
+import { PanOnScrollMode, useVueFlow, VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { COL_GAP, NODE_WIDTH, useOverviewGraph } from '@/components/control-flow/useOverviewGraph'
+import {
+    COL_GAP,
+    NODE_WIDTH,
+    ROW_GAP,
+    useOverviewGraph,
+} from '@/components/control-flow/useOverviewGraph'
 import FanChannelNode from '@/components/control-flow/FanChannelNode.vue'
 import LcdChannelNode from '@/components/control-flow/LcdChannelNode.vue'
 import LightingChannelNode from '@/components/control-flow/LightingChannelNode.vue'
@@ -52,6 +57,53 @@ const columnsPerRow = computed(() => {
 })
 
 const { nodes } = useOverviewGraph(columnsPerRow)
+
+const { onMove, setViewport, dimensions } = useVueFlow('control-flow-overview')
+
+const contentBounds = computed(() => {
+    if (nodes.value.length === 0) return null
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    const colSet = new Set<number>()
+    const rowsPerCol = new Map<number, number>()
+    for (const node of nodes.value) {
+        minX = Math.min(minX, node.position.x)
+        maxX = Math.max(maxX, node.position.x + NODE_WIDTH)
+        minY = Math.min(minY, node.position.y)
+        maxY = Math.max(maxY, node.position.y + ROW_GAP)
+        colSet.add(node.position.x)
+        rowsPerCol.set(node.position.x, (rowsPerCol.get(node.position.x) ?? 0) + 1)
+    }
+    const cols = colSet.size
+    const maxRows = Math.max(...rowsPerCol.values())
+    return { minX, maxX, minY, maxY, cols, maxRows }
+})
+
+// Clamp panning so content stays visible, scaled by node count
+onMove(({ flowTransform }) => {
+    const bounds = contentBounds.value
+    if (!bounds) return
+    const { x, y, zoom } = flowTransform
+    const vpW = dimensions.value.width
+    const vpH = dimensions.value.height
+    const nodesWidth = NODE_WIDTH * bounds.cols
+    const nodesHeight = ROW_GAP * bounds.maxRows
+    const nodeWidth = Math.min(nodesWidth, vpW)
+    const nodeHeight = Math.min(nodesHeight, vpH)
+    const xMargin = nodeWidth - (nodesWidth > vpW ? H_PADDING * bounds.cols : H_PADDING)
+    const yMargin = nodesHeight > vpH ? nodeHeight - H_PADDING : nodeHeight + H_PADDING
+    const xMin = nodeWidth - bounds.maxX * zoom
+    const xMax = vpW - xMargin - bounds.minX * zoom
+    const yMin = yMargin - bounds.maxY * zoom
+    const yMax = vpH - yMargin - bounds.minY * zoom
+    const clampedX = Math.max(xMin, Math.min(xMax, x))
+    const clampedY = Math.max(yMin, Math.min(yMax, y))
+    if (clampedX !== x || clampedY !== y) {
+        setViewport({ x: clampedX, y: clampedY, zoom })
+    }
+})
 
 let resizeObserver: ResizeObserver | undefined
 onMounted(() => {
