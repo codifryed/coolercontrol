@@ -908,11 +908,10 @@ class DeviceService:
         try:
             return self._get_current_or_cached_device_status(device_id)
         except BaseException as err:
-            if log.getLogger().isEnabledFor(logging.DEBUG):
-                log.error(
-                    f"Liquidctl Error getting status for device "
-                    f"#{device_id} - {traceback.format_exc()}"
-                )
+            log.debug(
+                f"Liquidctl Error getting status for device "
+                f"#{device_id} - {traceback.format_exc()}"
+            )
             raise LiquidctlException(
                 f"Unexpected Device communication error: {err}"
             ) from err
@@ -922,7 +921,7 @@ class DeviceService:
         if AuraLed is not None and isinstance(lc_device, AuraLed):
             log.debug("Skipping AuraLed device status, not needed.")
             return []
-        log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
+        log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status()")
         status_job = self.device_executor.submit(device_id, lc_device.get_status)
         try:
             status: List[Tuple[str, Union[str, int, float], str]] = status_job.result(
@@ -961,6 +960,12 @@ class DeviceService:
                         f"and no Status Cache yet filled for device LC #{device_id}"
                     )
                     raise te
+                except BaseException as exc:
+                    log.debug(
+                        f"Unexpected error during async status request "
+                        f"for device LC #{device_id}: {exc}"
+                    )
+                    raise
                 finally:
                     async_status_job.cancel()
             # otherwise, this was a future timeout with a job still running in the queue
@@ -968,6 +973,11 @@ class DeviceService:
                 log.error(f"No Status Cache yet filled for device LC #{device_id}")
                 raise te
             return cached_status
+        except BaseException as exc:
+            log.debug(
+                f"Unexpected error getting status for device LC #{device_id}: {exc}"
+            )
+            raise
         finally:
             status_job.cancel()
 
@@ -977,8 +987,15 @@ class DeviceService:
         that have extreme latency.
         """
         lc_device = self.devices[dev_id]
-        log.debug(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() ")
-        status = lc_device.get_status()
+        log.debug(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status()")
+        try:
+            status = lc_device.get_status()
+        except BaseException as exc:
+            log.debug(
+                f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() "
+                f"failed: {exc}"
+            )
+            raise
         log.debug(
             f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
         )

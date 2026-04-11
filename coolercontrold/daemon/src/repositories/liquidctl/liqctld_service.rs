@@ -133,6 +133,7 @@ fn create_command() -> (String, &'static str) {
 fn child_envs() -> HashMap<String, String> {
     let mut envs = HashMap::new();
     envs.insert("LC_ALL".to_string(), "C".to_string());
+    envs.insert("PYTHONUNBUFFERED".to_string(), "1".to_string());
     if log::log_enabled!(log::Level::Trace) {
         envs.insert(ENV_CC_LOG.to_string(), log::Level::Trace.to_string());
     } else if log::log_enabled!(log::Level::Debug) {
@@ -185,6 +186,7 @@ async fn process_log_output(
     let mut kraken_bucket_error_logged = false;
     while let Some(unread_line) = merged_lines.next().await {
         let Ok(line) = unread_line else {
+            warn!("Failed to read log line from liqctld: {unread_line:?}");
             continue;
         };
         let log_line = if let Some(stripped) = line.strip_prefix("INFO") {
