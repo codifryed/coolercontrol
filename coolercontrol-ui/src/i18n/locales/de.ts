@@ -668,6 +668,11 @@ export default {
             backToOverview: 'Zurück zur Steuerungsübersicht',
             viewControlFlow: 'Steuerungsfluss anzeigen',
             switchProfile: 'Profil wechseln',
+            switchTempSource: 'Temperaturquelle wechseln',
+            switchFunction: 'Funktion wechseln',
+            switchMembers: 'Mitgliederprofile wechseln',
+            switchBaseProfile: 'Basisprofil wechseln',
+            editSources: 'Quellen bearbeiten',
         },
         modes: {
             createMode: 'Modus erstellen',

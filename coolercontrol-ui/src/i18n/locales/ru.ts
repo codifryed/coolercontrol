@@ -662,6 +662,11 @@ export default {
             backToOverview: 'Вернуться к обзору управления',
             viewControlFlow: 'Просмотр потока управления',
             switchProfile: 'Сменить профиль',
+            switchTempSource: 'Сменить источник температуры',
+            switchFunction: 'Сменить функцию',
+            switchMembers: 'Сменить профили-участники',
+            switchBaseProfile: 'Сменить базовый профиль',
+            editSources: 'Редактировать источники',
         },
         modes: {
             createMode: 'Создать режим',

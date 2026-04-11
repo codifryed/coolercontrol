@@ -674,6 +674,11 @@ export default {
             backToOverview: 'Retour à la vue des contrôles',
             viewControlFlow: 'Voir le flux de contrôle',
             switchProfile: 'Changer de profil',
+            switchTempSource: 'Changer la source de température',
+            switchFunction: 'Changer la fonction',
+            switchMembers: 'Changer les profils membres',
+            switchBaseProfile: 'Changer le profil de base',
+            editSources: 'Modifier les sources',
         },
         modes: {
             createMode: 'Créer un Mode',

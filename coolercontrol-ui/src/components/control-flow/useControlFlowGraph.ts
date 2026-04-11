@@ -53,6 +53,9 @@ export interface ProfileNodeData {
     functionName?: string
     functionType?: string
     functionUID?: string
+    tempSourceDeviceUID?: string
+    tempSourceTempName?: string
+    memberProfileUIDs?: UID[]
     isDefault: boolean
 }
 
@@ -213,6 +216,12 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                     functionName,
                     functionType,
                     functionUID,
+                    tempSourceDeviceUID: profile.temp_source?.device_uid,
+                    tempSourceTempName: profile.temp_source?.temp_name,
+                    memberProfileUIDs:
+                        profile.member_profile_uids.length > 0
+                            ? [...profile.member_profile_uids]
+                            : undefined,
                     isDefault: profile.uid === '0',
                 } satisfies ProfileNodeData,
             }

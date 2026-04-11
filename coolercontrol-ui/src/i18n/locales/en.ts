@@ -659,6 +659,11 @@ export default {
             backToOverview: 'Back to Controls Overview',
             viewControlFlow: 'View control flow',
             switchProfile: 'Switch Profile',
+            switchTempSource: 'Switch Temperature Source',
+            switchFunction: 'Switch Function',
+            switchMembers: 'Switch Member Profiles',
+            switchBaseProfile: 'Switch Base Profile',
+            editSources: 'Edit Sources',
         },
         modes: {
             createMode: 'Create Mode',

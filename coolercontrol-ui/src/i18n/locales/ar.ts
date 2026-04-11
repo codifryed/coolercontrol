@@ -652,6 +652,11 @@ export default {
             backToOverview: 'العودة إلى نظرة عامة على التحكم',
             viewControlFlow: 'عرض تدفق التحكم',
             switchProfile: 'تبديل الملف الشخصي',
+            switchTempSource: 'تبديل مصدر الحرارة',
+            switchFunction: 'تبديل الوظيفة',
+            switchMembers: 'تبديل الملفات الأعضاء',
+            switchBaseProfile: 'تبديل الملف الأساسي',
+            editSources: 'تعديل المصادر',
         },
         modes: {
             createMode: 'إنشاء وضع',

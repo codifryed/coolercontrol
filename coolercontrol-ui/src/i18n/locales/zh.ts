@@ -789,6 +789,11 @@ export default {
             backToOverview: '返回控制概览',
             viewControlFlow: '查看控制流程',
             switchProfile: '切换配置',
+            switchTempSource: '切换温度源',
+            switchFunction: '切换函数',
+            switchMembers: '切换成员配置',
+            switchBaseProfile: '切换基础配置',
+            editSources: '编辑来源',
         },
         devices: {
             detectionIssues: '检测问题？请查看',

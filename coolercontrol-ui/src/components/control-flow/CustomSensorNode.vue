@@ -27,13 +27,21 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFlaskRoundBottom } from '@mdi/js'
+import { mdiFlaskRoundBottom, mdiSwapHorizontal } from '@mdi/js'
 
 const props = defineProps<NodeProps<CustomSensorNodeData>>()
 const { t } = useI18n()
 const deviceStore = useDeviceStore()
 const router = useRouter()
+const flowViewMode = inject<string>('flowViewMode', 'detail')
 const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
+
+const showSwapButton = computed(() => flowViewMode === 'detail')
+
+function onSwapClick(event: Event) {
+    event.stopPropagation()
+    onClick()
+}
 
 const liveTemp = computed(() => {
     const status = deviceStore.currentDeviceStatus.get(props.data.deviceUID)
@@ -61,7 +69,7 @@ const typeBadgeClass: Record<string, string> = {
 
 <template>
     <div
-        class="cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
+        class="group/node cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
         style="min-width: 200px"
         @click="onClick"
     >
@@ -76,6 +84,18 @@ const typeBadgeClass: Record<string, string> = {
             >
                 {{ data.csType }}
             </span>
+            <div
+                v-if="showSwapButton"
+                v-tooltip.top="t('views.controls.editSources')"
+                class="flex size-8 items-center justify-center rounded-md opacity-0 transition-all hover:bg-accent/15 group-hover/node:opacity-100"
+                @click="onSwapClick"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiSwapHorizontal"
+                    class="size-5 text-text-color transition-colors hover:text-accent"
+                />
+            </div>
         </div>
         <div class="px-3 pb-2">
             <div v-if="liveTemp" class="text-lg font-bold text-text-color">

@@ -608,6 +608,11 @@ export default {
             backToOverview: 'Voltar para visão geral dos controles',
             viewControlFlow: 'Ver fluxo de controle',
             switchProfile: 'Trocar perfil',
+            switchTempSource: 'Trocar fonte de temperatura',
+            switchFunction: 'Trocar função',
+            switchMembers: 'Trocar perfis membros',
+            switchBaseProfile: 'Trocar perfil base',
+            editSources: 'Editar fontes',
         },
         modes: {
             createMode: 'Criar Modo',

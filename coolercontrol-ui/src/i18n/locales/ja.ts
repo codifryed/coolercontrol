@@ -705,6 +705,11 @@ export default {
             backToOverview: 'コントロール概要に戻る',
             viewControlFlow: '制御フローを表示',
             switchProfile: 'プロファイルを切り替え',
+            switchTempSource: '温度ソースを切り替え',
+            switchFunction: '関数を切り替え',
+            switchMembers: 'メンバープロファイルを切り替え',
+            switchBaseProfile: 'ベースプロファイルを切り替え',
+            editSources: 'ソースを編集',
         },
         modes: {
             createMode: 'モードを作成',
