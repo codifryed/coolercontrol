@@ -97,6 +97,7 @@ const MAX_ZOOM = 1.2
 const DEFAULT_ZOOM = 1.0
 const MIN_ZOOM = 0.4
 const NODE_WIDTH = 260
+const NODE_HEIGHT = 100
 const H_PADDING = deviceStore.getREMSize(1)
 const V_PADDING = deviceStore.getREMSize(4)
 
@@ -109,23 +110,26 @@ onMounted(async () => {
 })
 
 onPaneReady(() => {
-    nextTick(() => fitToWidth())
+    nextTick(() => fitToContent())
 })
 
-function fitToWidth() {
+function fitToContent() {
     if (nodes.value.length === 0) return
 
     let minX = Infinity
     let maxRight = 0
     let minY = Infinity
+    let maxBottom = 0
     for (const node of nodes.value) {
         minX = Math.min(minX, node.position.x)
         maxRight = Math.max(maxRight, node.position.x + NODE_WIDTH)
         minY = Math.min(minY, node.position.y)
+        maxBottom = Math.max(maxBottom, node.position.y + NODE_HEIGHT)
     }
 
     const contentWidth = maxRight - minX
-    if (contentWidth === 0) return
+    const contentHeight = maxBottom - minY
+    if (contentWidth === 0 || contentHeight === 0) return
 
     // Clamp between DEFAULT_ZOOM and MAX_ZOOM. When the chain is too wide to fit at
     // DEFAULT_ZOOM, start at DEFAULT_ZOOM with the fan node (left side) visible — the user
