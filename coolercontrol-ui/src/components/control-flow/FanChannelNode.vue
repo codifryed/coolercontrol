@@ -96,7 +96,7 @@ function onClick() {
 
 <template>
     <div
-        class="group/node cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
+        class="group/node cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-all hover:shadow-lg hover:border-accent"
         :style="{ width: flowViewMode === 'overview' ? '220px' : undefined, minWidth: '220px' }"
         @click="onClick"
     >

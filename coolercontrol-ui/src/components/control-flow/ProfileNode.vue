@@ -104,7 +104,7 @@ const typeBadgeClass: Record<string, string> = {
 
 <template>
     <div
-        class="group/node rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
+        class="group/node rounded-lg border border-border-one bg-bg-two shadow-md transition-all hover:shadow-lg hover:border-accent"
         :class="data.isDefault ? 'cursor-default' : 'cursor-pointer'"
         style="min-width: 220px"
         @click="onClickProfile"
