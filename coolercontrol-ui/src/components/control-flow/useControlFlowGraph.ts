@@ -79,13 +79,16 @@ const NODE_HEIGHT = 120
 export const COLUMN_GAP = 325
 
 // Fixed column assignments by node type/subtype.
-// Flow moves left-to-right: Fan → Overlay → Mix → Graph → CustomSensor → TempSource
+// Flow moves left-to-right: Fan → Overlay → Mix → MixChild → Graph → CS → CSChild → TempSource
+// Empty columns are collapsed by layoutNodes, so child columns add no gap when unused.
 const COL_FAN = 0
 const COL_OVERLAY = 1
 const COL_MIX = 2
-const COL_GRAPH = 3 // Also Fixed and Default profiles
-const COL_CUSTOM_SENSOR = 4
-const COL_TEMP_SOURCE = 5
+const COL_MIX_CHILD = 3
+const COL_GRAPH = 4 // Also Fixed and Default profiles
+const COL_CUSTOM_SENSOR = 5
+const COL_CUSTOM_SENSOR_CHILD = 6
+const COL_TEMP_SOURCE = 7
 
 function profileColumn(pType: ProfileType): number {
     switch (pType) {
@@ -414,6 +417,26 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                         edgeMap.delete(edgeId)
                     }
                 }
+            }
+        }
+
+        // Reassign columns for parent-child relationships of the same type.
+        // A Mix profile whose edge target is another Mix gets the child column.
+        // A CustomSensor whose edge target is another CustomSensor gets the child column.
+        for (const edge of edgeMap.values()) {
+            const sourceNode = nodeMap.get(edge.source)
+            const targetNode = nodeMap.get(edge.target)
+            if (!sourceNode || !targetNode) continue
+            if (
+                sourceNode.type === 'profile' &&
+                targetNode.type === 'profile' &&
+                (sourceNode.data as ProfileNodeData).profileType === ProfileType.Mix &&
+                (targetNode.data as ProfileNodeData).profileType === ProfileType.Mix
+            ) {
+                nodeColumns.set(edge.source, COL_MIX_CHILD)
+            }
+            if (sourceNode.type === 'customSensor' && targetNode.type === 'customSensor') {
+                nodeColumns.set(edge.source, COL_CUSTOM_SENSOR_CHILD)
             }
         }
 
