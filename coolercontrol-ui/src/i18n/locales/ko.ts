@@ -650,6 +650,12 @@ export default {
             controlFlow: '제어 흐름',
             backToOverview: '제어 개요로 돌아가기',
             viewControlFlow: '제어 흐름 보기',
+            switchProfile: '프로필 전환',
+            switchTempSource: '온도 소스 전환',
+            switchFunction: '함수 전환',
+            switchMembers: '멤버 프로필 전환',
+            switchBaseProfile: '기본 프로필 전환',
+            editSources: '소스 편집',
         },
         modes: {
             createMode: '모드 생성',

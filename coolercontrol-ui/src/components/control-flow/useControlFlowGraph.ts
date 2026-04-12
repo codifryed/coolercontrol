@@ -53,6 +53,9 @@ export interface ProfileNodeData {
     functionName?: string
     functionType?: string
     functionUID?: string
+    tempSourceDeviceUID?: string
+    tempSourceTempName?: string
+    memberProfileUIDs?: UID[]
     isDefault: boolean
 }
 
@@ -76,13 +79,16 @@ const NODE_HEIGHT = 120
 export const COLUMN_GAP = 325
 
 // Fixed column assignments by node type/subtype.
-// Flow moves left-to-right: Fan → Overlay → Mix → Graph → CustomSensor → TempSource
+// Flow moves left-to-right: Fan → Overlay → Mix → MixChild → Graph → CS → CSChild → TempSource
+// Empty columns are collapsed by layoutNodes, so child columns add no gap when unused.
 const COL_FAN = 0
 const COL_OVERLAY = 1
 const COL_MIX = 2
-const COL_GRAPH = 3 // Also Fixed and Default profiles
-const COL_CUSTOM_SENSOR = 4
-const COL_TEMP_SOURCE = 5
+const COL_MIX_CHILD = 3
+const COL_GRAPH = 4 // Also Fixed and Default profiles
+const COL_CUSTOM_SENSOR = 5
+const COL_CUSTOM_SENSOR_CHILD = 6
+const COL_TEMP_SOURCE = 7
 
 function profileColumn(pType: ProfileType): number {
     switch (pType) {
@@ -175,9 +181,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             profileUID: UID,
             fanNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): string | undefined {
-            if (depth > 2) return undefined
             const nodeId = `profile::${profileUID}`
             if (visited.has(nodeId)) {
                 addEdge(nodeId, fanNodeId)
@@ -213,6 +217,12 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                     functionName,
                     functionType,
                     functionUID,
+                    tempSourceDeviceUID: profile.temp_source?.device_uid,
+                    tempSourceTempName: profile.temp_source?.temp_name,
+                    memberProfileUIDs:
+                        profile.member_profile_uids.length > 0
+                            ? [...profile.member_profile_uids]
+                            : undefined,
                     isDefault: profile.uid === '0',
                 } satisfies ProfileNodeData,
             }
@@ -228,11 +238,11 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                 )
             } else if (profile.p_type === ProfileType.Mix) {
                 for (const memberUID of profile.member_profile_uids) {
-                    traceProfileChain(memberUID, nodeId, visited, depth + 1)
+                    traceProfileChain(memberUID, nodeId, visited)
                 }
             } else if (profile.p_type === ProfileType.Overlay) {
                 if (profile.member_profile_uids.length > 0) {
-                    traceProfileChain(profile.member_profile_uids[0], nodeId, visited, depth + 1)
+                    traceProfileChain(profile.member_profile_uids[0], nodeId, visited)
                 }
             }
 
@@ -244,10 +254,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             tempName: string,
             parentNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): void {
-            if (depth > 2) return
-
             // Check if temp source is from a custom sensor device
             let isCustomSensor = false
             for (const device of deviceStore.allDevices()) {
@@ -258,7 +265,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             }
 
             if (isCustomSensor) {
-                traceCustomSensor(tempName, deviceUID, parentNodeId, visited, depth)
+                traceCustomSensor(tempName, deviceUID, parentNodeId, visited)
             } else {
                 const tempNodeId = `temp::${deviceUID}::${tempName}`
                 if (!visited.has(tempNodeId)) {
@@ -293,9 +300,7 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
             deviceUID: UID,
             parentNodeId: string,
             visited: Set<string>,
-            depth: number = 0,
         ): void {
-            if (depth > 2) return
             const csNodeId = `cs::${sensorId}`
             if (!visited.has(csNodeId)) {
                 visited.add(csNodeId)
@@ -324,7 +329,6 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                             source.temp_source.temp_name,
                             csNodeId,
                             visited,
-                            depth + 1,
                         )
                     }
                 }
@@ -413,6 +417,26 @@ export function useControlFlowGraph(selectedFanKey: Ref<string | undefined>) {
                         edgeMap.delete(edgeId)
                     }
                 }
+            }
+        }
+
+        // Reassign columns for parent-child relationships of the same type.
+        // A Mix profile whose edge target is another Mix gets the child column.
+        // A CustomSensor whose edge target is another CustomSensor gets the child column.
+        for (const edge of edgeMap.values()) {
+            const sourceNode = nodeMap.get(edge.source)
+            const targetNode = nodeMap.get(edge.target)
+            if (!sourceNode || !targetNode) continue
+            if (
+                sourceNode.type === 'profile' &&
+                targetNode.type === 'profile' &&
+                (sourceNode.data as ProfileNodeData).profileType === ProfileType.Mix &&
+                (targetNode.data as ProfileNodeData).profileType === ProfileType.Mix
+            ) {
+                nodeColumns.set(edge.source, COL_MIX_CHILD)
+            }
+            if (sourceNode.type === 'customSensor' && targetNode.type === 'customSensor') {
+                nodeColumns.set(edge.source, COL_CUSTOM_SENSOR_CHILD)
             }
         }
 

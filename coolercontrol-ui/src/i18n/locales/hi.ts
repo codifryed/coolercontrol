@@ -660,6 +660,12 @@ export default {
             controlFlow: 'नियंत्रण प्रवाह',
             backToOverview: 'नियंत्रण अवलोकन पर वापस जाएं',
             viewControlFlow: 'नियंत्रण प्रवाह देखें',
+            switchProfile: 'प्रोफ़ाइल बदलें',
+            switchTempSource: 'तापमान स्रोत बदलें',
+            switchFunction: 'फ़ंक्शन बदलें',
+            switchMembers: 'सदस्य प्रोफ़ाइल बदलें',
+            switchBaseProfile: 'आधार प्रोफ़ाइल बदलें',
+            editSources: 'स्रोत संपादित करें',
         },
         modes: {
             createMode: 'मोड बनाएं',

@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
@@ -28,7 +28,8 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useRouter } from 'vue-router'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFan, mdiChartLine, mdiThermometer, mdiChevronRight } from '@mdi/js'
+import { mdiFan, mdiChartLine, mdiThermometer, mdiChevronRight, mdiSwapHorizontal } from '@mdi/js'
+import ProfileSwitchPopover from './ProfileSwitchPopover.vue'
 
 const props = defineProps<NodeProps<FanNodeData>>()
 const { t } = useI18n()
@@ -40,6 +41,15 @@ const openNodeDrawer = inject<((target: NodeDrawerTarget) => void) | undefined>(
     'openNodeDrawer',
     undefined,
 )
+const onProfileSwitched = inject<() => void>('onProfileSwitched', () => {})
+const switchPopoverRef = ref<InstanceType<typeof ProfileSwitchPopover>>()
+
+function onSwapClick(event: Event) {
+    event.stopPropagation()
+    switchPopoverRef.value?.toggle(event)
+}
+
+const showSwapButton = computed(() => flowViewMode === 'detail')
 
 const profileName = computed(() => {
     if (props.data.isManual || !props.data.profileUID) return undefined
@@ -86,7 +96,7 @@ function onClick() {
 
 <template>
     <div
-        class="cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
+        class="group/node cursor-pointer rounded-lg border border-border-one bg-bg-two shadow-md transition-all hover:shadow-lg hover:border-accent"
         :style="{ width: flowViewMode === 'overview' ? '220px' : undefined, minWidth: '220px' }"
         @click="onClick"
     >
@@ -108,6 +118,18 @@ function onClick() {
             />
             <div class="flex-1 truncate text-sm font-semibold text-text-color">
                 {{ data.channelLabel }}
+            </div>
+            <div
+                v-if="showSwapButton"
+                v-tooltip.top="t('views.controls.switchProfile')"
+                class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
+                @click="onSwapClick"
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiSwapHorizontal"
+                    class="size-5 text-text-color transition-colors hover:text-accent"
+                />
             </div>
         </div>
         <div class="space-y-1 px-3 pb-2">
@@ -165,5 +187,13 @@ function onClick() {
             />
         </div>
         <Handle type="target" :position="Position.Right" class="!bg-accent" />
+        <ProfileSwitchPopover
+            v-if="showSwapButton"
+            ref="switchPopoverRef"
+            :device-u-i-d="data.deviceUID"
+            :channel-name="data.channelName"
+            :current-profile-u-i-d="data.profileUID"
+            @profile-switched="onProfileSwitched"
+        />
     </div>
 </template>

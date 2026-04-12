@@ -789,6 +789,12 @@ export default {
             controlFlow: '控制流',
             backToOverview: '返回控制總覽',
             viewControlFlow: '查看控制流程',
+            switchProfile: '切換設定檔',
+            switchTempSource: '切換溫度來源',
+            switchFunction: '切換函數',
+            switchMembers: '切換成員設定檔',
+            switchBaseProfile: '切換基礎設定檔',
+            editSources: '編輯來源',
         },
         devices: {
             detectionIssues: '檢測問題？請查看',

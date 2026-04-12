@@ -33,7 +33,6 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { Controls } from '@vue-flow/controls'
-import { MiniMap } from '@vue-flow/minimap'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import type { NodeDrawerTarget } from '@/components/control-flow/types'
@@ -76,51 +75,122 @@ function openNodeDrawer(target: NodeDrawerTarget) {
 
 provide('openNodeDrawer', openNodeDrawer)
 
+const flashEdges = ref(false)
+function onProfileSwitched() {
+    if (!settingsStore.eyeCandy) return
+    flashEdges.value = true
+    setTimeout(() => {
+        flashEdges.value = false
+    }, 1500)
+}
+provide('onProfileSwitched', onProfileSwitched)
+
+const styledEdges = computed(() =>
+    edges.value.map((e) => ({
+        ...e,
+        class: flashEdges.value ? 'flash' : '',
+    })),
+)
+
 const MAX_ZOOM = 1.2
-const MIN_ZOOM = 1.0
+const DEFAULT_ZOOM = 1.0
+const MIN_ZOOM = 0.4
 const NODE_WIDTH = 260
+const NODE_HEIGHT = 100
 const H_PADDING = deviceStore.getREMSize(1)
 const V_PADDING = deviceStore.getREMSize(4)
 
 const selectedFanKey = ref(`${props.deviceUID}/${props.channelName}`)
 const { nodes, edges, loadCustomSensors } = useControlFlowGraph(selectedFanKey)
-const { onPaneReady, setViewport, dimensions } = useVueFlow('channel-control-flow')
+const { onPaneReady, setViewport, dimensions, onMove } = useVueFlow('channel-control-flow')
 
 onMounted(async () => {
     await loadCustomSensors()
 })
 
 onPaneReady(() => {
-    nextTick(() => fitToWidth())
+    nextTick(() => fitToContent())
 })
 
-function fitToWidth() {
+function fitToContent() {
     if (nodes.value.length === 0) return
 
     let minX = Infinity
     let maxRight = 0
     let minY = Infinity
+    let maxBottom = 0
     for (const node of nodes.value) {
         minX = Math.min(minX, node.position.x)
         maxRight = Math.max(maxRight, node.position.x + NODE_WIDTH)
         minY = Math.min(minY, node.position.y)
+        maxBottom = Math.max(maxBottom, node.position.y + NODE_HEIGHT)
     }
 
     const contentWidth = maxRight - minX
-    if (contentWidth === 0) return
+    const contentHeight = maxBottom - minY
+    if (contentWidth === 0 || contentHeight === 0) return
 
-    // Clamp between MIN_ZOOM and MAX_ZOOM. When the chain is too wide to fit at
-    // MIN_ZOOM, start at MIN_ZOOM with the fan node (left side) visible — the user
+    // Clamp between DEFAULT_ZOOM and MAX_ZOOM. When the chain is too wide to fit at
+    // DEFAULT_ZOOM, start at DEFAULT_ZOOM with the fan node (left side) visible — the user
     // can pan right to explore. This keeps nodes legible (~195px+ wide) even for
     // complex 5-column chains.
     const vpWidth = dimensions.value.width
-    const zoom = Math.min(Math.max((vpWidth - H_PADDING * 2) / contentWidth, MIN_ZOOM), MAX_ZOOM)
+    const zoom = Math.min(
+        Math.max((vpWidth - H_PADDING * 2) / contentWidth, DEFAULT_ZOOM),
+        MAX_ZOOM,
+    )
     setViewport({
         x: H_PADDING - minX * zoom,
         y: V_PADDING - minY * zoom + V_PADDING,
         zoom,
     })
 }
+
+const contentBounds = computed(() => {
+    if (nodes.value.length === 0) return null
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    const colSet = new Set<number>()
+    const rowsPerCol = new Map<number, number>()
+    for (const node of nodes.value) {
+        minX = Math.min(minX, node.position.x)
+        maxX = Math.max(maxX, node.position.x + NODE_WIDTH)
+        minY = Math.min(minY, node.position.y)
+        maxY = Math.max(maxY, node.position.y + NODE_HEIGHT)
+        colSet.add(node.position.x)
+        rowsPerCol.set(node.position.x, (rowsPerCol.get(node.position.x) ?? 0) + 1)
+    }
+    const cols = colSet.size
+    const maxRows = Math.max(...rowsPerCol.values())
+    return { minX, maxX, minY, maxY, cols, maxRows }
+})
+
+// Clamp viewport so at least EXTENT_MARGIN screen-pixels of content remain visible
+onMove(({ flowTransform }) => {
+    const bounds = contentBounds.value
+    if (!bounds) return
+    const { x, y, zoom } = flowTransform
+    const vpW = dimensions.value.width
+    const vpH = dimensions.value.height
+    const nodesWidth = NODE_WIDTH * bounds.cols
+    const nodesHeight = NODE_HEIGHT * bounds.maxRows
+    const nodeWidth = Math.min(nodesWidth, vpW)
+    const nodeHeight = Math.min(nodesHeight, vpH)
+    const widthWithXMaxOffset = nodeWidth - (nodesWidth > vpW ? H_PADDING * bounds.cols : H_PADDING)
+    const heightWithYMinOffset = nodesHeight > vpH ? nodeHeight - V_PADDING : nodeHeight + V_PADDING
+    const heightWithYMaxOffset = nodesHeight > vpH ? nodeHeight - V_PADDING : nodeHeight + V_PADDING
+    const xMin = nodeWidth - bounds.maxX * zoom
+    const xMax = vpW - widthWithXMaxOffset - bounds.minX * zoom
+    const yMin = heightWithYMinOffset - bounds.maxY * zoom
+    const yMax = vpH - heightWithYMaxOffset - bounds.minY * zoom
+    const clampedX = Math.max(xMin, Math.min(xMax, x))
+    const clampedY = Math.max(yMin, Math.min(yMax, y))
+    if (clampedX !== x || clampedY !== y) {
+        setViewport({ x: clampedX, y: clampedY, zoom })
+    }
+})
 
 const channelLabel = computed(() => {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)
@@ -155,14 +225,17 @@ const channelLabel = computed(() => {
             v-else
             id="channel-control-flow"
             :nodes="nodes"
-            :edges="edges"
-            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: MIN_ZOOM }"
+            :edges="styledEdges"
+            :default-viewport="{ x: H_PADDING, y: V_PADDING * 2, zoom: DEFAULT_ZOOM }"
+            :min-zoom="MIN_ZOOM"
+            :max-zoom="MAX_ZOOM"
             :nodes-draggable="false"
             :nodes-connectable="false"
             :elements-selectable="false"
             pan-on-drag
             pan-on-scroll
             :zoom-on-scroll="false"
+            :zoom-on-pinch="true"
             :zoom-on-double-click="false"
             class="flex-1"
         >
@@ -183,12 +256,6 @@ const channelLabel = computed(() => {
                 :pattern-color="colorStore.rgbToHex(colorStore.themeColors.border)"
                 :line-width="1"
                 :gap="deviceStore.getREMSize(6)"
-            />
-            <MiniMap
-                pannable
-                zoomable
-                :mask-color="colorStore.rgbToHex(colorStore.themeColors.bg_two) + '50'"
-                :node-color="colorStore.rgbToHex(colorStore.themeColors.text_color_secondary)"
             />
             <Controls :show-interactive="false" class="!bg-bg-two" />
         </VueFlow>
@@ -271,5 +338,30 @@ const channelLabel = computed(() => {
 
 .vue-flow__minimap {
     background-color: rgb(var(--colors-bg-one));
+}
+
+@keyframes edge-flash {
+    0%,
+    100% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 1.5;
+        filter: drop-shadow(0 0 0 transparent);
+    }
+    15%,
+    55% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 5;
+        filter: drop-shadow(0 0 6px rgb(var(--colors-accent)));
+    }
+    35%,
+    75% {
+        stroke: rgb(var(--colors-accent));
+        stroke-width: 2.5;
+        filter: drop-shadow(0 0 2px rgb(var(--colors-accent)));
+    }
+}
+
+.vue-flow__edge.flash path {
+    animation: edge-flash 1.5s ease-in-out;
 }
 </style>

@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { ProfileNodeData } from './useControlFlowGraph'
@@ -27,12 +27,43 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiFunction, mdiChartLine, mdiInformationSlabCircleOutline } from '@mdi/js'
+import {
+    mdiFunction,
+    mdiChartLine,
+    mdiInformationSlabCircleOutline,
+    mdiSwapHorizontal,
+} from '@mdi/js'
+import TempSourceSwitchPopover from './TempSourceSwitchPopover.vue'
+import FunctionSwitchPopover from './FunctionSwitchPopover.vue'
+import MemberProfileSwitchPopover from './MemberProfileSwitchPopover.vue'
 
 const props = defineProps<NodeProps<ProfileNodeData>>()
 const { t } = useI18n()
 const router = useRouter()
+const flowViewMode = inject<string>('flowViewMode', 'detail')
 const openNodeDrawer = inject<(target: NodeDrawerTarget) => void>('openNodeDrawer')
+const onConnectionChanged = inject<() => void>('onProfileSwitched', () => {})
+
+const tempSourcePopoverRef = ref<InstanceType<typeof TempSourceSwitchPopover>>()
+const functionPopoverRef = ref<InstanceType<typeof FunctionSwitchPopover>>()
+const memberPopoverRef = ref<InstanceType<typeof MemberProfileSwitchPopover>>()
+
+const showSwapButtons = computed(() => flowViewMode === 'detail' && !props.data.isDefault)
+
+function onSwapTempSource(event: Event) {
+    event.stopPropagation()
+    tempSourcePopoverRef.value?.toggle(event)
+}
+
+function onSwapFunction(event: Event) {
+    event.stopPropagation()
+    functionPopoverRef.value?.toggle(event)
+}
+
+function onSwapMembers(event: Event) {
+    event.stopPropagation()
+    memberPopoverRef.value?.toggle(event)
+}
 
 function onClickProfile() {
     if (props.data.isDefault) return
@@ -73,7 +104,7 @@ const typeBadgeClass: Record<string, string> = {
 
 <template>
     <div
-        class="rounded-lg border border-border-one bg-bg-two shadow-md transition-shadow hover:shadow-lg"
+        class="group/node rounded-lg border border-border-one bg-bg-two shadow-md transition-all hover:shadow-lg hover:border-accent"
         :class="data.isDefault ? 'cursor-default' : 'cursor-pointer'"
         style="min-width: 220px"
         @click="onClickProfile"
@@ -89,6 +120,34 @@ const typeBadgeClass: Record<string, string> = {
             >
                 {{ data.profileType }}
             </span>
+            <!-- Swap button: temp source (Graph), members (Mix), base (Overlay) -->
+            <div
+                v-if="
+                    showSwapButtons &&
+                    (data.profileType === ProfileType.Graph ||
+                        data.profileType === ProfileType.Mix ||
+                        data.profileType === ProfileType.Overlay)
+                "
+                v-tooltip.top="
+                    data.profileType === ProfileType.Graph
+                        ? t('views.controls.switchTempSource')
+                        : data.profileType === ProfileType.Mix
+                          ? t('views.controls.switchMembers')
+                          : t('views.controls.switchBaseProfile')
+                "
+                class="flex size-8 items-center justify-center rounded-md transition-all hover:bg-accent/15"
+                @click="
+                    data.profileType === ProfileType.Graph
+                        ? onSwapTempSource($event)
+                        : onSwapMembers($event)
+                "
+            >
+                <svg-icon
+                    type="mdi"
+                    :path="mdiSwapHorizontal"
+                    class="size-5 text-text-color transition-colors hover:text-accent"
+                />
+            </div>
         </div>
         <div
             v-if="data.isDefault"
@@ -126,15 +185,55 @@ const typeBadgeClass: Record<string, string> = {
                     :path="mdiFunction"
                     class="size-3.5 text-text-color-secondary"
                 />
-                <span class="truncate text-xs text-text-color-secondary">
+                <span class="flex-1 truncate text-xs text-text-color-secondary">
                     {{ data.functionName }}
                 </span>
                 <span class="rounded bg-info/15 px-1 py-0.5 text-[10px] font-medium text-info">
                     {{ data.functionType }}
                 </span>
+                <div
+                    v-if="showSwapButtons"
+                    v-tooltip.top="t('views.controls.switchFunction')"
+                    class="flex size-6 items-center justify-center rounded transition-all hover:bg-accent/15"
+                    @click="onSwapFunction"
+                >
+                    <svg-icon
+                        type="mdi"
+                        :path="mdiSwapHorizontal"
+                        class="size-4 text-text-color-secondary transition-colors hover:text-accent"
+                    />
+                </div>
             </div>
         </div>
         <Handle type="source" :position="Position.Left" class="!bg-accent" />
         <Handle type="target" :position="Position.Right" class="!bg-accent" />
+
+        <!-- Popovers -->
+        <TempSourceSwitchPopover
+            v-if="showSwapButtons && data.profileType === ProfileType.Graph"
+            ref="tempSourcePopoverRef"
+            :profile-u-i-d="data.profileUID"
+            :current-device-u-i-d="data.tempSourceDeviceUID"
+            :current-temp-name="data.tempSourceTempName"
+            @changed="onConnectionChanged"
+        />
+        <FunctionSwitchPopover
+            v-if="showSwapButtons && data.profileType === ProfileType.Graph"
+            ref="functionPopoverRef"
+            :profile-u-i-d="data.profileUID"
+            :current-function-u-i-d="data.functionUID"
+            @changed="onConnectionChanged"
+        />
+        <MemberProfileSwitchPopover
+            v-if="
+                showSwapButtons &&
+                (data.profileType === ProfileType.Mix || data.profileType === ProfileType.Overlay)
+            "
+            ref="memberPopoverRef"
+            :profile-u-i-d="data.profileUID"
+            :profile-type="data.profileType"
+            :current-member-u-i-ds="data.memberProfileUIDs"
+            @changed="onConnectionChanged"
+        />
     </div>
 </template>

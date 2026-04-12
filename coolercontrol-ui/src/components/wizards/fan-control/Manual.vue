@@ -40,6 +40,7 @@ const router = useRouter()
 interface Props {
     deviceUID: UID
     channelName: string
+    isControlFlowView?: boolean
 }
 
 const emit = defineEmits<{
@@ -71,11 +72,13 @@ const saveSetting = async () => {
     const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
     await settingsStore.saveDaemonDeviceSettingManual(props.deviceUID, props.channelName, setting)
     emit('close')
-    await router.push({
-        name: 'device-speed',
-        params: { deviceUID: props.deviceUID, channelName: props.channelName },
-        query: { key: uuidV4() },
-    })
+    if (!props.isControlFlowView) {
+        await router.push({
+            name: 'device-speed',
+            params: { deviceUID: props.deviceUID, channelName: props.channelName },
+            query: { key: uuidV4() },
+        })
+    }
 }
 </script>
 

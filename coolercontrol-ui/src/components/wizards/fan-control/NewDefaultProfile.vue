@@ -37,6 +37,7 @@ interface Props {
     deviceUID: UID
     channelName: string
     name: string
+    isControlFlowView?: boolean
 }
 
 const props = defineProps<Props>()
@@ -71,11 +72,13 @@ const saveSetting = async () => {
         life: 3000,
     })
     emit('close')
-    await router.push({
-        name: 'device-speed',
-        params: { deviceUID: props.deviceUID, channelName: props.channelName },
-        query: { key: uuidV4() },
-    })
+    if (!props.isControlFlowView) {
+        await router.push({
+            name: 'device-speed',
+            params: { deviceUID: props.deviceUID, channelName: props.channelName },
+            query: { key: uuidV4() },
+        })
+    }
 }
 </script>
 

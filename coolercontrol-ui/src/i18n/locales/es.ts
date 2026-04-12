@@ -663,6 +663,12 @@ export default {
             controlFlow: 'Flujo de Control',
             backToOverview: 'Volver a la vista de controles',
             viewControlFlow: 'Ver flujo de control',
+            switchProfile: 'Cambiar perfil',
+            switchTempSource: 'Cambiar fuente de temperatura',
+            switchFunction: 'Cambiar función',
+            switchMembers: 'Cambiar perfiles miembros',
+            switchBaseProfile: 'Cambiar perfil base',
+            editSources: 'Editar fuentes',
         },
         modes: {
             createMode: 'Crear Modo',

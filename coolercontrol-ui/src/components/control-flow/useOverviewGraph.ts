@@ -51,7 +51,7 @@ export interface LightingChannelNodeData {
 const deviceStore = useDeviceStore()
 export const NODE_WIDTH = 220
 export const COL_GAP = deviceStore.getREMSize(20)
-const ROW_GAP = deviceStore.getREMSize(10)
+export const ROW_GAP = deviceStore.getREMSize(10)
 const CHAIN_PREVIEW_EXTRA = deviceStore.getREMSize(2)
 const INTER_TYPE_GAP = deviceStore.getREMSize(8)
 const DEVICE_LABEL_HEIGHT = deviceStore.getREMSize(3.5)

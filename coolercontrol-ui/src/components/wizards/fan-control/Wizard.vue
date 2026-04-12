@@ -48,7 +48,8 @@ const deviceUID: UID = dialogRef.value.data.deviceUID
 const channelName: string = dialogRef.value.data.channelName
 const selectedProfileUID: Ref<UID | undefined> = ref(dialogRef.value.data.selectedProfileUID)
 const isControlView: boolean = dialogRef.value.data.isControlView ?? false
-const currentStep: Ref<number> = ref(1)
+const isControlFlowView: boolean = dialogRef.value.data.isControlFlowView ?? false
+const currentStep: Ref<number> = ref(dialogRef.value.data.initialStep ?? 1)
 const newProfileName: Ref<string> = ref('')
 const newProfileType: Ref<ProfileType> = ref(ProfileType.Graph)
 const newTempSource: Ref<ProfileTempSource | undefined> = ref()
@@ -75,6 +76,7 @@ const setFunctionUID = (funUID: UID): void => {
         :channel-name="channelName"
         :selected-profile-u-i-d="selectedProfileUID"
         :is-control-view="isControlView"
+        :is-control-flow-view="isControlFlowView"
     />
     <ExistingProfile
         v-else-if="currentStep === 2"
@@ -83,6 +85,7 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :selected-profile-u-i-d="selectedProfileUID"
+        :is-control-flow-view="isControlFlowView"
     />
     <NewProfile
         v-else-if="currentStep === 3"
@@ -98,6 +101,7 @@ const setFunctionUID = (funUID: UID): void => {
         @close="closeDialog"
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
+        :is-control-flow-view="isControlFlowView"
     />
     <NewDefaultProfile
         v-else-if="currentStep === 5"
@@ -106,6 +110,7 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :name="newProfileName"
+        :is-control-flow-view="isControlFlowView"
     />
     <NewFixedProfile
         v-else-if="currentStep === 6"
@@ -114,6 +119,7 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :name="newProfileName"
+        :is-control-flow-view="isControlFlowView"
     />
     <NewMixProfile
         v-else-if="currentStep === 7"
@@ -122,6 +128,7 @@ const setFunctionUID = (funUID: UID): void => {
         :device-u-i-d="deviceUID"
         :channel-name="channelName"
         :name="newProfileName"
+        :is-control-flow-view="isControlFlowView"
     />
     <NewGraphProfileTempSource
         v-else-if="currentStep === 8"
@@ -197,6 +204,7 @@ const setFunctionUID = (funUID: UID): void => {
         :new-function="newFunction"
         :member-profile-ids="newMemberProfileIds"
         :offset-profile="newOffsetProfile"
+        :is-control-flow-view="isControlFlowView"
     />
 </template>
 
