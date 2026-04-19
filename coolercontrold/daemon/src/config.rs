@@ -37,8 +37,8 @@ use crate::setting::{
     CCChannelSettings, CCDeviceSettings, ChannelExtensions, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, DeviceExtensions,
     Function, FunctionType, FunctionUID, LcdCarouselSettings, LcdModeName, LcdSettings,
-    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
-    DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
+    LightingSettings, Offset, Profile, ProfileMixFunctionType, ProfileType, Setting, SettingKind,
+    TempSource, DEFAULT_FUNCTION_UID, DEFAULT_PROFILE_UID,
 };
 
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
@@ -277,23 +277,30 @@ impl Config {
         let device_settings =
             doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-        if setting.reset_to_default.unwrap_or(false) {
-            *channel_setting = Item::None; // removes channel from settings
-        } else if let Some(speed_fixed) = setting.speed_fixed {
-            Self::set_setting_fixed_speed(channel_setting, speed_fixed);
-        } else if let Some(lighting) = &setting.lighting {
-            Self::set_setting_lighting(channel_setting, lighting);
-        } else if let Some(lcd) = &setting.lcd {
-            Self::set_setting_lcd(channel_setting, lcd);
-        } else if let Some(profile_uid) = &setting.profile_uid {
-            Self::set_profile_uid(channel_setting, profile_uid);
-        } else {
-            // If there's nothing to set, this is an invalid/empty setting.
-            warn!(
-                "Invalid Setting: {device_uid} | {} - has nothing to set. This shouldn't happen, removing setting.",
-                setting.channel_name
-            );
-            *channel_setting = Item::None; // removes channel from settings
+        match &setting.kind {
+            SettingKind::Reset {
+                reset_to_default: true,
+            } => {
+                *channel_setting = Item::None; // removes channel from settings
+            }
+            SettingKind::Reset {
+                reset_to_default: false,
+            } => {
+                // No-op marker; reachable only from external JSON. Do not touch the
+                // existing entry, since `false` carries no state to persist.
+            }
+            SettingKind::SpeedFixed { speed_fixed } => {
+                Self::set_setting_fixed_speed(channel_setting, *speed_fixed);
+            }
+            SettingKind::Profile { profile_uid } => {
+                Self::set_profile_uid(channel_setting, profile_uid);
+            }
+            SettingKind::Lighting { lighting } => {
+                Self::set_setting_lighting(channel_setting, lighting);
+            }
+            SettingKind::Lcd { lcd } => {
+                Self::set_setting_lcd(channel_setting, lcd);
+            }
         }
     }
 
@@ -472,32 +479,65 @@ impl Config {
                     .with_context(|| "Channel Setting should be an inline table")?
                     .clone()
                     .into_table();
-                let speed_fixed = Self::get_speed_fixed(&setting_table)?;
-                let lighting = Self::get_lighting(&setting_table)?;
-                let lcd = Self::get_lcd(&setting_table)?;
-                let profile_uid = Self::get_profile_uid(&setting_table)?;
-                if speed_fixed.is_none()
-                    && lighting.is_none()
-                    && lcd.is_none()
-                    && profile_uid.is_none()
-                {
-                    debug!(
-                        "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
-                        This setting will be ignored."
-                    );
+                let Some(kind) =
+                    Self::resolve_setting_kind(device_uid, channel_name, &setting_table)?
+                else {
                     continue;
-                }
+                };
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
-                    speed_fixed,
-                    lighting,
-                    lcd,
-                    reset_to_default: None,
-                    profile_uid,
+                    kind,
                 });
             }
         }
         Ok(settings)
+    }
+
+    /// Determines the `SettingKind` from a parsed channel-setting TOML table.
+    ///
+    /// Returns `Ok(None)` (and logs at debug) if no kind-discriminating field is present so
+    /// the caller can skip the entry. When more than one is present (a malformed config), the
+    /// first detected wins by deliberate precedence: `SpeedFixed` -> `Profile` -> `Lighting`
+    /// -> `Lcd`. `Reset` is omitted because it is never persisted to the config.
+    fn resolve_setting_kind(
+        device_uid: &str,
+        channel_name: &str,
+        setting_table: &Table,
+    ) -> Result<Option<SettingKind>> {
+        let speed_fixed = Self::get_speed_fixed(setting_table)?;
+        let profile_uid = Self::get_profile_uid(setting_table)?;
+        let lighting = Self::get_lighting(setting_table)?;
+        let lcd = Self::get_lcd(setting_table)?;
+
+        let present_count = u8::from(speed_fixed.is_some())
+            + u8::from(profile_uid.is_some())
+            + u8::from(lighting.is_some())
+            + u8::from(lcd.is_some());
+        if present_count > 1 {
+            debug!(
+                "Multiple Setting kinds present for {device_uid} | {channel_name}; \
+                keeping first by precedence (speed_fixed, profile_uid, lighting, lcd)."
+            );
+        }
+
+        if let Some(speed_fixed) = speed_fixed {
+            return Ok(Some(SettingKind::SpeedFixed { speed_fixed }));
+        }
+        if let Some(profile_uid) = profile_uid {
+            return Ok(Some(SettingKind::Profile { profile_uid }));
+        }
+        if let Some(lighting) = lighting {
+            return Ok(Some(SettingKind::Lighting { lighting }));
+        }
+        if let Some(lcd) = lcd {
+            return Ok(Some(SettingKind::Lcd { lcd }));
+        }
+
+        debug!(
+            "Invalid Setting: {device_uid} | {channel_name} | setting has no setting present. \
+            This setting will be ignored."
+        );
+        Ok(None)
     }
 
     pub fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
@@ -2427,7 +2467,7 @@ mod tests {
     use serial_test::serial;
     use std::cell::RefCell;
     use std::path::Path;
-    use toml_edit::DocumentMut;
+    use toml_edit::{DocumentMut, Item};
 
     #[test]
     #[serial]
@@ -2718,6 +2758,269 @@ mod tests {
                     "key should be removed from document"
                 );
             }
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Builds a fresh in-memory `Config` backed by a real temp file path. Used by
+    /// the Setting-kind round-trip tests to exercise the full TOML write/read path.
+    async fn make_test_config(tag: &str) -> (Config, std::path::PathBuf) {
+        let path = Path::new(&format!("/tmp/config-setting-kind-{tag}.toml")).to_path_buf();
+        let path_ui = Path::new(&format!("/tmp/config-ui-setting-kind-{tag}.json")).to_path_buf();
+        let config_content = Config::create_new_config_file(&path).await.unwrap();
+        let document = config_content.parse::<DocumentMut>().unwrap();
+        let config = Config {
+            path: path.clone(),
+            path_ui,
+            document: RefCell::new(document),
+        };
+        (config, path)
+    }
+
+    /// Round-trips a `SpeedFixed` setting through the TOML writer and reader to
+    /// confirm the new enum-shaped persistence preserves the variant exactly.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_speed_fixed() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("speed-fixed").await;
+            let device_uid = "dev-speed";
+            let original = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 42 },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips a `Profile` setting and confirms it does not get confused with
+    /// a fixed-speed entry on read-back.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_profile() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("profile").await;
+            let device_uid = "dev-profile";
+            let original = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::Profile {
+                    profile_uid: "profile-uid-abc".to_string(),
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips a `Lighting` setting through the TOML writer and reader to
+    /// confirm the nested lighting table survives serialization.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_lighting() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{LightingSettings, Setting, SettingKind};
+
+            let (config, path) = make_test_config("lighting").await;
+            let device_uid = "dev-lighting";
+            let original = Setting {
+                channel_name: "ring".to_string(),
+                kind: SettingKind::Lighting {
+                    lighting: LightingSettings {
+                        mode: "fixed".to_string(),
+                        speed: Some("medium".to_string()),
+                        backward: Some(true),
+                        colors: vec![(10, 20, 30), (255, 0, 0)],
+                    },
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Round-trips an `Lcd` setting through the TOML writer and reader to confirm
+    /// the nested LCD table survives serialization.
+    #[test]
+    #[serial]
+    fn test_setting_round_trip_lcd() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{LcdModeName, LcdSettings, Setting, SettingKind};
+
+            let (config, path) = make_test_config("lcd").await;
+            let device_uid = "dev-lcd";
+            let original = Setting {
+                channel_name: "lcd1".to_string(),
+                kind: SettingKind::Lcd {
+                    lcd: LcdSettings {
+                        mode: LcdModeName::Image,
+                        brightness: Some(80),
+                        orientation: Some(180),
+                        image_file_processed: Some("/tmp/img.png".to_string()),
+                        carousel: None,
+                        temp_source: None,
+                        colors: vec![],
+                    },
+                },
+            };
+            config.set_device_setting(device_uid, &original);
+
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], original);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms that applying `Reset { reset_to_default: true }` to a previously
+    /// persisted channel removes the channel entry from the TOML, matching the
+    /// pre-refactor "reset wipes the channel" semantics.
+    #[test]
+    #[serial]
+    fn test_setting_reset_true_removes_channel() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("reset-true").await;
+            let device_uid = "dev-reset";
+            let written = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 50 },
+            };
+            config.set_device_setting(device_uid, &written);
+            assert_eq!(config.get_device_settings(device_uid).unwrap().len(), 1);
+
+            config.set_device_setting(
+                device_uid,
+                &Setting {
+                    channel_name: "fan1".to_string(),
+                    kind: SettingKind::Reset {
+                        reset_to_default: true,
+                    },
+                },
+            );
+            assert!(
+                config.get_device_settings(device_uid).unwrap().is_empty(),
+                "Reset {{ true }} should drop the channel from device-settings"
+            );
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms that `Reset { reset_to_default: false }` is a no-op and leaves
+    /// the existing persisted entry intact.
+    #[test]
+    #[serial]
+    fn test_setting_reset_false_is_noop() {
+        cc_fs::test_runtime(async {
+            use crate::setting::{Setting, SettingKind};
+
+            let (config, path) = make_test_config("reset-false").await;
+            let device_uid = "dev-reset-noop";
+            let written = Setting {
+                channel_name: "fan1".to_string(),
+                kind: SettingKind::SpeedFixed { speed_fixed: 33 },
+            };
+            config.set_device_setting(device_uid, &written);
+
+            config.set_device_setting(
+                device_uid,
+                &Setting {
+                    channel_name: "fan1".to_string(),
+                    kind: SettingKind::Reset {
+                        reset_to_default: false,
+                    },
+                },
+            );
+            let loaded = config.get_device_settings(device_uid).unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert_eq!(loaded[0], written);
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms a hand-written legacy TOML payload (the historical flat shape)
+    /// parses into the correct `SettingKind` variant via `get_device_settings`.
+    /// This locks in backward compatibility for users with existing config files.
+    #[test]
+    #[serial]
+    fn test_setting_legacy_toml_parses() {
+        cc_fs::test_runtime(async {
+            let (config, path) = make_test_config("legacy").await;
+            {
+                let mut doc = config.document.borrow_mut();
+                doc["device-settings"]["dev-legacy"]["fan1"] =
+                    "{ speed_fixed = 30 }".parse::<Item>().unwrap();
+                doc["device-settings"]["dev-legacy"]["fan2"] =
+                    "{ profile_uid = \"prof-xyz\" }".parse::<Item>().unwrap();
+            }
+
+            let loaded = config.get_device_settings("dev-legacy").unwrap();
+            assert_eq!(loaded.len(), 2);
+            // BTreeMap iteration order is alphabetical by channel name.
+            use crate::setting::SettingKind;
+            assert_eq!(loaded[0].channel_name, "fan1");
+            assert!(matches!(
+                loaded[0].kind,
+                SettingKind::SpeedFixed { speed_fixed: 30 }
+            ));
+            assert_eq!(loaded[1].channel_name, "fan2");
+            match &loaded[1].kind {
+                SettingKind::Profile { profile_uid } => assert_eq!(profile_uid, "prof-xyz"),
+                other => panic!("expected Profile, got {other:?}"),
+            }
+
+            cc_fs::remove_file(path).await.unwrap();
+        });
+    }
+
+    /// Confirms a malformed config row carrying multiple kind-discriminating
+    /// fields resolves to the deliberate first-by-precedence variant
+    /// (SpeedFixed -> Profile -> Lighting -> Lcd) rather than failing.
+    #[test]
+    #[serial]
+    fn test_setting_multi_key_toml_precedence() {
+        cc_fs::test_runtime(async {
+            use crate::setting::SettingKind;
+
+            let (config, path) = make_test_config("multi-key").await;
+            {
+                let mut doc = config.document.borrow_mut();
+                doc["device-settings"]["dev-multi"]["fan1"] =
+                    "{ speed_fixed = 22, profile_uid = \"prof-shadowed\" }"
+                        .parse::<Item>()
+                        .unwrap();
+            }
+
+            let loaded = config.get_device_settings("dev-multi").unwrap();
+            assert_eq!(loaded.len(), 1);
+            assert!(
+                matches!(loaded[0].kind, SettingKind::SpeedFixed { speed_fixed: 22 }),
+                "speed_fixed must win over profile_uid by declared precedence"
+            );
+
             cc_fs::remove_file(path).await.unwrap();
         });
     }
