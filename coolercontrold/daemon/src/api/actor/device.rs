@@ -25,7 +25,9 @@ use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::notifier::NotificationHandle;
 use crate::repositories::gpu::amd_overdrive;
-use crate::setting::{LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind};
+use crate::setting::{
+    LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind,
+};
 use crate::AllDevices;
 use anyhow::Result;
 use log::{error, info};

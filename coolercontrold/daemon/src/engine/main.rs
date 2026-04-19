@@ -1247,7 +1247,9 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    let SettingKind::Profile { profile_uid: setting_profile_uid } = setting.kind
+                    let SettingKind::Profile {
+                        profile_uid: setting_profile_uid,
+                    } = setting.kind
                     else {
                         continue;
                     };
