@@ -806,7 +806,7 @@ impl Config {
             } else {
                 None
             };
-            let backward = if let Some(value) = setting_table.get("backward") {
+            let backward = if let Some(value) = lighting_table.get("backward") {
                 Some(
                     value
                         .as_bool()
