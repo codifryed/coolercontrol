@@ -40,7 +40,7 @@ use crate::repositories::liquidctl::supported_devices::device_support;
 use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, InitError, Repository};
 use crate::repositories::utils::apply_device_command_delay;
-use crate::setting::{LcdModeName, LcdSettings, LightingSettings, TempSource};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, SettingKind, TempSource};
 use crate::Device;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -868,7 +868,7 @@ impl LiquidctlRepo {
             if let Ok(device_settings) = self.config.get_device_settings(&device_uid) {
                 if device_settings
                     .iter()
-                    .any(|setting| setting.lcd.is_some())
+                    .any(|setting| matches!(setting.kind, SettingKind::Lcd { .. }))
                     .not()
                 {
                     continue;

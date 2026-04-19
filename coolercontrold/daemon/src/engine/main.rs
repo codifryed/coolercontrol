@@ -45,7 +45,7 @@ use crate::paths;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     ChannelExtensions, FunctionUID, LcdModeName, LcdSettings, LightingSettings, Profile,
-    ProfileType, ProfileUID, Setting, DEFAULT_FUNCTION_UID,
+    ProfileType, ProfileUID, Setting, SettingKind, DEFAULT_FUNCTION_UID,
 };
 use crate::{cc_fs, repositories, AllDevices, Repos};
 use anyhow::{anyhow, Context, Result};
@@ -165,22 +165,29 @@ impl Engine {
     /// This is used to set the config Setting model configuration.
     /// Currently used at startup to apply saved settings and by Modes.
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
-        if let Some(true) = setting.reset_to_default {
-            self.set_reset(device_uid, &setting.channel_name).await
-        } else if let Some(speed_fixed) = setting.speed_fixed {
-            self.set_fixed_speed(device_uid, &setting.channel_name, speed_fixed)
-                .await
-        } else if let Some(lighting) = &setting.lighting {
-            self.set_lighting(device_uid, &setting.channel_name, lighting)
-                .await
-        } else if let Some(lcd) = &setting.lcd {
-            self.set_lcd(device_uid, &setting.channel_name, lcd, true)
-                .await
-        } else if let Some(profile_uid) = &setting.profile_uid {
-            self.set_profile(device_uid, &setting.channel_name, profile_uid)
-                .await
-        } else {
-            Err(anyhow!("Invalid Setting combination: {setting:?}"))
+        match &setting.kind {
+            SettingKind::Reset {
+                reset_to_default: true,
+            } => self.set_reset(device_uid, &setting.channel_name).await,
+            SettingKind::Reset {
+                reset_to_default: false,
+            } => Ok(()),
+            SettingKind::SpeedFixed { speed_fixed } => {
+                self.set_fixed_speed(device_uid, &setting.channel_name, *speed_fixed)
+                    .await
+            }
+            SettingKind::Lighting { lighting } => {
+                self.set_lighting(device_uid, &setting.channel_name, lighting)
+                    .await
+            }
+            SettingKind::Lcd { lcd } => {
+                self.set_lcd(device_uid, &setting.channel_name, lcd, true)
+                    .await
+            }
+            SettingKind::Profile { profile_uid } => {
+                self.set_profile(device_uid, &setting.channel_name, profile_uid)
+                    .await
+            }
         }
     }
 
@@ -708,7 +715,10 @@ impl Engine {
         else {
             return; // If there are currently no settings applied, leave the device alone.
         };
-        let Some(ref settings_lcd_current) = settings_current.lcd else {
+        let SettingKind::Lcd {
+            lcd: ref settings_lcd_current,
+        } = settings_current.kind
+        else {
             return; // If there are currently no LCD settings applied, leave the device alone.
         };
         if settings_lcd_current.mode == LcdModeName::None
@@ -730,8 +740,7 @@ impl Engine {
                         let _ = async {
                             let config_setting = Setting {
                                 channel_name: channel_name.to_string(),
-                                lcd: Some(lcd_settings),
-                                ..Default::default()
+                                kind: SettingKind::Lcd { lcd: lcd_settings },
                             };
                             self.config.set_device_setting(device_uid, &config_setting);
                             self.config.save_config_file().await
@@ -788,7 +797,7 @@ impl Engine {
                 else {
                     continue;
                 };
-                let Some(ref lcd) = settings.lcd else {
+                let SettingKind::Lcd { ref lcd } = settings.kind else {
                     continue;
                 };
                 if lcd.mode == LcdModeName::Temp || lcd.mode == LcdModeName::Carousel {
@@ -878,12 +887,13 @@ impl Engine {
     /// This is used to determine if a setting should be saved to the config file and thereby
     /// used again on startup, since the currently applied image may not exist on restart.
     fn current_setting_is_externally_applied(settings_current: &Setting) -> bool {
-        settings_current.lcd.as_ref().is_some_and(|lcd| {
-            lcd.image_file_processed.as_ref().is_some_and(|path_image| {
-                std::path::Path::new(path_image)
-                    .starts_with(paths::config_dir())
-                    .not()
-            })
+        let SettingKind::Lcd { ref lcd } = settings_current.kind else {
+            return false;
+        };
+        lcd.image_file_processed.as_ref().is_some_and(|path_image| {
+            std::path::Path::new(path_image)
+                .starts_with(paths::config_dir())
+                .not()
         })
     }
 
@@ -896,9 +906,12 @@ impl Engine {
         let setting = self
             .config
             .get_device_channel_settings(device_uid, channel_name)?;
-        let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound {
-            msg: "LCD Settings".to_string(),
-        })?;
+        let SettingKind::Lcd { lcd: lcd_setting } = setting.kind else {
+            return Err(CCError::NotFound {
+                msg: "LCD Settings".to_string(),
+            }
+            .into());
+        };
         let image_path = lcd_setting
             .image_file_processed
             .ok_or_else(|| CCError::NotFound {
@@ -940,16 +953,18 @@ impl Engine {
                     }
                     let reset_setting = Setting {
                         channel_name: ch.clone(),
-                        reset_to_default: Some(true),
-                        ..Default::default()
+                        kind: SettingKind::Reset {
+                            reset_to_default: true,
+                        },
                     };
                     self.config.set_device_setting(device_uid, &reset_setting);
                 }
             } else {
                 let reset_setting = Setting {
                     channel_name: SYNC_CHANNEL_NAME.to_string(),
-                    reset_to_default: Some(true),
-                    ..Default::default()
+                    kind: SettingKind::Reset {
+                        reset_to_default: true,
+                    },
                 };
                 self.config.set_device_setting(device_uid, &reset_setting);
             }
@@ -1091,10 +1106,12 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let SettingKind::Profile {
+                        profile_uid: ref setting_profile_uid,
+                    } = setting.kind
+                    else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
                     if setting_profile_uid == profile_uid {
                         // If this device channel setting contains the updated Profile:
                         self.set_profile(device_uid, &setting.channel_name, profile_uid)
@@ -1169,15 +1186,18 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let SettingKind::Profile {
+                        profile_uid: ref setting_profile_uid,
+                    } = setting.kind
+                    else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
                     if setting_profile_uid == profile_uid {
                         let default_setting = Setting {
                             channel_name: setting.channel_name,
-                            reset_to_default: Some(true),
-                            ..Default::default()
+                            kind: SettingKind::Reset {
+                                reset_to_default: true,
+                            },
                         };
                         self.config.set_device_setting(device_uid, &default_setting);
                         self.set_reset(device_uid, &default_setting.channel_name)
@@ -1227,7 +1247,8 @@ impl Engine {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid) {
                 for setting in config_settings {
-                    let Some(setting_profile_uid) = setting.profile_uid else {
+                    let SettingKind::Profile { profile_uid: setting_profile_uid } = setting.kind
+                    else {
                         continue;
                     };
 
@@ -1287,26 +1308,14 @@ impl Engine {
                 .get_device_settings(cs_device_uid)?
                 .iter()
                 .any(|setting| {
-                    setting.lcd.is_some()
-                        && setting.lcd.as_ref().unwrap().temp_source.is_some()
-                        && setting
-                            .lcd
-                            .as_ref()
-                            .unwrap()
-                            .temp_source
-                            .as_ref()
-                            .unwrap()
-                            .device_uid
-                            == cs_device_uid
-                        && setting
-                            .lcd
-                            .as_ref()
-                            .unwrap()
-                            .temp_source
-                            .as_ref()
-                            .unwrap()
-                            .temp_name
-                            == custom_sensor_id
+                    let SettingKind::Lcd { lcd } = &setting.kind else {
+                        return false;
+                    };
+                    let Some(temp_source) = lcd.temp_source.as_ref() else {
+                        return false;
+                    };
+                    temp_source.device_uid == cs_device_uid
+                        && temp_source.temp_name == custom_sensor_id
                 });
         if affects_profiles || affects_lcd_settings {
             Err(CCError::UserError {
@@ -1954,7 +1963,7 @@ impl DiagnosisHost for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::setting::{LcdModeName, LcdSettings, Setting};
+    use crate::setting::{LcdModeName, LcdSettings, Setting, SettingKind};
 
     fn lcd_settings_with_image(image_path: Option<String>) -> LcdSettings {
         LcdSettings {
@@ -1968,12 +1977,12 @@ mod tests {
         }
     }
 
-    // Returns false when the setting has no LCD settings at all.
+    // Returns false when the setting is not an LCD variant.
     #[test]
     fn externally_applied_no_lcd() {
         let setting = Setting {
-            lcd: None,
-            ..Default::default()
+            channel_name: "fan1".to_string(),
+            kind: SettingKind::SpeedFixed { speed_fixed: 50 },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -1982,8 +1991,10 @@ mod tests {
     #[test]
     fn externally_applied_lcd_no_image_path() {
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(None)),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(None),
+            },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -1997,8 +2008,10 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(Some(internal_path))),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(Some(internal_path)),
+            },
         };
         assert!(!Engine::current_setting_is_externally_applied(&setting));
     }
@@ -2009,8 +2022,10 @@ mod tests {
     fn externally_applied_external_image_path() {
         let external_path = "/tmp/external_lcd_image.png".to_string();
         let setting = Setting {
-            lcd: Some(lcd_settings_with_image(Some(external_path))),
-            ..Default::default()
+            channel_name: "lcd1".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: lcd_settings_with_image(Some(external_path)),
+            },
         };
         assert!(Engine::current_setting_is_externally_applied(&setting));
     }

@@ -267,8 +267,9 @@ impl ApiActor<SettingMessage> for SettingActor {
                             {
                                 let reset_setting = Setting {
                                     channel_name: setting.channel_name,
-                                    reset_to_default: Some(true),
-                                    ..Default::default()
+                                    kind: SettingKind::Reset {
+                                        reset_to_default: true,
+                                    },
                                 };
                                 self.config.set_device_setting(&device_uid, &reset_setting);
                             }

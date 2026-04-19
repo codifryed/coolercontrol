@@ -25,7 +25,7 @@ use crate::engine::main::Engine;
 use crate::modes::ModeController;
 use crate::notifier::NotificationHandle;
 use crate::repositories::gpu::amd_overdrive;
-use crate::setting::{LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting};
+use crate::setting::{LcdModeName, LcdSettings, LightingSettings, ProfileUID, Setting, SettingKind};
 use crate::AllDevices;
 use anyhow::Result;
 use log::{error, info};
@@ -247,8 +247,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .await?;
                     let config_setting = Setting {
                         channel_name,
-                        lcd: Some(lcd_settings),
-                        ..Default::default()
+                        kind: SettingKind::Lcd { lcd: lcd_settings },
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
                     self.config.save_config_file().await
@@ -275,8 +274,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .await?;
                     let config_settings = Setting {
                         channel_name,
-                        speed_fixed: Some(duty),
-                        ..Default::default()
+                        kind: SettingKind::SpeedFixed { speed_fixed: duty },
                     };
                     self.config
                         .set_device_setting(&device_uid, &config_settings);
@@ -298,8 +296,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .await?;
                     let config_setting = Setting {
                         channel_name,
-                        profile_uid: Some(profile_uid),
-                        ..Default::default()
+                        kind: SettingKind::Profile { profile_uid },
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
                     self.modes_controller.clear_active_modes().await;
@@ -321,8 +318,7 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .await?;
                     let config_setting = Setting {
                         channel_name,
-                        lcd: Some(lcd_settings),
-                        ..Default::default()
+                        kind: SettingKind::Lcd { lcd: lcd_settings },
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
                     self.modes_controller.clear_active_modes().await;
@@ -343,8 +339,9 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                         .await?;
                     let config_setting = Setting {
                         channel_name,
-                        lighting: Some(lighting_settings),
-                        ..Default::default()
+                        kind: SettingKind::Lighting {
+                            lighting: lighting_settings,
+                        },
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
                     self.modes_controller.clear_active_modes().await;
@@ -390,8 +387,9 @@ impl ApiActor<DeviceMessage> for DeviceActor {
                     self.engine.set_reset(&device_uid, &channel_name).await?;
                     let config_setting = Setting {
                         channel_name,
-                        reset_to_default: Some(true),
-                        ..Default::default()
+                        kind: SettingKind::Reset {
+                            reset_to_default: true,
+                        },
                     };
                     self.config.set_device_setting(&device_uid, &config_setting);
                     self.modes_controller.clear_active_modes().await;

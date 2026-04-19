@@ -2967,20 +2967,22 @@ mod tests {
     #[test]
     #[serial]
     fn test_setting_legacy_toml_parses() {
+        use crate::setting::SettingKind;
+        use toml_edit::Table;
+
         cc_fs::test_runtime(async {
             let (config, path) = make_test_config("legacy").await;
             {
                 let mut doc = config.document.borrow_mut();
-                doc["device-settings"]["dev-legacy"]["fan1"] =
-                    "{ speed_fixed = 30 }".parse::<Item>().unwrap();
-                doc["device-settings"]["dev-legacy"]["fan2"] =
-                    "{ profile_uid = \"prof-xyz\" }".parse::<Item>().unwrap();
+                let mut device_table = Table::new();
+                device_table["fan1"] = "{ speed_fixed = 30 }".parse::<Item>().unwrap();
+                device_table["fan2"] = "{ profile_uid = \"prof-xyz\" }".parse::<Item>().unwrap();
+                doc["device-settings"]["dev-legacy"] = Item::Table(device_table);
             }
 
             let loaded = config.get_device_settings("dev-legacy").unwrap();
             assert_eq!(loaded.len(), 2);
             // BTreeMap iteration order is alphabetical by channel name.
-            use crate::setting::SettingKind;
             assert_eq!(loaded[0].channel_name, "fan1");
             assert!(matches!(
                 loaded[0].kind,
@@ -2998,20 +3000,22 @@ mod tests {
 
     /// Confirms a malformed config row carrying multiple kind-discriminating
     /// fields resolves to the deliberate first-by-precedence variant
-    /// (SpeedFixed -> Profile -> Lighting -> Lcd) rather than failing.
+    /// (`SpeedFixed` -> `Profile` -> `Lighting` -> `Lcd`) rather than failing.
     #[test]
     #[serial]
     fn test_setting_multi_key_toml_precedence() {
-        cc_fs::test_runtime(async {
-            use crate::setting::SettingKind;
+        use crate::setting::SettingKind;
+        use toml_edit::Table;
 
+        cc_fs::test_runtime(async {
             let (config, path) = make_test_config("multi-key").await;
             {
                 let mut doc = config.document.borrow_mut();
-                doc["device-settings"]["dev-multi"]["fan1"] =
-                    "{ speed_fixed = 22, profile_uid = \"prof-shadowed\" }"
-                        .parse::<Item>()
-                        .unwrap();
+                let mut device_table = Table::new();
+                device_table["fan1"] = "{ speed_fixed = 22, profile_uid = \"prof-shadowed\" }"
+                    .parse::<Item>()
+                    .unwrap();
+                doc["device-settings"]["dev-multi"] = Item::Table(device_table);
             }
 
             let loaded = config.get_device_settings("dev-multi").unwrap();
