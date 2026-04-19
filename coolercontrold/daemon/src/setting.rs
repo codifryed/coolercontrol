@@ -46,34 +46,47 @@ pub const DEFAULT_FUNCTION_UID: &str = "0";
 /// These are the general core settings that apply to a wide range of device and channel types.
 /// Specialized settings are stored in `DeviceExtensions` and `ChannelExtensions`.
 /// Only one specific lighting or speed setting is applied to a specific channel at a time.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
+///
+/// The kind of setting is enforced at the type level via `SettingKind`. The serialized
+/// shape is preserved (flat fields under the channel object) for backwards compatibility
+/// with both the persisted TOML config and existing REST clients.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Setting {
     pub channel_name: ChannelName,
 
-    /// The fixed duty speed to set. eg: 20 (%)
-    pub speed_fixed: Option<Duty>,
-
-    /// Settings for lighting
-    pub lighting: Option<LightingSettings>,
-
-    /// Settings for LCD screens
-    pub lcd: Option<LcdSettings>,
-
-    /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
-    pub reset_to_default: Option<bool>,
-
-    /// The Profile UID that applies to this device channel
-    pub profile_uid: Option<ProfileUID>,
+    #[serde(flatten)]
+    pub kind: SettingKind,
 }
 
-impl PartialEq for Setting {
-    fn eq(&self, other: &Self) -> bool {
-        self.channel_name == other.channel_name
-            && self.speed_fixed == other.speed_fixed
-            && self.lighting == other.lighting
-            && self.lcd == other.lcd
-            && self.profile_uid == other.profile_uid
-    }
+/// The variant of a channel `Setting`. Exactly one variant applies to a channel at a time.
+///
+/// Serialization uses `#[serde(untagged)]` with each variant carrying a single field
+/// whose name matches the legacy flat shape. Combined with `#[serde(flatten)]` on
+/// `Setting::kind`, the on-the-wire form is identical to the old flat struct.
+///
+/// The variant declaration order is the deliberate dispatch precedence: when a malformed
+/// payload contains keys from more than one variant, the first declared variant wins.
+/// This order matches the engine dispatch in `engine::main` so the read path and apply
+/// path agree on the same precedence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum SettingKind {
+    /// Reset the channel to its hardware default. Only `true` is meaningful;
+    /// `false` is treated as a no-op by the engine. This variant is never persisted
+    /// to the TOML config (it is only used as an in-flight command).
+    Reset { reset_to_default: bool },
+
+    /// Apply a fixed duty speed to the channel. eg: 20 (%)
+    SpeedFixed { speed_fixed: Duty },
+
+    /// Apply the named profile to the channel.
+    Profile { profile_uid: ProfileUID },
+
+    /// Apply lighting settings to the channel.
+    Lighting { lighting: LightingSettings },
+
+    /// Apply LCD settings to the channel.
+    Lcd { lcd: LcdSettings },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -526,4 +539,171 @@ pub enum ChannelMetric {
     Load,
     RPM,
     Freq,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    fn fan_channel() -> String {
+        "fan1".to_string()
+    }
+
+    // Verifies a SpeedFixed setting serializes to the legacy flat shape and deserializes
+    // back to an equal value, so existing UI clients reading the REST response continue
+    // to work unchanged.
+    #[test]
+    fn speed_fixed_json_round_trip() {
+        let setting = Setting {
+            channel_name: fan_channel(),
+            kind: SettingKind::SpeedFixed { speed_fixed: 50 },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        assert_eq!(
+            serialized,
+            json!({ "channel_name": "fan1", "speed_fixed": 50 })
+        );
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Verifies a Profile setting serializes to the legacy flat shape and round-trips.
+    #[test]
+    fn profile_json_round_trip() {
+        let setting = Setting {
+            channel_name: fan_channel(),
+            kind: SettingKind::Profile {
+                profile_uid: "abc-123".to_string(),
+            },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        assert_eq!(
+            serialized,
+            json!({ "channel_name": "fan1", "profile_uid": "abc-123" })
+        );
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Verifies a Lighting setting nests under the `lighting` key (legacy shape) and
+    // round-trips, including the inner LightingSettings fields.
+    #[test]
+    fn lighting_json_round_trip() {
+        let setting = Setting {
+            channel_name: "logo".to_string(),
+            kind: SettingKind::Lighting {
+                lighting: LightingSettings {
+                    mode: "fixed".to_string(),
+                    speed: None,
+                    backward: None,
+                    colors: vec![(0, 255, 255)],
+                },
+            },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        assert_eq!(
+            serialized,
+            json!({
+                "channel_name": "logo",
+                "lighting": {
+                    "mode": "fixed",
+                    "speed": null,
+                    "backward": null,
+                    "colors": [[0, 255, 255]],
+                }
+            })
+        );
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Verifies an Lcd setting nests under the `lcd` key (legacy shape) and round-trips.
+    #[test]
+    fn lcd_json_round_trip() {
+        let setting = Setting {
+            channel_name: "screen".to_string(),
+            kind: SettingKind::Lcd {
+                lcd: LcdSettings {
+                    mode: LcdModeName::Liquid,
+                    brightness: Some(80),
+                    orientation: None,
+                    image_file_processed: None,
+                    carousel: None,
+                    colors: Vec::new(),
+                    temp_source: None,
+                },
+            },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Verifies the Reset variant serializes to `{ "reset_to_default": true }`, matching
+    // the legacy shape so any external service plugin or older client emitting that
+    // payload continues to deserialize correctly.
+    #[test]
+    fn reset_true_json_round_trip() {
+        let setting = Setting {
+            channel_name: fan_channel(),
+            kind: SettingKind::Reset {
+                reset_to_default: true,
+            },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        assert_eq!(
+            serialized,
+            json!({ "channel_name": "fan1", "reset_to_default": true })
+        );
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Verifies Reset with `false` is also a valid round-trip. The engine treats `false`
+    // as a no-op, but the type must still survive serialization without loss so
+    // misconfigured input is preserved verbatim rather than silently dropped.
+    #[test]
+    fn reset_false_json_round_trip() {
+        let setting = Setting {
+            channel_name: fan_channel(),
+            kind: SettingKind::Reset {
+                reset_to_default: false,
+            },
+        };
+        let serialized: Value = serde_json::to_value(&setting).unwrap();
+        let parsed: Setting = serde_json::from_value(serialized).unwrap();
+        assert_eq!(parsed, setting);
+    }
+
+    // Locks in the deserialization precedence for malformed multi-key payloads: the
+    // first variant declared in `SettingKind` wins. Reset is declared first so that a
+    // payload carrying both `reset_to_default` and `speed_fixed` is interpreted as a
+    // reset, matching the engine dispatch order in `engine/main.rs`.
+    #[test]
+    fn multi_key_input_picks_first_declared_variant() {
+        let payload = json!({
+            "channel_name": "fan1",
+            "reset_to_default": true,
+            "speed_fixed": 50,
+        });
+        let setting: Setting = serde_json::from_value(payload).unwrap();
+        assert!(matches!(
+            setting.kind,
+            SettingKind::Reset {
+                reset_to_default: true
+            }
+        ));
+    }
+
+    // A Setting payload with no kind-discriminating field is invalid by construction
+    // and must be rejected at the deserialization boundary so it cannot reach the
+    // engine. The previous flat struct silently produced an "Invalid Setting" error
+    // at apply-time; with the enum it fails to parse at all.
+    #[test]
+    fn empty_kind_rejected() {
+        let payload = json!({ "channel_name": "fan1" });
+        let result: Result<Setting, _> = serde_json::from_value(payload);
+        assert!(result.is_err());
+    }
 }
