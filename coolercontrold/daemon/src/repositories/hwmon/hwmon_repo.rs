@@ -95,6 +95,16 @@ fn drivetemp_ioctl_timeout_for(poll_rate: f64) -> Duration {
 /// re-attempt it. This is used per chanel group.
 const INIT_EXTRACT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Cap on the `pwm_enable` write during suspend preparation. The
+/// systemd/logind sleep notification normally arrives 2-5 s before the
+/// machine actually suspends, so this must fit well inside that
+/// budget. A healthy `ThinkPad` EC completes the writes in
+/// microseconds; 1s is a generous ceiling for a slow EC
+/// without risking the suspend deadline. On timeout we log and
+/// move on; the fan stays in whatever mode it was in before the
+/// write attempt.
+const PREPARE_FOR_SLEEP_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
 /// implementation blocks temperature reads when the drive is spinning up which causes significant
 /// read delays. Since this is pretty normal behavior for this driver, we handle it differently.
@@ -1255,6 +1265,13 @@ impl Repository for HwmonRepo {
     }
 
     async fn prepare_for_sleep(&self) {
+        // Suspend prep runs in a tight systemd-sleep window (the
+        // sleep notification fires 1-3 s before actual suspend). No
+        // device permit is taken here: ThinkPad EC tolerates
+        // concurrent ops with the preload loop, and waiting on the
+        // permit could blow the suspend budget. The only protection
+        // needed is a short write timeout so a wedged EC cannot
+        // block suspend. All failures are logged and swallowed.
         for (device_uid, (_device_lock, hwmon_driver)) in &self.devices {
             if hwmon_driver.name != devices::DEVICE_NAME_THINK_PAD {
                 continue;
@@ -1270,18 +1287,28 @@ impl Repository for HwmonRepo {
                     "Setting ThinkPad device: {device_uid} channel: {} to auto mode for sleep",
                     channel_info.name
                 );
-                if let Err(err) = fans::set_pwm_enable(
+                let write_fut = fans::set_pwm_enable(
                     fans::PWM_ENABLE_AUTO_VALUE,
                     &hwmon_driver.path,
                     channel_info,
-                )
-                .await
-                {
-                    warn!(
-                        "Failed to set auto mode for ThinkPad device: {device_uid} \
-                         channel: {} before sleep: {err}",
-                        channel_info.name
-                    );
+                );
+                match timeout(PREPARE_FOR_SLEEP_WRITE_TIMEOUT, write_fut).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(err)) => {
+                        warn!(
+                            "Failed to set auto mode for ThinkPad device: {device_uid} \
+                             channel: {} before sleep: {err}",
+                            channel_info.name
+                        );
+                    }
+                    Err(_elapsed) => {
+                        warn!(
+                            "Timed out ({PREPARE_FOR_SLEEP_WRITE_TIMEOUT:?}) setting auto \
+                             mode for ThinkPad device: {device_uid} channel: {} before \
+                             sleep - EC may be wedged",
+                            channel_info.name
+                        );
+                    }
                 }
             }
         }
@@ -2002,6 +2029,176 @@ mod command_delay_handoff_tests {
 }
 
 #[cfg(test)]
+mod prepare_for_sleep_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    async fn seed_pwm_dir(base: &Path, pwm_enable_initial: &[u8]) {
+        cc_fs::create_dir_all(base).await.unwrap();
+        cc_fs::write(base.join("pwm1_enable"), pwm_enable_initial.to_vec())
+            .await
+            .unwrap();
+        cc_fs::write(base.join("pwm1"), b"128".to_vec())
+            .await
+            .unwrap();
+        cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+            .await
+            .unwrap();
+    }
+
+    fn thinkpad_fan(
+        number: u8,
+        name: &str,
+        base: &Path,
+        pwm_enable_default: Option<u8>,
+    ) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            name: name.to_string(),
+            pwm_enable_default,
+            caps: HwmonChannelCapabilities::FAN_WRITABLE | HwmonChannelCapabilities::PWM,
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            ..Default::default()
+        }
+    }
+
+    fn insert_thinkpad_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver_path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+    ) {
+        let driver = HwmonDriverInfo {
+            name: devices::DEVICE_NAME_THINK_PAD.to_string(),
+            path: driver_path,
+            channels,
+            u_id: format!("test-uid-thinkpad-{type_index}"),
+            apple_smc: AppleMacSMC::default(),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.device_permits
+            .insert(type_index, Rc::new(Semaphore::new(1)));
+        repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.devices
+            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    #[test]
+    #[serial]
+    fn prepare_for_sleep_writes_auto_value() {
+        // Happy path: a ThinkPad fan with a controllable permit is
+        // switched to auto mode for suspend.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_pwm_dir(&dir, b"1").await;
+
+            let mut repo = empty_repo();
+            insert_thinkpad_device(
+                &mut repo,
+                1,
+                dir.clone(),
+                vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
+            );
+
+            repo.prepare_for_sleep().await;
+
+            let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
+            assert_eq!(
+                after.trim(),
+                "2",
+                "fan should be set to auto mode for sleep"
+            );
+
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn prepare_for_sleep_does_not_hang_on_wedged_ec_write() {
+        // Verifies the write-timeout bound: if the pwm_enable write
+        // hangs (simulated with a FIFO whose read side has no
+        // reader, so open(2) for write blocks waiting to be paired),
+        // prepare_for_sleep returns well within the suspend budget
+        // rather than waiting on the kernel indefinitely.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            cc_fs::create_dir_all(&dir).await.unwrap();
+            // pwm1_enable is a FIFO — a write-open call on a FIFO
+            // with no reader blocks, so set_pwm_enable hangs inside
+            // the tokio::fs layer.
+            let fifo_path = dir.join("pwm1_enable");
+            let path_c = std::ffi::CString::new(fifo_path.to_str().unwrap()).unwrap();
+            // SAFETY: CString is valid; mode is a standard POSIX
+            // value; mkfifo is safe for these args.
+            let rc = unsafe { nix::libc::mkfifo(path_c.as_ptr(), 0o600) };
+            assert_eq!(
+                rc,
+                0,
+                "mkfifo failed: errno={}",
+                std::io::Error::last_os_error()
+            );
+
+            let mut repo = empty_repo();
+            insert_thinkpad_device(
+                &mut repo,
+                1,
+                dir.clone(),
+                vec![thinkpad_fan(1, "fan1", &dir, Some(2))],
+            );
+
+            let start = Instant::now();
+            repo.prepare_for_sleep().await;
+            let elapsed = start.elapsed();
+
+            assert!(
+                elapsed < Duration::from_millis(1500),
+                "prepare_for_sleep must not hang past the write timeout: {elapsed:?}"
+            );
+            assert!(
+                elapsed >= PREPARE_FOR_SLEEP_WRITE_TIMEOUT,
+                "write timeout should have elapsed at least once: {elapsed:?}"
+            );
+
+            // Pair the FIFO so the leaked blocking write can
+            // complete, letting the test runtime drop cleanly.
+            let fifo_for_reader = fifo_path.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = std::fs::OpenOptions::new()
+                    .read(true)
+                    .open(&fifo_for_reader);
+            })
+            .await;
+
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+}
+
+#[cfg(test)]
 mod shutdown_tests {
     use super::*;
     use crate::cc_fs;
@@ -2049,10 +2246,10 @@ mod shutdown_tests {
 
     /// Manually registers a fake device in `repo` so the test is
     /// focused on the shutdown loop rather than the init machinery.
-    /// `u_id` is built from driver_name + type_index so every device
+    /// `u_id` is built from `driver_name` + `type_index` so every device
     /// inserted has a unique `create_uid_from` hash (the function
-    /// only uses d_id when Some, so sharing a default `""` u_id
-    /// would collide every inserted device into a single HashMap
+    /// only uses `d_id` when Some, so sharing a default `""` `u_id`
+    /// would collide every inserted device into a single `HashMap`
     /// entry).
     fn insert_device(
         repo: &mut HwmonRepo,
