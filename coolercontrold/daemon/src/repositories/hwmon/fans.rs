@@ -170,7 +170,8 @@ async fn caps_to_hwmon_fans(
     Ok(fans)
 }
 
-/// Return the fan statuses for all channels.
+/// Streams fan statuses to `sink` one channel at a time as each read
+/// completes, returning whether any expected field read failed.
 /// Failed reads for any expected field (pwm when `has_pwm`, rpm when
 /// `has_rpm`) omit the whole channel entry rather than pushing a
 /// partial status with `None`. Pushing a partial or all-`None` status
@@ -179,10 +180,11 @@ async fn caps_to_hwmon_fans(
 /// appear in the fresh-names set. Below the threshold the cache keeps
 /// the last-known-good reading; above the threshold the overlay
 /// installs the failsafe values (rpm 0, duty 0).
-/// This function calls all fan channels and data points sequentially. See the `concurrently`
-/// version of this function for concurrent execution.
-pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let mut fans = vec![];
+/// Callers that want a buffered `Vec` should use `extract_fan_statuses`.
+pub async fn stream_fan_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
+where
+    F: FnMut(ChannelStatus),
+{
     let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Fan {
@@ -216,13 +218,26 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
             any_failure = true;
             continue;
         }
-        fans.push(ChannelStatus {
+        sink(ChannelStatus {
             name: channel.name.clone(),
             rpm: fan_rpm,
             duty: fan_duty,
             ..Default::default()
         });
     }
+    any_failure
+}
+
+/// Buffered wrapper over `stream_fan_statuses` for callers that want
+/// an owned `Vec<ChannelStatus>` (for example, the reinit path).
+pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
+    let fan_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Fan)
+        .count();
+    let mut fans = Vec::with_capacity(fan_channel_count);
+    let any_failure = stream_fan_statuses(driver, |status| fans.push(status)).await;
     (fans, any_failure)
 }
 
@@ -1419,6 +1434,107 @@ mod tests {
             assert_eq!(statuses.len(), 1);
             assert!(statuses[0].duty.is_none());
             assert!(statuses[0].rpm.is_some());
+        });
+    }
+
+    // --- stream_fan_statuses: sink contract ---
+
+    #[test]
+    #[serial]
+    fn stream_fan_statuses_invokes_sink_in_channel_order() {
+        // Verifies the streaming variant invokes the sink once per
+        // successful channel in channel-number order, matching the
+        // buffered version's Vec order.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: three successive fan channels, all readable.
+            for number in 1u8..=3 {
+                cc_fs::write(
+                    ctx.test_base_path.join(format!("pwm{number}")),
+                    b"128".to_vec(),
+                )
+                .await
+                .unwrap();
+                cc_fs::write(
+                    ctx.test_base_path.join(format!("fan{number}_input")),
+                    b"1200".to_vec(),
+                )
+                .await
+                .unwrap();
+            }
+            let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
+            let driver = make_driver(
+                &ctx.test_base_path,
+                vec![
+                    fan_channel(1, caps.clone()),
+                    fan_channel(2, caps.clone()),
+                    fan_channel(3, caps),
+                ],
+            );
+
+            // when: collect invocations in order.
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_fan_statuses(&driver, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(received, vec!["fan1", "fan2", "fan3"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_fan_statuses_skips_sink_on_failure() {
+        // Verifies the sink is not invoked for a channel whose
+        // expected read fails, and any_failure reflects it.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: fan1 readable, fan2 missing its pwm file.
+            cc_fs::write(ctx.test_base_path.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(ctx.test_base_path.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(ctx.test_base_path.join("fan2_input"), b"900".to_vec())
+                .await
+                .unwrap();
+            // no pwm2 file, but fan2 has PWM cap -> expected-field failure
+            let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
+            let driver = make_driver(
+                &ctx.test_base_path,
+                vec![fan_channel(1, caps.clone()), fan_channel(2, caps)],
+            );
+
+            // when:
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_fan_statuses(&driver, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(received, vec!["fan1"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_fan_statuses_no_invocation_when_no_channels() {
+        // Verifies the sink is never invoked for a driver with no
+        // fan channels, and any_failure is false.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let driver = make_driver(&ctx.test_base_path, vec![]);
+
+            let mut invocations: u32 = 0;
+            let any_failure = stream_fan_statuses(&driver, |_| invocations += 1).await;
+
+            teardown(&ctx).await;
+            assert_eq!(invocations, 0);
+            assert!(any_failure.not());
         });
     }
 

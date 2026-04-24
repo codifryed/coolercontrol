@@ -859,6 +859,7 @@ impl Repository for HwmonRepo {
                                 // Failsafe fires once the per-device failure counter crosses
                                 // `MISSING_STATUS_THRESHOLD`. The wall-clock wait here equals
                                 // `MISSING_STATUS_THRESHOLD * poll_rate` by construction.
+                                
                                 self.apply_failsafe_to_all_cached(type_index);
                             }
                         },

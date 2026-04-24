@@ -81,18 +81,34 @@ pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
     })
 }
 
-/// Returns the default value for drivers that are suspended for all available temperature channels
-pub fn default_suspended_temps(driver: &Rc<HwmonDriverInfo>) -> Vec<TempStatus> {
-    let mut temps = vec![];
+/// Streams the default suspended temp value for every temp channel
+/// on the driver to `sink`. Used when the drive is in standby; the
+/// real temp file is not read because reading wakes the drive.
+/// Callers that want a buffered `Vec` should use `default_suspended_temps`.
+pub fn stream_default_suspended_temps<F>(driver: &Rc<HwmonDriverInfo>, mut sink: F)
+where
+    F: FnMut(TempStatus),
+{
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        temps.push(TempStatus {
+        sink(TempStatus {
             name: channel.name.clone(),
             temp: DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED,
         });
     }
+}
+
+/// Buffered wrapper over `stream_default_suspended_temps`.
+pub fn default_suspended_temps(driver: &Rc<HwmonDriverInfo>) -> Vec<TempStatus> {
+    let temp_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
+        .count();
+    let mut temps = Vec::with_capacity(temp_channel_count);
+    stream_default_suspended_temps(driver, |status| temps.push(status));
     temps
 }
 
@@ -182,6 +198,7 @@ async fn drive_power_state(path: impl AsRef<Path>) -> Result<PowerState> {
 mod tests {
     use super::*;
     use crate::cc_fs;
+    use crate::repositories::hwmon::hwmon_repo::HwmonChannelInfo;
     use serial_test::serial;
     use std::path::Path;
     use uuid::Uuid;
@@ -251,6 +268,84 @@ mod tests {
                 "Resulting device path doesn't match: {dev_path:?}"
             );
         });
+    }
+
+    // --- stream_default_suspended_temps: sink contract ---
+
+    fn make_temp_driver(channels: Vec<HwmonChannelInfo>) -> Rc<HwmonDriverInfo> {
+        Rc::new(HwmonDriverInfo {
+            name: "test_driver".to_string(),
+            channels,
+            ..Default::default()
+        })
+    }
+
+    fn temp_channel(number: u8, name: &str) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number,
+            name: name.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn stream_default_suspended_temps_invokes_sink_for_each_temp() {
+        // Verifies the sink is called once per Temp channel, with the
+        // suspended default temp, in channel-definition order.
+        let driver = make_temp_driver(vec![
+            temp_channel(1, "temp1"),
+            temp_channel(2, "temp2"),
+            temp_channel(3, "temp3"),
+        ]);
+
+        let mut received: Vec<(String, f64)> = Vec::new();
+        stream_default_suspended_temps(&driver, |status| {
+            received.push((status.name, status.temp));
+        });
+
+        assert_eq!(received.len(), 3);
+        assert_eq!(received[0].0, "temp1");
+        assert_eq!(received[1].0, "temp2");
+        assert_eq!(received[2].0, "temp3");
+        for (_, temp) in &received {
+            assert!((*temp - DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED).abs() < f64::EPSILON);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn stream_default_suspended_temps_skips_non_temp_channels() {
+        // Verifies non-Temp channels don't invoke the sink, preserving
+        // the invariant that only Temp entries are produced.
+        let driver = make_temp_driver(vec![
+            temp_channel(1, "temp1"),
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Fan,
+                number: 1,
+                name: "fan1".to_string(),
+                ..Default::default()
+            },
+        ]);
+
+        let mut received: Vec<String> = Vec::new();
+        stream_default_suspended_temps(&driver, |status| received.push(status.name));
+
+        assert_eq!(received, vec!["temp1"]);
+    }
+
+    #[test]
+    #[serial]
+    fn stream_default_suspended_temps_no_invocation_when_no_channels() {
+        // Verifies the sink is never called for a driver with no temp
+        // channels.
+        let driver = make_temp_driver(vec![]);
+
+        let mut invocations: u32 = 0;
+        stream_default_suspended_temps(&driver, |_| invocations += 1);
+
+        assert_eq!(invocations, 0);
     }
 
     #[test]

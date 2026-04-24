@@ -76,18 +76,16 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
     Ok(temps)
 }
 
-/// Returns temp statuses for all channels and whether any read failed.
-/// Failed reads are omitted from the returned vector so the upstream
-/// cache keeps the last-known-good value until the failsafe threshold
-/// triggers and merges in `MISSING_TEMP_FAILSAFE`. Fabricating a value
-/// on failure would lie to downstream controllers.
-pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
-    let temp_channel_count = driver
-        .channels
-        .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
-        .count();
-    let mut temps = Vec::with_capacity(temp_channel_count);
+/// Streams temp statuses to `sink` one channel at a time as each
+/// read completes, returning whether any read failed. Failed reads
+/// are omitted so the upstream cache keeps the last-known-good value
+/// until the failsafe threshold merges in `MISSING_TEMP_FAILSAFE`.
+/// Fabricating a value on failure would lie to downstream controllers.
+/// Callers that want a buffered `Vec` should use `extract_temp_statuses`.
+pub async fn stream_temp_statuses<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
+where
+    F: FnMut(TempStatus),
+{
     let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
@@ -103,13 +101,26 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>
             // hwmon temps are in millidegrees:
             .map(|degrees| f64::from(degrees) / 1000.0f64);
         match result {
-            Ok(temp) => temps.push(TempStatus {
+            Ok(temp) => sink(TempStatus {
                 name: channel.name.clone(),
                 temp,
             }),
             Err(_) => any_failure = true,
         }
     }
+    any_failure
+}
+
+/// Buffered wrapper over `stream_temp_statuses` for callers that want
+/// an owned `Vec<TempStatus>` (for example, the reinit path).
+pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
+    let temp_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
+        .count();
+    let mut temps = Vec::with_capacity(temp_channel_count);
+    let any_failure = stream_temp_statuses(driver, |status| temps.push(status)).await;
     (temps, any_failure)
 }
 
@@ -483,6 +494,124 @@ mod tests {
             teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(temps.len(), 0);
+        });
+    }
+
+    // --- stream_temp_statuses: sink contract ---
+
+    #[test]
+    #[serial]
+    fn stream_temp_statuses_invokes_sink_in_channel_order() {
+        // Verifies the streaming variant invokes the sink once per
+        // successful temp channel in channel-number order.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let test_base_path = &ctx.test_base_path;
+            for number in 1u8..=3 {
+                cc_fs::write(
+                    test_base_path.join(format!("temp{number}_input")),
+                    b"40000".to_vec(),
+                )
+                .await
+                .unwrap();
+            }
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 2,
+                        name: "temp2".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 3,
+                        name: "temp3".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_temp_statuses(&driver_info, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(received, vec!["temp1", "temp2", "temp3"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_temp_statuses_skips_sink_on_failure() {
+        // Verifies the sink is not invoked for a temp channel whose
+        // sysfs file is missing, and any_failure is set.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 2,
+                        name: "temp2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_temp_statuses(&driver_info, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(received, vec!["temp1"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_temp_statuses_no_invocation_when_no_channels() {
+        // Verifies the sink is never invoked when there are no temp
+        // channels, and any_failure is false.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let driver_info = HwmonDriverInfo {
+                path: ctx.test_base_path.to_owned(),
+                ..Default::default()
+            };
+
+            let mut invocations: u32 = 0;
+            let any_failure = stream_temp_statuses(&driver_info, |_| invocations += 1).await;
+
+            teardown(&ctx).await;
+            assert_eq!(invocations, 0);
+            assert!(any_failure.not());
         });
     }
 

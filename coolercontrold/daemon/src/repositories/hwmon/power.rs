@@ -104,16 +104,15 @@ async fn insert_power_metrics(
     Ok(())
 }
 
-/// Extract the power status. Failed reads are omitted from the returned
-/// vector so the upstream cache can keep the last-known-good value until
-/// the failsafe threshold merges in the proper failsafe watts.
-pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let power_channel_count = driver
-        .channels
-        .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Power)
-        .count();
-    let mut powers = Vec::with_capacity(power_channel_count);
+/// Streams power statuses to `sink` one channel at a time as each
+/// read completes, returning whether any read failed. Failed reads
+/// are omitted so the upstream cache keeps the last-known-good value
+/// until the failsafe threshold merges in the proper failsafe watts.
+/// Callers that want a buffered `Vec` should use `extract_power_status`.
+pub async fn stream_power_status<F>(driver: &HwmonDriverInfo, mut sink: F) -> bool
+where
+    F: FnMut(ChannelStatus),
+{
     let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Power {
@@ -125,7 +124,7 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
             .and_then(check_parsing_64)
             .map(convert_micro_watts_to_watts);
         match result {
-            Ok(watts) => powers.push(ChannelStatus {
+            Ok(watts) => sink(ChannelStatus {
                 name: channel.name.clone(),
                 watts: Some(watts),
                 ..Default::default()
@@ -133,6 +132,19 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
             Err(_) => any_failure = true,
         }
     }
+    any_failure
+}
+
+/// Buffered wrapper over `stream_power_status` for callers that want
+/// an owned `Vec<ChannelStatus>` (for example, the reinit path).
+pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
+    let power_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Power)
+        .count();
+    let mut powers = Vec::with_capacity(power_channel_count);
+    let any_failure = stream_power_status(driver, |status| powers.push(status)).await;
     (powers, any_failure)
 }
 
@@ -523,6 +535,123 @@ mod tests {
             teardown(&ctx).await;
             assert!(any_failure);
             assert_eq!(0, power_result.len());
+        });
+    }
+
+    // --- stream_power_status: sink contract ---
+
+    #[test]
+    #[serial]
+    fn stream_power_status_invokes_sink_in_channel_order() {
+        // Verifies the streaming variant invokes the sink once per
+        // successful channel in the order channels are defined.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: three power channels, all readable.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_input"), b"1000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power2_input"), b"2000000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("power3_input"), b"3000000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power1_input".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power2_input".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power3_input".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_power_status(&driver_info, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(received, vec!["power1_input", "power2_input", "power3_input"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_power_status_skips_sink_on_failure() {
+        // Verifies the sink is not invoked for a channel whose sysfs
+        // read fails; any_failure is set and the successful channel
+        // alone is streamed.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: power1 readable, power2 missing.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("power1_input"), b"4000000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power1_input".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power2_input".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let mut received: Vec<String> = Vec::new();
+            let any_failure =
+                stream_power_status(&driver_info, |status| received.push(status.name)).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(received, vec!["power1_input"]);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn stream_power_status_no_invocation_when_no_channels() {
+        // Verifies the sink is never invoked for a driver with no
+        // power channels, and any_failure is false.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let driver_info = HwmonDriverInfo {
+                path: ctx.test_base_path.to_owned(),
+                ..Default::default()
+            };
+
+            let mut invocations: u32 = 0;
+            let any_failure = stream_power_status(&driver_info, |_| invocations += 1).await;
+
+            teardown(&ctx).await;
+            assert_eq!(invocations, 0);
+            assert!(any_failure.not());
         });
     }
 
