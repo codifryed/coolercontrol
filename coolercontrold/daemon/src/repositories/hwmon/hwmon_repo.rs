@@ -546,21 +546,6 @@ impl HwmonRepo {
         // borrows end before the next extractor runs. Each sink
         // toggles a pre-allocated bool per channel and upserts the
         // status. No allocation, no name cloning in the hot path.
-        let _fan_failure = {
-            let mut fan_sink = |status: ChannelStatus| {
-                self.mark_channel_fresh(type_index, &status.name);
-                self.upsert_single_channel(type_index, status);
-            };
-            if driver.apple_smc.detected {
-                driver
-                    .apple_smc
-                    .stream_fan_statuses(driver, &mut fan_sink)
-                    .await
-            } else {
-                fans::stream_fan_statuses(driver, &mut fan_sink).await
-            }
-        };
-
         let _power_failure = {
             let mut power_sink = |status: ChannelStatus| {
                 self.mark_channel_fresh(type_index, &status.name);
@@ -580,6 +565,20 @@ impl HwmonRepo {
                 false
             } else {
                 temps::stream_temp_statuses(driver, &mut temp_sink).await
+            }
+        };
+        let _fan_failure = {
+            let mut fan_sink = |status: ChannelStatus| {
+                self.mark_channel_fresh(type_index, &status.name);
+                self.upsert_single_channel(type_index, status);
+            };
+            if driver.apple_smc.detected {
+                driver
+                    .apple_smc
+                    .stream_fan_statuses(driver, &mut fan_sink)
+                    .await
+            } else {
+                fans::stream_fan_statuses(driver, &mut fan_sink).await
             }
         };
 
