@@ -94,10 +94,26 @@ pub struct GpuRepo {
     /// so they need the same serialization as hwmon devices to prevent concurrent
     /// reads/writes to the same sysfs files.
     device_permits: HashMap<UID, Semaphore>,
+
+    /// Snapshot of the read-permit timeout. `poll_rate` only changes on
+    /// daemon restart, so this value is constant for the repo's lifetime
+    /// and is computed once in `new` to avoid per-poll f64 math and a
+    /// `RefCell` borrow on the config hot path.
+    device_read_permit_timeout: Duration,
+
+    /// Snapshot of the write-permit timeout. Constant for the repo's
+    /// lifetime; see `device_read_permit_timeout`.
+    device_write_permit_timeout: Duration,
 }
 
 impl GpuRepo {
     pub fn new(config: Rc<Config>, nvidia_cli: bool) -> Self {
+        // `poll_rate` is captured at daemon startup and cannot change
+        // without a restart, so the derived permit timeouts are frozen
+        // here for the repo's lifetime.
+        let poll_rate = config.get_settings().map(|s| s.poll_rate).unwrap_or(1.0);
+        let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
+        let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         Self {
             gpus_nvidia: GpuNVidia::new(Rc::clone(&config)),
             gpus_amd: GpuAMD::new(Rc::clone(&config)),
@@ -108,6 +124,8 @@ impl GpuRepo {
             force_nvidia_cli: nvidia_cli,
             device_delays: HashMap::new(),
             device_permits: HashMap::new(),
+            device_read_permit_timeout,
+            device_write_permit_timeout,
         }
     }
 
@@ -133,23 +151,6 @@ impl GpuRepo {
         self.gpus_amd.amd_driver_infos.contains_key(device_uid)
     }
 
-    /// Snapshot of the current poll rate. Falls back to 1.0 s if the
-    /// settings read fails so the timeout stays defined.
-    fn poll_rate(&self) -> f64 {
-        self.config
-            .get_settings()
-            .map(|s| s.poll_rate)
-            .unwrap_or(1.0)
-    }
-
-    fn device_read_permit_timeout(&self) -> Duration {
-        device_read_permit_timeout_for(self.poll_rate())
-    }
-
-    fn device_write_permit_timeout(&self) -> Duration {
-        device_write_permit_timeout_for(self.poll_rate())
-    }
-
     async fn get_amd_permit_with_write_timeout(
         &self,
         device_uid: &UID,
@@ -159,7 +160,7 @@ impl GpuRepo {
             return Err(anyhow!("No device permit found for AMD GPU: {device_uid}"));
         };
         tokio::select! {
-            () = sleep(self.device_write_permit_timeout()) => Err(anyhow!(
+            () = sleep(self.device_write_permit_timeout) => Err(anyhow!(
                 "TIMEOUT AMD GPU device: {device_uid} channel: {channel_name}; waiting to apply \
                 setting. There will be significant issues handling this device due to extreme lag."
             )),
@@ -201,7 +202,7 @@ impl GpuRepo {
     }
 
     pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
-        let read_permit_timeout = self.device_read_permit_timeout();
+        let read_permit_timeout = self.device_read_permit_timeout;
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.borrow().type_index;

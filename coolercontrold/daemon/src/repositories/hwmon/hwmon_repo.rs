@@ -200,6 +200,16 @@ pub struct HwmonRepo {
 
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
     device_delays: HashMap<DeviceUID, u16>,
+
+    /// Snapshot of the read-permit timeout. `poll_rate` only changes on
+    /// daemon restart, so this value is constant for the repo's lifetime
+    /// and is computed once in `new` to avoid per-poll f64 math and a
+    /// `RefCell` borrow on the config hot path.
+    device_read_permit_timeout: Duration,
+
+    /// Snapshot of the write-permit timeout. Constant for the repo's
+    /// lifetime; see `device_read_permit_timeout`.
+    device_write_permit_timeout: Duration,
 }
 
 /// Replaces each cached channel entry by name with its fresh
@@ -232,6 +242,12 @@ fn upsert_temps_by_name(cache: &mut Vec<TempStatus>, fresh: Vec<TempStatus>) {
 
 impl HwmonRepo {
     pub fn new(config: Rc<Config>, lc_locations: Vec<String>) -> Self {
+        // `poll_rate` is captured at daemon startup and cannot change
+        // without a restart, so the derived permit timeouts are frozen
+        // here for the repo's lifetime.
+        let poll_rate = config.get_settings().map(|s| s.poll_rate).unwrap_or(1.0);
+        let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
+        let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
         Self {
             config,
             devices: HashMap::new(),
@@ -246,6 +262,8 @@ impl HwmonRepo {
                 .filter_map(|loc| cc_fs::canonicalize(loc).ok())
                 .collect(),
             device_delays: HashMap::new(),
+            device_read_permit_timeout,
+            device_write_permit_timeout,
         }
     }
 
@@ -621,24 +639,6 @@ impl HwmonRepo {
             .replace(slow_device_trigger_count + 1);
     }
 
-    /// Snapshot of the current poll rate. Falls back to the default
-    /// 1.0 s if the settings read fails so the timeout is always
-    /// defined, matching the behavior before this was derived.
-    fn poll_rate(&self) -> f64 {
-        self.config
-            .get_settings()
-            .map(|s| s.poll_rate)
-            .unwrap_or(1.0)
-    }
-
-    fn device_read_permit_timeout(&self) -> Duration {
-        device_read_permit_timeout_for(self.poll_rate())
-    }
-
-    fn device_write_permit_timeout(&self) -> Duration {
-        device_write_permit_timeout_for(self.poll_rate())
-    }
-
     async fn get_permit_with_write_timeout(
         &self,
         type_index: TypeIndex,
@@ -646,7 +646,7 @@ impl HwmonRepo {
         channel_name: &str,
     ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
-            () = sleep(self.device_write_permit_timeout()) => Err(anyhow!(
+            () = sleep(self.device_write_permit_timeout) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
                 fan speed. There will be significant issues handling this device due to extreme lag."
             )),
@@ -842,7 +842,7 @@ impl Repository for HwmonRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
-                let read_permit_timeout = self.device_read_permit_timeout();
+                let read_permit_timeout = self.device_read_permit_timeout;
                 scope.spawn(async move {
                     tokio::select! {
                         () = sleep(read_permit_timeout) => {
