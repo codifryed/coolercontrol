@@ -84,7 +84,6 @@ pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
 /// Streams the default suspended temp value for every temp channel
 /// on the driver to `sink`. Used when the drive is in standby; the
 /// real temp file is not read because reading wakes the drive.
-/// Callers that want a buffered `Vec` should use `default_suspended_temps`.
 pub fn stream_default_suspended_temps<F>(driver: &Rc<HwmonDriverInfo>, mut sink: F)
 where
     F: FnMut(TempStatus),
@@ -98,18 +97,6 @@ where
             temp: DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED,
         });
     }
-}
-
-/// Buffered wrapper over `stream_default_suspended_temps`.
-pub fn default_suspended_temps(driver: &Rc<HwmonDriverInfo>) -> Vec<TempStatus> {
-    let temp_channel_count = driver
-        .channels
-        .iter()
-        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
-        .count();
-    let mut temps = Vec::with_capacity(temp_channel_count);
-    stream_default_suspended_temps(driver, |status| temps.push(status));
-    temps
 }
 
 /// If `drivetemp` state checks are enabled, checks the drive's power state.

@@ -212,34 +212,6 @@ pub struct HwmonRepo {
     device_write_permit_timeout: Duration,
 }
 
-/// Replaces each cached channel entry by name with its fresh
-/// counterpart or appends it when no cache entry exists yet. The
-/// cache length is monotonic within one call: entries are never
-/// removed, only replaced in place or pushed.
-fn upsert_channels_by_name(cache: &mut Vec<ChannelStatus>, fresh: Vec<ChannelStatus>) {
-    for fresh in fresh {
-        if let Some(entry) = cache.iter_mut().find(|c| c.name == fresh.name) {
-            *entry = fresh;
-        } else {
-            cache.push(fresh);
-        }
-    }
-}
-
-/// Replaces each cached temp entry by name with its fresh
-/// counterpart or appends it when no cache entry exists yet. The
-/// cache length is monotonic within one call: entries are never
-/// removed, only replaced in place or pushed.
-fn upsert_temps_by_name(cache: &mut Vec<TempStatus>, fresh: Vec<TempStatus>) {
-    for fresh in fresh {
-        if let Some(entry) = cache.iter_mut().find(|t| t.name == fresh.name) {
-            *entry = fresh;
-        } else {
-            cache.push(fresh);
-        }
-    }
-}
-
 impl HwmonRepo {
     pub fn new(config: Rc<Config>, lc_locations: Vec<String>) -> Self {
         // `poll_rate` is captured at daemon startup and cannot change
@@ -477,26 +449,54 @@ impl HwmonRepo {
     }
 
     /// Reads channel and temp statuses for one device and upserts them
-    /// into the preloaded cache. Successful reads update their cache
-    /// entries in place with fresh values. Failing reads leave their
-    /// cache entries untouched so downstream keeps seeing the last
-    /// known good value, not a fabricated 0. Once the failsafe threshold
-    /// is exceeded, entries for channels that did not report this tick
-    /// are overwritten with their failsafe values (e.g. 100 C for temps).
+    /// into the preloaded cache per channel as each read completes.
+    /// Fast channels on the device become visible to downstream the
+    /// same tick they are read, even if a later channel on the same
+    /// device is slow. Failing reads leave their cache entries
+    /// untouched so downstream keeps seeing the last known good value,
+    /// not a fabricated 0. Once the failsafe threshold is exceeded,
+    /// entries for channels that did not report this tick are
+    /// overwritten with their failsafe values at end-of-tick.
     async fn preload_device_statuses(&self, type_index: TypeIndex, driver: &Rc<HwmonDriverInfo>) {
-        let (mut channel_statuses, any_fan_failure) = if driver.apple_smc.detected {
-            driver.apple_smc.extract_fan_statuses(driver).await
-        } else {
-            fans::extract_fan_statuses(driver).await
-        };
-        let (power_statuses, any_power_failure) = power::extract_power_status(driver).await;
-        channel_statuses.extend(power_statuses);
-        let (temp_statuses, any_temp_failure) =
-            if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
-                (drivetemp::default_suspended_temps(driver), false)
-            } else {
-                temps::extract_temp_statuses(driver).await
+        let mut fresh_channel_names: HashSet<String> = HashSet::new();
+        let mut fresh_temp_names: HashSet<String> = HashSet::new();
+
+        // Each sink lives in a scoped block so its &mut borrow of the
+        // fresh-names HashSet ends before the next extractor runs.
+        let any_fan_failure = {
+            let mut fan_sink = |status: ChannelStatus| {
+                fresh_channel_names.insert(status.name.clone());
+                self.upsert_single_channel(type_index, status);
             };
+            if driver.apple_smc.detected {
+                driver
+                    .apple_smc
+                    .stream_fan_statuses(driver, &mut fan_sink)
+                    .await
+            } else {
+                fans::stream_fan_statuses(driver, &mut fan_sink).await
+            }
+        };
+        let any_power_failure = {
+            let mut power_sink = |status: ChannelStatus| {
+                fresh_channel_names.insert(status.name.clone());
+                self.upsert_single_channel(type_index, status);
+            };
+            power::stream_power_status(driver, &mut power_sink).await
+        };
+        let any_temp_failure = {
+            let mut temp_sink = |status: TempStatus| {
+                fresh_temp_names.insert(status.name.clone());
+                self.upsert_single_temp(type_index, status);
+            };
+            if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
+                drivetemp::stream_default_suspended_temps(driver, &mut temp_sink);
+                false
+            } else {
+                temps::stream_temp_statuses(driver, &mut temp_sink).await
+            }
+        };
+
         let any_failure = any_fan_failure || any_power_failure || any_temp_failure;
         let failsafe_active = if any_failure {
             self.record_read_failure(type_index, &driver.name)
@@ -504,12 +504,60 @@ impl HwmonRepo {
             self.record_read_success(type_index, &driver.name);
             false
         };
-        self.upsert_preloaded_statuses(
-            type_index,
-            channel_statuses,
-            temp_statuses,
-            failsafe_active,
-        );
+        if failsafe_active {
+            self.apply_failsafe_overlay(type_index, &fresh_channel_names, &fresh_temp_names);
+        }
+    }
+
+    /// Inserts one fresh channel status into the preloaded cache for
+    /// `type_index`, replacing any prior entry with the same name or
+    /// appending when absent. Short critical section: one `RefMut`
+    /// borrow per channel, released before the next extractor yield.
+    fn upsert_single_channel(&self, type_index: TypeIndex, fresh: ChannelStatus) {
+        let mut preloaded = self.preloaded_statuses.borrow_mut();
+        let (channels, _) = preloaded
+            .entry(type_index)
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        if let Some(entry) = channels.iter_mut().find(|c| c.name == fresh.name) {
+            *entry = fresh;
+        } else {
+            channels.push(fresh);
+        }
+    }
+
+    /// Mirror of `upsert_single_channel` for temp statuses.
+    fn upsert_single_temp(&self, type_index: TypeIndex, fresh: TempStatus) {
+        let mut preloaded = self.preloaded_statuses.borrow_mut();
+        let (_, temps) = preloaded
+            .entry(type_index)
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        if let Some(entry) = temps.iter_mut().find(|t| t.name == fresh.name) {
+            *entry = fresh;
+        } else {
+            temps.push(fresh);
+        }
+    }
+
+    /// Applies failsafe values for channels or temps that did not
+    /// report this tick. Called once at end-of-tick per preload, only
+    /// when the failsafe threshold has been exceeded.
+    fn apply_failsafe_overlay(
+        &self,
+        type_index: TypeIndex,
+        fresh_channel_names: &HashSet<String>,
+        fresh_temp_names: &HashSet<String>,
+    ) {
+        let fsd_map = self.failsafe_statuses.borrow();
+        let Some(fsd) = fsd_map.get(&type_index) else {
+            return;
+        };
+        let mut preloaded = self.preloaded_statuses.borrow_mut();
+        let Some((channels, temps)) = preloaded.get_mut(&type_index) else {
+            return;
+        };
+        let channel_view: HashSet<&str> = fresh_channel_names.iter().map(String::as_str).collect();
+        let temp_view: HashSet<&str> = fresh_temp_names.iter().map(String::as_str).collect();
+        fsd.overwrite_missing(channels, temps, &channel_view, &temp_view);
     }
 
     /// Records a read failure for the device, logging once when the
@@ -547,76 +595,6 @@ impl HwmonRepo {
                 );
             }
         }
-    }
-
-    /// Upserts this tick's fresh readings into the preloaded cache.
-    /// Fresh entries replace cache entries of the same name in place.
-    /// Cache entries whose names did not appear in the fresh read are
-    /// left untouched (so they keep serving last-known-good values)
-    /// unless `failsafe_active` is true, in which case those absent
-    /// entries are overwritten with their failsafe values. The timeout
-    /// path (no extractor ran this tick) is handled by the sibling
-    /// `apply_failsafe_to_all_cached` instead.
-    fn upsert_preloaded_statuses(
-        &self,
-        type_index: TypeIndex,
-        fresh_channels: Vec<ChannelStatus>,
-        fresh_temps: Vec<TempStatus>,
-        failsafe_active: bool,
-    ) {
-        let mut preloaded = self.preloaded_statuses.borrow_mut();
-        let (cached_channels, cached_temps) = preloaded
-            .entry(type_index)
-            .or_insert_with(|| (Vec::new(), Vec::new()));
-        let cached_channel_count_before = cached_channels.len();
-        let cached_temp_count_before = cached_temps.len();
-        if failsafe_active {
-            // Owned names feed both the upsert loops (which consume the
-            // fresh Vecs) and the HashSet<&str> view that
-            // overwrite_missing expects. One allocation per map instead
-            // of two.
-            let fresh_channel_names: HashSet<String> =
-                fresh_channels.iter().map(|c| c.name.clone()).collect();
-            let fresh_temp_names: HashSet<String> =
-                fresh_temps.iter().map(|t| t.name.clone()).collect();
-            upsert_channels_by_name(cached_channels, fresh_channels);
-            upsert_temps_by_name(cached_temps, fresh_temps);
-            let fsd_map = self.failsafe_statuses.borrow();
-            if let Some(fsd) = fsd_map.get(&type_index) {
-                let channel_view: HashSet<&str> =
-                    fresh_channel_names.iter().map(String::as_str).collect();
-                let temp_view: HashSet<&str> =
-                    fresh_temp_names.iter().map(String::as_str).collect();
-                fsd.overwrite_missing(cached_channels, cached_temps, &channel_view, &temp_view);
-            }
-        } else {
-            upsert_channels_by_name(cached_channels, fresh_channels);
-            upsert_temps_by_name(cached_temps, fresh_temps);
-        }
-        // Upsert is monotonic: each fresh entry is either replaced in
-        // place or appended, never removed. The cache length can only
-        // grow or stay the same within a single call.
-        debug_assert!(cached_channels.len() >= cached_channel_count_before);
-        debug_assert!(cached_temps.len() >= cached_temp_count_before);
-    }
-
-    /// Overwrites every cache entry for the device with its failsafe
-    /// value. Used on the slow-device timeout path after the failsafe
-    /// threshold has been exceeded: no channels reported this tick, so
-    /// all of them are treated as missing. The mixed-read path is
-    /// handled by the sibling `upsert_preloaded_statuses` instead.
-    fn apply_failsafe_to_all_cached(&self, type_index: TypeIndex) {
-        let fsd_map = self.failsafe_statuses.borrow();
-        let Some(fsd) = fsd_map.get(&type_index) else {
-            return;
-        };
-        let mut preloaded = self.preloaded_statuses.borrow_mut();
-        let Some((channels, temps)) = preloaded.get_mut(&type_index) else {
-            return;
-        };
-        let empty_channel_names: HashSet<&str> = HashSet::new();
-        let empty_temp_names: HashSet<&str> = HashSet::new();
-        fsd.overwrite_missing(channels, temps, &empty_channel_names, &empty_temp_names);
     }
 
     /// Logging slow devices is triggered once the polling loop overlaps and the
@@ -854,14 +832,11 @@ impl Repository for HwmonRepo {
                 scope.spawn(async move {
                     tokio::select! {
                         () = sleep(read_permit_timeout) => {
+                            // Diagnostic only. The failsafe overlay runs at end-of-tick
+                            // inside `preload_device_statuses`, so a timed-out preload
+                            // leaves the last completed preload's cache in place and
+                            // lets the next successful preload apply fresh values.
                             self.log_slow_device(type_index, &driver.name);
-                            if self.record_read_failure(type_index, &driver.name) {
-                                // Failsafe fires once the per-device failure counter crosses
-                                // `MISSING_STATUS_THRESHOLD`. The wall-clock wait here equals
-                                // `MISSING_STATUS_THRESHOLD * poll_rate` by construction.
-                                
-                                self.apply_failsafe_to_all_cached(type_index);
-                            }
                         },
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
                             self.preload_device_statuses(type_index, driver).await;
@@ -1150,6 +1125,330 @@ impl Repository for HwmonRepo {
 
     async fn reinitialize_devices(&self) {
         error!("Reinitializing Devices is not supported for this Repository");
+    }
+}
+
+#[cfg(test)]
+mod preload_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::repositories::failsafe::{
+        self, MISSING_DUTY_FAILSAFE, MISSING_RPM_FAILSAFE, MISSING_TEMP_FAILSAFE,
+    };
+    use serial_test::serial;
+    use std::path::Path;
+    use uuid::Uuid;
+
+    const TEST_TYPE_INDEX: TypeIndex = 1;
+
+    struct PreloadContext {
+        test_base_path: PathBuf,
+    }
+
+    async fn setup() -> PreloadContext {
+        let base = format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4());
+        let path = Path::new(&base).to_path_buf();
+        cc_fs::create_dir_all(&path).await.unwrap();
+        PreloadContext {
+            test_base_path: path,
+        }
+    }
+
+    async fn teardown(ctx: &PreloadContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    }
+
+    fn new_test_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    fn fan_channel_with_paths(number: u8, name: &str, base_path: &Path) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            pwm_enable_default: None,
+            name: name.to_string(),
+            label: None,
+            caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
+            auto_curve: AutoCurveInfo::None,
+            pwm_path: Some(base_path.join(format!("pwm{number}"))),
+            rpm_path: Some(base_path.join(format!("fan{number}_input"))),
+            temp_path: None,
+        }
+    }
+
+    fn driver_with_channels(
+        base_path: &Path,
+        channels: Vec<HwmonChannelInfo>,
+    ) -> Rc<HwmonDriverInfo> {
+        Rc::new(HwmonDriverInfo {
+            name: "test_driver".to_string(),
+            path: base_path.to_path_buf(),
+            model: None,
+            u_id: String::new(),
+            channels,
+            block_dev_path: None,
+            apple_smc: AppleMacSMC::default(),
+        })
+    }
+
+    /// Seeds the failsafe map for `type_index` using initial statuses
+    /// as if the device had successfully preloaded at init time.
+    fn seed_failsafe(
+        repo: &HwmonRepo,
+        type_index: TypeIndex,
+        channel_statuses: &[ChannelStatus],
+        temp_statuses: &[TempStatus],
+    ) {
+        let (channel_failsafes, temp_failsafes) =
+            failsafe::create_failsafe_data(channel_statuses, temp_statuses);
+        if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
+            repo.failsafe_statuses.borrow_mut().insert(type_index, fsd);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn preload_upserts_fresh_channel_in_place() {
+        // Two successive preloads with fresh fan readings must replace
+        // the cache entry in place rather than duplicating it.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // when: two consecutive preloads.
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            cc_fs::write(base.join("fan1_input"), b"1800".to_vec())
+                .await
+                .unwrap();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: cache has exactly one entry, with the latest value.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                assert_eq!(channels.len(), 1);
+                assert_eq!(channels[0].name, "fan1");
+                assert_eq!(channels[0].rpm, Some(1800));
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_preserves_cache_on_single_channel_failure() {
+        // When one of two fan channels fails its PWM read while the
+        // other succeeds, the successful entry updates and the failing
+        // entry keeps its prior last-known-good value.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            // both readable in the initial tick
+            cc_fs::write(base.join("pwm1"), b"64".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"900".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("pwm2"), b"200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan2_input"), b"2500".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(
+                base,
+                vec![
+                    fan_channel_with_paths(1, "fan1", base),
+                    fan_channel_with_paths(2, "fan2", base),
+                ],
+            );
+            let repo = new_test_repo();
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[], &[]);
+
+            // given: first preload populates both entries
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            // when: fan1 updates, fan2 now fails (pwm2 removed)
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::remove_file(base.join("pwm2")).await.unwrap();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: fan1 updated, fan2 preserved at 2500.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                assert_eq!(channels.len(), 2);
+                let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+                assert_eq!(fan1.rpm, Some(1200));
+                let fan2 = channels.iter().find(|c| c.name == "fan2").unwrap();
+                assert_eq!(fan2.rpm, Some(2500));
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_applies_failsafe_only_when_threshold_exceeded() {
+        // Drives the failsafe counter past MISSING_STATUS_THRESHOLD via
+        // repeated failing preloads. Once active, the overlay replaces
+        // the absent channel's cache entry with its failsafe value.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+
+            // given: initial successful read to seed cache + failsafe data.
+            let seed_status = ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                ..Default::default()
+            };
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[seed_status], &[]);
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // when: remove pwm1 so every subsequent preload fails, and
+            // drive the counter above MISSING_STATUS_THRESHOLD.
+            cc_fs::remove_file(base.join("pwm1")).await.unwrap();
+            for _ in 0..=MISSING_STATUS_THRESHOLD {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            }
+
+            // then: the cache now holds the failsafe values for fan1,
+            // because the overlay substituted them while the threshold
+            // was exceeded and the channel did not report.
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                assert_eq!(channels.len(), 1);
+                let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+                assert_eq!(fan1.rpm, Some(MISSING_RPM_FAILSAFE));
+                assert_eq!(fan1.duty, Some(MISSING_DUTY_FAILSAFE));
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn preload_recovery_clears_failsafe_on_success() {
+        // After a failsafe-triggered state, a fully successful preload
+        // clears the counter and the next successful read's values
+        // replace the failsafe values in the cache.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            let base = &ctx.test_base_path;
+            cc_fs::write(base.join("pwm1"), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_with_channels(base, vec![fan_channel_with_paths(1, "fan1", base)]);
+            let repo = new_test_repo();
+            let seed_status = ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                ..Default::default()
+            };
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[seed_status], &[]);
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            cc_fs::remove_file(base.join("pwm1")).await.unwrap();
+            for _ in 0..=MISSING_STATUS_THRESHOLD {
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            }
+            // Verify failsafe is active.
+            assert!(repo
+                .failsafe_statuses
+                .borrow()
+                .get(&TEST_TYPE_INDEX)
+                .unwrap()
+                .threshold_exceeded());
+
+            // when: pwm1 comes back and preload succeeds.
+            cc_fs::write(base.join("pwm1"), b"200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join("fan1_input"), b"2000".to_vec())
+                .await
+                .unwrap();
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+
+            // then: counter cleared and fresh values in the cache.
+            assert!(repo
+                .failsafe_statuses
+                .borrow()
+                .get(&TEST_TYPE_INDEX)
+                .unwrap()
+                .threshold_exceeded()
+                .not());
+            {
+                let preloaded = repo.preloaded_statuses.borrow();
+                let (channels, _) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+                assert_eq!(channels.len(), 1);
+                let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+                assert_eq!(fan1.rpm, Some(2000));
+            }
+            teardown(&ctx).await;
+        });
+    }
+
+    // --- apply_failsafe_overlay: direct helper tests ---
+
+    #[test]
+    #[serial]
+    fn apply_failsafe_overlay_substitutes_absent_temp() {
+        // Verifies that when a temp name is not in the fresh set, its
+        // cache entry is overwritten with the failsafe value.
+        cc_fs::test_runtime(async {
+            let repo = new_test_repo();
+            let seed_temp = TempStatus {
+                name: "temp1".to_string(),
+                temp: 50.0,
+            };
+            seed_failsafe(
+                &repo,
+                TEST_TYPE_INDEX,
+                &[],
+                std::slice::from_ref(&seed_temp),
+            );
+            repo.preloaded_statuses
+                .borrow_mut()
+                .insert(TEST_TYPE_INDEX, (Vec::new(), vec![seed_temp]));
+
+            // when: overlay runs with empty fresh-names (temp1 absent).
+            let empty_channel_names: HashSet<String> = HashSet::new();
+            let empty_temp_names: HashSet<String> = HashSet::new();
+            repo.apply_failsafe_overlay(TEST_TYPE_INDEX, &empty_channel_names, &empty_temp_names);
+
+            // then: temp1 now holds the failsafe value.
+            let preloaded = repo.preloaded_statuses.borrow();
+            let (_, temps) = preloaded.get(&TEST_TYPE_INDEX).unwrap();
+            assert_eq!(temps.len(), 1);
+            assert!((temps[0].temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+        });
     }
 }
 

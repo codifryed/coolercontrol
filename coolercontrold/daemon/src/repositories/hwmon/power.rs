@@ -588,7 +588,10 @@ mod tests {
             // then:
             teardown(&ctx).await;
             assert!(any_failure.not());
-            assert_eq!(received, vec!["power1_input", "power2_input", "power3_input"]);
+            assert_eq!(
+                received,
+                vec!["power1_input", "power2_input", "power3_input"]
+            );
         });
     }
 

@@ -371,7 +371,10 @@ impl AppleMacSMC {
         any_failure
     }
 
-    /// Buffered wrapper over `stream_fan_statuses`.
+    /// Buffered wrapper over `stream_fan_statuses`, kept for tests.
+    /// Production callers use `stream_fan_statuses` directly so fresh
+    /// readings upsert into the preloaded cache per channel.
+    #[cfg(test)]
     pub async fn extract_fan_statuses(
         &self,
         driver: &Rc<HwmonDriverInfo>,
