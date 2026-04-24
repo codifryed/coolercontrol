@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::env;
 use std::ops::Not;
 use std::rc::Rc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -34,6 +33,7 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
+use crate::repositories::failsafe::MISSING_STATUS_THRESHOLD;
 use crate::repositories::gpu::amd::{GpuAMD, TEMP_FOR_FAN_CURVE};
 use crate::repositories::gpu::nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -48,9 +48,29 @@ pub const GPU_POWER_NAME: &str = "GPU Power";
 pub const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 
-static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
-    LazyLock::new(|| Duration::from_millis(350));
-static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
+/// Fraction of `poll_rate` a device preload is allowed before the
+/// slow-device arm fires. Mirrors the hwmon value so AMD GPUs (which
+/// also use hwmon/sysfs under the hood) share the same budgeting.
+const READ_PERMIT_RATIO: f64 = 0.7;
+
+/// Derives the read permit timeout from `poll_rate`. Pure helper so
+/// the ratio is testable without constructing a full `GpuRepo`.
+fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * READ_PERMIT_RATIO)
+}
+
+/// Derives the write permit timeout from `poll_rate`. Pure helper so
+/// the formula is testable without constructing a full `GpuRepo`.
+/// `MISSING_STATUS_THRESHOLD` is a small `usize` (8) that fits within
+/// `u8::MAX`, so the cast to `f64` is lossless.
+#[allow(clippy::cast_precision_loss)]
+fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
@@ -113,6 +133,23 @@ impl GpuRepo {
         self.gpus_amd.amd_driver_infos.contains_key(device_uid)
     }
 
+    /// Snapshot of the current poll rate. Falls back to 1.0 s if the
+    /// settings read fails so the timeout stays defined.
+    fn poll_rate(&self) -> f64 {
+        self.config
+            .get_settings()
+            .map(|s| s.poll_rate)
+            .unwrap_or(1.0)
+    }
+
+    fn device_read_permit_timeout(&self) -> Duration {
+        device_read_permit_timeout_for(self.poll_rate())
+    }
+
+    fn device_write_permit_timeout(&self) -> Duration {
+        device_write_permit_timeout_for(self.poll_rate())
+    }
+
     async fn get_amd_permit_with_write_timeout(
         &self,
         device_uid: &UID,
@@ -122,7 +159,7 @@ impl GpuRepo {
             return Err(anyhow!("No device permit found for AMD GPU: {device_uid}"));
         };
         tokio::select! {
-            () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.device_write_permit_timeout()) => Err(anyhow!(
                 "TIMEOUT AMD GPU device: {device_uid} channel: {channel_name}; waiting to apply \
                 setting. There will be significant issues handling this device due to extreme lag."
             )),
@@ -164,6 +201,7 @@ impl GpuRepo {
     }
 
     pub fn load_amd_statuses<'s>(self: &'s Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
+        let read_permit_timeout = self.device_read_permit_timeout();
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.borrow().type_index;
@@ -173,7 +211,7 @@ impl GpuRepo {
                         return;
                     };
                     tokio::select! {
-                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => {
+                        () = sleep(read_permit_timeout) => {
                             warn!(
                                 "TIMEOUT waiting for AMD GPU device permit: {uid}. \
                                 Skipping status preload for this cycle."
@@ -504,5 +542,51 @@ impl Repository for GpuRepo {
 
     async fn reinitialize_devices(&self) {
         error!("Reinitializing Devices is not supported for this Repository");
+    }
+}
+
+#[cfg(test)]
+mod permit_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn read_permit_timeout_matches_legacy_at_min_poll_rate() {
+        // Regression: at poll_rate = 0.5 s the formula must reproduce
+        // the previous hard-coded 350 ms value.
+        assert_eq!(
+            device_read_permit_timeout_for(0.5),
+            Duration::from_millis(350)
+        );
+    }
+
+    #[test]
+    fn read_permit_timeout_scales_with_poll_rate() {
+        // The budget must widen proportionally for slower polls.
+        assert_eq!(
+            device_read_permit_timeout_for(1.0),
+            Duration::from_millis(700)
+        );
+        assert_eq!(
+            device_read_permit_timeout_for(5.0),
+            Duration::from_millis(3500)
+        );
+    }
+
+    #[test]
+    fn write_permit_timeout_matches_legacy_at_default_poll_rate() {
+        // Regression: at the default poll_rate = 1.0 s the formula
+        // must reproduce the previous hard-coded 8 s value.
+        assert_eq!(device_write_permit_timeout_for(1.0), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn write_permit_timeout_scales_with_poll_rate() {
+        // The write timeout must track the failsafe wall time
+        // exactly, i.e. MISSING_STATUS_THRESHOLD * poll_rate.
+        assert_eq!(device_write_permit_timeout_for(0.5), Duration::from_secs(4));
+        assert_eq!(
+            device_write_permit_timeout_for(5.0),
+            Duration::from_secs(40)
+        );
     }
 }

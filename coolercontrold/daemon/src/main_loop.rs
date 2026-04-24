@@ -26,7 +26,6 @@ use crate::Repos;
 use anyhow::{Context, Result};
 use log::{debug, error, info, trace, warn};
 use moro_local::Scope;
-use std::cell::LazyCell;
 use std::ops::Not;
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -34,12 +33,23 @@ use tokio::time;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-const SNAPSHOT_TIMEOUT_MS: u64 = 400;
+/// Fraction of `poll_rate` spent waiting for device preloads before the
+/// main loop forces a snapshot. Anchored so that at the minimum poll
+/// rate (0.5 s) the budget reproduces the original 400 ms value.
+const SNAPSHOT_TIMEOUT_RATIO: f64 = 0.8;
 const WAKE_PAUSE_MINIMUM_S: u64 = 1;
 // setting (temp) images is pretty quick, <2s, but gifs can take significantly longer >3-4s
 const LCD_TIMEOUT_S: u64 = 5;
 const LCD_MAX_UPDATE_RATE_S: f64 = 2.0;
 const FULL_SECOND_MS: u64 = 1000;
+
+/// Derives the snapshot preload budget from `poll_rate`. Pure helper so
+/// the ratio is testable without spinning up the runtime.
+fn snapshot_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * SNAPSHOT_TIMEOUT_RATIO)
+}
 
 /// Run the main loop of the application.
 ///
@@ -56,8 +66,8 @@ pub async fn run(
     status_handle: StatusHandle,
     run_token: CancellationToken,
 ) -> Result<()> {
-    let snapshot_timeout_duration = LazyCell::new(|| Duration::from_millis(SNAPSHOT_TIMEOUT_MS));
     let poll_rate = config.get_settings()?.poll_rate;
+    let snapshot_timeout_duration = snapshot_timeout_for(poll_rate);
     let mut lcd_update_trigger = LCDUpdateTrigger::new(poll_rate);
     moro_local::async_scope!(|scope| -> Result<()> {
         let sleep_listener = SleepListener::new(run_token.clone(), scope)
@@ -76,7 +86,7 @@ pub async fn run(
                 tokio::select! {
                     // This ensures that our status snapshots are taken a regular intervals,
                     // regardless of how long a particular device's status preload takes.
-                    () = sleep(*snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
+                    () = sleep(snapshot_timeout_duration) => trace!("Snapshot timeout triggered before preload finished"),
                     () = snapshot_timeout_token.cancelled() => trace!("Preload finished before snapshot timeout"),
                 }
                 fire_snapshots_and_processes(&repos, &engine, &mut lcd_update_trigger, &status_handle, scope).await;
@@ -286,5 +296,25 @@ impl LCDUpdateTrigger {
         } else {
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_timeout_matches_legacy_value_at_min_poll_rate() {
+        // Regression: at poll_rate = 0.5 s the formula must reproduce
+        // the previous hard-coded 400 ms snapshot budget.
+        assert_eq!(snapshot_timeout_for(0.5), Duration::from_millis(400));
+    }
+
+    #[test]
+    fn snapshot_timeout_scales_linearly_with_poll_rate() {
+        // The budget must grow proportionally so slow devices get more
+        // room at longer poll intervals.
+        assert_eq!(snapshot_timeout_for(1.0), Duration::from_millis(800));
+        assert_eq!(snapshot_timeout_for(5.0), Duration::from_millis(4000));
     }
 }

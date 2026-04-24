@@ -22,7 +22,7 @@ use crate::device::{
     DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
     TypeIndex, UID,
 };
-use crate::repositories::failsafe::{self, FailsafeStatusData};
+use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
 use crate::repositories::hwmon::devices::{DEVICE_NAMES_APPLE, HWMON_DEVICE_NAME_BLACKLIST};
 use crate::repositories::hwmon::{auto_curve, devices, drivetemp, fans, power, temps, thinkpad};
@@ -40,18 +40,36 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::LazyLock;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
 use tokio::time::{sleep, Instant};
 
-/// Our `SNAPSHOT_TIMEOUT_MS` in the `main_loop` is 400ms, so if we have a very slow device that
-/// will hit that timeout regularly, we want our read permit timeout to come close to that
-/// so that we have even snapshot timestamps.
-static DEVICE_READ_PERMIT_TIMEOUT: LazyLock<Duration> =
-    LazyLock::new(|| Duration::from_millis(350));
-static DEVICE_WRITE_PERMIT_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(8));
+/// Fraction of `poll_rate` a device preload is allowed before the
+/// slow-device arm fires. Anchored so that at the minimum poll rate
+/// (0.5 s) the budget reproduces the original 350 ms value, and stays
+/// strictly below `main_loop::SNAPSHOT_TIMEOUT_RATIO` (0.8) so the
+/// repo's failsafe-apply branch runs before the snapshot is taken.
+const READ_PERMIT_RATIO: f64 = 0.7;
+
+/// Derives the read permit timeout from `poll_rate`. Pure helper so
+/// the ratio is testable without constructing a full `HwmonRepo`.
+fn device_read_permit_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * READ_PERMIT_RATIO)
+}
+
+/// Derives the write permit timeout from `poll_rate`. Pure helper so
+/// the formula is testable without constructing a full `HwmonRepo`.
+/// `MISSING_STATUS_THRESHOLD` is a small `usize` (8) that fits within
+/// `u8::MAX`, so the cast to `f64` is lossless.
+#[allow(clippy::cast_precision_loss)]
+fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
+}
 
 /// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
 /// implementation blocks temperature reads when the drive is spinning up which causes significant
@@ -603,6 +621,24 @@ impl HwmonRepo {
             .replace(slow_device_trigger_count + 1);
     }
 
+    /// Snapshot of the current poll rate. Falls back to the default
+    /// 1.0 s if the settings read fails so the timeout is always
+    /// defined, matching the behavior before this was derived.
+    fn poll_rate(&self) -> f64 {
+        self.config
+            .get_settings()
+            .map(|s| s.poll_rate)
+            .unwrap_or(1.0)
+    }
+
+    fn device_read_permit_timeout(&self) -> Duration {
+        device_read_permit_timeout_for(self.poll_rate())
+    }
+
+    fn device_write_permit_timeout(&self) -> Duration {
+        device_write_permit_timeout_for(self.poll_rate())
+    }
+
     async fn get_permit_with_write_timeout(
         &self,
         type_index: TypeIndex,
@@ -610,7 +646,7 @@ impl HwmonRepo {
         channel_name: &str,
     ) -> Result<SemaphorePermit<'_>> {
         tokio::select! {
-            () = sleep(*DEVICE_WRITE_PERMIT_TIMEOUT) => Err(anyhow!(
+            () = sleep(self.device_write_permit_timeout()) => Err(anyhow!(
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
                 fan speed. There will be significant issues handling this device due to extreme lag."
             )),
@@ -806,12 +842,15 @@ impl Repository for HwmonRepo {
                 let type_index = device_lock.borrow().type_index;
                 let delay = self.device_delay(uid);
                 let self = Rc::clone(&self);
+                let read_permit_timeout = self.device_read_permit_timeout();
                 scope.spawn(async move {
                     tokio::select! {
-                        () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => {
+                        () = sleep(read_permit_timeout) => {
                             self.log_slow_device(type_index, &driver.name);
                             if self.record_read_failure(type_index, &driver.name) {
-                                // failsafes are applied to all cached statuses after 10x timeout
+                                // Failsafe fires once the per-device failure counter crosses
+                                // `MISSING_STATUS_THRESHOLD`. The wall-clock wait here equals
+                                // `MISSING_STATUS_THRESHOLD * poll_rate` by construction.
                                 self.apply_failsafe_to_all_cached(type_index);
                             }
                         },
@@ -1102,5 +1141,64 @@ impl Repository for HwmonRepo {
 
     async fn reinitialize_devices(&self) {
         error!("Reinitializing Devices is not supported for this Repository");
+    }
+}
+
+#[cfg(test)]
+mod permit_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn read_permit_timeout_matches_legacy_at_min_poll_rate() {
+        // Regression: at poll_rate = 0.5 s the formula must reproduce
+        // the previous hard-coded 350 ms value.
+        assert_eq!(
+            device_read_permit_timeout_for(0.5),
+            Duration::from_millis(350)
+        );
+    }
+
+    #[test]
+    fn read_permit_timeout_scales_with_poll_rate() {
+        // The budget must widen proportionally for slower polls.
+        assert_eq!(
+            device_read_permit_timeout_for(1.0),
+            Duration::from_millis(700)
+        );
+        assert_eq!(
+            device_read_permit_timeout_for(5.0),
+            Duration::from_millis(3500)
+        );
+    }
+
+    #[test]
+    fn write_permit_timeout_matches_legacy_at_default_poll_rate() {
+        // Regression: at the default poll_rate = 1.0 s the formula
+        // must reproduce the previous hard-coded 8 s value.
+        assert_eq!(device_write_permit_timeout_for(1.0), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn write_permit_timeout_scales_with_poll_rate() {
+        // The write timeout must track the failsafe wall time
+        // exactly, i.e. MISSING_STATUS_THRESHOLD * poll_rate.
+        assert_eq!(device_write_permit_timeout_for(0.5), Duration::from_secs(4));
+        assert_eq!(
+            device_write_permit_timeout_for(5.0),
+            Duration::from_secs(40)
+        );
+    }
+
+    #[test]
+    fn read_permit_always_strictly_less_than_snapshot_budget() {
+        // The invariant lets the repo's failsafe-apply branch run
+        // before the main loop forces a snapshot. Ratios 0.7 vs 0.8
+        // preserve 87.5 % at every poll rate.
+        const SNAPSHOT_RATIO: f64 = 0.8;
+        for poll_rate in [0.5_f64, 1.0, 5.0] {
+            let read = device_read_permit_timeout_for(poll_rate);
+            let snapshot = Duration::from_secs_f64(poll_rate * SNAPSHOT_RATIO);
+            assert!(read < snapshot, "read must be < snapshot at {poll_rate}");
+        }
     }
 }
