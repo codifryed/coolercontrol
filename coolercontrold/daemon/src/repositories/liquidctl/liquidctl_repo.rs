@@ -999,7 +999,13 @@ impl Repository for LiquidctlRepo {
                                 .insert(device_id, status);
                             let mut fsd_map = self.failsafe_statuses.borrow_mut();
                             if let Some(fsd) = fsd_map.get_mut(&device_id) {
-                                fsd.record_success();
+                                if fsd.record_success() {
+                                    info!(
+                                        "Recovered from failsafe for liquidctl \
+                                         device #{device_id}. Resuming normal \
+                                         status reads."
+                                    );
+                                }
                             }
                         }
                         Err(err) => {

@@ -501,7 +501,7 @@ impl HwmonRepo {
         let failsafe_active = if any_failure {
             self.record_read_failure(type_index, &driver.name)
         } else {
-            self.record_read_success(type_index);
+            self.record_read_success(type_index, &driver.name);
             false
         };
         self.upsert_preloaded_statuses(
@@ -534,10 +534,18 @@ impl HwmonRepo {
     }
 
     /// Records a successful status read, resetting the failure counter.
-    fn record_read_success(&self, type_index: TypeIndex) {
+    /// Emits an info log once when the device recovers from a prior
+    /// above-threshold failsafe state, so the user sees the restoration
+    /// of normal operation.
+    fn record_read_success(&self, type_index: TypeIndex, driver_name: &str) {
         let mut fsd_map = self.failsafe_statuses.borrow_mut();
         if let Some(fsd) = fsd_map.get_mut(&type_index) {
-            fsd.record_success();
+            if fsd.record_success() {
+                info!(
+                    "Recovered from failsafe for hwmon device: {driver_name}. \
+                     Resuming normal status reads."
+                );
+            }
         }
     }
 

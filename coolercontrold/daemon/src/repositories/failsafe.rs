@@ -86,10 +86,19 @@ impl FailsafeStatusData {
     }
 
     /// Resets the failure counter on a successful status reading.
-    pub fn record_success(&mut self) {
+    /// Returns true when the device has just recovered from an
+    /// above-threshold state, so callers can emit a one-shot recovery
+    /// log. Also clears the `logged` flag so a subsequent threshold
+    /// breach re-logs its error.
+    pub fn record_success(&mut self) -> bool {
+        let recovered = self.count > MISSING_STATUS_THRESHOLD;
         if self.count > 0 {
             self.count = 0;
         }
+        if recovered {
+            self.logged = false;
+        }
+        recovered
     }
 
     /// Returns whether enough consecutive failures have occurred to
@@ -307,9 +316,11 @@ mod tests {
             fsd.record_failure();
         }
         assert_eq!(fsd.count, 5);
-        fsd.record_success();
+        let recovered = fsd.record_success();
         assert_eq!(fsd.count, 0);
         assert!(fsd.threshold_exceeded().not());
+        // Below threshold: success is not a "recovery" event.
+        assert!(recovered.not());
     }
 
     #[test]
@@ -317,8 +328,46 @@ mod tests {
         // Resetting at zero must not underflow or cause issues.
         let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
         let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
-        fsd.record_success();
+        let recovered = fsd.record_success();
         assert_eq!(fsd.count, 0);
+        assert!(recovered.not());
+    }
+
+    #[test]
+    fn record_success_signals_recovery_from_above_threshold() {
+        // Transitioning from above MISSING_STATUS_THRESHOLD back to
+        // zero is the one case where record_success must return true
+        // so the caller can emit a recovery log. The logged flag must
+        // also clear so a subsequent breach re-logs its error.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..=MISSING_STATUS_THRESHOLD {
+            fsd.record_failure();
+        }
+        assert!(fsd.threshold_exceeded());
+        assert!(fsd.log_once());
+        assert!(fsd.logged);
+        let recovered = fsd.record_success();
+        assert!(recovered);
+        assert_eq!(fsd.count, 0);
+        assert!(fsd.logged.not());
+    }
+
+    #[test]
+    fn record_success_no_recovery_at_exact_threshold() {
+        // At exactly MISSING_STATUS_THRESHOLD failures the device has
+        // not tripped failsafe, so a subsequent success is just a
+        // reset, not a recovery. Returning true here would produce a
+        // spurious "recovered" log.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        for _ in 0..MISSING_STATUS_THRESHOLD {
+            fsd.record_failure();
+        }
+        assert_eq!(fsd.count, MISSING_STATUS_THRESHOLD);
+        assert!(fsd.threshold_exceeded().not());
+        let recovered = fsd.record_success();
+        assert!(recovered.not());
     }
 
     #[test]

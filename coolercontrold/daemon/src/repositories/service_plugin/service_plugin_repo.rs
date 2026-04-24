@@ -721,7 +721,16 @@ impl ServicePluginRepo {
                         msd.logged = true;
                     }
                 } else if msd.count > 0 {
+                    let recovered = msd.count > MISSING_STATUS_THRESHOLD;
                     msd.count = 0;
+                    if recovered {
+                        msd.logged = false;
+                        info!(
+                            "Recovered from failsafe for device: {device_uid}, \
+                             from service: {}. Resuming normal status reads.",
+                            service.id
+                        );
+                    }
                 }
             }
         }
