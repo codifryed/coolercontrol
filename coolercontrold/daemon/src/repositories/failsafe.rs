@@ -21,7 +21,8 @@ use std::collections::{HashMap, HashSet};
 use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
 
 /// Consecutive missing status readings before failsafe values activate.
-pub const MISSING_STATUS_THRESHOLD: usize = 8;
+/// A little more than the max timeout for waiting to write values to allow recovery time.
+pub const MISSING_STATUS_THRESHOLD: usize = 10;
 /// Critical high temperature reported when sensor data is missing.
 pub const MISSING_TEMP_FAILSAFE: Temp = 100.;
 /// Fan duty reported when sensor data is missing.
