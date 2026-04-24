@@ -584,8 +584,7 @@ impl HwmonRepo {
         let (channels, temps) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
-        let (newly_failsafing, just_recovered) =
-            fsd.tick_per_channel_staleness(channels, temps);
+        let (newly_failsafing, just_recovered) = fsd.tick_per_channel_staleness(channels, temps);
         if newly_failsafing {
             error!(
                 "Significant issue retrieving status for hwmon \

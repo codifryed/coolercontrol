@@ -1076,8 +1076,7 @@ mod tests {
         let mut fsd = make_fsd_for_staleness_tests();
         let (mut channels, mut temps) = starting_cache();
         for _ in 0..(MISSING_STATUS_THRESHOLD * 2) {
-            let (newly, recovered) =
-                tick_with_all_fresh(&mut fsd, &mut channels, &mut temps);
+            let (newly, recovered) = tick_with_all_fresh(&mut fsd, &mut channels, &mut temps);
             assert!(newly.not());
             assert!(recovered.not());
         }
