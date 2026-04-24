@@ -43,7 +43,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use tokio::sync::{Semaphore, SemaphorePermit};
-use tokio::time::{sleep, Instant};
+use tokio::time::{sleep, timeout, Instant};
 
 /// Fraction of `poll_rate` a device preload is allowed before the
 /// slow-device arm fires. Anchored so that at the minimum poll rate
@@ -85,6 +85,15 @@ fn drivetemp_ioctl_timeout_for(poll_rate: f64) -> Duration {
     debug_assert!(poll_rate <= 5.0);
     Duration::from_secs_f64(poll_rate * DRIVETEMP_IOCTL_RATIO)
 }
+
+/// Wall-clock budget per `extract_*` call during
+/// `map_into_our_device_model`. A normal hwmon device completes all
+/// reads in tens of milliseconds; 5 s is a conservative ceiling that
+/// still prevents a single wedged sysfs file from stalling daemon
+/// startup indefinitely. On timeout the device is skipped and the
+/// daemon proceeds with the remaining devices; the next restart will
+/// re-attempt it. This is used per chanel group.
+const INIT_EXTRACT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
 /// implementation blocks temperature reads when the drive is spinning up which causes significant
@@ -309,11 +318,18 @@ impl HwmonRepo {
     /// Maps driver infos to our Devices
     /// `ThinkPads` need special handling, see:
     /// [Kernel Docs](https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable)
+    ///
+    /// `extract_timeout` bounds each initial status extraction so a
+    /// wedged sysfs file cannot stall daemon startup. A device whose
+    /// extraction times out is skipped; the daemon proceeds with the
+    /// rest.
     #[allow(clippy::too_many_lines, clippy::cast_possible_truncation)]
     async fn map_into_our_device_model(
         &mut self,
         hwmon_drivers: Vec<HwmonDriverInfo>,
+        extract_timeout: Duration,
     ) -> Result<()> {
+        debug_assert!(extract_timeout > Duration::ZERO);
         let poll_rate = self.config.get_settings()?.poll_rate;
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
             let temps = driver
@@ -406,10 +422,38 @@ impl HwmonRepo {
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
-            let (mut channel_statuses, _) = fans::extract_fan_statuses(&driver).await;
-            let (power_statuses, _) = power::extract_power_status(&driver).await;
+            let Ok((mut channel_statuses, _)) =
+                timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
+            else {
+                error!(
+                    "Timed out after {extract_timeout:?} extracting initial fan statuses \
+                     for hwmon device: {} — skipping device at init. Check that the hwmon \
+                     sysfs files are responsive.",
+                    driver.name
+                );
+                continue;
+            };
+            let Ok((power_statuses, _)) =
+                timeout(extract_timeout, power::extract_power_status(&driver)).await
+            else {
+                error!(
+                    "Timed out after {extract_timeout:?} extracting initial power statuses \
+                     for hwmon device: {} — skipping device at init.",
+                    driver.name
+                );
+                continue;
+            };
             channel_statuses.extend(power_statuses);
-            let (temp_statuses, _) = temps::extract_temp_statuses(&driver).await;
+            let Ok((temp_statuses, _)) =
+                timeout(extract_timeout, temps::extract_temp_statuses(&driver)).await
+            else {
+                error!(
+                    "Timed out after {extract_timeout:?} extracting initial temp statuses \
+                     for hwmon device: {} — skipping device at init.",
+                    driver.name
+                );
+                continue;
+            };
             let (channel_failsafes, temp_failsafes) =
                 failsafe::create_failsafe_data(&channel_statuses, &temp_statuses);
             if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
@@ -831,7 +875,8 @@ impl Repository for HwmonRepo {
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
 
-        self.map_into_our_device_model(hwmon_drivers).await?;
+        self.map_into_our_device_model(hwmon_drivers, INIT_EXTRACT_TIMEOUT)
+            .await?;
         self.load_device_delays();
 
         let mut init_devices = HashMap::new();
@@ -1920,6 +1965,148 @@ mod command_delay_handoff_tests {
                 elapsed >= Duration::from_millis(u64::from(DELAY_MS)),
                 "write acquired too fast: elapsed={elapsed:?}, expected >= {DELAY_MS}ms"
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod init_timeout_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    async fn setup_dir() -> PathBuf {
+        let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+        cc_fs::create_dir_all(&base).await.unwrap();
+        base
+    }
+
+    async fn teardown_dir(base: &Path) {
+        let _ = cc_fs::remove_dir_all(base).await;
+    }
+
+    fn temp_channel(number: u8, name: &str, temp_path: PathBuf) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Temp,
+            number,
+            name: name.to_string(),
+            temp_path: Some(temp_path),
+            ..Default::default()
+        }
+    }
+
+    fn driver_for_test(
+        name: &str,
+        base: &Path,
+        channels: Vec<HwmonChannelInfo>,
+    ) -> HwmonDriverInfo {
+        HwmonDriverInfo {
+            name: name.to_string(),
+            path: base.to_path_buf(),
+            channels,
+            apple_smc: AppleMacSMC::default(),
+            ..Default::default()
+        }
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    #[test]
+    #[serial]
+    fn map_into_model_registers_device_on_happy_path() {
+        // Regression: with readable sysfs files and a generous
+        // timeout, the device is registered normally. Guards against
+        // the timeout machinery breaking the happy path.
+        cc_fs::test_runtime(async {
+            let base = setup_dir().await;
+            cc_fs::write(base.join("temp1_input"), b"40000".to_vec())
+                .await
+                .unwrap();
+            let driver = driver_for_test(
+                "test_ok",
+                &base,
+                vec![temp_channel(1, "temp1", base.join("temp1_input"))],
+            );
+
+            let mut repo = empty_repo();
+            let result = repo
+                .map_into_our_device_model(vec![driver], Duration::from_secs(5))
+                .await;
+
+            assert!(
+                result.is_ok(),
+                "map should succeed on happy path: {result:?}"
+            );
+            assert_eq!(repo.devices.len(), 1, "one device should be registered");
+
+            teardown_dir(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn map_into_model_skips_device_on_hanging_temp_read() {
+        // Verifies the core H2 invariant: a wedged sysfs file during
+        // init cannot stall daemon startup. Uses a FIFO at the temp
+        // channel's read path; the reader blocks in open(2) until a
+        // writer connects. The extract_temp_statuses call therefore
+        // hangs; the timeout fires; the device is skipped. After
+        // validation the test pairs up the FIFO so the leaked
+        // blocking task completes and the runtime drops cleanly.
+        cc_fs::test_runtime(async {
+            let base = setup_dir().await;
+            let fifo_path = base.join("temp1_input");
+            let path_c = std::ffi::CString::new(fifo_path.to_str().unwrap()).unwrap();
+            // SAFETY: path is a valid CString; mode is a standard
+            // POSIX mode; mkfifo is safe when called with these args.
+            let rc = unsafe { nix::libc::mkfifo(path_c.as_ptr(), 0o600) };
+            assert_eq!(
+                rc,
+                0,
+                "mkfifo failed: errno={}",
+                std::io::Error::last_os_error()
+            );
+
+            let driver = driver_for_test(
+                "test_slow",
+                &base,
+                vec![temp_channel(1, "temp1", fifo_path.clone())],
+            );
+
+            let mut repo = empty_repo();
+            let start = Instant::now();
+            let result = repo
+                .map_into_our_device_model(vec![driver], Duration::from_millis(200))
+                .await;
+            let elapsed = start.elapsed();
+
+            assert!(result.is_ok(), "map must return Ok even on timeout");
+            assert!(
+                elapsed < Duration::from_millis(1500),
+                "init timeout did not fire within budget: elapsed={elapsed:?}"
+            );
+            assert!(
+                repo.devices.is_empty(),
+                "device with hanging read should be skipped"
+            );
+
+            // Pair the FIFO so the blocking reader thread can
+            // complete. Without this the runtime drop may wait on
+            // the leaked read-open syscall.
+            let fifo_for_writer = fifo_path.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&fifo_for_writer);
+            })
+            .await;
+
+            teardown_dir(&base).await;
         });
     }
 }
