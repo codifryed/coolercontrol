@@ -523,7 +523,16 @@ impl CpuRepo {
                 }
                 HwmonChannelType::Freq => contains_freq = true,
                 HwmonChannelType::PowerCap => {
-                    let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
+                    // If the joule counter read fails, omit the channel
+                    // status entry for this tick rather than fabricating
+                    // 0 watts, and leave the prior energy counter intact
+                    // so the next successful read's delta is not wildly
+                    // skewed by a one-tick gap.
+                    let Some(joule_count) =
+                        power_cap::extract_power_joule_counter(channel.number).await
+                    else {
+                        continue;
+                    };
                     let previous_joule_count = self
                         .energy_counters
                         .get(&phys_cpu_id)
@@ -770,8 +779,12 @@ impl Repository for CpuRepo {
             for channel in driver.channels.iter().filter(|channel| {
                 channel.hwmon_type == HwmonChannelType::PowerCap && channel.number == physical_id
             }) {
-                // fill initial joule_count with a real count (Needed before request_status)
-                let joule_count = power_cap::extract_power_joule_counter(channel.number).await;
+                // Fill initial joule_count with a real count (needed before
+                // request_status). If the initial read fails, seed with 0 so the
+                // next successful read still produces a valid forward delta.
+                let joule_count = power_cap::extract_power_joule_counter(channel.number)
+                    .await
+                    .unwrap_or(0.0);
                 self.energy_counters
                     .insert(physical_id, Cell::new(joule_count));
             }

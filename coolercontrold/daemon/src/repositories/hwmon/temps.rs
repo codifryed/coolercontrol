@@ -77,10 +77,17 @@ pub async fn init_temps(base_path: &Path, device_name: &str) -> Result<Vec<Hwmon
 }
 
 /// Returns temp statuses for all channels and whether any read failed.
-/// Defaults to 0 for failed reads so the cache remains usable until
-/// the failsafe threshold is exceeded upstream.
+/// Failed reads are omitted from the returned vector so the upstream
+/// cache keeps the last-known-good value until the failsafe threshold
+/// triggers and merges in `MISSING_TEMP_FAILSAFE`. Fabricating a value
+/// on failure would lie to downstream controllers.
 pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>, bool) {
-    let mut temps = vec![];
+    let temp_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Temp)
+        .count();
+    let mut temps = Vec::with_capacity(temp_channel_count);
     let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
@@ -95,46 +102,55 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> (Vec<TempStatus>
             .and_then(check_parsing_32)
             // hwmon temps are in millidegrees:
             .map(|degrees| f64::from(degrees) / 1000.0f64);
-        let temp = if let Ok(t) = result {
-            t
-        } else {
-            any_failure = true;
-            0f64
-        };
-        temps.push(TempStatus {
-            name: channel.name.clone(),
-            temp,
-        });
+        match result {
+            Ok(temp) => temps.push(TempStatus {
+                name: channel.name.clone(),
+                temp,
+            }),
+            Err(_) => any_failure = true,
+        }
     }
     (temps, any_failure)
 }
 
 #[allow(dead_code)]
-/// This is the concurrent version of the `extract_temp_statuses` function.
-pub async fn extract_temp_statuses_concurrently(driver: &HwmonDriverInfo) -> Vec<TempStatus> {
+/// Concurrent version of `extract_temp_statuses`. Failed reads are
+/// omitted rather than pushed with a fabricated value.
+pub async fn extract_temp_statuses_concurrently(
+    driver: &HwmonDriverInfo,
+) -> (Vec<TempStatus>, bool) {
     let mut temp_tasks = vec![];
-    moro_local::async_scope!(|scope| {
+    let results = moro_local::async_scope!(|scope| {
         for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Temp {
                 continue;
             }
             let temp_task = scope.spawn(async {
-                let temp = cc_fs::read_sysfs(driver.path.join(format_temp_input!(channel.number)))
-                    .await
-                    .and_then(check_parsing_32)
-                    // hwmon temps are in millidegrees:
-                    .map(|degrees| f64::from(degrees) / 1000.0f64)
-                    .unwrap_or(0f64);
-                TempStatus {
+                let result =
+                    cc_fs::read_sysfs(driver.path.join(format_temp_input!(channel.number)))
+                        .await
+                        .and_then(check_parsing_32)
+                        // hwmon temps are in millidegrees:
+                        .map(|degrees| f64::from(degrees) / 1000.0f64);
+                result.map(|temp| TempStatus {
                     name: channel.name.clone(),
                     temp,
-                }
+                })
             });
             temp_tasks.push(temp_task);
         }
         join_all(temp_tasks).await
     })
-    .await
+    .await;
+    let mut temps = Vec::with_capacity(results.len());
+    let mut any_failure = false;
+    for result in results {
+        match result {
+            Ok(temp) => temps.push(temp),
+            Err(_) => any_failure = true,
+        }
+    }
+    (temps, any_failure)
 }
 
 /// This is used to remove cpu temps, as we already have repos for that that use `HWMon`.
@@ -230,7 +246,26 @@ fn get_temp_channel_name(channel_number: u8) -> String {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use uuid::Uuid;
+
+    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct HwmonFileContext {
+        test_base_path: PathBuf,
+    }
+
+    async fn setup() -> HwmonFileContext {
+        let test_base_path =
+            Path::new(&(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
+                .to_path_buf();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
+        HwmonFileContext { test_base_path }
+    }
+
+    async fn teardown(ctx: &HwmonFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    }
 
     #[test]
     #[serial]
@@ -288,6 +323,207 @@ mod tests {
             assert_eq!(temps[0].label, Some("Temp 1".to_string()));
             assert_eq!(temps[0].pwm_enable_default, None);
             assert_eq!(temps[0].number, 1);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_temp_all_channels_succeed() {
+        // Verifies a successful read yields one entry per channel and
+        // clears the failure indicator.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two temp channels, both readable.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("temp1_input"), b"35000".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(test_base_path.join("temp2_input"), b"42000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 2,
+                        name: "temp2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(temps.len(), 2);
+            assert_eq!(temps[0].name, "temp1");
+            assert!((temps[0].temp - 35.0).abs() < f64::EPSILON);
+            assert_eq!(temps[1].name, "temp2");
+            assert!((temps[1].temp - 42.0).abs() < f64::EPSILON);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_temp_skips_failed_reads_and_signals_failure() {
+        // Verifies a missing sysfs file results in the channel being
+        // omitted and the failure indicator being set. Fabricating 0.0
+        // would be read by downstream as "very cold, drop fan duty".
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: single temp channel but no sysfs file.
+            let test_base_path = &ctx.test_base_path;
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: 1,
+                    name: "temp1".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // when:
+            let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(temps.len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_temp_partial_failure_skips_only_failing_channels() {
+        // Verifies working sensors keep serving real values while the
+        // failing sensor is simply absent from the result.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two temp channels, only the first one readable.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("temp1_input"), b"50000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 2,
+                        name: "temp2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(temps.len(), 1);
+            assert_eq!(temps[0].name, "temp1");
+            assert!((temps[0].temp - 50.0).abs() < f64::EPSILON);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_temp_all_fail_returns_empty() {
+        // Verifies a device with all failing reads returns an empty vec
+        // rather than one fabricated entry per channel.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two temp channels, neither readable.
+            let test_base_path = &ctx.test_base_path;
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 2,
+                        name: "temp2".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert_eq!(temps.len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_temp_ignores_non_temp_channels() {
+        // Verifies non-Temp channels are ignored even if named similarly.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: one Temp and one non-Temp channel.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(test_base_path.join("temp1_input"), b"30000".to_vec())
+                .await
+                .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        number: 1,
+                        name: "temp1".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Fan,
+                        number: 1,
+                        name: "fan1".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let (temps, any_failure) = extract_temp_statuses(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure.not());
+            assert_eq!(temps.len(), 1);
+            assert_eq!(temps[0].name, "temp1");
         });
     }
 }

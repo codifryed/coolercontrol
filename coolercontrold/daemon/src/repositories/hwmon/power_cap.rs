@@ -83,15 +83,17 @@ pub async fn find_power_cap_paths() -> Result<Vec<HwmonChannelInfo>> {
     Ok(power_cap_devices)
 }
 
-/// Extract the power cap energy count in Joules.
-pub async fn extract_power_joule_counter(channel_number: u8) -> f64 {
+/// Extract the power cap energy count in Joules. Returns `None` on
+/// read or parse failure so callers can distinguish a failed read from
+/// a legitimate 0-joule counter.
+pub async fn extract_power_joule_counter(channel_number: u8) -> Option<f64> {
     cc_fs::read_sysfs(format!(
         "/sys/class/powercap/intel-rapl:{channel_number}/energy_uj"
     ))
     .await
     .and_then(check_parsing_f64)
     .map(microjoules_to_joules)
-    .unwrap_or_default()
+    .ok()
 }
 
 /// Calculate the power consumption in Watts from the current and previous energy counters.
@@ -147,4 +149,53 @@ fn check_parsing_f64(content: String) -> Result<f64> {
         Ok(value) => Ok(value),
         Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string()).into()),
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn microjoules_to_joules_converts_correctly() {
+        // Microjoules divided by one million must yield joules.
+        let joules = microjoules_to_joules(1_000_000.0);
+        assert!((joules - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn check_parsing_f64_accepts_valid_number() {
+        // A valid numeric string must parse back into the expected f64.
+        let parsed = check_parsing_f64("1234567.0\n".to_string()).unwrap();
+        assert!((parsed - 1_234_567.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn check_parsing_f64_rejects_garbage() {
+        // Non-numeric content must return an InvalidData error rather
+        // than a zero sentinel.
+        let parsed = check_parsing_f64("not_a_number".to_string());
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn calculate_power_watts_delta_over_poll_rate() {
+        // Watts equals the joule delta divided by the poll interval.
+        let watts = calculate_power_watts(15.0, 10.0, 1.0);
+        assert!((watts - 5.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn calculate_power_watts_counter_reset_yields_zero() {
+        // A counter reset (previous > current) must clamp to zero so
+        // downstream does not see a negative power reading.
+        let watts = calculate_power_watts(1.0, 100.0, 1.0);
+        assert!(watts.abs() < f64::EPSILON);
+    }
+
+    // Note: extract_power_joule_counter reads from /sys/class/powercap
+    // directly with a hard-coded path, so it is not covered by a
+    // filesystem test here. The contract under test is the Option<f64>
+    // return type: on any read or parse failure, the function returns
+    // None rather than fabricating Some(0.0). Callers must treat None
+    // as "no reading this tick" and skip the delta update.
 }

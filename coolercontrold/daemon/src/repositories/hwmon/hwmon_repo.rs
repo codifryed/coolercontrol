@@ -36,7 +36,7 @@ use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -182,6 +182,34 @@ pub struct HwmonRepo {
 
     /// Cached per-device command delay in milliseconds. Loaded at startup from config.
     device_delays: HashMap<DeviceUID, u16>,
+}
+
+/// Replaces each cached channel entry by name with its fresh
+/// counterpart or appends it when no cache entry exists yet. The
+/// cache length is monotonic within one call: entries are never
+/// removed, only replaced in place or pushed.
+fn upsert_channels_by_name(cache: &mut Vec<ChannelStatus>, fresh: Vec<ChannelStatus>) {
+    for fresh in fresh {
+        if let Some(entry) = cache.iter_mut().find(|c| c.name == fresh.name) {
+            *entry = fresh;
+        } else {
+            cache.push(fresh);
+        }
+    }
+}
+
+/// Replaces each cached temp entry by name with its fresh
+/// counterpart or appends it when no cache entry exists yet. The
+/// cache length is monotonic within one call: entries are never
+/// removed, only replaced in place or pushed.
+fn upsert_temps_by_name(cache: &mut Vec<TempStatus>, fresh: Vec<TempStatus>) {
+    for fresh in fresh {
+        if let Some(entry) = cache.iter_mut().find(|t| t.name == fresh.name) {
+            *entry = fresh;
+        } else {
+            cache.push(fresh);
+        }
+    }
 }
 
 impl HwmonRepo {
@@ -412,8 +440,13 @@ impl HwmonRepo {
         locations
     }
 
-    /// Reads channel and temp statuses for one device and stores them
-    /// in the preloaded map. Tracks read failures for failsafe logic.
+    /// Reads channel and temp statuses for one device and upserts them
+    /// into the preloaded cache. Successful reads update their cache
+    /// entries in place with fresh values. Failing reads leave their
+    /// cache entries untouched so downstream keeps seeing the last
+    /// known good value, not a fabricated 0. Once the failsafe threshold
+    /// is exceeded, entries for channels that did not report this tick
+    /// are overwritten with their failsafe values (e.g. 100 C for temps).
     async fn preload_device_statuses(&self, type_index: TypeIndex, driver: &Rc<HwmonDriverInfo>) {
         let (mut channel_statuses, any_fan_failure) = if driver.apple_smc.detected {
             driver.apple_smc.extract_fan_statuses(driver).await
@@ -428,48 +461,118 @@ impl HwmonRepo {
             } else {
                 temps::extract_temp_statuses(driver).await
             };
-        if any_fan_failure || any_power_failure || any_temp_failure {
-            self.handle_device_read_failure(type_index, &driver.name);
+        let any_failure = any_fan_failure || any_power_failure || any_temp_failure;
+        let failsafe_active = if any_failure {
+            self.record_read_failure(type_index, &driver.name)
         } else {
-            self.handle_device_read_success(type_index);
-        }
-        self.preloaded_statuses
-            .borrow_mut()
-            .insert(type_index, (channel_statuses, temp_statuses));
+            self.record_read_success(type_index);
+            false
+        };
+        self.upsert_preloaded_statuses(
+            type_index,
+            channel_statuses,
+            temp_statuses,
+            failsafe_active,
+        );
     }
 
-    /// Records a read failure for the device. If the threshold is
-    /// exceeded, inserts failsafe values into the preloaded map and
-    /// logs an error once.
-    fn handle_device_read_failure(&self, type_index: TypeIndex, driver_name: &str) {
+    /// Records a read failure for the device, logging once when the
+    /// threshold is first exceeded. Returns whether the failsafe is
+    /// active (threshold exceeded) so the caller can merge failsafe
+    /// values for missing channels. Does not write to the preloaded
+    /// map directly.
+    fn record_read_failure(&self, type_index: TypeIndex, driver_name: &str) -> bool {
         let mut fsd_map = self.failsafe_statuses.borrow_mut();
         let Some(fsd) = fsd_map.get_mut(&type_index) else {
             // No failsafe data when the device had no channels or temps at init.
-            return;
+            return false;
         };
-        if fsd.record_failure() {
-            if fsd.log_once() {
-                error!(
-                    "Significant issue retrieving status for hwmon \
-                     device: {driver_name}. Setting failsafe values."
-                );
-            }
-            self.preloaded_statuses.borrow_mut().insert(
-                type_index,
-                (
-                    fsd.channel_failsafes.values().cloned().collect(),
-                    fsd.temp_failsafes.values().cloned().collect(),
-                ),
+        let exceeded = fsd.record_failure();
+        if exceeded && fsd.log_once() {
+            error!(
+                "Significant issue retrieving status for hwmon \
+                 device: {driver_name}. Setting failsafe values."
             );
         }
+        exceeded
     }
 
     /// Records a successful status read, resetting the failure counter.
-    fn handle_device_read_success(&self, type_index: TypeIndex) {
+    fn record_read_success(&self, type_index: TypeIndex) {
         let mut fsd_map = self.failsafe_statuses.borrow_mut();
         if let Some(fsd) = fsd_map.get_mut(&type_index) {
             fsd.record_success();
         }
+    }
+
+    /// Upserts this tick's fresh readings into the preloaded cache.
+    /// Fresh entries replace cache entries of the same name in place.
+    /// Cache entries whose names did not appear in the fresh read are
+    /// left untouched (so they keep serving last-known-good values)
+    /// unless `failsafe_active` is true, in which case those absent
+    /// entries are overwritten with their failsafe values. The timeout
+    /// path (no extractor ran this tick) is handled by the sibling
+    /// `apply_failsafe_to_all_cached` instead.
+    fn upsert_preloaded_statuses(
+        &self,
+        type_index: TypeIndex,
+        fresh_channels: Vec<ChannelStatus>,
+        fresh_temps: Vec<TempStatus>,
+        failsafe_active: bool,
+    ) {
+        let mut preloaded = self.preloaded_statuses.borrow_mut();
+        let (cached_channels, cached_temps) = preloaded
+            .entry(type_index)
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        let cached_channel_count_before = cached_channels.len();
+        let cached_temp_count_before = cached_temps.len();
+        if failsafe_active {
+            // Owned names feed both the upsert loops (which consume the
+            // fresh Vecs) and the HashSet<&str> view that
+            // overwrite_missing expects. One allocation per map instead
+            // of two.
+            let fresh_channel_names: HashSet<String> =
+                fresh_channels.iter().map(|c| c.name.clone()).collect();
+            let fresh_temp_names: HashSet<String> =
+                fresh_temps.iter().map(|t| t.name.clone()).collect();
+            upsert_channels_by_name(cached_channels, fresh_channels);
+            upsert_temps_by_name(cached_temps, fresh_temps);
+            let fsd_map = self.failsafe_statuses.borrow();
+            if let Some(fsd) = fsd_map.get(&type_index) {
+                let channel_view: HashSet<&str> =
+                    fresh_channel_names.iter().map(String::as_str).collect();
+                let temp_view: HashSet<&str> =
+                    fresh_temp_names.iter().map(String::as_str).collect();
+                fsd.overwrite_missing(cached_channels, cached_temps, &channel_view, &temp_view);
+            }
+        } else {
+            upsert_channels_by_name(cached_channels, fresh_channels);
+            upsert_temps_by_name(cached_temps, fresh_temps);
+        }
+        // Upsert is monotonic: each fresh entry is either replaced in
+        // place or appended, never removed. The cache length can only
+        // grow or stay the same within a single call.
+        debug_assert!(cached_channels.len() >= cached_channel_count_before);
+        debug_assert!(cached_temps.len() >= cached_temp_count_before);
+    }
+
+    /// Overwrites every cache entry for the device with its failsafe
+    /// value. Used on the slow-device timeout path after the failsafe
+    /// threshold has been exceeded: no channels reported this tick, so
+    /// all of them are treated as missing. The mixed-read path is
+    /// handled by the sibling `upsert_preloaded_statuses` instead.
+    fn apply_failsafe_to_all_cached(&self, type_index: TypeIndex) {
+        let fsd_map = self.failsafe_statuses.borrow();
+        let Some(fsd) = fsd_map.get(&type_index) else {
+            return;
+        };
+        let mut preloaded = self.preloaded_statuses.borrow_mut();
+        let Some((channels, temps)) = preloaded.get_mut(&type_index) else {
+            return;
+        };
+        let empty_channel_names: HashSet<&str> = HashSet::new();
+        let empty_temp_names: HashSet<&str> = HashSet::new();
+        fsd.overwrite_missing(channels, temps, &empty_channel_names, &empty_temp_names);
     }
 
     /// Logging slow devices is triggered once the polling loop overlaps and the
@@ -707,7 +810,10 @@ impl Repository for HwmonRepo {
                     tokio::select! {
                         () = sleep(*DEVICE_READ_PERMIT_TIMEOUT) => {
                             self.log_slow_device(type_index, &driver.name);
-                            self.handle_device_read_failure(type_index, &driver.name);
+                            if self.record_read_failure(type_index, &driver.name) {
+                                // failsafes are applied to all cached statuses after 10x timeout
+                                self.apply_failsafe_to_all_cached(type_index);
+                            }
                         },
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
                             self.preload_device_statuses(type_index, driver).await;

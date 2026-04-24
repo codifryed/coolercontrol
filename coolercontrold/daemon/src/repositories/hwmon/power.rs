@@ -104,9 +104,16 @@ async fn insert_power_metrics(
     Ok(())
 }
 
-/// Extract the power status
+/// Extract the power status. Failed reads are omitted from the returned
+/// vector so the upstream cache can keep the last-known-good value until
+/// the failsafe threshold merges in the proper failsafe watts.
 pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
-    let mut powers = vec![];
+    let power_channel_count = driver
+        .channels
+        .iter()
+        .filter(|c| c.hwmon_type == HwmonChannelType::Power)
+        .count();
+    let mut powers = Vec::with_capacity(power_channel_count);
     let mut any_failure = false;
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Power {
@@ -117,17 +124,14 @@ pub async fn extract_power_status(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
             .await
             .and_then(check_parsing_64)
             .map(convert_micro_watts_to_watts);
-        let watts = if let Ok(w) = result {
-            w
-        } else {
-            any_failure = true;
-            Watts::default()
-        };
-        powers.push(ChannelStatus {
-            name: channel.name.clone(),
-            watts: Some(watts),
-            ..Default::default()
-        });
+        match result {
+            Ok(watts) => powers.push(ChannelStatus {
+                name: channel.name.clone(),
+                watts: Some(watts),
+                ..Default::default()
+            }),
+            Err(_) => any_failure = true,
+        }
     }
     (powers, any_failure)
 }
@@ -493,9 +497,11 @@ mod tests {
 
     #[test]
     #[serial]
-    fn extract_status_reading_problem_returns_zero_and_signals_failure() {
-        // Verifies that when the sysfs file is missing, the power value
-        // defaults to zero and the failure indicator is set.
+    fn extract_status_skips_failed_reads_and_signals_failure() {
+        // Verifies that when the sysfs file is missing, the channel is
+        // omitted from the result and the failure indicator is set.
+        // Fabricating a 0.0 watts entry would lie to downstream; the
+        // upstream failsafe merge handles the missing entry.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             // given: power channel exists but sysfs file does not.
@@ -516,8 +522,52 @@ mod tests {
             // then:
             teardown(&ctx).await;
             assert!(any_failure);
+            assert_eq!(0, power_result.len());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_status_partial_failure_skips_only_failing_channels() {
+        // Verifies that when one power channel reads successfully and
+        // another fails, only the successful one is returned and
+        // any_failure is set.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: two power channels, one readable, one not.
+            let test_base_path = &ctx.test_base_path;
+            cc_fs::write(
+                test_base_path.join("power1_input"),
+                b"5000000".to_vec(), // 5.0 W in microwatts
+            )
+            .await
+            .unwrap();
+            let driver_info = HwmonDriverInfo {
+                path: test_base_path.to_owned(),
+                channels: vec![
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power1_input".to_string(),
+                        ..Default::default()
+                    },
+                    HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Power,
+                        name: "power2_input".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+
+            // when:
+            let (power_result, any_failure) = extract_power_status(&driver_info).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
             assert_eq!(1, power_result.len());
-            assert_eq!(Some(0.), power_result[0].watts);
+            assert_eq!("power1_input", power_result[0].name);
+            assert_eq!(Some(5.0), power_result[0].watts);
         });
     }
 

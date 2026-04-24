@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
 
@@ -104,6 +104,40 @@ impl FailsafeStatusData {
         true
     }
 
+    /// Overwrites cache entries with failsafe values for every expected
+    /// channel / temp name that is absent from this tick's fresh read.
+    /// Entries whose names are in `fresh_*_names` are left untouched so
+    /// working sensors keep serving real values. A defensive push is
+    /// used for expected names that are not already in the cache.
+    pub fn overwrite_missing(
+        &self,
+        channels: &mut Vec<ChannelStatus>,
+        temps: &mut Vec<TempStatus>,
+        fresh_channel_names: &HashSet<&str>,
+        fresh_temp_names: &HashSet<&str>,
+    ) {
+        for (name, failsafe_channel) in &self.channel_failsafes {
+            if fresh_channel_names.contains(name.as_str()) {
+                continue;
+            }
+            if let Some(entry) = channels.iter_mut().find(|c| &c.name == name) {
+                *entry = failsafe_channel.clone();
+            } else {
+                channels.push(failsafe_channel.clone());
+            }
+        }
+        for (name, failsafe_temp) in &self.temp_failsafes {
+            if fresh_temp_names.contains(name.as_str()) {
+                continue;
+            }
+            if let Some(entry) = temps.iter_mut().find(|t| &t.name == name) {
+                *entry = failsafe_temp.clone();
+            } else {
+                temps.push(failsafe_temp.clone());
+            }
+        }
+    }
+
     /// Builds a complete `Status` from the stored failsafe data.
     pub fn build_failsafe_status(&self) -> Status {
         let channel_count = self.channel_failsafes.len();
@@ -164,6 +198,7 @@ pub fn create_failsafe_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ops::Not;
 
     fn sample_channels() -> Vec<ChannelStatus> {
         vec![
@@ -342,6 +377,344 @@ mod tests {
         assert!(fsd.threshold_exceeded());
     }
 
+    // --- overwrite_missing: cache-preserving failsafe substitution ---
+
+    #[test]
+    fn overwrite_missing_no_op_when_all_fresh_names_present() {
+        // When every expected name appeared in this tick's fresh read,
+        // the cache must remain untouched. The fresh set is the
+        // authoritative indicator of "this channel reported this tick".
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(60.0),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "power1".to_string(),
+                watts: Some(40.0),
+                ..Default::default()
+            },
+        ];
+        let mut temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 48.0,
+        }];
+        let fresh_channels: HashSet<&str> = ["fan1", "power1"].into_iter().collect();
+        let fresh_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+
+        fsd.overwrite_missing(&mut channels, &mut temps, &fresh_channels, &fresh_temps);
+
+        // Cache values must be preserved exactly as they were.
+        assert_eq!(channels.len(), 2);
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(1500));
+        assert_eq!(fan1.duty, Some(60.0));
+        let power1 = channels.iter().find(|c| c.name == "power1").unwrap();
+        assert_eq!(power1.watts, Some(40.0));
+        assert_eq!(temps.len(), 1);
+        assert!((temps[0].temp - 48.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn overwrite_missing_replaces_only_absent_entry_in_place() {
+        // When one expected name is absent from the fresh set, its
+        // matching cache entry must be overwritten in place with the
+        // failsafe value. All other cache entries must stay untouched.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(60.0),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "power1".to_string(),
+                watts: Some(40.0),
+                ..Default::default()
+            },
+        ];
+        let mut temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 48.0,
+        }];
+        // power1 did not report this tick; fan1 and temp1 did.
+        let fresh_channels: HashSet<&str> = ["fan1"].into_iter().collect();
+        let fresh_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+
+        fsd.overwrite_missing(&mut channels, &mut temps, &fresh_channels, &fresh_temps);
+
+        // Length unchanged: overwrite in place, no push.
+        assert_eq!(channels.len(), 2);
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(1500));
+        assert_eq!(fan1.duty, Some(60.0));
+        let power1 = channels.iter().find(|c| c.name == "power1").unwrap();
+        assert_eq!(power1.watts, Some(MISSING_WATTS_FAILSAFE));
+        assert_eq!(temps.len(), 1);
+        assert!((temps[0].temp - 48.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn overwrite_missing_replaces_every_entry_when_all_absent() {
+        // When no expected name appears in the fresh set, every cache
+        // entry must be overwritten with its failsafe value.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(60.0),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "power1".to_string(),
+                watts: Some(40.0),
+                ..Default::default()
+            },
+        ];
+        let mut temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 48.0,
+        }];
+        let fresh_channels: HashSet<&str> = HashSet::new();
+        let fresh_temps: HashSet<&str> = HashSet::new();
+
+        fsd.overwrite_missing(&mut channels, &mut temps, &fresh_channels, &fresh_temps);
+
+        assert_eq!(channels.len(), 2);
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(MISSING_RPM_FAILSAFE));
+        assert_eq!(fan1.duty, Some(MISSING_DUTY_FAILSAFE));
+        let power1 = channels.iter().find(|c| c.name == "power1").unwrap();
+        assert_eq!(power1.watts, Some(MISSING_WATTS_FAILSAFE));
+        assert_eq!(temps.len(), 1);
+        assert!((temps[0].temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn overwrite_missing_ignores_unexpected_fresh_names() {
+        // A fresh name for which no failsafe is defined must not cause
+        // any change. The fresh set is only consulted to decide which
+        // expected names are absent; unexpected names are irrelevant.
+        let (ch, te) = create_failsafe_data(&sample_channels(), &sample_temps());
+        let fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1500),
+                duty: Some(60.0),
+                ..Default::default()
+            },
+            ChannelStatus {
+                name: "power1".to_string(),
+                watts: Some(40.0),
+                ..Default::default()
+            },
+        ];
+        let mut temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 48.0,
+        }];
+        // "unknown_fan" has no failsafe; all expected names are present.
+        let fresh_channels: HashSet<&str> = ["fan1", "power1", "unknown_fan"].into_iter().collect();
+        let fresh_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+
+        fsd.overwrite_missing(&mut channels, &mut temps, &fresh_channels, &fresh_temps);
+
+        // No failsafe substitution occurred; cache unchanged.
+        assert_eq!(channels.len(), 2);
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(1500));
+        let power1 = channels.iter().find(|c| c.name == "power1").unwrap();
+        assert_eq!(power1.watts, Some(40.0));
+        assert_eq!(temps.len(), 1);
+        assert!((temps[0].temp - 48.0).abs() < f64::EPSILON);
+    }
+
+    // --- regression guard: full tick sequence with mixed reads ---
+
+    /// Mirrors the upsert + `overwrite_missing` pattern used by
+    /// `HwmonRepo::upsert_preloaded_statuses`. Pure function on the
+    /// cache so the regression tests below can drive it directly.
+    fn simulate_tick(
+        fsd: &mut FailsafeStatusData,
+        cached_channels: &mut Vec<ChannelStatus>,
+        cached_temps: &mut Vec<TempStatus>,
+        fresh_channels: Vec<ChannelStatus>,
+        fresh_temps: Vec<TempStatus>,
+        any_failure: bool,
+    ) {
+        let failsafe_active = if any_failure {
+            fsd.record_failure()
+        } else {
+            fsd.record_success();
+            false
+        };
+        let fresh_channel_names_owned: Vec<String> =
+            fresh_channels.iter().map(|c| c.name.clone()).collect();
+        let fresh_temp_names_owned: Vec<String> =
+            fresh_temps.iter().map(|t| t.name.clone()).collect();
+        for fresh in fresh_channels {
+            if let Some(entry) = cached_channels.iter_mut().find(|c| c.name == fresh.name) {
+                *entry = fresh;
+            } else {
+                cached_channels.push(fresh);
+            }
+        }
+        for fresh in fresh_temps {
+            if let Some(entry) = cached_temps.iter_mut().find(|t| t.name == fresh.name) {
+                *entry = fresh;
+            } else {
+                cached_temps.push(fresh);
+            }
+        }
+        if failsafe_active {
+            let fresh_channel_names: HashSet<&str> = fresh_channel_names_owned
+                .iter()
+                .map(String::as_str)
+                .collect();
+            let fresh_temp_names: HashSet<&str> =
+                fresh_temp_names_owned.iter().map(String::as_str).collect();
+            fsd.overwrite_missing(
+                cached_channels,
+                cached_temps,
+                &fresh_channel_names,
+                &fresh_temp_names,
+            );
+        }
+    }
+
+    #[test]
+    fn mixed_reads_serve_last_known_good_until_threshold_then_failsafe() {
+        // Regression guard for the original user report. Temp A reads
+        // successfully every tick with a real value; Temp B fails every
+        // tick. Pre-threshold, B must keep serving its initial value
+        // (48.0), never 0.0. Post-threshold, B must flip to the
+        // failsafe (100.0). A must always serve its fresh value.
+        let initial_temps = vec![
+            TempStatus {
+                name: "tempA".to_string(),
+                temp: 40.0,
+            },
+            TempStatus {
+                name: "tempB".to_string(),
+                temp: 48.0,
+            },
+        ];
+        let (ch, te) = create_failsafe_data(&[], &initial_temps);
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut cached_channels: Vec<ChannelStatus> = Vec::new();
+        let mut cached_temps = initial_temps.clone();
+
+        // Pre-threshold: MISSING_STATUS_THRESHOLD ticks of mixed reads.
+        // Temp A keeps reporting fresh values; Temp B is always absent.
+        for tick in 1..=MISSING_STATUS_THRESHOLD {
+            #[allow(clippy::cast_precision_loss)]
+            let fresh_a_value = 40.0 + tick as f64;
+            let fresh_temps = vec![TempStatus {
+                name: "tempA".to_string(),
+                temp: fresh_a_value,
+            }];
+            simulate_tick(
+                &mut fsd,
+                &mut cached_channels,
+                &mut cached_temps,
+                Vec::new(),
+                fresh_temps,
+                true,
+            );
+            // Temp A tracks its fresh value.
+            let temp_a = cached_temps.iter().find(|t| t.name == "tempA").unwrap();
+            assert!((temp_a.temp - fresh_a_value).abs() < f64::EPSILON);
+            // Temp B keeps its last-known-good reading (48.0).
+            let temp_b = cached_temps.iter().find(|t| t.name == "tempB").unwrap();
+            assert!(
+                (temp_b.temp - 48.0).abs() < f64::EPSILON,
+                "pre-threshold tick {tick}: tempB must be 48.0, got {}",
+                temp_b.temp,
+            );
+            // Never 0.0 for the failing channel.
+            assert!(temp_b.temp.abs() > f64::EPSILON);
+        }
+
+        // Post-threshold tick: Temp B flips to failsafe.
+        let fresh_temps = vec![TempStatus {
+            name: "tempA".to_string(),
+            temp: 50.0,
+        }];
+        simulate_tick(
+            &mut fsd,
+            &mut cached_channels,
+            &mut cached_temps,
+            Vec::new(),
+            fresh_temps,
+            true,
+        );
+        let temp_a = cached_temps.iter().find(|t| t.name == "tempA").unwrap();
+        assert!((temp_a.temp - 50.0).abs() < f64::EPSILON);
+        let temp_b = cached_temps.iter().find(|t| t.name == "tempB").unwrap();
+        assert!(
+            (temp_b.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON,
+            "post-threshold: tempB must be MISSING_TEMP_FAILSAFE (100.0), got {}",
+            temp_b.temp,
+        );
+    }
+
+    #[test]
+    fn recovery_after_failsafe_serves_fresh_values_only() {
+        // After the failure counter trips the threshold and failsafe
+        // values populate the cache, a full-success tick must reset
+        // the counter and serve only real values. The failsafe overlay
+        // must not apply when any_failure is false.
+        let initial_temps = vec![TempStatus {
+            name: "tempA".to_string(),
+            temp: 40.0,
+        }];
+        let (ch, te) = create_failsafe_data(&[], &initial_temps);
+        let mut fsd = FailsafeStatusData::new(ch, te).unwrap();
+        let mut cached_channels: Vec<ChannelStatus> = Vec::new();
+        let mut cached_temps = initial_temps.clone();
+
+        // Drive the counter past the threshold with all-failure ticks.
+        for _ in 0..=MISSING_STATUS_THRESHOLD {
+            simulate_tick(
+                &mut fsd,
+                &mut cached_channels,
+                &mut cached_temps,
+                Vec::new(),
+                Vec::new(),
+                true,
+            );
+        }
+        assert!(fsd.threshold_exceeded());
+        let temp_a = cached_temps.iter().find(|t| t.name == "tempA").unwrap();
+        assert!((temp_a.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+
+        // Full success: counter resets, cache serves fresh value only.
+        let fresh_temps = vec![TempStatus {
+            name: "tempA".to_string(),
+            temp: 55.0,
+        }];
+        simulate_tick(
+            &mut fsd,
+            &mut cached_channels,
+            &mut cached_temps,
+            Vec::new(),
+            fresh_temps,
+            false,
+        );
+        assert!(fsd.threshold_exceeded().not());
+        let temp_a = cached_temps.iter().find(|t| t.name == "tempA").unwrap();
+        assert!((temp_a.temp - 55.0).abs() < f64::EPSILON);
+    }
+
     #[test]
     fn build_failsafe_status_has_correct_values() {
         // The built status must contain the actual failsafe constant
@@ -361,6 +734,4 @@ mod tests {
             }
         }
     }
-
-    use std::ops::Not;
 }

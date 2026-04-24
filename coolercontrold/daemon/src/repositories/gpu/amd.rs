@@ -543,20 +543,27 @@ impl GpuAMD {
     }
 
     async fn extract_load_status(driver: &AMDDriverInfo) -> Vec<ChannelStatus> {
-        let mut channels = vec![];
+        let load_channel_count = driver
+            .hwmon
+            .channels
+            .iter()
+            .filter(|c| c.hwmon_type == HwmonChannelType::Load)
+            .count();
+        let mut channels = Vec::with_capacity(load_channel_count);
         for channel in &driver.hwmon.channels {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
-            let load = cc_fs::read_sysfs(driver.device_path.join("gpu_busy_percent"))
+            let result = cc_fs::read_sysfs(driver.device_path.join("gpu_busy_percent"))
                 .await
-                .and_then(fans::check_parsing_8)
-                .unwrap_or(0);
-            channels.push(ChannelStatus {
-                name: channel.name.clone(),
-                duty: Some(f64::from(load)),
-                ..Default::default()
-            });
+                .and_then(fans::check_parsing_8);
+            if let Ok(load) = result {
+                channels.push(ChannelStatus {
+                    name: channel.name.clone(),
+                    duty: Some(f64::from(load)),
+                    ..Default::default()
+                });
+            }
         }
         channels
     }
@@ -1208,5 +1215,133 @@ mod tests {
         // RDNA3/4 GPU where fan_curve_info failed to parse, but overdrive is enabled
         let driver = basic_test_amd_driver(None, true, true);
         assert!(GpuAMD::get_fan_is_controllable(&driver));
+    }
+
+    use crate::cc_fs;
+    use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
+    use serial_test::serial;
+    use std::path::Path;
+    use uuid::Uuid;
+
+    const LOAD_TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct LoadFileContext {
+        test_base_path: PathBuf,
+    }
+
+    async fn load_setup() -> LoadFileContext {
+        let test_base_path =
+            Path::new(&(LOAD_TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string()))
+                .to_path_buf();
+        cc_fs::create_dir_all(&test_base_path).await.unwrap();
+        LoadFileContext { test_base_path }
+    }
+
+    async fn load_teardown(ctx: &LoadFileContext) {
+        cc_fs::remove_dir_all(&ctx.test_base_path).await.unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn extract_load_status_returns_value_on_success() {
+        // Verifies a readable gpu_busy_percent results in a channel status
+        // with the expected duty.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: gpu_busy_percent sysfs file is present and parseable.
+            cc_fs::write(ctx.test_base_path.join("gpu_busy_percent"), b"42".to_vec())
+                .await
+                .unwrap();
+            let driver = AMDDriverInfo {
+                hwmon: HwmonDriverInfo {
+                    channels: vec![HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Load,
+                        name: "load".to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                device_path: ctx.test_base_path.clone(),
+                fan_curve_info: None,
+                has_rdna_fan_ctrl: false,
+                overdrive_enabled: false,
+            };
+
+            // when:
+            let result = GpuAMD::extract_load_status(&driver).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0].name, "load");
+            assert_eq!(result[0].duty, Some(42.0));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_load_status_skips_on_failure() {
+        // Verifies that when gpu_busy_percent is missing, no channel
+        // status is emitted at all. Fabricating a 0% duty would lie to
+        // downstream GPU fan curves.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: load channel configured but sysfs file absent.
+            let driver = AMDDriverInfo {
+                hwmon: HwmonDriverInfo {
+                    channels: vec![HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Load,
+                        name: "load".to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                device_path: ctx.test_base_path.clone(),
+                fan_curve_info: None,
+                has_rdna_fan_ctrl: false,
+                overdrive_enabled: false,
+            };
+
+            // when:
+            let result = GpuAMD::extract_load_status(&driver).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result.len(), 0);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_load_status_ignores_non_load_channels() {
+        // Verifies that non-Load channel types never emit load entries.
+        cc_fs::test_runtime(async {
+            let ctx = load_setup().await;
+            // given: only a Temp channel exists; no Load channels.
+            cc_fs::write(ctx.test_base_path.join("gpu_busy_percent"), b"50".to_vec())
+                .await
+                .unwrap();
+            let driver = AMDDriverInfo {
+                hwmon: HwmonDriverInfo {
+                    channels: vec![HwmonChannelInfo {
+                        hwmon_type: HwmonChannelType::Temp,
+                        name: "edge".to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                device_path: ctx.test_base_path.clone(),
+                fan_curve_info: None,
+                has_rdna_fan_ctrl: false,
+                overdrive_enabled: false,
+            };
+
+            // when:
+            let result = GpuAMD::extract_load_status(&driver).await;
+
+            // then:
+            load_teardown(&ctx).await;
+            assert_eq!(result.len(), 0);
+        });
     }
 }
