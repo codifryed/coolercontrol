@@ -349,10 +349,14 @@ impl AppleMacSMC {
             } else {
                 None
             };
-            if (channel.caps.is_apple_smc() && fan_duty.is_none())
-                || (channel.caps.has_rpm() && fan_rpm.is_none())
-            {
+            let expected_duty_failed = channel.caps.is_apple_smc() && fan_duty.is_none();
+            let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+            if expected_duty_failed || expected_rpm_failed {
+                // Omit the entry so the upstream failsafe overlay can
+                // substitute safe values. See the comment on
+                // `fans::extract_fan_statuses` for the rationale.
                 any_failure = true;
+                continue;
             }
             fans.push(ChannelStatus {
                 name: channel.name.clone(),

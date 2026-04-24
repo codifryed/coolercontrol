@@ -171,8 +171,14 @@ async fn caps_to_hwmon_fans(
 }
 
 /// Return the fan statuses for all channels.
-/// Defaults to 0 for rpm and duty to handle temporary issues,
-/// as they were correctly detected on startup.
+/// Failed reads for any expected field (pwm when `has_pwm`, rpm when
+/// `has_rpm`) omit the whole channel entry rather than pushing a
+/// partial status with `None`. Pushing a partial or all-`None` status
+/// would block `FailsafeStatusData::overwrite_missing` from
+/// substituting failsafe values, because the channel name would still
+/// appear in the fresh-names set. Below the threshold the cache keeps
+/// the last-known-good reading; above the threshold the overlay
+/// installs the failsafe values (rpm 0, duty 0).
 /// This function calls all fan channels and data points sequentially. See the `concurrently`
 /// version of this function for concurrent execution.
 pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatus>, bool) {
@@ -204,10 +210,11 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> (Vec<ChannelStatu
         } else {
             None
         };
-        if (channel.caps.has_pwm() && fan_duty.is_none())
-            || (channel.caps.has_rpm() && fan_rpm.is_none())
-        {
+        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
+        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+        if expected_pwm_failed || expected_rpm_failed {
             any_failure = true;
+            continue;
         }
         fans.push(ChannelStatus {
             name: channel.name.clone(),
@@ -1319,7 +1326,8 @@ mod tests {
     #[serial]
     fn extract_fan_statuses_failure_when_pwm_missing() {
         // Verifies that a channel with PWM capability but no pwm file
-        // triggers a failure.
+        // triggers a failure and is omitted from the returned statuses
+        // so the upstream failsafe overlay can substitute safe values.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             // given: fan1_input exists, but no pwm1.
@@ -1335,17 +1343,16 @@ mod tests {
             // then:
             teardown(&ctx).await;
             assert!(any_failure);
-            assert_eq!(statuses.len(), 1);
-            assert!(statuses[0].duty.is_none());
-            assert!(statuses[0].rpm.is_some());
+            assert!(statuses.is_empty());
         });
     }
 
     #[test]
     #[serial]
     fn extract_fan_statuses_failure_when_rpm_missing() {
-        // Verifies that a channel with RPM capability but no fan_input file
-        // triggers a failure.
+        // Verifies that a channel with RPM capability but no fan_input
+        // file triggers a failure and is omitted from the returned
+        // statuses, for the same reason as the PWM-missing case.
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             // given: pwm1 exists, but no fan1_input.
@@ -1361,9 +1368,31 @@ mod tests {
             // then:
             teardown(&ctx).await;
             assert!(any_failure);
-            assert_eq!(statuses.len(), 1);
-            assert!(statuses[0].duty.is_some());
-            assert!(statuses[0].rpm.is_none());
+            assert!(statuses.is_empty());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn extract_fan_statuses_failure_when_both_pwm_and_rpm_missing() {
+        // Regression: when both expected reads fail, the fan channel
+        // must be omitted entirely. Previously an all-`None` entry was
+        // pushed, which blocked the failsafe overlay from substituting
+        // the configured failsafe values and the channel disappeared
+        // from downstream status views.
+        cc_fs::test_runtime(async {
+            let ctx = setup().await;
+            // given: neither pwm1 nor fan1_input exist.
+            let caps = HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM;
+            let driver = make_driver(&ctx.test_base_path, vec![fan_channel(1, caps)]);
+
+            // when:
+            let (statuses, any_failure) = extract_fan_statuses(&driver).await;
+
+            // then:
+            teardown(&ctx).await;
+            assert!(any_failure);
+            assert!(statuses.is_empty());
         });
     }
 
