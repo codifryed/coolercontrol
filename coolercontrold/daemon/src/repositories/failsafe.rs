@@ -17,6 +17,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 
 use crate::device::{ChannelName, ChannelStatus, Mhz, Status, Temp, TempStatus, Watts, RPM};
 
@@ -50,6 +51,19 @@ pub struct FailsafeStatusData {
     pub logged: bool,
     pub channel_failsafes: HashMap<ChannelName, ChannelStatus>,
     pub temp_failsafes: HashMap<ChannelName, TempStatus>,
+    /// Per-channel stale-tick counters. Used by hwmon, where each
+    /// channel / temp on a device can go stale independently (the
+    /// streaming extractors upsert per channel and a permit-timeout
+    /// may fire while some channels are already fresh). Unused by
+    /// `liquidctl` / `service_plugin`, which continue to use the
+    /// device-level `count` via `record_failure` / `record_success`.
+    pub channel_stale_ticks: HashMap<ChannelName, u16>,
+    pub temp_stale_ticks: HashMap<ChannelName, u16>,
+    /// Whether any per-channel counter was above threshold on the
+    /// previous `tick_per_channel_staleness` call. Used to emit
+    /// one-shot transition logs ("Significant issue..." on first
+    /// crossing, "Recovered..." on full recovery).
+    pub was_failsafing: bool,
 }
 
 /// Upper bound on the failure counter. Once the threshold is exceeded,
@@ -67,11 +81,23 @@ impl FailsafeStatusData {
         if channel_failsafes.is_empty() && temp_failsafes.is_empty() {
             return None;
         }
+        let mut channel_stale_ticks =
+            HashMap::with_capacity(channel_failsafes.len());
+        for name in channel_failsafes.keys() {
+            channel_stale_ticks.insert(name.clone(), 0);
+        }
+        let mut temp_stale_ticks = HashMap::with_capacity(temp_failsafes.len());
+        for name in temp_failsafes.keys() {
+            temp_stale_ticks.insert(name.clone(), 0);
+        }
         Some(Self {
             count: 0,
             logged: false,
             channel_failsafes,
             temp_failsafes,
+            channel_stale_ticks,
+            temp_stale_ticks,
+            was_failsafing: false,
         })
     }
 
@@ -149,6 +175,75 @@ impl FailsafeStatusData {
                 temps.push(failsafe_temp.clone());
             }
         }
+    }
+
+    /// Updates per-channel stale-tick counters from this tick's fresh
+    /// names and overwrites every cache entry whose counter has
+    /// crossed `MISSING_STATUS_THRESHOLD` with its failsafe value.
+    /// Fresh channels reset to 0 and keep their real cached values;
+    /// channels absent from `fresh_*_names` tick up independently.
+    /// Bounded at `u16::MAX` to avoid wrap. Returns
+    /// `(newly_failsafing, just_recovered)` transition booleans so
+    /// the caller can emit one-shot log lines. Used by hwmon, where
+    /// a device's sensors can go stale independently; `liquidctl`
+    /// and `service_plugin` stay on the device-level
+    /// `record_failure` / `record_success` path.
+    pub fn tick_per_channel_staleness(
+        &mut self,
+        channels: &mut Vec<ChannelStatus>,
+        temps: &mut Vec<TempStatus>,
+        fresh_channel_names: &HashSet<&str>,
+        fresh_temp_names: &HashSet<&str>,
+    ) -> (bool, bool) {
+        let channels_before = channels.len();
+        let temps_before = temps.len();
+        let mut any_failsafing = false;
+        for (name, count) in &mut self.channel_stale_ticks {
+            if fresh_channel_names.contains(name.as_str()) {
+                *count = 0;
+            } else {
+                *count = count.saturating_add(1);
+            }
+            if (*count as usize) > MISSING_STATUS_THRESHOLD {
+                any_failsafing = true;
+                if let Some(failsafe) = self.channel_failsafes.get(name) {
+                    if let Some(entry) =
+                        channels.iter_mut().find(|c| &c.name == name)
+                    {
+                        *entry = failsafe.clone();
+                    } else {
+                        channels.push(failsafe.clone());
+                    }
+                }
+            }
+        }
+        for (name, count) in &mut self.temp_stale_ticks {
+            if fresh_temp_names.contains(name.as_str()) {
+                *count = 0;
+            } else {
+                *count = count.saturating_add(1);
+            }
+            if (*count as usize) > MISSING_STATUS_THRESHOLD {
+                any_failsafing = true;
+                if let Some(failsafe) = self.temp_failsafes.get(name) {
+                    if let Some(entry) =
+                        temps.iter_mut().find(|t| &t.name == name)
+                    {
+                        *entry = failsafe.clone();
+                    } else {
+                        temps.push(failsafe.clone());
+                    }
+                }
+            }
+        }
+        let newly_failsafing = any_failsafing && self.was_failsafing.not();
+        let just_recovered = any_failsafing.not() && self.was_failsafing;
+        self.was_failsafing = any_failsafing;
+        // Monotonicity: entries are replaced in place or appended;
+        // never removed.
+        debug_assert!(channels.len() >= channels_before);
+        debug_assert!(temps.len() >= temps_before);
+        (newly_failsafing, just_recovered)
     }
 
     /// Builds a complete `Status` from the stored failsafe data.
@@ -786,5 +881,231 @@ mod tests {
                 assert_eq!(rpm, MISSING_RPM_FAILSAFE);
             }
         }
+    }
+
+    // --- tick_per_channel_staleness: per-channel hwmon path ---
+
+    fn make_fsd_for_staleness_tests() -> FailsafeStatusData {
+        // Three expected names: fan1, fan2 (channels) and temp1.
+        let channels = vec![
+            ChannelStatus {
+                name: "fan1".to_string(),
+                rpm: Some(1200),
+                duty: Some(50.0),
+                freq: None,
+                watts: None,
+                pwm_mode: None,
+            },
+            ChannelStatus {
+                name: "fan2".to_string(),
+                rpm: Some(900),
+                duty: Some(30.0),
+                freq: None,
+                watts: None,
+                pwm_mode: None,
+            },
+        ];
+        let temps = vec![TempStatus {
+            name: "temp1".to_string(),
+            temp: 40.0,
+        }];
+        let (ch, te) = create_failsafe_data(&channels, &temps);
+        FailsafeStatusData::new(ch, te).unwrap()
+    }
+
+    fn starting_cache() -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+        (
+            vec![
+                ChannelStatus {
+                    name: "fan1".to_string(),
+                    rpm: Some(1200),
+                    duty: Some(50.0),
+                    freq: None,
+                    watts: None,
+                    pwm_mode: None,
+                },
+                ChannelStatus {
+                    name: "fan2".to_string(),
+                    rpm: Some(900),
+                    duty: Some(30.0),
+                    freq: None,
+                    watts: None,
+                    pwm_mode: None,
+                },
+            ],
+            vec![TempStatus {
+                name: "temp1".to_string(),
+                temp: 40.0,
+            }],
+        )
+    }
+
+    #[test]
+    fn tick_per_channel_never_failsafes_a_consistently_fresh_channel() {
+        // Every known name is fresh on every tick. Counters must stay 0,
+        // cache must keep its real values, no failsafing transition.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        let fresh_channels: HashSet<&str> =
+            ["fan1", "fan2"].into_iter().collect();
+        let fresh_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+        for _ in 0..(MISSING_STATUS_THRESHOLD * 2) {
+            let (newly, recovered) = fsd.tick_per_channel_staleness(
+                &mut channels,
+                &mut temps,
+                &fresh_channels,
+                &fresh_temps,
+            );
+            assert!(newly.not());
+            assert!(recovered.not());
+        }
+        assert_eq!(fsd.channel_stale_ticks["fan1"], 0);
+        assert_eq!(fsd.channel_stale_ticks["fan2"], 0);
+        assert_eq!(fsd.temp_stale_ticks["temp1"], 0);
+        assert!(fsd.was_failsafing.not());
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(1200));
+        let temp_entry = temps.iter().find(|t| t.name == "temp1").unwrap();
+        assert!((temp_entry.temp - 40.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tick_per_channel_failsafes_only_the_stale_channel() {
+        // Only fan1 reports fresh each tick. fan2 and temp1 must tick up
+        // and cross the threshold, flipping to their failsafes, while
+        // fan1 stays untouched. newly_failsafing fires exactly once, at
+        // the threshold crossing.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        let fresh_channels: HashSet<&str> = ["fan1"].into_iter().collect();
+        let fresh_temps: HashSet<&str> = HashSet::new();
+        let mut newly_count = 0_u32;
+        for _ in 0..(MISSING_STATUS_THRESHOLD + 1) {
+            let (newly, recovered) = fsd.tick_per_channel_staleness(
+                &mut channels,
+                &mut temps,
+                &fresh_channels,
+                &fresh_temps,
+            );
+            if newly {
+                newly_count += 1;
+            }
+            assert!(recovered.not());
+        }
+        assert_eq!(newly_count, 1);
+        assert!(fsd.was_failsafing);
+        assert_eq!(fsd.channel_stale_ticks["fan1"], 0);
+        assert!(fsd.channel_stale_ticks["fan2"] as usize > MISSING_STATUS_THRESHOLD);
+        assert!(fsd.temp_stale_ticks["temp1"] as usize > MISSING_STATUS_THRESHOLD);
+        // fan1 untouched, fan2 replaced with its failsafe.
+        let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
+        assert_eq!(fan1.rpm, Some(1200));
+        let fan2 = channels.iter().find(|c| c.name == "fan2").unwrap();
+        assert_eq!(fan2.rpm, Some(MISSING_RPM_FAILSAFE));
+        assert_eq!(fan2.duty, Some(MISSING_DUTY_FAILSAFE));
+        let temp_entry = temps.iter().find(|t| t.name == "temp1").unwrap();
+        assert!((temp_entry.temp - MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tick_per_channel_recovers_when_channel_returns_fresh() {
+        // After driving fan2 and temp1 into failsafe, marking every
+        // channel fresh (with real values in the cache) must reset
+        // counters to 0, keep the fresh cache values, and fire
+        // just_recovered exactly once.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        let fresh_channels_partial: HashSet<&str> =
+            ["fan1"].into_iter().collect();
+        let empty_temps: HashSet<&str> = HashSet::new();
+        for _ in 0..(MISSING_STATUS_THRESHOLD + 1) {
+            fsd.tick_per_channel_staleness(
+                &mut channels,
+                &mut temps,
+                &fresh_channels_partial,
+                &empty_temps,
+            );
+        }
+        assert!(fsd.was_failsafing);
+        // Now simulate every channel fresh with new real values.
+        for channel in &mut channels {
+            match channel.name.as_str() {
+                "fan1" => channel.rpm = Some(1300),
+                "fan2" => channel.rpm = Some(950),
+                _ => {}
+            }
+        }
+        for temp in &mut temps {
+            if temp.name == "temp1" {
+                temp.temp = 42.5;
+            }
+        }
+        let fresh_all_channels: HashSet<&str> =
+            ["fan1", "fan2"].into_iter().collect();
+        let fresh_all_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+        let (newly, recovered) = fsd.tick_per_channel_staleness(
+            &mut channels,
+            &mut temps,
+            &fresh_all_channels,
+            &fresh_all_temps,
+        );
+        assert!(newly.not());
+        assert!(recovered);
+        assert_eq!(fsd.channel_stale_ticks["fan2"], 0);
+        assert_eq!(fsd.temp_stale_ticks["temp1"], 0);
+        assert!(fsd.was_failsafing.not());
+        let fan2 = channels.iter().find(|c| c.name == "fan2").unwrap();
+        assert_eq!(fan2.rpm, Some(950));
+        let temp_entry = temps.iter().find(|t| t.name == "temp1").unwrap();
+        assert!((temp_entry.temp - 42.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn tick_per_channel_counter_saturates_at_u16_max() {
+        // Poke the counter to u16::MAX - 1 and tick stale; it must
+        // reach u16::MAX and stop incrementing on the next stale tick.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        *fsd.channel_stale_ticks.get_mut("fan2").unwrap() = u16::MAX - 1;
+        let fresh_channels: HashSet<&str> = HashSet::new();
+        let fresh_temps: HashSet<&str> = ["temp1"].into_iter().collect();
+        fsd.tick_per_channel_staleness(
+            &mut channels,
+            &mut temps,
+            &fresh_channels,
+            &fresh_temps,
+        );
+        assert_eq!(fsd.channel_stale_ticks["fan2"], u16::MAX);
+        fsd.tick_per_channel_staleness(
+            &mut channels,
+            &mut temps,
+            &fresh_channels,
+            &fresh_temps,
+        );
+        assert_eq!(fsd.channel_stale_ticks["fan2"], u16::MAX);
+    }
+
+    #[test]
+    fn tick_per_channel_ignores_unexpected_fresh_names() {
+        // A fresh-name not in the expected set must be a no-op: it
+        // must not panic and must not affect counters for known
+        // channels.
+        let mut fsd = make_fsd_for_staleness_tests();
+        let (mut channels, mut temps) = starting_cache();
+        let fresh_channels: HashSet<&str> =
+            ["fan1", "ghost_channel"].into_iter().collect();
+        let fresh_temps: HashSet<&str> =
+            ["temp1", "ghost_temp"].into_iter().collect();
+        fsd.tick_per_channel_staleness(
+            &mut channels,
+            &mut temps,
+            &fresh_channels,
+            &fresh_temps,
+        );
+        assert_eq!(fsd.channel_stale_ticks["fan1"], 0);
+        assert_eq!(fsd.channel_stale_ticks["fan2"], 1);
+        assert_eq!(fsd.temp_stale_ticks["temp1"], 0);
+        assert!(fsd.channel_stale_ticks.contains_key("ghost_channel").not());
+        assert!(fsd.temp_stale_ticks.contains_key("ghost_temp").not());
     }
 }
