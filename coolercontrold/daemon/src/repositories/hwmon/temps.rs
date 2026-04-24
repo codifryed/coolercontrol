@@ -602,7 +602,7 @@ mod tests {
         cc_fs::test_runtime(async {
             let ctx = setup().await;
             let driver_info = HwmonDriverInfo {
-                path: ctx.test_base_path.to_owned(),
+                path: ctx.test_base_path.clone(),
                 ..Default::default()
             };
 

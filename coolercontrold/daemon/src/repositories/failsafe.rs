@@ -300,9 +300,11 @@ impl FailsafeStatusData {
         if state.fresh_this_tick {
             state.stale_ticks = 0;
             state.is_failsafed = false;
+            debug_assert!(state.is_failsafed.not());
             return;
         }
         state.stale_ticks = state.stale_ticks.saturating_add(1);
+        debug_assert!(state.stale_ticks > 0);
         if (state.stale_ticks as usize) <= MISSING_STATUS_THRESHOLD {
             return;
         }
@@ -329,9 +331,11 @@ impl FailsafeStatusData {
         if state.fresh_this_tick {
             state.stale_ticks = 0;
             state.is_failsafed = false;
+            debug_assert!(state.is_failsafed.not());
             return;
         }
         state.stale_ticks = state.stale_ticks.saturating_add(1);
+        debug_assert!(state.stale_ticks > 0);
         if (state.stale_ticks as usize) <= MISSING_STATUS_THRESHOLD {
             return;
         }

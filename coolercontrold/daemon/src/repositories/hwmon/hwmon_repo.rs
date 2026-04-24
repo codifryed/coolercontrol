@@ -454,12 +454,12 @@ impl HwmonRepo {
     /// same tick they are read, even if a later channel on the same
     /// device is slow. Failing reads leave their cache entries
     /// untouched so downstream keeps seeing the last known good
-    /// value, not a fabricated 0. Every upserted channel name is
-    /// also recorded into `in_progress_fresh` so that the select!
-    /// timeout arm on subsequent ticks can recognize partial
-    /// upserts as fresh instead of ticking every channel blindly.
-    /// Staleness and failsafe substitution are handled per channel
-    /// in `tick_staleness_and_log`, invoked at end-of-tick.
+    /// value, not a fabricated 0. Each sink also flips a
+    /// pre-allocated `fresh_this_tick` bool inside `FailsafeStatusData`
+    /// so the select! timeout arm on subsequent ticks can recognize
+    /// partial upserts as fresh instead of ticking every channel
+    /// blindly. Staleness and failsafe substitution are handled per
+    /// channel in `tick_staleness_and_log`, invoked at end-of-tick.
     async fn preload_device_statuses(&self, type_index: TypeIndex, driver: &Rc<HwmonDriverInfo>) {
         // Clear the fresh-this-tick flags at the start of this
         // preload attempt. Any subsequent timeout arm that fires
@@ -546,10 +546,13 @@ impl HwmonRepo {
         let (channels, _) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
+        let len_before = channels.len();
         if let Some(entry) = channels.iter_mut().find(|c| c.name == fresh.name) {
             *entry = fresh;
+            debug_assert_eq!(channels.len(), len_before);
         } else {
             channels.push(fresh);
+            debug_assert_eq!(channels.len(), len_before + 1);
         }
     }
 
@@ -559,10 +562,13 @@ impl HwmonRepo {
         let (_, temps) = preloaded
             .entry(type_index)
             .or_insert_with(|| (Vec::new(), Vec::new()));
+        let len_before = temps.len();
         if let Some(entry) = temps.iter_mut().find(|t| t.name == fresh.name) {
             *entry = fresh;
+            debug_assert_eq!(temps.len(), len_before);
         } else {
             temps.push(fresh);
+            debug_assert_eq!(temps.len(), len_before + 1);
         }
     }
 
