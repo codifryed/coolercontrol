@@ -560,6 +560,7 @@ impl HwmonRepo {
                 fans::stream_fan_statuses(driver, &mut fan_sink).await
             }
         };
+
         let _power_failure = {
             let mut power_sink = |status: ChannelStatus| {
                 self.mark_channel_fresh(type_index, &status.name);
@@ -1009,6 +1010,12 @@ impl Repository for HwmonRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        // Continue-on-error: a permit timeout or write failure on one
+        // channel must not skip the remaining channels. Leaving later
+        // fans stuck in manual mode after shutdown is worse than the
+        // cost of logging every failure and reporting an aggregated
+        // error at the end.
+        let mut failures: Vec<String> = Vec::new();
         for (device_uid, (device_lock, hwmon_driver)) in &self.devices {
             let type_index = device_lock.borrow().type_index;
             for channel_info in &hwmon_driver.channels {
@@ -1020,20 +1027,46 @@ impl Repository for HwmonRepo {
                     Resetting to Original fan control mode",
                     channel_info.name
                 );
-                let device_permit = self
+                let device_permit = match self
                     .get_permit_with_write_timeout(
                         type_index,
                         &hwmon_driver.name,
                         &channel_info.name,
                     )
-                    .await?;
-                let _ =
-                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await;
+                    .await
+                {
+                    Ok(permit) => permit,
+                    Err(err) => {
+                        error!(
+                            "Shutdown reset skipped for {}:{} - permit timeout: {err}",
+                            hwmon_driver.name, channel_info.name
+                        );
+                        failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+                        continue;
+                    }
+                };
+                if let Err(err) =
+                    fans::set_pwm_enable_to_default_or_auto(&hwmon_driver.path, channel_info).await
+                {
+                    error!(
+                        "Shutdown reset failed for {}:{}: {err}",
+                        hwmon_driver.name, channel_info.name
+                    );
+                    failures.push(format!("{}:{}", hwmon_driver.name, channel_info.name));
+                }
                 drop(device_permit);
             }
         }
-        info!("HWMON Repository shutdown");
-        Ok(())
+        if failures.is_empty() {
+            info!("HWMON Repository shutdown");
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "HWMON Repository shutdown completed with {} channel failure(s): {}",
+                failures.len(),
+                failures.join(", ")
+            ))
+        }
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
@@ -1965,6 +1998,193 @@ mod command_delay_handoff_tests {
                 elapsed >= Duration::from_millis(u64::from(DELAY_MS)),
                 "write acquired too fast: elapsed={elapsed:?}, expected >= {DELAY_MS}ms"
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    fn fan_channel(
+        number: u8,
+        name: &str,
+        base: &Path,
+        pwm_enable_default: Option<u8>,
+    ) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            name: name.to_string(),
+            pwm_enable_default,
+            caps: HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::PWM
+                | HwmonChannelCapabilities::RPM,
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            ..Default::default()
+        }
+    }
+
+    /// Seeds a subdirectory with the files needed for
+    /// `set_pwm_enable_to_default_or_auto` to operate. Initial
+    /// `pwm_enable_initial` should be "1" (manual) so the reset
+    /// path actually writes.
+    async fn seed_pwm_dir(base: &Path, pwm_enable_initial: &[u8]) {
+        cc_fs::create_dir_all(base).await.unwrap();
+        cc_fs::write(base.join("pwm1_enable"), pwm_enable_initial.to_vec())
+            .await
+            .unwrap();
+        cc_fs::write(base.join("pwm1"), b"128".to_vec())
+            .await
+            .unwrap();
+        cc_fs::write(base.join("fan1_input"), b"1200".to_vec())
+            .await
+            .unwrap();
+    }
+
+    /// Manually registers a fake device in `repo` so the test is
+    /// focused on the shutdown loop rather than the init machinery.
+    /// `u_id` is built from driver_name + type_index so every device
+    /// inserted has a unique `create_uid_from` hash (the function
+    /// only uses d_id when Some, so sharing a default `""` u_id
+    /// would collide every inserted device into a single HashMap
+    /// entry).
+    fn insert_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        driver_name: &str,
+        driver_path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+    ) {
+        let driver = HwmonDriverInfo {
+            name: driver_name.to_string(),
+            path: driver_path,
+            channels,
+            u_id: format!("test-uid-{driver_name}-{type_index}"),
+            apple_smc: AppleMacSMC::default(),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.device_permits
+            .insert(type_index, Rc::new(Semaphore::new(1)));
+        repo.delay_logged.insert(type_index, Cell::new(0));
+        repo.devices
+            .insert(uid, (Rc::new(RefCell::new(device)), Rc::new(driver)));
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    #[test]
+    #[serial]
+    fn shutdown_continues_after_permit_timeout_on_earlier_device() {
+        // Verifies M2: when device A's permit is held by another
+        // task, shutdown's acquire times out, logs the failure, and
+        // proceeds to reset device B's channels rather than
+        // bubbling out of the loop.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_a = base.join("dev_a");
+            let dir_b = base.join("dev_b");
+            seed_pwm_dir(&dir_a, b"1").await;
+            seed_pwm_dir(&dir_b, b"1").await;
+
+            let mut repo = empty_repo();
+            // Short write timeout so the test does not wait 8 s.
+            repo.device_write_permit_timeout = Duration::from_millis(100);
+            insert_device(
+                &mut repo,
+                1,
+                "dev_a",
+                dir_a.clone(),
+                vec![fan_channel(1, "fan1", &dir_a, Some(2))],
+            );
+            insert_device(
+                &mut repo,
+                2,
+                "dev_b",
+                dir_b.clone(),
+                vec![fan_channel(1, "fan1", &dir_b, Some(2))],
+            );
+
+            // Hold device A's permit so shutdown's acquire times out.
+            // Keep the Rc clone alive as long as the permit to satisfy
+            // the borrow checker; both are dropped at end of test.
+            let sem_a = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_a = sem_a.try_acquire().expect("permit A starts free");
+
+            let result = repo.shutdown().await;
+
+            assert!(result.is_err(), "shutdown should report failures");
+            let err_msg = result.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("dev_a:fan1"),
+                "error should mention failed channel: {err_msg}"
+            );
+            assert!(
+                err_msg.contains("1 channel failure"),
+                "error should report count: {err_msg}"
+            );
+            // dev_a is left at manual (not reset) because the permit
+            // was held throughout its shutdown attempt.
+            let a_after = cc_fs::read_sysfs(&dir_a.join("pwm1_enable")).await.unwrap();
+            assert_eq!(a_after.trim(), "1", "dev_a should not have been reset");
+            // dev_b is reset to the default (2) — proves the loop
+            // continued past dev_a's failure.
+            let b_after = cc_fs::read_sysfs(&dir_b.join("pwm1_enable")).await.unwrap();
+            assert_eq!(b_after.trim(), "2", "dev_b should have been reset");
+
+            drop(permit_a);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn shutdown_returns_ok_on_happy_path() {
+        // Regression: shutdown returns Ok and resets the channel
+        // when no permit is contended and the writes succeed.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_pwm_dir(&dir, b"1").await;
+
+            let mut repo = empty_repo();
+            insert_device(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir, Some(2))],
+            );
+
+            let result = repo.shutdown().await;
+
+            assert!(
+                result.is_ok(),
+                "happy-path shutdown should succeed: {result:?}"
+            );
+            let after = cc_fs::read_sysfs(&dir.join("pwm1_enable")).await.unwrap();
+            assert_eq!(after.trim(), "2", "channel should be reset to default");
+
+            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
