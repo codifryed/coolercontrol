@@ -205,7 +205,15 @@ pub struct HwmonRepo {
     /// request can be sent to the device at a time. This is that same idea but for hwmon devices.
     /// This also ensures that polling loops don't overlap and stack if the device hasn't finished
     /// responding from the previous polling loop.
-    device_permits: HashMap<TypeIndex, Semaphore>,
+    ///
+    /// Stored as `Rc<Semaphore>` so the Semaphore can be cloned into
+    /// a detached `spawn_local` task that re-acquires it across the
+    /// command delay after a preload, without blocking the current
+    /// preload's completion. The single-threaded runtime means `Rc`
+    /// is sufficient; `acquire()` borrows the Semaphore through the
+    /// task's async state machine (self-reference is fine because
+    /// the task owns both the Rc and the permit).
+    device_permits: HashMap<TypeIndex, Rc<Semaphore>>,
 
     /// Used to avoid logging a device-delay warning more than once and not on startup
     delay_logged: HashMap<TypeIndex, Cell<u8>>,
@@ -427,7 +435,7 @@ impl HwmonRepo {
             };
             device.initialize_status_history_with(status, poll_rate);
             self.device_permits
-                .insert(type_index, Semaphore::const_new(1));
+                .insert(type_index, Rc::new(Semaphore::new(1)));
             self.delay_logged.insert(type_index, Cell::new(0));
             self.devices.insert(
                 device.uid.clone(),
@@ -673,6 +681,34 @@ impl HwmonRepo {
                 device_permit.map_err(|e| anyhow!(e)),
         }
     }
+
+    /// Spawns a detached task that re-acquires the device permit and
+    /// holds it for the command delay. No-op when `delay_millis == 0`.
+    /// The handoff lets `preload_statuses` return as soon as the reads
+    /// complete while still gating subsequent writes (and the next
+    /// preload) behind the device's configured settle time.
+    fn spawn_command_delay_holder(&self, type_index: TypeIndex, delay_millis: u16) {
+        if delay_millis == 0 {
+            return;
+        }
+        let Some(permit) = self.device_permits.get(&type_index) else {
+            return;
+        };
+        let permit = Rc::clone(permit);
+        tokio::task::spawn_local(async move {
+            // The permit borrows from `permit` through this .await.
+            // The async state machine stores both the Rc and the
+            // SemaphorePermit, so the self-reference is sound for
+            // the life of this task.
+            let Ok(_held) = permit.acquire().await else {
+                // Semaphore closed; daemon is shutting down. Drop
+                // silently and let the runtime tear down.
+                return;
+            };
+            apply_device_command_delay(delay_millis).await;
+            // `_held` is dropped here, releasing the permit.
+        });
+    }
 }
 
 #[async_trait(?Send)]
@@ -880,8 +916,18 @@ impl Repository for HwmonRepo {
                             self.tick_staleness_and_log(type_index, &driver.name);
                         },
                         Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
+                            // Queue the post-read delay holder before
+                            // running the preload so any write (or next
+                            // preload) that arrives during the reads
+                            // queues behind the delay holder in the
+                            // Semaphore's FIFO waiter list. This
+                            // preserves the device's settle time between
+                            // the read and the next command, matching
+                            // the old "hold permit through delay"
+                            // semantics, while still letting this scope
+                            // complete as soon as the reads are done.
+                            self.spawn_command_delay_holder(type_index, delay);
                             self.preload_device_statuses(type_index, driver).await;
-                            apply_device_command_delay(delay).await;
                             drop(device_permit);
                         },
                     }
@@ -1729,5 +1775,151 @@ mod permit_timeout_tests {
                 "ioctl must be < read permit at poll_rate={poll_rate}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod command_delay_handoff_tests {
+    use super::*;
+    use crate::cc_fs;
+    use serial_test::serial;
+
+    const TEST_TYPE_INDEX: TypeIndex = 1;
+
+    fn new_test_repo_with_permit() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        let mut repo = HwmonRepo::new(config, vec![]);
+        repo.device_permits
+            .insert(TEST_TYPE_INDEX, Rc::new(Semaphore::new(1)));
+        repo
+    }
+
+    #[test]
+    #[serial]
+    fn delay_holder_is_noop_for_zero_delay() {
+        // With delay_millis == 0 the handoff must not spawn a
+        // delay-holder task. Even after yielding enough time for any
+        // spawned task to run, the permit stays free.
+        cc_fs::test_runtime(async {
+            let repo = new_test_repo_with_permit();
+            repo.spawn_command_delay_holder(TEST_TYPE_INDEX, 0);
+            sleep(Duration::from_millis(20)).await;
+            let sem = repo.device_permits.get(&TEST_TYPE_INDEX).unwrap();
+            assert!(
+                sem.try_acquire().is_ok(),
+                "permit should be free when delay is 0"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn delay_holder_is_noop_for_unknown_type_index() {
+        // When no Semaphore exists for the given type_index (possible
+        // if the device was never registered), the handoff must not
+        // panic; it should return silently.
+        cc_fs::test_runtime(async {
+            let repo = new_test_repo_with_permit();
+            repo.spawn_command_delay_holder(TEST_TYPE_INDEX + 1, 100);
+            sleep(Duration::from_millis(20)).await;
+            // Existing permit for TEST_TYPE_INDEX must remain free.
+            let sem = repo.device_permits.get(&TEST_TYPE_INDEX).unwrap();
+            assert!(sem.try_acquire().is_ok());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn delay_holder_call_returns_immediately() {
+        // The caller of spawn_command_delay_holder must not be stalled
+        // on the delay. Verify by measuring wall clock around the call
+        // with a long configured delay.
+        cc_fs::test_runtime(async {
+            let repo = new_test_repo_with_permit();
+            let start = Instant::now();
+            repo.spawn_command_delay_holder(TEST_TYPE_INDEX, 500);
+            let elapsed = start.elapsed();
+            assert!(
+                elapsed < Duration::from_millis(50),
+                "caller stalled: elapsed={elapsed:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn delay_holder_gates_permit_for_delay_duration() {
+        // Verifies the core invariant: after handoff, the permit is
+        // held by the detached task for approximately delay_millis
+        // and then released. Future preloads / writes that acquire
+        // the same permit wait for the holder but not beyond.
+        cc_fs::test_runtime(async {
+            const DELAY_MS: u16 = 100;
+            let repo = new_test_repo_with_permit();
+            repo.spawn_command_delay_holder(TEST_TYPE_INDEX, DELAY_MS);
+            // Yield so the spawn_local task can reach acquire_owned
+            // before we probe the permit state.
+            sleep(Duration::from_millis(10)).await;
+            let sem = Rc::clone(repo.device_permits.get(&TEST_TYPE_INDEX).unwrap());
+            assert!(
+                sem.try_acquire().is_err(),
+                "permit must be held by delay task"
+            );
+            // Wait out the delay plus a small margin and re-probe.
+            sleep(Duration::from_millis(u64::from(DELAY_MS) + 50)).await;
+            assert!(
+                sem.try_acquire().is_ok(),
+                "permit must be released once delay elapses"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn delay_holder_queued_before_later_writers() {
+        // Verifies the FIFO invariant that makes spawning the delay
+        // holder while the read permit is still held correct: a
+        // writer that calls acquire() after the delay holder has
+        // queued must wait for BOTH the preload's release AND the
+        // delay. Without this, a write racing the preload's release
+        // would bypass the device's configured settle time.
+        cc_fs::test_runtime(async {
+            const DELAY_MS: u16 = 100;
+            let repo = new_test_repo_with_permit();
+            let sem_rc = Rc::clone(repo.device_permits.get(&TEST_TYPE_INDEX).unwrap());
+
+            // Simulate the preload holding the read permit.
+            let preload_permit = sem_rc.acquire().await.unwrap();
+
+            // Queue the delay holder behind the preload. Yield so
+            // the spawn_local task's acquire() has reached the
+            // waiter queue before the fake write arrives.
+            repo.spawn_command_delay_holder(TEST_TYPE_INDEX, DELAY_MS);
+            sleep(Duration::from_millis(10)).await;
+
+            // Fake a writer that queues behind the delay holder.
+            let sem_for_write = Rc::clone(&sem_rc);
+            let write_acquired_at: Rc<RefCell<Option<Instant>>> = Rc::new(RefCell::new(None));
+            let write_acquired_at_clone = Rc::clone(&write_acquired_at);
+            let write_handle = tokio::task::spawn_local(async move {
+                let _write_permit = sem_for_write.acquire().await.unwrap();
+                *write_acquired_at_clone.borrow_mut() = Some(Instant::now());
+            });
+            sleep(Duration::from_millis(10)).await;
+
+            // Release the preload permit; delay holder is next, the
+            // writer is behind it.
+            let release_at = Instant::now();
+            drop(preload_permit);
+
+            write_handle.await.unwrap();
+
+            let acquired_at = write_acquired_at.borrow().expect("write acquired");
+            let elapsed = acquired_at.duration_since(release_at);
+            assert!(
+                elapsed >= Duration::from_millis(u64::from(DELAY_MS)),
+                "write acquired too fast: elapsed={elapsed:?}, expected >= {DELAY_MS}ms"
+            );
+        });
     }
 }
