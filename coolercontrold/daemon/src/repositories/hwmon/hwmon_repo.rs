@@ -71,6 +71,21 @@ fn device_write_permit_timeout_for(poll_rate: f64) -> Duration {
     Duration::from_secs_f64(poll_rate * MISSING_STATUS_THRESHOLD as f64)
 }
 
+/// Fraction of `poll_rate` allowed for the drivetemp ATA power-state
+/// ioctl. Kept strictly below `READ_PERMIT_RATIO` so on timeout there
+/// is still budget for the fallback temp read before the outer read
+/// permit arm fires. Hardware-healthy ATA power-state checks complete
+/// in milliseconds; any value >> that is a wedged controller.
+const DRIVETEMP_IOCTL_RATIO: f64 = 0.4;
+
+/// Derives the drivetemp ioctl timeout from `poll_rate`. Pure helper
+/// so the ratio is testable without constructing a full `HwmonRepo`.
+fn drivetemp_ioctl_timeout_for(poll_rate: f64) -> Duration {
+    debug_assert!(poll_rate >= 0.5);
+    debug_assert!(poll_rate <= 5.0);
+    Duration::from_secs_f64(poll_rate * DRIVETEMP_IOCTL_RATIO)
+}
+
 /// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
 /// implementation blocks temperature reads when the drive is spinning up which causes significant
 /// read delays. Since this is pretty normal behavior for this driver, we handle it differently.
@@ -210,6 +225,11 @@ pub struct HwmonRepo {
     /// Snapshot of the write-permit timeout. Constant for the repo's
     /// lifetime; see `device_read_permit_timeout`.
     device_write_permit_timeout: Duration,
+
+    /// Snapshot of the drivetemp ioctl timeout. Constant for the
+    /// repo's lifetime; bounds the `HDIO_DRIVE_CMD` ioctl that runs
+    /// on the blocking pool during each preload tick.
+    drivetemp_ioctl_timeout: Duration,
 }
 
 impl HwmonRepo {
@@ -220,6 +240,7 @@ impl HwmonRepo {
         let poll_rate = config.get_settings().map(|s| s.poll_rate).unwrap_or(1.0);
         let device_read_permit_timeout = device_read_permit_timeout_for(poll_rate);
         let device_write_permit_timeout = device_write_permit_timeout_for(poll_rate);
+        let drivetemp_ioctl_timeout = drivetemp_ioctl_timeout_for(poll_rate);
         Self {
             config,
             devices: HashMap::new(),
@@ -236,6 +257,7 @@ impl HwmonRepo {
             device_delays: HashMap::new(),
             device_read_permit_timeout,
             device_write_permit_timeout,
+            drivetemp_ioctl_timeout,
         }
     }
 
@@ -498,7 +520,9 @@ impl HwmonRepo {
                 self.mark_temp_fresh(type_index, &status.name);
                 self.upsert_single_temp(type_index, status);
             };
-            if drivetemp::is_suspended(driver.block_dev_path.as_ref()).await {
+            if drivetemp::is_suspended(driver.block_dev_path.as_ref(), self.drivetemp_ioctl_timeout)
+                .await
+            {
                 drivetemp::stream_default_suspended_temps(driver, &mut temp_sink);
                 false
             } else {
@@ -1678,6 +1702,32 @@ mod permit_timeout_tests {
             let read = device_read_permit_timeout_for(poll_rate);
             let snapshot = Duration::from_secs_f64(poll_rate * SNAPSHOT_RATIO);
             assert!(read < snapshot, "read must be < snapshot at {poll_rate}");
+        }
+    }
+
+    #[test]
+    fn drivetemp_ioctl_timeout_scales_with_poll_rate() {
+        // The ioctl budget must scale proportionally with poll_rate
+        // so a slow drivetemp check cannot consume more than its
+        // share of the overall read permit at any valid poll rate.
+        assert_eq!(drivetemp_ioctl_timeout_for(0.5), Duration::from_millis(200));
+        assert_eq!(drivetemp_ioctl_timeout_for(1.0), Duration::from_millis(400));
+        assert_eq!(drivetemp_ioctl_timeout_for(5.0), Duration::from_secs(2));
+    }
+
+    #[test]
+    fn drivetemp_ioctl_timeout_always_strictly_less_than_read_permit() {
+        // Invariant: on ioctl timeout the fallback temp read must
+        // still have budget left before the outer read permit arm
+        // fires. Ratios 0.4 vs 0.7 preserve 3/7 headroom at every
+        // poll rate.
+        for poll_rate in [0.5_f64, 1.0, 5.0] {
+            let ioctl = drivetemp_ioctl_timeout_for(poll_rate);
+            let read = device_read_permit_timeout_for(poll_rate);
+            assert!(
+                ioctl < read,
+                "ioctl must be < read permit at poll_rate={poll_rate}"
+            );
         }
     }
 }

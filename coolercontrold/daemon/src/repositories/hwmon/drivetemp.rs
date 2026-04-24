@@ -33,6 +33,7 @@ use std::cmp::PartialEq;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 
 static DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED: f64 = 0.;
 
@@ -100,12 +101,19 @@ where
 }
 
 /// If `drivetemp` state checks are enabled, checks the drive's power state.
-pub async fn is_suspended(block_device_path_opt: Option<&PathBuf>) -> bool {
+///
+/// The power-state check performs an `ioctl(HDIO_DRIVE_CMD, …)` which is
+/// a synchronous kernel call that is **not** cancelled by `O_NONBLOCK`
+/// and can block for seconds on a wedged ATA / SATA controller. This
+/// wrapper bounds the blocking call with `timeout` so the caller never
+/// stalls longer than its budget even if the drive is hung.
+pub async fn is_suspended(block_device_path_opt: Option<&PathBuf>, timeout: Duration) -> bool {
+    debug_assert!(timeout > Duration::ZERO);
     let Some(block_device_path) = block_device_path_opt else {
         return false;
     };
     let start_time = std::time::Instant::now();
-    let is_suspended = match drive_power_state(block_device_path).await {
+    let is_suspended = match drive_power_state(block_device_path, timeout).await {
         Ok(state) => state == PowerState::Standby,
         Err(err) => {
             warn!("Error getting drive power state: {err}");
@@ -141,12 +149,45 @@ fn get_block_device_path(path: &Path) -> Result<PathBuf> {
 }
 
 #[cfg(not(feature = "io_uring"))]
-async fn drive_power_state(dev_path: &Path) -> Result<PowerState> {
-    let block_dev_file = tokio::fs::OpenOptions::new()
+async fn drive_power_state(dev_path: &Path, timeout: Duration) -> Result<PowerState> {
+    // The ioctl is blocking and cannot be cancelled; offload to the
+    // blocking pool and bound the await with a timeout. If the ioctl
+    // hangs, the blocking thread is leaked until the kernel returns,
+    // but the caller is released on time and the next poll tick can
+    // proceed without the single-threaded runtime being stalled.
+    let dev_path = dev_path.to_path_buf();
+    run_blocking_with_timeout(timeout, move || drive_power_state_blocking(&dev_path)).await
+}
+
+/// Offloads a synchronous fallible closure to the Tokio blocking pool
+/// and bounds the await with `timeout`. Extracted so the timeout path
+/// is unit-testable without a real block device and so callers do not
+/// duplicate the select/match boilerplate.
+#[cfg(not(feature = "io_uring"))]
+async fn run_blocking_with_timeout<F, T>(timeout: Duration, blocking_fn: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    debug_assert!(timeout > Duration::ZERO);
+    let handle = tokio::task::spawn_blocking(blocking_fn);
+    match tokio::time::timeout(timeout, handle).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(join_err)) => Err(anyhow!("blocking task join error: {join_err}")),
+        Err(_elapsed) => Err(anyhow!("blocking task timed out after {timeout:?}")),
+    }
+}
+
+/// Synchronous body of `drive_power_state`. Opens the block device and
+/// issues the `HDIO_DRIVE_CMD` ioctl to read the ATA power state. Runs
+/// on the Tokio blocking pool via `drive_power_state`.
+#[cfg(not(feature = "io_uring"))]
+fn drive_power_state_blocking(dev_path: &Path) -> Result<PowerState> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let block_dev_file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK)
-        .open(dev_path)
-        .await?;
+        .open(dev_path)?;
     let fd = block_dev_file.as_raw_fd();
     if fd == -1 {
         return Err(anyhow!("Failed to open device"));
@@ -176,7 +217,7 @@ async fn drive_power_state(dev_path: &Path) -> Result<PowerState> {
 }
 
 #[cfg(feature = "io_uring")]
-async fn drive_power_state(path: impl AsRef<Path>) -> Result<PowerState> {
+async fn drive_power_state(_path: impl AsRef<Path>, _timeout: Duration) -> Result<PowerState> {
     Err(anyhow!("Not yet implemented"))
 }
 
@@ -345,7 +386,7 @@ mod tests {
             let local_dev_path = PathBuf::from("/dev/sda");
 
             // when:
-            let dev_result = drive_power_state(&local_dev_path).await;
+            let dev_result = drive_power_state(&local_dev_path, Duration::from_secs(1)).await;
 
             // then:
             teardown(&ctx).await;
@@ -355,6 +396,71 @@ mod tests {
             );
             let power_state = dev_result.unwrap();
             assert_eq!(power_state, PowerState::Unknown,);
+        });
+    }
+
+    // --- run_blocking_with_timeout: timeout & success semantics ---
+    //
+    // The helper is what bounds the blocking ioctl so the
+    // single-threaded runtime isn't stalled on a wedged drive.
+    // Verify that a fast closure returns its value, and a slow
+    // closure produces a timeout error well before it would have
+    // completed on its own.
+
+    #[test]
+    #[serial]
+    fn run_blocking_with_timeout_returns_value_when_fast() {
+        // Verifies the happy path: a closure that returns promptly
+        // yields its value unchanged.
+        cc_fs::test_runtime(async {
+            let result: Result<u32> =
+                run_blocking_with_timeout(Duration::from_secs(1), || Ok(42)).await;
+            assert!(result.is_ok(), "expected Ok, got {result:?}");
+            assert_eq!(result.unwrap(), 42);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn run_blocking_with_timeout_times_out_on_slow_closure() {
+        // Verifies the failure path: a closure that sleeps longer
+        // than the timeout produces an Err within a bounded wall
+        // clock, so the caller is not stalled on the blocking pool.
+        cc_fs::test_runtime(async {
+            let start = std::time::Instant::now();
+            let result: Result<u32> = run_blocking_with_timeout(Duration::from_millis(100), || {
+                std::thread::sleep(Duration::from_secs(5));
+                Ok(0)
+            })
+            .await;
+            let elapsed = start.elapsed();
+            assert!(result.is_err(), "expected timeout Err, got {result:?}");
+            // Generous upper bound: we only require the caller to
+            // have returned well before the 5s sleep would have
+            // completed; avoid flakiness on slow CI.
+            assert!(
+                elapsed < Duration::from_secs(2),
+                "caller was stalled: elapsed={elapsed:?}"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn run_blocking_with_timeout_propagates_inner_error() {
+        // Verifies that an Err returned by the blocking closure is
+        // surfaced to the caller verbatim and is not masked by the
+        // timeout machinery.
+        cc_fs::test_runtime(async {
+            let result: Result<u32> =
+                run_blocking_with_timeout(Duration::from_secs(1), || Err(anyhow!("inner failure")))
+                    .await;
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("inner failure"),
+                "expected inner error to propagate, got {err}"
+            );
         });
     }
 }
