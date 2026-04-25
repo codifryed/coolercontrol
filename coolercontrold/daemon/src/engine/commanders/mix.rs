@@ -88,6 +88,15 @@ impl MixProfileCommander {
             // internal settings are up to date
             existing_device_channels.insert(device_channel);
             settings_lock.insert(Rc::new(normalized_mix_setting), existing_device_channels);
+            // Reset the dedup state so the newly-added device_channel
+            // gets the current duty applied on the next tick. Without
+            // this, the existing entry's `last_applied_duty` matches
+            // and `should_apply` suppresses the write for every
+            // channel under this profile until either the duty
+            // changes or the safety latch fires.
+            self.output_dedup
+                .borrow_mut()
+                .insert(mix_profile.uid.clone(), OutputDedupState::new());
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
