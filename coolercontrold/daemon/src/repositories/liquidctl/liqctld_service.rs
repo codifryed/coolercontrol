@@ -204,8 +204,8 @@ async fn process_log_output(
             } else if stripped
                 .starts_with("required PWM functionality is not available in aquacomputer_d5next")
             {
-                // Aquacomputer warning that is info level for us
-                lvl = log::Level::Info;
+                // Aquacomputer warning that keeps working but can be continually output
+                lvl = log::Level::Debug;
             }
             stripped
         } else if let Some(mut stripped) = line.strip_prefix("ERROR") {
