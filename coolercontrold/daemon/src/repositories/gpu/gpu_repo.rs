@@ -49,8 +49,11 @@ pub const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 pub const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 
 /// Fraction of `poll_rate` a device preload is allowed before the
-/// slow-device arm fires. Mirrors the hwmon value so AMD GPUs (which
-/// also use hwmon/sysfs under the hood) share the same budgeting.
+/// slow-device arm fires. Mirrors the hwmon value so AMD GPUs
+/// (which use hwmon/sysfs under the hood) share the same budgeting.
+/// See `hwmon_repo::READ_PERMIT_RATIO` and the `main_loop` module
+/// doc for how this layer interacts with the snapshot timeout and
+/// the failsafe layer.
 const READ_PERMIT_RATIO: f64 = 0.7;
 
 /// Derives the read permit timeout from `poll_rate`. Pure helper so

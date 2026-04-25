@@ -46,10 +46,17 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 use tokio::time::{sleep, timeout, Instant};
 
 /// Fraction of `poll_rate` a device preload is allowed before the
-/// slow-device arm fires. Anchored so that at the minimum poll rate
-/// (0.5 s) the budget reproduces the original 350 ms value, and stays
-/// strictly below `main_loop::SNAPSHOT_TIMEOUT_RATIO` (0.8) so the
-/// repo's failsafe-apply branch runs before the snapshot is taken.
+/// slow-device arm fires. This is the per-device "layer 3" budget
+/// in the timing model documented at the top of `main_loop`; it is
+/// independent of `SNAPSHOT_TIMEOUT_MS` and may exceed it. A read
+/// above the snapshot budget just has its values appear in the
+/// next snapshot; the per-channel staleness counter ticks while
+/// the read is overdue, and the failsafe layer covers reads that
+/// stay slow for `MISSING_STATUS_THRESHOLD` consecutive ticks.
+///
+/// Anchored so that at the minimum poll rate (0.5 s) the budget
+/// reproduces the original 350 ms value, preserving historical
+/// behavior on the fastest poll setting.
 const READ_PERMIT_RATIO: f64 = 0.7;
 
 /// Derives the read permit timeout from `poll_rate`. Pure helper so
@@ -1903,19 +1910,6 @@ mod permit_timeout_tests {
             device_write_permit_timeout_for(5.0),
             Duration::from_secs(40)
         );
-    }
-
-    #[test]
-    fn read_permit_always_strictly_less_than_snapshot_budget() {
-        // The invariant lets the repo's failsafe-apply branch run
-        // before the main loop forces a snapshot. Ratios 0.7 vs 0.8
-        // preserve 87.5 % at every poll rate.
-        const SNAPSHOT_RATIO: f64 = 0.8;
-        for poll_rate in [0.5_f64, 1.0, 5.0] {
-            let read = device_read_permit_timeout_for(poll_rate);
-            let snapshot = Duration::from_secs_f64(poll_rate * SNAPSHOT_RATIO);
-            assert!(read < snapshot, "read must be < snapshot at {poll_rate}");
-        }
     }
 
     #[test]
