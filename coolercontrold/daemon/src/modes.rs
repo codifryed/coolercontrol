@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Not;
 use std::rc::Rc;
@@ -83,34 +83,47 @@ impl ModeController {
             .get_settings()
             .expect("config settings should be verified by this point")
             .apply_on_boot
+            .not()
         {
-            let all_successful = self.apply_all_saved_device_settings().await;
-            if !all_successful {
-                self.clear_active_modes().await;
-            }
+            return;
+        }
+        let all_successful =
+            moro_local::async_scope!(|scope| self.apply_all_saved_device_settings(scope)).await;
+        if all_successful.get().not() {
+            self.clear_active_modes().await;
         }
     }
 
-    /// Apply all saved device settings to the devices
-    pub async fn apply_all_saved_device_settings(&self) -> bool {
+    /// Spawns one task per device onto `scope` that applies that device's
+    /// saved settings sequentially. Per-device parallelism: settings on the
+    /// same device serialize at the device's permit, so spawning per channel
+    /// would not gain throughput. The caller awaits its scope, then reads
+    /// `all_successful` to decide whether to clear active modes.
+    pub fn apply_all_saved_device_settings<'s>(
+        &'s self,
+        scope: &'s Scope<'s, 's, Rc<Cell<bool>>>,
+    ) -> Rc<Cell<bool>> {
         info!("Applying all saved device settings");
         // we loop through all currently present devices so that we don't apply settings
         //  to devices that are no longer there.
-        let mut all_successful = true;
+        let all_successful = Rc::new(Cell::new(true));
         for uid in self.all_devices.keys() {
             match self.config.get_device_settings(uid) {
                 Ok(settings) => {
                     trace!("Settings for device: {uid} loaded from config file: {settings:?}");
-                    for setting in &settings {
-                        if let Err(err) = self.engine.set_config_setting(uid, setting).await {
-                            error!("Error setting device setting: {err}");
-                            all_successful = false;
+                    let successful = Rc::clone(&all_successful);
+                    scope.spawn(async move {
+                        for setting in &settings {
+                            if let Err(err) = self.engine.set_config_setting(uid, setting).await {
+                                error!("Error setting device setting: {err}");
+                                successful.set(false);
+                            }
                         }
-                    }
+                    });
                 }
                 Err(err) => {
                     error!("Error trying to read device settings from config file: {err}");
-                    all_successful = false;
+                    all_successful.set(false);
                 }
             }
         }
