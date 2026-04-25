@@ -15,12 +15,96 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+//! `HWMon` repository: device discovery, status reads, and fan
+//! writes for sysfs-exposed sensors.
+//!
+//! This module owns three coupled concurrency primitives per
+//! device. Together they bound how long any one operation can
+//! stall the daemon and ensure a slow device does not pile up
+//! work.
+//!
+//! ## Per-device permit (`device_permits: HashMap<TypeIndex, Rc<Semaphore>>`)
+//!
+//! One `Rc<Semaphore>` of capacity 1 per device. All sysfs reads
+//! and writes for that device must hold it; only one operation
+//! is in flight at a time. The single-threaded runtime makes `Rc`
+//! sufficient (see also liqctld's in-built per-device queue;
+//! this mirrors that idea for hwmon).
+//!
+//! ## Two timeouts on the permit
+//!
+//! Read permit: `poll_rate * READ_PERMIT_RATIO` (0.7), so 700 ms
+//! at the default 1 s tick. A preload that cannot acquire within
+//! this budget just skips the tick. The cache + per-channel
+//! staleness counter + failsafe layer (see `failsafe.rs`) cover
+//! missed reads without surfacing noise to the UI.
+//!
+//! Write permit: `poll_rate * MISSING_STATUS_THRESHOLD` (8), so
+//! 8 s at the default tick. Set well above the steady-state read
+//! window so a write is allowed to wait for a stuck reader to
+//! finish or fail; if 8 s elapses the device is genuinely wedged
+//! and the write is reported.
+//!
+//! See `main_loop.rs` for the full three-layer timing model
+//! (`poll_rate`, `SNAPSHOT_TIMEOUT_MS`, this module's permit
+//! timeouts) and how they relate.
+//!
+//! ## Per-device write coalescer (`writers: HashMap<TypeIndex, Rc<WriterMailbox>>`)
+//!
+//! Fan-duty writes do NOT take the permit directly from the API
+//! actor or the engine commanders. They enqueue into a
+//! `WriterMailbox` (one per device): a `RefCell<HashMap<ChannelName, PendingWrite>>`
+//! plus a `Notify`. A single per-device writer task spawned at
+//! init drains the mailbox under the permit. Each iteration:
+//!
+//! 1. `select!` on `notify.notified()` / `shutdown.cancelled()`.
+//! 2. Swap pending into a reused buffer (no per-tick allocation).
+//! 3. For each `(channel, PendingWrite)`: take the permit (with
+//!    the write-permit timeout), run the sysfs write, apply the
+//!    per-device command delay, drop the permit, fan the result
+//!    to every merged waiter via their `oneshot::Sender`s.
+//!
+//! `apply_setting_speed_fixed` validates, inserts-or-replaces the
+//! pending entry for the channel, pushes its `oneshot::Sender`
+//! onto the waiter list, signals `notify_one`, and awaits its
+//! receiver. Newer writes to the same channel overwrite
+//! `target_duty` and merge their senders into the existing
+//! waiter list, so a burst collapses to one hardware write at the
+//! latest value with all callers observing the same `Result`.
+//!
+//! Bound: `MAX_WAITERS_PER_PENDING_WRITE` (64). On overflow the
+//! oldest sender is dropped with a "superseded" error so the
+//! merged list stays bounded under any client behavior.
+//!
+//! ## Why coalescing only for fan-duty writes
+//!
+//! `apply_setting_speed_fixed` is the tick-driven hot path
+//! (graph / mix / overlay commanders enqueue one write per
+//! channel per tick). The other apply paths (`reset`,
+//! `manual_control`, `speed_profile`) fire rarely and take the
+//! permit directly. Caller-visible ordering across them is
+//! preserved by the Semaphore's FIFO discipline: a caller that
+//! awaits a direct-path apply before issuing a coalesced write
+//! sees the direct-path operation observed by hardware first.
+//!
+//! ## Shutdown
+//!
+//! `HwmonRepo::shutdown` fires `shutdown_token.cancel()` first so
+//! every per-device writer task observes its cancel arm, drains
+//! its mailbox by signalling each waiter with a "cancelled" error,
+//! and exits. The existing per-channel reset-to-default loop runs
+//! after, taking the permit directly. Late callers reaching
+//! `apply_setting_speed_fixed` after the cancel see
+//! `is_cancelled()` and return early so no `oneshot::Sender` is
+//! orphaned on a writer task that has already exited.
+
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
-    ChannelExtensionNames, ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DeviceUID,
-    DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName, TempStatus,
-    TypeIndex, UID,
+    ChannelExtensionNames, ChannelInfo, ChannelName, ChannelStatus, Device, DeviceInfo, DeviceType,
+    DeviceUID, DriverInfo, DriverType, Duty, SpeedOptions, Status, Temp, TempInfo, TempName,
+    TempStatus, TypeIndex, UID,
 };
 use crate::repositories::failsafe::{self, FailsafeStatusData, MISSING_STATUS_THRESHOLD};
 use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
@@ -37,13 +121,15 @@ use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::mem;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 use strum::{Display, EnumString};
-use tokio::sync::{Semaphore, SemaphorePermit};
+use tokio::sync::{oneshot, Notify, Semaphore, SemaphorePermit};
 use tokio::time::{sleep, timeout, Instant};
+use tokio_util::sync::CancellationToken;
 
 /// Fraction of `poll_rate` a device preload is allowed before the
 /// slow-device arm fires. This is the per-device "layer 3" budget
@@ -268,6 +354,50 @@ pub struct HwmonDriverInfo {
     pub apple_smc: AppleMacSMC,
 }
 
+/// Hard cap on the number of waiters merged into a single `PendingWrite`.
+/// A runaway client dragging a fan slider cannot grow this unboundedly;
+/// on overflow the oldest waiter is dropped with a "superseded" error.
+/// 64 is comfortably above any realistic burst from the engine
+/// commanders (one tick per channel) and from a human-driven slider.
+const MAX_WAITERS_PER_PENDING_WRITE: usize = 64;
+
+/// Initial capacity for a `PendingWrite::waiters` Vec. The common
+/// case is 1 (single user click, single tick from a commander) or
+/// 2 (a write enqueued while another is in flight). The cap above
+/// allows growth without realloc up to the bound; this just keeps
+/// the steady-state allocation tiny.
+const PENDING_WAITERS_INITIAL_CAPACITY: usize = 2;
+
+/// Initial capacity for the writer mailbox's `pending` map and the
+/// writer task's reuse buffer. Sized to fit a typical hwmon device's
+/// full fan-channel set (most have 1-8) without growing. Bursts
+/// beyond this still work; the map reallocates once and the larger
+/// capacity is then reused on subsequent ticks.
+const PENDING_INITIAL_CAPACITY: usize = 8;
+
+const _: () = assert!(MAX_WAITERS_PER_PENDING_WRITE > 0);
+const _: () = assert!(PENDING_WAITERS_INITIAL_CAPACITY <= MAX_WAITERS_PER_PENDING_WRITE);
+
+/// A pending fan-duty write coalesced for one channel of one device.
+/// Newer writes to the same channel replace `target_duty`; their
+/// `oneshot::Sender` joins `waiters`. When the writer task drains
+/// the entry it issues exactly one hardware write and fans the
+/// `Result` to every waiter so all callers observe the same outcome.
+struct PendingWrite {
+    target_duty: Duty,
+    waiters: Vec<oneshot::Sender<Result<(), String>>>,
+}
+
+/// Per-device coalescing inbox. The writer task owns processing;
+/// `apply_setting_speed_fixed` only inserts into `pending` and
+/// signals `notify`. `pending` is borrowed sync (no `.await` while
+/// the borrow is live) so we can use `RefCell` on the single-
+/// threaded runtime without a lock-across-await hazard.
+struct WriterMailbox {
+    pending: RefCell<HashMap<ChannelName, PendingWrite>>,
+    notify: Notify,
+}
+
 /// A Repository for `HWMon` Devices
 pub struct HwmonRepo {
     config: Rc<Config>,
@@ -289,6 +419,17 @@ pub struct HwmonRepo {
     /// task's async state machine (self-reference is fine because
     /// the task owns both the Rc and the permit).
     device_permits: HashMap<TypeIndex, Rc<Semaphore>>,
+
+    /// Per-device write coalescer mailboxes. One writer task per
+    /// device drains its mailbox under the device permit so a
+    /// runaway tick stream cannot stack writes: only the latest
+    /// target per channel survives, all waiters share its result.
+    writers: HashMap<TypeIndex, Rc<WriterMailbox>>,
+
+    /// Fired from `shutdown` so writer tasks exit before the reset
+    /// loop runs. Pending waiters resolve with a "cancelled" error
+    /// so callers do not hang on `rx.await` past daemon exit.
+    shutdown_token: CancellationToken,
 
     /// Used to avoid logging a device-delay warning more than once and not on startup
     delay_logged: HashMap<TypeIndex, Cell<u8>>,
@@ -330,6 +471,8 @@ impl HwmonRepo {
             preloaded_statuses: RefCell::new(HashMap::new()),
             failsafe_statuses: RefCell::new(HashMap::new()),
             device_permits: HashMap::new(),
+            writers: HashMap::new(),
+            shutdown_token: CancellationToken::new(),
             delay_logged: HashMap::new(),
             lc_hwmon_paths: lc_locations
                 .into_iter()
@@ -554,6 +697,13 @@ impl HwmonRepo {
             device.initialize_status_history_with(status, poll_rate);
             self.device_permits
                 .insert(type_index, Rc::new(Semaphore::new(1)));
+            self.writers.insert(
+                type_index,
+                Rc::new(WriterMailbox {
+                    pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
+                    notify: Notify::new(),
+                }),
+            );
             self.delay_logged.insert(type_index, Cell::new(0));
             self.devices.insert(
                 device.uid.clone(),
@@ -836,6 +986,234 @@ impl HwmonRepo {
             // `_held` is dropped here, releasing the permit.
         });
     }
+
+    /// Spawns one writer task per registered hwmon device. Called
+    /// from `initialize_devices` after `load_device_delays` so each
+    /// task captures the resolved per-device command delay. The task
+    /// owns Rc clones of the mailbox, semaphore, driver, and config,
+    /// so it stays alive for the daemon's lifetime even though
+    /// `HwmonRepo::new` does not detain the spawned future.
+    fn spawn_writer_tasks(&self) {
+        let write_permit_timeout = self.device_write_permit_timeout;
+        for (device_uid, (device_lock, driver)) in &self.devices {
+            let type_index = device_lock.borrow().type_index;
+            let Some(mailbox) = self.writers.get(&type_index) else {
+                continue;
+            };
+            let Some(semaphore) = self.device_permits.get(&type_index) else {
+                continue;
+            };
+            let task = WriterTask {
+                mailbox: Rc::clone(mailbox),
+                semaphore: Rc::clone(semaphore),
+                driver: Rc::clone(driver),
+                config: Rc::clone(&self.config),
+                shutdown: self.shutdown_token.clone(),
+                write_permit_timeout,
+                delay_millis: self.device_delay(device_uid),
+            };
+            tokio::task::spawn_local(run_writer_task(task));
+        }
+    }
+}
+
+/// Per-device parameters captured by `run_writer_task`. Bundled to
+/// keep the spawn site readable; lives only as long as one task.
+struct WriterTask {
+    mailbox: Rc<WriterMailbox>,
+    semaphore: Rc<Semaphore>,
+    driver: Rc<HwmonDriverInfo>,
+    config: Rc<Config>,
+    shutdown: CancellationToken,
+    write_permit_timeout: Duration,
+    delay_millis: u16,
+}
+
+/// Drains the writer mailbox under the device permit until the
+/// shutdown token fires. Coalescing happens at the enqueue side:
+/// here we only see the latest target per channel and the merged
+/// list of waiters. Each iteration swaps the mailbox's `pending`
+/// with a reused empty buffer so writes that arrive during a drain
+/// run on the next iteration, never silently merged into an
+/// in-flight operation, and we do not allocate a fresh map every
+/// tick.
+async fn run_writer_task(task: WriterTask) {
+    let mut buffer: HashMap<ChannelName, PendingWrite> =
+        HashMap::with_capacity(PENDING_INITIAL_CAPACITY);
+    loop {
+        tokio::select! {
+            () = task.mailbox.notify.notified() => {}
+            () = task.shutdown.cancelled() => {
+                cancel_remaining_waiters(&task.mailbox);
+                return;
+            }
+        }
+        debug_assert!(buffer.is_empty(), "buffer must start each iteration empty");
+        swap_pending_into(&task.mailbox, &mut buffer);
+        for (channel_name, pending) in buffer.drain() {
+            run_one_pending_write(&task, channel_name, pending).await;
+        }
+    }
+}
+
+fn swap_pending_into(mailbox: &WriterMailbox, buffer: &mut HashMap<ChannelName, PendingWrite>) {
+    mem::swap(&mut *mailbox.pending.borrow_mut(), buffer);
+}
+
+fn drain_pending(mailbox: &WriterMailbox) -> HashMap<ChannelName, PendingWrite> {
+    mem::take(&mut *mailbox.pending.borrow_mut())
+}
+
+/// Inserts the new target into `pending`, merging waiters if a write
+/// for `channel_name` is already queued. Returns the `oneshot::Receiver`
+/// the caller awaits. The borrow of `pending` is released before the
+/// caller awaits, so this is safe to invoke from inside an async fn.
+/// On overflow (>= `MAX_WAITERS_PER_PENDING_WRITE` already queued),
+/// the oldest waiter is dropped with a "superseded by newer write"
+/// error so the merged list stays bounded.
+fn enqueue_pending_write(
+    mailbox: &Rc<WriterMailbox>,
+    channel_name: &str,
+    target_duty: Duty,
+) -> oneshot::Receiver<Result<(), String>> {
+    debug_assert!(target_duty <= 100, "caller must validate target_duty");
+    let (tx, rx) = oneshot::channel();
+    let mut pending = mailbox.pending.borrow_mut();
+    let entry = pending
+        .entry(channel_name.to_string())
+        .or_insert_with(|| PendingWrite {
+            target_duty,
+            waiters: Vec::with_capacity(PENDING_WAITERS_INITIAL_CAPACITY),
+        });
+    entry.target_duty = target_duty;
+    if entry.waiters.len() >= MAX_WAITERS_PER_PENDING_WRITE {
+        // Drop the oldest sender. The user-visible final state still
+        // reflects the latest target via the surviving waiters; only
+        // the dropped caller's ack is lost.
+        let oldest = entry.waiters.remove(0);
+        let _ = oldest.send(Err(
+            "HWMon write superseded by newer write (waiter list overflow)".to_string(),
+        ));
+    }
+    debug_assert!(entry.waiters.len() < MAX_WAITERS_PER_PENDING_WRITE);
+    entry.waiters.push(tx);
+    debug_assert!(entry.waiters.is_empty().not());
+    rx
+}
+
+/// Drains the mailbox and resolves every waiter with a cancelled
+/// error. Sync so it never re-enters the runtime: callers run it
+/// inside the writer task's shutdown branch where no `.await` is
+/// allowed across the `pending` borrow.
+fn cancel_remaining_waiters(mailbox: &WriterMailbox) {
+    let entries = drain_pending(mailbox);
+    for (_, pending) in entries {
+        fan_out_error(
+            pending.waiters,
+            "HWMon writer cancelled: daemon shutting down",
+        );
+    }
+}
+
+async fn run_one_pending_write(
+    task: &WriterTask,
+    channel_name: ChannelName,
+    pending: PendingWrite,
+) {
+    debug_assert!(
+        pending.target_duty <= 100,
+        "enqueue_pending_write validates"
+    );
+    debug_assert!(
+        pending.waiters.is_empty().not(),
+        "drained entries always carry at least one waiter"
+    );
+    let driver_name = task.driver.name.as_str();
+    let acquire: Result<SemaphorePermit<'_>, String> = tokio::select! {
+        () = task.shutdown.cancelled() => Err(format!(
+            "HWMon write cancelled for {driver_name}:{channel_name}: daemon shutting down"
+        )),
+        () = sleep(task.write_permit_timeout) => Err(format!(
+            "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
+             fan speed. There will be significant issues handling this device due to extreme lag."
+        )),
+        permit = task.semaphore.acquire() => permit.map_err(|e| format!(
+            "HWMon write failed for {driver_name}:{channel_name}: semaphore closed ({e})"
+        )),
+    };
+    let permit = match acquire {
+        Ok(permit) => permit,
+        Err(message) => {
+            fan_out_error(pending.waiters, &message);
+            return;
+        }
+    };
+    debug!(
+        "Applying HWMON device: {driver_name} channel: {channel_name}; \
+         Fixed Speed: {}",
+        pending.target_duty
+    );
+    let result = apply_pwm_duty_write(
+        &task.config,
+        &task.driver,
+        &channel_name,
+        pending.target_duty,
+    )
+    .await
+    .map_err(|err| err.to_string());
+    apply_device_command_delay(task.delay_millis).await;
+    drop(permit);
+    fan_out_result(pending.waiters, &result);
+}
+
+fn fan_out_error(waiters: Vec<oneshot::Sender<Result<(), String>>>, message: &str) {
+    for waiter in waiters {
+        let _ = waiter.send(Err(message.to_string()));
+    }
+}
+
+fn fan_out_result(waiters: Vec<oneshot::Sender<Result<(), String>>>, result: &Result<(), String>) {
+    for waiter in waiters {
+        let _ = waiter.send(result.clone());
+    }
+}
+
+/// Runs the actual sysfs fan-duty write. Mirrors the per-driver
+/// branching that `apply_setting_speed_fixed` used pre-coalescer,
+/// so behavior on `ThinkPad` / Apple SMC / generic hwmon is identical.
+async fn apply_pwm_duty_write(
+    config: &Rc<Config>,
+    driver: &Rc<HwmonDriverInfo>,
+    channel_name: &str,
+    target_duty: Duty,
+) -> Result<()> {
+    let Some(channel_info) = driver
+        .channels
+        .iter()
+        .find(|c| c.hwmon_type == HwmonChannelType::Fan && c.name == channel_name)
+    else {
+        return Err(anyhow!(
+            "Channel not found while writing HWMon {}:{channel_name}",
+            driver.name
+        ));
+    };
+    if driver.name == devices::DEVICE_NAME_THINK_PAD {
+        thinkpad::apply_speed_fixed(config, driver, channel_info, target_duty).await
+    } else if driver.apple_smc.detected {
+        driver
+            .apple_smc
+            .set_fan_duty(channel_info.number, target_duty)
+            .await
+    } else {
+        fans::set_pwm_duty(&driver.path, channel_info, target_duty)
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for duty {target_duty} - {err}",
+                    driver.name
+                )
+            })
+    }
 }
 
 #[async_trait(?Send)]
@@ -961,6 +1339,7 @@ impl Repository for HwmonRepo {
         self.map_into_our_device_model(hwmon_drivers, INIT_EXTRACT_TIMEOUT)
             .await?;
         self.load_device_delays();
+        self.spawn_writer_tasks();
 
         let mut init_devices = HashMap::new();
         for (uid, (device, hwmon_info)) in &self.devices {
@@ -1096,6 +1475,11 @@ impl Repository for HwmonRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        // Stop accepting new coalesced writes and unblock any pending
+        // ones before the reset loop runs. Without this, a wedged
+        // device's writer task still holding the permit would force
+        // every reset write to wait the full write-permit timeout.
+        self.shutdown_token.cancel();
         // Continue-on-error: a permit timeout or write failure on one
         // channel must not skip the remaining channels. Leaving later
         // fans stuck in manual mode after shutdown is worse than the
@@ -1215,36 +1599,38 @@ impl Repository for HwmonRepo {
         channel_name: &str,
         speed_fixed: Duty,
     ) -> Result<()> {
-        let (hwmon_driver, channel_info, type_index) =
-            self.get_hwmon_info(device_uid, channel_name)?;
+        // Validate before any state mutation. Out-of-range duty must
+        // never reach the coalescer pending map.
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {speed_fixed}"));
         }
-        let _device_permit = self
-            .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
-            .await?;
-        debug!(
-            "Applying HWMON device: {device_uid} channel: {channel_name}; Fixed Speed: {speed_fixed}"
-        );
-        let result = if hwmon_driver.name == devices::DEVICE_NAME_THINK_PAD {
-            thinkpad::apply_speed_fixed(&self.config, hwmon_driver, channel_info, speed_fixed).await
-        } else if hwmon_driver.apple_smc.detected {
-            hwmon_driver
-                .apple_smc
-                .set_fan_duty(channel_info.number, speed_fixed)
-                .await
-        } else {
-            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
-                .await
-                .map_err(|err| {
-                    anyhow!(
-                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
-                        hwmon_driver.name
-                    )
-                })
-        };
-        apply_device_command_delay(self.device_delay(device_uid)).await;
-        result
+        // Reject after shutdown so a late call cannot orphan a
+        // sender on a writer task that has already exited.
+        if self.shutdown_token.is_cancelled() {
+            return Err(anyhow!(
+                "HWMon writer cancelled: daemon shutting down ({device_uid}:{channel_name})"
+            ));
+        }
+        // get_hwmon_info also asserts the channel exists on this
+        // device; the channel_info itself is looked up again inside
+        // the writer task at write time.
+        let (hwmon_driver, _, type_index) = self.get_hwmon_info(device_uid, channel_name)?;
+        let mailbox = self.writers.get(&type_index).with_context(|| {
+            format!(
+                "No writer mailbox for HWMon device {} (type_index {type_index})",
+                hwmon_driver.name
+            )
+        })?;
+        let rx = enqueue_pending_write(mailbox, channel_name, speed_fixed);
+        mailbox.notify.notify_one();
+        match rx.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(message)) => Err(anyhow!(message)),
+            Err(_recv) => Err(anyhow!(
+                "HWMon writer for {}:{channel_name} no longer running",
+                hwmon_driver.name
+            )),
+        }
     }
 
     async fn apply_setting_speed_profile(
@@ -2082,6 +2468,639 @@ mod command_delay_handoff_tests {
                 elapsed >= Duration::from_millis(u64::from(DELAY_MS)),
                 "write acquired too fast: elapsed={elapsed:?}, expected >= {DELAY_MS}ms"
             );
+        });
+    }
+}
+
+#[cfg(test)]
+mod coalescer_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+    use crate::repositories::hwmon::fans::duty_to_pwm_value;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    fn fan_channel(number: u8, name: &str, base: &Path) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            name: name.to_string(),
+            caps: HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::PWM
+                | HwmonChannelCapabilities::RPM,
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            ..Default::default()
+        }
+    }
+
+    async fn seed_fan_files(base: &Path, fan_numbers: &[u8]) {
+        cc_fs::create_dir_all(base).await.unwrap();
+        for &n in fan_numbers {
+            cc_fs::write(base.join(format!("pwm{n}")), b"128".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join(format!("fan{n}_input")), b"1200".to_vec())
+                .await
+                .unwrap();
+        }
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    /// Registers a fake device with permit + writer mailbox in the
+    /// repo, then spawns the writer task. Returns the device UID so
+    /// tests can call `apply_setting_speed_fixed` on it.
+    fn install_device_and_spawn_writer(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        name: &str,
+        path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+        delay_millis: u16,
+    ) -> UID {
+        let driver = HwmonDriverInfo {
+            name: name.to_string(),
+            path,
+            channels,
+            u_id: format!("test-uid-{name}-{type_index}"),
+            apple_smc: AppleMacSMC::default(),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.device_permits
+            .insert(type_index, Rc::new(Semaphore::new(1)));
+        repo.writers.insert(
+            type_index,
+            Rc::new(WriterMailbox {
+                pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
+                notify: Notify::new(),
+            }),
+        );
+        repo.delay_logged.insert(type_index, Cell::new(0));
+        if delay_millis > 0 {
+            repo.device_delays.insert(uid.clone(), delay_millis);
+        }
+        let driver_rc = Rc::new(driver);
+        repo.devices.insert(
+            uid.clone(),
+            (Rc::new(RefCell::new(device)), Rc::clone(&driver_rc)),
+        );
+        let task = WriterTask {
+            mailbox: Rc::clone(repo.writers.get(&type_index).unwrap()),
+            semaphore: Rc::clone(repo.device_permits.get(&type_index).unwrap()),
+            driver: driver_rc,
+            config: Rc::clone(&repo.config),
+            shutdown: repo.shutdown_token.clone(),
+            write_permit_timeout: repo.device_write_permit_timeout,
+            delay_millis,
+        };
+        tokio::task::spawn_local(run_writer_task(task));
+        uid
+    }
+
+    /// Spawns the `apply_setting_speed_fixed` future as a local task
+    /// so it actually drives forward (enqueues into pending and
+    /// awaits rx) before the test inspects state. Without this, an
+    /// async fn returns a lazy future that does nothing until polled.
+    fn enqueue_write(
+        repo: &Rc<HwmonRepo>,
+        uid: &UID,
+        channel: &str,
+        duty: u8,
+    ) -> tokio::task::JoinHandle<Result<()>> {
+        let repo = Rc::clone(repo);
+        let uid = uid.clone();
+        let channel = channel.to_string();
+        tokio::task::spawn_local(async move {
+            repo.apply_setting_speed_fixed(&uid, &channel, duty).await
+        })
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_collapses_burst_to_single_write() {
+        // Goal: a burst of writes to the same channel resolves with
+        // the latest target as the final pwm value, and every
+        // caller receives Ok. With the permit released, the
+        // coalescer must produce a final state that matches the
+        // last-written duty regardless of how the burst is sliced
+        // between in-flight and pending.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+
+            // Burst five writes; each new value supersedes the prior.
+            let mut handles = Vec::with_capacity(5);
+            for duty in [10_u8, 20, 30, 40, 50] {
+                handles.push(enqueue_write(&repo, &uid, "fan1", duty));
+            }
+            sleep(Duration::from_millis(20)).await;
+
+            drop(permit_hold);
+            for handle in handles {
+                handle
+                    .await
+                    .expect("join should not fail")
+                    .expect("each waiter must resolve Ok");
+            }
+            let pwm_after = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm_after.trim(),
+                duty_to_pwm_value(50).to_string(),
+                "final pwm value must reflect the latest target (duty=50)"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_pending_merges_waiters_per_channel() {
+        // Goal: once the writer is blocked on acquire (in-flight
+        // first write), additional writes to the same channel
+        // accumulate as a single pending entry with their waiters
+        // merged. The mailbox bound stays at one entry per channel.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+
+            // First write: writer drains it into its local frame
+            // and blocks on acquire while we hold the permit.
+            let h0 = enqueue_write(&repo, &uid, "fan1", 10);
+            sleep(Duration::from_millis(30)).await;
+
+            // Subsequent writes accumulate in the mailbox's pending
+            // map because the writer is still blocked.
+            let h1 = enqueue_write(&repo, &uid, "fan1", 20);
+            let h2 = enqueue_write(&repo, &uid, "fan1", 30);
+            let h3 = enqueue_write(&repo, &uid, "fan1", 40);
+            let h4 = enqueue_write(&repo, &uid, "fan1", 50);
+            sleep(Duration::from_millis(20)).await;
+
+            {
+                let pending = repo.writers.get(&1).unwrap().pending.borrow();
+                assert_eq!(pending.len(), 1, "one channel, one pending entry");
+                let entry = pending.get("fan1").expect("entry must exist");
+                assert_eq!(entry.target_duty, 50, "latest target wins");
+                assert_eq!(entry.waiters.len(), 4, "four waiters merged");
+            }
+
+            drop(permit_hold);
+            for handle in [h0, h1, h2, h3, h4] {
+                handle.await.unwrap().unwrap();
+            }
+            let pwm_after = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm_after.trim(),
+                duty_to_pwm_value(50).to_string(),
+                "final pwm value must reflect the latest target"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_responders_all_see_same_error() {
+        // Goal: when the hardware write fails, every waiter merged
+        // into the surviving entry receives the same error so no
+        // caller is misled into thinking its write succeeded.
+        cc_fs::test_runtime(async {
+            // Skip seeding pwm1: set_pwm_duty's write fails because
+            // the parent path doesn't exist.
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("missing-dev");
+            cc_fs::create_dir_all(&base).await.unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+            let h1 = enqueue_write(&repo, &uid, "fan1", 30);
+            let h2 = enqueue_write(&repo, &uid, "fan1", 40);
+            let h3 = enqueue_write(&repo, &uid, "fan1", 50);
+            sleep(Duration::from_millis(20)).await;
+            drop(permit_hold);
+
+            let r1 = h1.await.unwrap();
+            let r2 = h2.await.unwrap();
+            let r3 = h3.await.unwrap();
+            assert!(r1.is_err(), "write must fail when path is invalid");
+            assert!(r2.is_err());
+            assert!(r3.is_err());
+            let m1 = r1.unwrap_err().to_string();
+            let m2 = r2.unwrap_err().to_string();
+            let m3 = r3.unwrap_err().to_string();
+            assert_eq!(m1, m2);
+            assert_eq!(m2, m3);
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_separate_channels_independent() {
+        // Goal: writes to different channels do not coalesce. With
+        // the permit released, both channel writes complete and
+        // their pwm files reflect the requested values.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1, 2]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
+                0,
+            );
+
+            let h1 = repo.apply_setting_speed_fixed(&uid, "fan1", 50);
+            let h2 = repo.apply_setting_speed_fixed(&uid, "fan2", 75);
+            h1.await.unwrap();
+            h2.await.unwrap();
+
+            let pwm1 = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            let pwm2 = cc_fs::read_sysfs(&dir.join("pwm2")).await.unwrap();
+            assert_eq!(pwm1.trim(), duty_to_pwm_value(50).to_string());
+            assert_eq!(pwm2.trim(), duty_to_pwm_value(75).to_string());
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_honors_command_delay() {
+        // Goal: the writer task sleeps for delay_millis between
+        // hardware writes. Sequential writes to two channels under a
+        // 100 ms delay must take at least 100 ms total since the
+        // second write only starts after the first's delay elapses.
+        cc_fs::test_runtime(async {
+            const DELAY_MS: u16 = 100;
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1, 2]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir), fan_channel(2, "fan2", &dir)],
+                DELAY_MS,
+            );
+            let repo = Rc::new(repo);
+
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+            let h1 = enqueue_write(&repo, &uid, "fan1", 50);
+            let h2 = enqueue_write(&repo, &uid, "fan2", 60);
+            sleep(Duration::from_millis(20)).await;
+            let start = Instant::now();
+            drop(permit_hold);
+            h1.await.unwrap().unwrap();
+            h2.await.unwrap().unwrap();
+            let elapsed = start.elapsed();
+            assert!(
+                elapsed >= Duration::from_millis(u64::from(DELAY_MS)),
+                "two writes with {DELAY_MS}ms delay must serialize: elapsed={elapsed:?}"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_drain_during_inflight_creates_next_pending() {
+        // Goal: a write arriving while the writer is mid-iteration
+        // (during the command delay) lands in the freshly-empty
+        // pending map and runs on the next loop iteration, never
+        // silently merging into the in-flight write.
+        cc_fs::test_runtime(async {
+            const DELAY_MS: u16 = 100;
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                DELAY_MS,
+            );
+            let repo = Rc::new(repo);
+
+            // First write: spawn so it actually progresses to rx.await
+            // before we issue the second one.
+            let h_first = enqueue_write(&repo, &uid, "fan1", 30);
+            // Wait long enough for the writer to drain pending and
+            // enter the per-write command delay.
+            sleep(Duration::from_millis(30)).await;
+            // Second write must land in a fresh pending entry
+            // because the writer already drained the first one.
+            let h_second = enqueue_write(&repo, &uid, "fan1", 70);
+
+            h_first.await.unwrap().unwrap();
+            h_second.await.unwrap().unwrap();
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm.trim(),
+                duty_to_pwm_value(70).to_string(),
+                "second write must observably hit hardware after the first"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_per_device_isolation() {
+        // Goal: a wedged writer on device A must not block writes
+        // to device B, since each device owns its own permit, mailbox
+        // and writer task.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir_a = base.join("dev_a");
+            let dir_b = base.join("dev_b");
+            seed_fan_files(&dir_a, &[1]).await;
+            seed_fan_files(&dir_b, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid_a = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev_a",
+                dir_a.clone(),
+                vec![fan_channel(1, "fan1", &dir_a)],
+                0,
+            );
+            let uid_b = install_device_and_spawn_writer(
+                &mut repo,
+                2,
+                "dev_b",
+                dir_b.clone(),
+                vec![fan_channel(1, "fan1", &dir_b)],
+                0,
+            );
+            let repo = Rc::new(repo);
+
+            let permit_a_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_a = permit_a_sem.acquire().await.unwrap();
+            let h_a = enqueue_write(&repo, &uid_a, "fan1", 50);
+            let h_b = enqueue_write(&repo, &uid_b, "fan1", 75);
+
+            let b_start = Instant::now();
+            h_b.await.unwrap().unwrap();
+            let b_elapsed = b_start.elapsed();
+            assert!(
+                b_elapsed < Duration::from_millis(500),
+                "device B should not be blocked by device A: elapsed={b_elapsed:?}"
+            );
+            let pwm_b = cc_fs::read_sysfs(&dir_b.join("pwm1")).await.unwrap();
+            assert_eq!(pwm_b.trim(), duty_to_pwm_value(75).to_string());
+
+            drop(permit_a);
+            h_a.await.unwrap().unwrap();
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_waiters_overflow_drops_oldest() {
+        // Goal: if more than MAX_WAITERS_PER_PENDING_WRITE waiters
+        // pile up on one channel, the oldest senders are dropped
+        // with an overflow error so the merged list stays bounded.
+        // Newer waiters survive and observe the eventual result.
+        cc_fs::test_runtime(async {
+            const EXTRAS: usize = 5;
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+
+            // First write so the writer drains it and blocks on
+            // acquire. Subsequent writes then accumulate into the
+            // mailbox's pending entry without being drained.
+            let h_first = enqueue_write(&repo, &uid, "fan1", 1);
+            sleep(Duration::from_millis(30)).await;
+
+            // Push enough additional writes to overflow the cap.
+            let total = MAX_WAITERS_PER_PENDING_WRITE + EXTRAS;
+            let mut handles = Vec::with_capacity(total);
+            for i in 0..total {
+                let duty = u8::try_from((i % 99) + 1).unwrap();
+                handles.push(enqueue_write(&repo, &uid, "fan1", duty));
+            }
+            sleep(Duration::from_millis(50)).await;
+            assert_eq!(
+                repo.writers
+                    .get(&1)
+                    .unwrap()
+                    .pending
+                    .borrow()
+                    .get("fan1")
+                    .expect("pending entry should hold the merged waiters")
+                    .waiters
+                    .len(),
+                MAX_WAITERS_PER_PENDING_WRITE,
+                "merged waiters must not exceed the bound"
+            );
+            drop(permit_hold);
+
+            // h_first is in-flight and unaffected by overflow.
+            h_first.await.unwrap().unwrap();
+            let mut overflow_count = 0_usize;
+            let mut ok_count = 0_usize;
+            for handle in handles {
+                match handle.await.unwrap() {
+                    Ok(()) => ok_count += 1,
+                    Err(err) if err.to_string().contains("superseded") => overflow_count += 1,
+                    Err(err) => panic!("unexpected error: {err}"),
+                }
+            }
+            assert_eq!(
+                overflow_count, EXTRAS,
+                "exactly EXTRAS oldest must overflow"
+            );
+            assert_eq!(ok_count, MAX_WAITERS_PER_PENDING_WRITE);
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn coalescer_cancellation_drops_pending_writes() {
+        // Goal: when the repo's shutdown token fires, the writer
+        // task drains pending entries and signals every waiter with
+        // a cancelled error so callers do not hang past daemon exit.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+            let repo = Rc::new(repo);
+            let permit_sem = Rc::clone(repo.device_permits.get(&1).unwrap());
+            let permit_hold = permit_sem.acquire().await.unwrap();
+
+            let h1 = enqueue_write(&repo, &uid, "fan1", 30);
+            let h2 = enqueue_write(&repo, &uid, "fan1", 60);
+            let h3 = enqueue_write(&repo, &uid, "fan1", 90);
+            // Wait for the spawned tasks to reach rx.await and land
+            // their entry in pending before we cancel.
+            sleep(Duration::from_millis(20)).await;
+
+            repo.shutdown_token.cancel();
+            // Permit stays held; writer must still resolve waiters
+            // because its cancel-arm fires before any acquire.
+            let r1 = h1.await.unwrap().unwrap_err().to_string();
+            let r2 = h2.await.unwrap().unwrap_err().to_string();
+            let r3 = h3.await.unwrap().unwrap_err().to_string();
+            assert!(r1.contains("cancelled"), "{r1}");
+            assert!(r2.contains("cancelled"), "{r2}");
+            assert!(r3.contains("cancelled"), "{r3}");
+
+            drop(permit_hold);
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn fast_device_no_added_latency() {
+        // Goal: with no contention the writer-task path stays fast
+        // enough that the existing tick budget is not regressed.
+        // 200 sequential calls must average well under 5 ms each.
+        const ITERATIONS: u32 = 200;
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1]).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device_and_spawn_writer(
+                &mut repo,
+                1,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                0,
+            );
+
+            let start = Instant::now();
+            for i in 0..ITERATIONS {
+                let duty = u8::try_from(i % 100).unwrap();
+                repo.apply_setting_speed_fixed(&uid, "fan1", duty)
+                    .await
+                    .unwrap();
+            }
+            let elapsed = start.elapsed();
+            let avg = elapsed / ITERATIONS;
+            // Generous bound: the writer roundtrip on a healthy
+            // host is well under a millisecond. 5 ms keeps CI
+            // flakiness low without hiding a real regression.
+            assert!(
+                avg < Duration::from_millis(5),
+                "average end-to-end {avg:?} regressed past 5 ms over {ITERATIONS} iterations"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
         });
     }
 }
