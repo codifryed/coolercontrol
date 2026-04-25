@@ -616,18 +616,20 @@ impl HwmonRepo {
         // `stale_ticks` persist across preloads.
         self.reset_fresh_this_tick(type_index);
 
-        // Each sink lives in a scoped block so its transient &mut
-        // borrows end before the next extractor runs. Each sink
-        // toggles a pre-allocated bool per channel and upserts the
-        // status. No allocation, no name cloning in the hot path.
-        let _power_failure = {
+        // Each sink is scoped so its closure's borrow of `self` ends
+        // before the next extractor runs. Failure aggregates from the
+        // streaming extractors are intentionally discarded: failsafe
+        // is driven per channel via `mark_*_fresh`, so a failed read
+        // simply leaves its `fresh_this_tick` flag unset and
+        // `tick_staleness_and_log` ticks that channel toward failsafe.
+        {
             let mut power_sink = |status: ChannelStatus| {
                 self.mark_channel_fresh(type_index, &status.name);
                 self.upsert_single_channel(type_index, status);
             };
-            power::stream_power_status(driver, &mut power_sink).await
-        };
-        let _temp_failure = {
+            power::stream_power_status(driver, &mut power_sink).await;
+        }
+        {
             let mut temp_sink = |status: TempStatus| {
                 self.mark_temp_fresh(type_index, &status.name);
                 self.upsert_single_temp(type_index, status);
@@ -636,12 +638,11 @@ impl HwmonRepo {
                 .await
             {
                 drivetemp::stream_default_suspended_temps(driver, &mut temp_sink);
-                false
             } else {
-                temps::stream_temp_statuses(driver, &mut temp_sink).await
+                temps::stream_temp_statuses(driver, &mut temp_sink).await;
             }
-        };
-        let _fan_failure = {
+        }
+        {
             let mut fan_sink = |status: ChannelStatus| {
                 self.mark_channel_fresh(type_index, &status.name);
                 self.upsert_single_channel(type_index, status);
@@ -650,11 +651,11 @@ impl HwmonRepo {
                 driver
                     .apple_smc
                     .stream_fan_statuses(driver, &mut fan_sink)
-                    .await
+                    .await;
             } else {
-                fans::stream_fan_statuses(driver, &mut fan_sink).await
+                fans::stream_fan_statuses(driver, &mut fan_sink).await;
             }
-        };
+        }
 
         self.tick_staleness_and_log(type_index, &driver.name);
     }
