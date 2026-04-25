@@ -310,7 +310,15 @@ fn main() -> Result<()> {
 
         let _ = moro_local::async_scope!(|main_scope| -> Result<()> {
             async {
-                mode_controller.handle_settings_at_boot().await;
+                // Spawn saved-device-setting application concurrently
+                // with API/server init so a slow device cannot block
+                // the UI/API from coming online. Settings flow into
+                // the engine as they apply; the main loop picks them
+                // up on the next tick once each is scheduled.
+                let mode_controller_for_boot = Rc::clone(&mode_controller);
+                main_scope.spawn(async move {
+                    mode_controller_for_boot.handle_settings_at_boot().await;
+                });
                 let status_handle = api::actor::StatusHandle::new(
                     Rc::clone(&all_devices),
                     run_token.clone(),
