@@ -105,6 +105,55 @@ const INIT_EXTRACT_TIMEOUT: Duration = Duration::from_secs(5);
 /// write attempt.
 const PREPARE_FOR_SLEEP_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Builds stub statuses (one per discovered channel) so the
+/// failsafe seed includes every channel even if its first read
+/// failed at init. Per-channel staleness can then track those
+/// channels and substitute failsafe values once the missing-tick
+/// threshold is exceeded; without this, a channel whose first
+/// read failed would never appear in the failsafe map and so
+/// would never surface a value to the UI.
+///
+/// Field presence (`Some` vs `None`) on the stub matches what the
+/// streaming extractors would populate, because
+/// `failsafe::create_failsafe_data` uses `.and(Some(MISSING_*))`
+/// to gate which failsafe fields appear in the substituted value.
+fn synthesize_initial_statuses(
+    channels: &[HwmonChannelInfo],
+) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+    let mut channel_stubs = Vec::with_capacity(channels.len());
+    let mut temp_stubs = Vec::with_capacity(channels.len());
+    for channel in channels {
+        match channel.hwmon_type {
+            HwmonChannelType::Fan => {
+                channel_stubs.push(ChannelStatus {
+                    name: channel.name.clone(),
+                    rpm: channel.caps.has_rpm().then_some(0),
+                    duty: channel.caps.has_pwm().then_some(0.0),
+                    ..Default::default()
+                });
+            }
+            HwmonChannelType::Power => {
+                channel_stubs.push(ChannelStatus {
+                    name: channel.name.clone(),
+                    watts: Some(0.0),
+                    ..Default::default()
+                });
+            }
+            HwmonChannelType::Temp => {
+                temp_stubs.push(TempStatus {
+                    name: channel.name.clone(),
+                    temp: 0.0,
+                });
+            }
+            HwmonChannelType::Load | HwmonChannelType::Freq | HwmonChannelType::PowerCap => {
+                // These channel types are not preloaded by hwmon,
+                // so they have no failsafe entry to seed.
+            }
+        }
+    }
+    (channel_stubs, temp_stubs)
+}
+
 /// The `drivetemp` kernel module is non-standard and used for getting temps for HDDs. Part of its
 /// implementation blocks temperature reads when the drive is spinning up which causes significant
 /// read delays. Since this is pretty normal behavior for this driver, we handle it differently.
@@ -464,8 +513,16 @@ impl HwmonRepo {
                 );
                 continue;
             };
+            // Failsafe seed comes from the discovered channel list,
+            // not the extracted statuses, so a channel whose first
+            // read failed at init is still tracked by per-channel
+            // staleness. Without this, such a channel would never
+            // surface to the UI even after the threshold elapses,
+            // because the failsafe map would be missing its entry.
+            let (failsafe_seed_channels, failsafe_seed_temps) =
+                synthesize_initial_statuses(&driver.channels);
             let (channel_failsafes, temp_failsafes) =
-                failsafe::create_failsafe_data(&channel_statuses, &temp_statuses);
+                failsafe::create_failsafe_data(&failsafe_seed_channels, &failsafe_seed_temps);
             if let Some(fsd) = FailsafeStatusData::new(channel_failsafes, temp_failsafes) {
                 self.failsafe_statuses.borrow_mut().insert(type_index, fsd);
             }
@@ -698,7 +755,16 @@ impl HwmonRepo {
     /// initialization where some devices are under extra load, but makes sure to log it if it
     /// happens during normal polling loop operations.
     fn log_slow_device(&self, type_index: TypeIndex, driver_name: &str) {
-        let slow_device_trigger_count = self.delay_logged.get(&type_index).unwrap().get();
+        // Invariant: every type_index in `self.devices` has a
+        // matching `delay_logged` entry. Both maps are populated
+        // together in `map_into_our_device_model` and never removed
+        // for the repo's lifetime, so a missing entry here means
+        // the invariant was broken by a refactor.
+        let slot = self
+            .delay_logged
+            .get(&type_index)
+            .expect("invariant: delay_logged entry exists for every registered device type_index");
+        let slow_device_trigger_count = slot.get();
         if slow_device_trigger_count > 1 {
             return;
         }
@@ -714,10 +780,7 @@ impl HwmonRepo {
                 This device may be slow to update and respond."
             );
         }
-        self.delay_logged
-            .get(&type_index)
-            .unwrap()
-            .replace(slow_device_trigger_count + 1);
+        slot.replace(slow_device_trigger_count + 1);
     }
 
     async fn get_permit_with_write_timeout(
@@ -731,8 +794,10 @@ impl HwmonRepo {
                 "TIMEOUT HWMon device: {driver_name} channel: {channel_name}; waiting to apply \
                 fan speed. There will be significant issues handling this device due to extreme lag."
             )),
-            device_permit = self.device_permits.get(&type_index).unwrap().acquire() =>
-                device_permit.map_err(|e| anyhow!(e)),
+            device_permit = self.device_permits
+                .get(&type_index)
+                .expect("invariant: device_permits entry exists for every registered device type_index")
+                .acquire() => device_permit.map_err(|e| anyhow!(e)),
         }
     }
 
@@ -970,7 +1035,10 @@ impl Repository for HwmonRepo {
                             self.log_slow_device(type_index, &driver.name);
                             self.tick_staleness_and_log(type_index, &driver.name);
                         },
-                        Ok(device_permit) = self.device_permits.get(&type_index).unwrap().acquire() => {
+                        Ok(device_permit) = self.device_permits
+                        .get(&type_index)
+                        .expect("invariant: device_permits entry exists for every registered device type_index")
+                        .acquire() => {
                             // Queue the post-read delay holder before
                             // running the preload so any write (or next
                             // preload) that arrives during the reads
@@ -988,7 +1056,8 @@ impl Repository for HwmonRepo {
                     }
                 });
             }
-        }).await;
+        })
+        .await;
         trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
@@ -1695,10 +1764,7 @@ mod preload_tests {
         assert_eq!(fan2.rpm, Some(MISSING_RPM_FAILSAFE));
         assert_eq!(fan2.duty, Some(MISSING_DUTY_FAILSAFE));
         let temp_entry = temps.iter().find(|t| t.name == "temp1").unwrap();
-        assert!(
-            (temp_entry.temp - crate::repositories::failsafe::MISSING_TEMP_FAILSAFE).abs()
-                < f64::EPSILON
-        );
+        assert!((temp_entry.temp - failsafe::MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -1747,10 +1813,7 @@ mod preload_tests {
         let fan1 = channels.iter().find(|c| c.name == "fan1").unwrap();
         assert_eq!(fan1.rpm, Some(MISSING_RPM_FAILSAFE));
         let temp_entry = temps.iter().find(|t| t.name == "temp1").unwrap();
-        assert!(
-            (temp_entry.temp - crate::repositories::failsafe::MISSING_TEMP_FAILSAFE).abs()
-                < f64::EPSILON
-        );
+        assert!((temp_entry.temp - failsafe::MISSING_TEMP_FAILSAFE).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -2174,17 +2237,10 @@ mod prepare_for_sleep_tests {
             repo.prepare_for_sleep().await;
             let elapsed = start.elapsed();
 
-            assert!(
-                elapsed < Duration::from_millis(1500),
-                "prepare_for_sleep must not hang past the write timeout: {elapsed:?}"
-            );
-            assert!(
-                elapsed >= PREPARE_FOR_SLEEP_WRITE_TIMEOUT,
-                "write timeout should have elapsed at least once: {elapsed:?}"
-            );
-
-            // Pair the FIFO so the leaked blocking write can
-            // complete, letting the test runtime drop cleanly.
+            // Pair the FIFO BEFORE the assertions: a panic here
+            // would leave the leaked blocking write thread stuck in
+            // open(), and the test runtime drop would hang forever
+            // waiting for it.
             let fifo_for_reader = fifo_path.clone();
             let _ = tokio::task::spawn_blocking(move || {
                 let _ = std::fs::OpenOptions::new()
@@ -2192,6 +2248,15 @@ mod prepare_for_sleep_tests {
                     .open(&fifo_for_reader);
             })
             .await;
+
+            assert!(
+                elapsed >= PREPARE_FOR_SLEEP_WRITE_TIMEOUT,
+                "write timeout should have elapsed at least once: {elapsed:?}"
+            );
+            assert!(
+                elapsed < PREPARE_FOR_SLEEP_WRITE_TIMEOUT + Duration::from_millis(500),
+                "prepare_for_sleep ran past the write timeout: {elapsed:?}"
+            );
 
             let _ = cc_fs::remove_dir_all(&base).await;
         });
@@ -2386,6 +2451,93 @@ mod shutdown_tests {
 }
 
 #[cfg(test)]
+mod synthesize_initial_statuses_tests {
+    use super::*;
+
+    #[test]
+    fn fan_with_pwm_and_rpm_caps_seeds_both_fields() {
+        // A fully-capable fan channel produces a stub with both rpm
+        // and duty set — failsafe::create_failsafe_data preserves
+        // both fields on the resulting failsafe value.
+        let channels = vec![HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            name: "fan1".to_string(),
+            caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
+            ..Default::default()
+        }];
+        let (chans, temps) = synthesize_initial_statuses(&channels);
+        assert_eq!(chans.len(), 1);
+        assert_eq!(temps.len(), 0);
+        assert_eq!(chans[0].name, "fan1");
+        assert_eq!(chans[0].rpm, Some(0));
+        assert_eq!(chans[0].duty, Some(0.0));
+    }
+
+    #[test]
+    fn fan_with_only_rpm_caps_omits_duty_field() {
+        // Field presence on the stub matches caps so the failsafe
+        // value won't claim a duty for a read-only RPM channel.
+        let channels = vec![HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            name: "fan_rpm_only".to_string(),
+            caps: HwmonChannelCapabilities::RPM,
+            ..Default::default()
+        }];
+        let (chans, _) = synthesize_initial_statuses(&channels);
+        assert_eq!(chans[0].rpm, Some(0));
+        assert_eq!(chans[0].duty, None);
+    }
+
+    #[test]
+    fn power_and_temp_channels_get_appropriate_stubs() {
+        let channels = vec![
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Power,
+                name: "power1".to_string(),
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Temp,
+                name: "temp1".to_string(),
+                ..Default::default()
+            },
+        ];
+        let (chans, temps) = synthesize_initial_statuses(&channels);
+        assert_eq!(chans.len(), 1);
+        assert_eq!(chans[0].name, "power1");
+        assert_eq!(chans[0].watts, Some(0.0));
+        assert_eq!(temps.len(), 1);
+        assert_eq!(temps[0].name, "temp1");
+    }
+
+    #[test]
+    fn unsupported_channel_types_are_skipped() {
+        // Load / Freq / PowerCap are not preloaded by hwmon's
+        // streaming extractors, so they have no failsafe entry.
+        let channels = vec![
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Load,
+                name: "load1".to_string(),
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Freq,
+                name: "freq1".to_string(),
+                ..Default::default()
+            },
+            HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::PowerCap,
+                name: "powercap1".to_string(),
+                ..Default::default()
+            },
+        ];
+        let (chans, temps) = synthesize_initial_statuses(&channels);
+        assert!(chans.is_empty());
+        assert!(temps.is_empty());
+    }
+}
+
+#[cfg(test)]
 mod init_timeout_tests {
     use super::*;
     use crate::cc_fs;
@@ -2521,6 +2673,65 @@ mod init_timeout_tests {
                     .open(&fifo_for_writer);
             })
             .await;
+
+            teardown_dir(&base).await;
+        });
+    }
+
+    fn fan_channel_no_files(name: &str, base: &Path) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            name: name.to_string(),
+            pwm_enable_default: Some(2),
+            caps: HwmonChannelCapabilities::PWM | HwmonChannelCapabilities::RPM,
+            // Both paths intentionally point at non-existent files
+            // so extract_fan_statuses fails and omits the channel
+            // from its result Vec.
+            pwm_path: Some(base.join("pwm1")),
+            rpm_path: Some(base.join("fan1_input")),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn map_into_model_seeds_failsafe_for_channels_that_failed_to_read() {
+        // Verifies L2: a fan channel whose first read fails at init
+        // is still tracked by the per-channel failsafe state. Without
+        // the synth-based seed, the failsafe map would only contain
+        // channels that successfully read, and a channel whose
+        // sensor was momentarily unreadable would never surface to
+        // the UI.
+        cc_fs::test_runtime(async {
+            let base = setup_dir().await;
+            let driver = driver_for_test(
+                "test_no_files",
+                &base,
+                vec![fan_channel_no_files("fan1", &base)],
+            );
+
+            let mut repo = empty_repo();
+            let result = repo
+                .map_into_our_device_model(vec![driver], Duration::from_secs(2))
+                .await;
+            assert!(result.is_ok(), "map should succeed even if reads failed");
+            assert_eq!(repo.devices.len(), 1, "device should be registered");
+
+            {
+                let fsd_map = repo.failsafe_statuses.borrow();
+                let fsd = fsd_map
+                    .get(&1)
+                    .expect("failsafe data exists for the device");
+                assert!(
+                    fsd.channel_state.contains_key("fan1"),
+                    "fan1 should be tracked in per-channel state despite init read failure"
+                );
+                assert!(
+                    fsd.channel_failsafes.contains_key("fan1"),
+                    "fan1 should have a failsafe value even if it never read successfully"
+                );
+            }
 
             teardown_dir(&base).await;
         });
