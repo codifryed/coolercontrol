@@ -214,7 +214,6 @@ pub async fn read_one_fan_status(
             &driver.path,
             &channel.number,
             channel.pwm_path.as_ref(),
-            // todo: log error in debug mode
             false,
         )
         .await
@@ -243,6 +242,31 @@ pub async fn read_one_fan_status(
         duty: fan_duty,
         ..Default::default()
     })
+}
+
+/// Reads only the RPM portion of a fan channel. Used by the
+/// slow-device preload path: when the duty cache is fresh, we can
+/// skip the slow PWM duty read and just refresh RPM (which is
+/// device-controlled feedback and cannot be cached). Returns
+/// `None` if RPM was expected but the read failed; absent RPM cap
+/// returns `Some(None)` so the caller can synthesize a status
+/// from the cached duty alone.
+pub async fn read_one_fan_rpm_only(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+) -> Option<Option<u32>> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+    if channel.caps.has_rpm().not() {
+        return Some(None);
+    }
+    let fan_rpm = get_fan_rpm(
+        &driver.path,
+        &channel.number,
+        channel.rpm_path.as_ref(),
+        false,
+    )
+    .await?;
+    Some(Some(fan_rpm))
 }
 
 /// Buffered wrapper over `stream_fan_statuses` for callers that want

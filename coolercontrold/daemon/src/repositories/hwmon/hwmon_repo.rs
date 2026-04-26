@@ -28,9 +28,7 @@
 //!
 //! One `Rc<Semaphore>` of capacity 1 per device. All sysfs reads
 //! and writes for that device must hold it; only one operation
-//! is in flight at a time. The single-threaded runtime makes `Rc`
-//! sufficient (see also liqctld's in-built per-device queue;
-//! this mirrors that idea for hwmon).
+//! is in flight at a time.
 //!
 //! Crucially, the permit is held *per channel*, not per
 //! whole-device-preload: `preload_device_statuses` acquires the
@@ -38,7 +36,7 @@
 //! and releases. This lets the writer task slip in between
 //! channel reads, so on a slow device worst-case write latency
 //! is one channel-read time rather than `N_channels * read_time`.
-//! Reads are idempotent so the snapshot semantics survive the
+//! Reads are idempotent, so the snapshot semantics survive the
 //! handoff (channels were already read sequentially; the change
 //! is just a release point between each).
 //!
@@ -125,6 +123,54 @@
 //! awaits a direct-path apply before issuing a coalesced write
 //! sees the direct-path operation observed by hardware first.
 //!
+//! ## Slow-device caching (read-side)
+//!
+//! At startup, `map_into_our_device_model` times the per-device
+//! init extract block (fans + power + temps). When the wall clock
+//! exceeds `device_read_permit_timeout`, the device is recorded
+//! in `slow_devices` and gets a `duty_cache: HashMap<ChannelName,
+//! DutyCacheEntry>`. The cache holds `last_known: Duty` and
+//! `next_verify_at: Instant`. The preload's Fan branch checks the
+//! cache: while `Instant::now() < next_verify_at`, it skips the
+//! slow PWM read and reads only RPM via `read_one_fan_rpm_only`,
+//! synthesizing the channel status from the cached duty. When
+//! the verify window elapses (every `DUTY_CACHE_VERIFY_INTERVAL`,
+//! default 30 s, staggered evenly per channel at init) it does a
+//! real read and refreshes both fields. Fast devices skip this
+//! path entirely.
+//!
+//! On every successful sysfs duty write, the writer task updates
+//! `last_known` (but not `next_verify_at`); on `manual_control`,
+//! `reset`, or `speed_profile` the entry is dropped via
+//! `invalidate_duty_cache_entry` because duty control has just
+//! been transferred to or from the device's own firmware.
+//!
+//! ## Write-skip via `preloaded_statuses`
+//!
+//! Before the writer task issues a sysfs duty write, it looks up
+//! the channel's current duty in the shared `preloaded_statuses`
+//! cache (already populated by every preload tick at init and on
+//! each successful read). If the cached duty equals the target,
+//! the writer fans `Ok(())` to all merged waiters and returns
+//! without touching sysfs. This eliminates the 8 × ~475 ms of
+//! redundant rewrites per tick under a steady-state graph
+//! profile on the user's slow device, and incurs only a hash-map
+//! lookup on fast devices. No extra sysfs reads — the
+//! `preloaded_statuses` snapshot is at most one tick stale, and
+//! engine commanders write at most one duty per channel per
+//! tick, so there is no within-tick double-write that would make
+//! that staleness observable.
+//!
+//! ## Round-robin channel start index
+//!
+//! `tick_count: Cell<u64>` increments once per `preload_statuses`
+//! call. `preload_device_statuses` rotates the iteration starting
+//! index by `tick_count % N_channels` independently for each of
+//! the Power, Temp, and Fan passes. Removes the FIFO bias that
+//! would otherwise cause later-iteration channels to
+//! disproportionately time out under sustained slow-device
+//! contention.
+//!
 //! ## Shutdown
 //!
 //! `HwmonRepo::shutdown` fires `shutdown_token.cancel()` first so
@@ -157,7 +203,7 @@ use heck::ToTitleCase;
 use log::{debug, error, info, log, trace, warn};
 use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
@@ -435,11 +481,36 @@ struct WriterMailbox {
     notify: Notify,
 }
 
+/// Duty-cache entry for slow-device fan channels. `last_known` is
+/// authoritative as long as we observed it within the last 30 s
+/// (or just wrote it ourselves and the device is still in manual
+/// mode); `next_verify_at` schedules the periodic real-read that
+/// detects external drift.
+struct DutyCacheEntry {
+    last_known: Duty,
+    next_verify_at: Instant,
+}
+
+/// Period between forced PWM duty re-reads on slow devices. Long
+/// enough that the per-tick savings from skipping the read
+/// dominate; short enough that an external sysfs edit (rare)
+/// becomes visible within a minute. Verifications are staggered
+/// across this window per channel so only ~one channel does a
+/// real PWM read per tick on average.
+const DUTY_CACHE_VERIFY_INTERVAL: Duration = Duration::from_secs(30);
+
+const _: () = assert!(DUTY_CACHE_VERIFY_INTERVAL.as_secs() > 0);
+
 /// A Repository for `HWMon` Devices
 pub struct HwmonRepo {
     config: Rc<Config>,
     devices: HashMap<DeviceUID, (DeviceLock, Rc<HwmonDriverInfo>)>,
-    preloaded_statuses: RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// Per-tick snapshot of every device's channel + temp readings.
+    /// Wrapped in `Rc<RefCell<...>>` so the writer task can hold a
+    /// clone and consult it for the write-skip path
+    /// (`run_one_pending_write` looks up the channel's current duty
+    /// here to decide whether the target sysfs write is a no-op).
+    preloaded_statuses: Rc<RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>>,
     failsafe_statuses: RefCell<HashMap<TypeIndex, FailsafeStatusData>>,
 
     /// Permits for each `HWMon` device. This is useful for slower devices.
@@ -473,6 +544,23 @@ pub struct HwmonRepo {
     /// `preload_device_statuses` so no channel is permanently last
     /// in the FIFO under sustained contention with other ticks.
     tick_count: Cell<u64>,
+
+    /// Devices whose initial extract block took longer than
+    /// `device_read_permit_timeout`. The duty-cache + staggered
+    /// 30 s verification path engages only for these; fast
+    /// devices keep doing real reads every tick. Detected once at
+    /// startup (in `map_into_our_device_model`) and immutable for
+    /// the repo's lifetime — `poll_rate` is restart-only and the
+    /// hardware doesn't get faster after boot.
+    slow_devices: HashSet<TypeIndex>,
+
+    /// Per-slow-device PWM duty cache, keyed by channel name. The
+    /// preload path uses the cached duty (skipping the slow PWM
+    /// read) until each channel's `next_verify_at` falls due, then
+    /// it does a real read and refreshes both fields. Empty for
+    /// fast devices. Held inside `Rc<RefCell<...>>` so the writer
+    /// task can also update it on successful writes.
+    duty_cache: HashMap<TypeIndex, Rc<RefCell<HashMap<ChannelName, DutyCacheEntry>>>>,
 
     /// Used to avoid logging a device-delay warning more than once and not on startup
     delay_logged: HashMap<TypeIndex, Cell<u8>>,
@@ -511,12 +599,14 @@ impl HwmonRepo {
         Self {
             config,
             devices: HashMap::new(),
-            preloaded_statuses: RefCell::new(HashMap::new()),
+            preloaded_statuses: Rc::new(RefCell::new(HashMap::new())),
             failsafe_statuses: RefCell::new(HashMap::new()),
             device_permits: HashMap::new(),
             writers: HashMap::new(),
             shutdown_token: CancellationToken::new(),
             tick_count: Cell::new(0),
+            slow_devices: HashSet::new(),
+            duty_cache: HashMap::new(),
             delay_logged: HashMap::new(),
             lc_hwmon_paths: lc_locations
                 .into_iter()
@@ -675,6 +765,15 @@ impl HwmonRepo {
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
+            // Measure the wall-clock cost of all initial sysfs
+            // reads on this device. If the total exceeds the
+            // device's read-permit budget, the device cannot keep
+            // up with the configured poll rate and the slow-device
+            // duty cache + staggered verification path engages for
+            // it. Fast devices stay on the unconditional-real-read
+            // path so the UI continues to show live values for
+            // them.
+            let extract_start = Instant::now();
             let Ok((mut channel_statuses, _)) =
                 timeout(extract_timeout, fans::extract_fan_statuses(&driver)).await
             else {
@@ -707,6 +806,12 @@ impl HwmonRepo {
                 );
                 continue;
             };
+            self.detect_slow_and_seed_duty_cache(
+                type_index,
+                extract_start.elapsed(),
+                &driver.name,
+                &channel_statuses,
+            );
             // Failsafe seed comes from the discovered channel list,
             // not the extracted statuses, so a channel whose first
             // read failed at init is still tracked by per-channel
@@ -840,13 +945,18 @@ impl HwmonRepo {
                 .iter()
                 .filter(|c| c.hwmon_type == ch_type)
                 .collect();
-            let n = typed_channels.len();
-            if n == 0 {
+            let channel_count = typed_channels.len();
+            if channel_count == 0 {
                 continue;
             }
-            let start = (tick as usize) % n;
-            for offset in 0..n {
-                let channel = typed_channels[(start + offset) % n];
+            // tick is a monotonic u64 wrapped at u64::MAX; the
+            // truncation to usize on 32-bit targets is harmless
+            // because both are reduced mod n where n is the
+            // (small) channel count.
+            #[allow(clippy::cast_possible_truncation)]
+            let start = (tick as usize) % channel_count;
+            for offset in 0..channel_count {
+                let channel = typed_channels[(start + offset) % channel_count];
                 let acquired = self
                     .read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
                     .await;
@@ -916,11 +1026,7 @@ impl HwmonRepo {
                 }
             }
             HwmonChannelType::Fan => {
-                let status = if driver.apple_smc.detected {
-                    driver.apple_smc.read_one_fan_status(driver, channel).await
-                } else {
-                    fans::read_one_fan_status(driver, channel).await
-                };
+                let status = self.read_fan_channel(type_index, driver, channel).await;
                 if let Some(status) = status {
                     self.mark_channel_fresh(type_index, &status.name);
                     self.upsert_single_channel(type_index, status);
@@ -929,6 +1035,78 @@ impl HwmonRepo {
             _ => {}
         }
         true
+    }
+
+    /// Slow-device-aware fan-channel read. For fast devices: real
+    /// read of both PWM duty and RPM. For slow devices with a
+    /// duty-cache entry whose `next_verify_at` is in the future:
+    /// RPM-only read, synthesizing the `ChannelStatus` from the
+    /// cached duty. For slow devices when the verify window has
+    /// elapsed (or no cache entry exists yet): real read, then
+    /// refresh the cache and reset `next_verify_at`.
+    async fn read_fan_channel(
+        &self,
+        type_index: TypeIndex,
+        driver: &Rc<HwmonDriverInfo>,
+        channel: &HwmonChannelInfo,
+    ) -> Option<ChannelStatus> {
+        debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+        if self.slow_devices.contains(&type_index).not() {
+            // Fast device: unchanged behavior.
+            return if driver.apple_smc.detected {
+                driver.apple_smc.read_one_fan_status(driver, channel).await
+            } else {
+                fans::read_one_fan_status(driver, channel).await
+            };
+        }
+        let cache = self.duty_cache.get(&type_index);
+        let cached_duty = cache.and_then(|c| {
+            c.borrow()
+                .get(&channel.name)
+                .filter(|entry| Instant::now() < entry.next_verify_at)
+                .map(|entry| entry.last_known)
+        });
+        if let Some(duty) = cached_duty {
+            // Cache fresh: skip the slow PWM read.
+            let rpm_result = if driver.apple_smc.detected {
+                driver
+                    .apple_smc
+                    .read_one_fan_rpm_only(driver, channel)
+                    .await
+            } else {
+                fans::read_one_fan_rpm_only(driver, channel).await
+            };
+            // `Option<Option<u32>>`: outer None means an expected
+            // RPM read failed (omit the channel so failsafe
+            // engages); inner None means no RPM cap.
+            let rpm = rpm_result?;
+            return Some(ChannelStatus {
+                name: channel.name.clone(),
+                rpm,
+                duty: Some(f64::from(duty)),
+                ..Default::default()
+            });
+        }
+        // Verify due (or no cache entry): real read, refresh cache.
+        let status = if driver.apple_smc.detected {
+            driver.apple_smc.read_one_fan_status(driver, channel).await
+        } else {
+            fans::read_one_fan_status(driver, channel).await
+        }?;
+        if let Some(duty_f64) = status.duty {
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let duty_u8 = duty_f64.round().clamp(0.0, 100.0) as Duty;
+            if let Some(cache) = cache {
+                cache.borrow_mut().insert(
+                    channel.name.clone(),
+                    DutyCacheEntry {
+                        last_known: duty_u8,
+                        next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+                    },
+                );
+            }
+        }
+        Some(status)
     }
 
     /// Clears the `fresh_this_tick` flags for `type_index`. Called
@@ -1080,6 +1258,77 @@ impl HwmonRepo {
         }
     }
 
+    /// Removes one channel's slow-device duty-cache entry. Called
+    /// from any apply path that hands duty control to (or back
+    /// from) the device's own firmware: `manual_control` to enter
+    /// manual mode, `reset` to return to auto, `speed_profile` to
+    /// install a hardware curve. After invalidation the next
+    /// preload re-reads the real PWM duty and reseeds the cache.
+    /// No-op for fast devices (no entry to remove).
+    fn invalidate_duty_cache_entry(&self, type_index: TypeIndex, channel_name: &str) {
+        let Some(cache) = self.duty_cache.get(&type_index) else {
+            return;
+        };
+        cache.borrow_mut().remove(channel_name);
+    }
+
+    /// If the just-completed init extract block ran longer than
+    /// the device's read-permit budget, mark the device as slow
+    /// and seed its duty cache from the initial fan reads. The
+    /// cache's `next_verify_at` values are staggered evenly across
+    /// `DUTY_CACHE_VERIFY_INTERVAL` so verification reads arrive
+    /// one-channel-at-a-time rather than all at once. No-op for
+    /// fast devices.
+    fn detect_slow_and_seed_duty_cache(
+        &mut self,
+        type_index: TypeIndex,
+        extract_elapsed: Duration,
+        driver_name: &str,
+        channel_statuses: &[ChannelStatus],
+    ) {
+        if (extract_elapsed > self.device_read_permit_timeout).not() {
+            return;
+        }
+        info!(
+            "Slow HWMon device detected: {driver_name} took {extract_elapsed:?} for initial \
+             reads (budget {:?}); enabling duty cache.",
+            self.device_read_permit_timeout
+        );
+        self.slow_devices.insert(type_index);
+        let fan_count = channel_statuses
+            .iter()
+            .filter(|s| s.duty.is_some() || s.rpm.is_some())
+            .count()
+            .max(1);
+        let mut entries = HashMap::with_capacity(channel_statuses.len());
+        let now = Instant::now();
+        let mut fan_index = 0_u32;
+        #[allow(clippy::cast_precision_loss)]
+        let fan_count_f64 = fan_count as f64;
+        for status in channel_statuses {
+            let Some(duty) = status.duty else {
+                continue;
+            };
+            fan_index += 1;
+            let stagger = DUTY_CACHE_VERIFY_INTERVAL.mul_f64(f64::from(fan_index) / fan_count_f64);
+            // ChannelStatus.duty is f64 (0..=100 from
+            // pwm_value_to_duty); writer task targets are Duty
+            // (u8). Round to u8 here so the write-skip path can
+            // compare apples-to-apples.
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let duty_u8 = duty.round().clamp(0.0, 100.0) as Duty;
+            entries.insert(
+                status.name.clone(),
+                DutyCacheEntry {
+                    last_known: duty_u8,
+                    next_verify_at: now + stagger,
+                },
+            );
+        }
+        self.duty_cache
+            .insert(type_index, Rc::new(RefCell::new(entries)));
+    }
+
     /// Spawns a detached task that re-acquires the device permit
     /// and holds it for the command delay. No-op when
     /// `delay_millis == 0`. Called once at the end of
@@ -1128,10 +1377,13 @@ impl HwmonRepo {
                 continue;
             };
             let task = WriterTask {
+                type_index,
                 mailbox: Rc::clone(mailbox),
                 semaphore: Rc::clone(semaphore),
                 driver: Rc::clone(driver),
                 config: Rc::clone(&self.config),
+                preloaded_statuses: Rc::clone(&self.preloaded_statuses),
+                duty_cache: self.duty_cache.get(&type_index).map(Rc::clone),
                 shutdown: self.shutdown_token.clone(),
                 write_permit_timeout,
                 delay_millis: self.device_delay(device_uid),
@@ -1144,10 +1396,21 @@ impl HwmonRepo {
 /// Per-device parameters captured by `run_writer_task`. Bundled to
 /// keep the spawn site readable; lives only as long as one task.
 struct WriterTask {
+    type_index: TypeIndex,
     mailbox: Rc<WriterMailbox>,
     semaphore: Rc<Semaphore>,
     driver: Rc<HwmonDriverInfo>,
     config: Rc<Config>,
+    /// Shared with `HwmonRepo` so the writer can short-circuit a
+    /// sysfs write when the target equals the channel's current
+    /// known duty. Read-only from the writer task's perspective.
+    preloaded_statuses: Rc<RefCell<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>>,
+    /// `Some` only for slow devices: the writer updates
+    /// `last_known` on every successful sysfs write so the next
+    /// preload tick can use the cached value rather than reading
+    /// the slow PWM file. `next_verify_at` is left untouched on
+    /// writes — it advances only on real verification reads.
+    duty_cache: Option<Rc<RefCell<HashMap<ChannelName, DutyCacheEntry>>>>,
     shutdown: CancellationToken,
     write_permit_timeout: Duration,
     delay_millis: u16,
@@ -1252,6 +1515,14 @@ async fn run_one_pending_write(
         pending.waiters.is_empty().not(),
         "drained entries always carry at least one waiter"
     );
+    // Write-skip: if the channel's most recent known duty equals
+    // the target, the sysfs write is a no-op. Resolve waiters
+    // immediately and avoid the expensive write (e.g. ~475 ms per
+    // channel on the slow device that motivated this path).
+    if current_duty_matches_target(task, &channel_name, pending.target_duty) {
+        fan_out_result(pending.waiters, &Ok(()));
+        return;
+    }
     let driver_name = task.driver.name.as_str();
     let acquire: Result<SemaphorePermit<'_>, String> = tokio::select! {
         () = task.shutdown.cancelled() => Err(format!(
@@ -1287,7 +1558,47 @@ async fn run_one_pending_write(
     .map_err(|err| err.to_string());
     apply_device_command_delay(task.delay_millis).await;
     drop(permit);
+    if result.is_ok() {
+        // Slow-device duty cache absorbs the write so the next
+        // preload tick can serve `last_known` without doing the
+        // slow PWM read. `next_verify_at` is unchanged: writes
+        // do not reset the verification clock.
+        if let Some(cache) = task.duty_cache.as_ref() {
+            let mut entries = cache.borrow_mut();
+            entries
+                .entry(channel_name.clone())
+                .and_modify(|e| e.last_known = pending.target_duty)
+                .or_insert_with(|| DutyCacheEntry {
+                    last_known: pending.target_duty,
+                    next_verify_at: Instant::now() + DUTY_CACHE_VERIFY_INTERVAL,
+                });
+        }
+    }
     fan_out_result(pending.waiters, &result);
+}
+
+/// Looks up the channel's current duty in `preloaded_statuses` and
+/// returns true when it matches `target_duty`. Returning true short-
+/// circuits the sysfs write. Falls back to false (i.e. proceed with
+/// the write) when no entry exists for the channel — the cache is
+/// populated from init reads, so an absent entry means we genuinely
+/// don't know the device state.
+fn current_duty_matches_target(task: &WriterTask, channel_name: &str, target_duty: Duty) -> bool {
+    debug_assert!(target_duty <= 100, "caller must validate target_duty");
+    let map = task.preloaded_statuses.borrow();
+    let Some((channels, _)) = map.get(&task.type_index) else {
+        return false;
+    };
+    let Some(status) = channels.iter().find(|c| c.name == channel_name) else {
+        return false;
+    };
+    let Some(current_duty) = status.duty else {
+        return false;
+    };
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let current_u8 = current_duty.round().clamp(0.0, 100.0) as Duty;
+    debug_assert!(current_u8 <= 100, "ChannelStatus.duty must be 0..=100");
+    current_u8 == target_duty
 }
 
 fn fan_out_error(waiters: Vec<oneshot::Sender<Result<(), String>>>, message: &str) {
@@ -1644,6 +1955,11 @@ impl Repository for HwmonRepo {
         debug!(
             "Applying HWMON device: {device_uid} channel: {channel_name}; Resetting to Original fan control mode"
         );
+        // Reset hands duty control back to the device's auto
+        // mode, so the cached "last_known" no longer reflects
+        // reality. Drop the entry so the next preload reseeds it
+        // from a real read.
+        self.invalidate_duty_cache_entry(type_index, channel_name);
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -1666,6 +1982,11 @@ impl Repository for HwmonRepo {
     ) -> Result<()> {
         let (hwmon_driver, channel_info, type_index) =
             self.get_hwmon_info(device_uid, channel_name)?;
+        // Entering manual mode: until our first duty write the
+        // device may be sitting at whatever value the kernel /
+        // firmware had it at. Drop any stale cache entry so the
+        // next preload reads the real value.
+        self.invalidate_duty_cache_entry(type_index, channel_name);
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -1763,6 +2084,11 @@ impl Repository for HwmonRepo {
             .with_context(|| {
                 format!("Searching for temp channel name: {}", temp_source.temp_name)
             })?;
+        // Hardware auto curves take over duty control: the cached
+        // "last_known" no longer reflects what the device is
+        // actually outputting. Drop the entry so the next preload
+        // reseeds from a real read.
+        self.invalidate_duty_cache_entry(type_index, channel_name);
         let _device_permit = self
             .get_permit_with_write_timeout(type_index, &hwmon_driver.name, channel_name)
             .await?;
@@ -2682,10 +3008,13 @@ mod coalescer_tests {
             (Rc::new(RefCell::new(device)), Rc::clone(&driver_rc)),
         );
         let task = WriterTask {
+            type_index,
             mailbox: Rc::clone(repo.writers.get(&type_index).unwrap()),
             semaphore: Rc::clone(repo.device_permits.get(&type_index).unwrap()),
             driver: driver_rc,
             config: Rc::clone(&repo.config),
+            preloaded_statuses: Rc::clone(&repo.preloaded_statuses),
+            duty_cache: repo.duty_cache.get(&type_index).map(Rc::clone),
             shutdown: repo.shutdown_token.clone(),
             write_permit_timeout: repo.device_write_permit_timeout,
             delay_millis,
@@ -3219,6 +3548,573 @@ mod coalescer_tests {
                 avg < Duration::from_millis(5),
                 "average end-to-end {avg:?} regressed past 5 ms over {ITERATIONS} iterations"
             );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+}
+
+#[cfg(test)]
+mod slow_device_tests {
+    use super::*;
+    use crate::cc_fs;
+    use crate::device::DeviceInfo;
+    use crate::repositories::hwmon::apple_mac_smc::AppleMacSMC;
+    use crate::repositories::hwmon::fans::duty_to_pwm_value;
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    const TEST_TYPE_INDEX: TypeIndex = 1;
+
+    fn fan_channel(number: u8, name: &str, base: &Path) -> HwmonChannelInfo {
+        HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number,
+            name: name.to_string(),
+            caps: HwmonChannelCapabilities::FAN_WRITABLE
+                | HwmonChannelCapabilities::PWM
+                | HwmonChannelCapabilities::RPM,
+            pwm_path: Some(base.join(format!("pwm{number}"))),
+            rpm_path: Some(base.join(format!("fan{number}_input"))),
+            ..Default::default()
+        }
+    }
+
+    async fn seed_fan_files(base: &Path, fan_numbers: &[u8], pwm_value: u8) {
+        cc_fs::create_dir_all(base).await.unwrap();
+        for &n in fan_numbers {
+            cc_fs::write(
+                base.join(format!("pwm{n}")),
+                pwm_value.to_string().into_bytes(),
+            )
+            .await
+            .unwrap();
+            cc_fs::write(base.join(format!("fan{n}_input")), b"1200".to_vec())
+                .await
+                .unwrap();
+            cc_fs::write(base.join(format!("pwm{n}_enable")), b"1".to_vec())
+                .await
+                .unwrap();
+        }
+    }
+
+    fn empty_repo() -> HwmonRepo {
+        let config = Rc::new(Config::init_default_config().unwrap());
+        HwmonRepo::new(config, vec![])
+    }
+
+    /// Inserts a fake device + permit + writer mailbox + slow-flag
+    /// + duty cache. Spawns the writer task. Returns the device UID.
+    /// `slow == true` populates `slow_devices` and seeds `duty_cache`
+    /// with the supplied cached entries; `slow == false` skips both.
+    fn install_device(
+        repo: &mut HwmonRepo,
+        type_index: TypeIndex,
+        name: &str,
+        path: PathBuf,
+        channels: Vec<HwmonChannelInfo>,
+        slow: bool,
+        cached_entries: Vec<(&str, Duty, Instant)>,
+    ) -> UID {
+        let driver = HwmonDriverInfo {
+            name: name.to_string(),
+            path,
+            channels,
+            u_id: format!("test-uid-{name}-{type_index}"),
+            apple_smc: AppleMacSMC::default(),
+            ..Default::default()
+        };
+        let device = Device::new(
+            driver.name.clone(),
+            DeviceType::Hwmon,
+            type_index,
+            None,
+            DeviceInfo::default(),
+            Some(driver.u_id.clone()),
+            1.0,
+        );
+        let uid = device.uid.clone();
+        repo.device_permits
+            .insert(type_index, Rc::new(Semaphore::new(1)));
+        repo.writers.insert(
+            type_index,
+            Rc::new(WriterMailbox {
+                pending: RefCell::new(HashMap::with_capacity(PENDING_INITIAL_CAPACITY)),
+                notify: Notify::new(),
+            }),
+        );
+        repo.delay_logged.insert(type_index, Cell::new(0));
+        if slow {
+            repo.slow_devices.insert(type_index);
+            let mut entries = HashMap::new();
+            for (name, duty, verify_at) in cached_entries {
+                entries.insert(
+                    name.to_string(),
+                    DutyCacheEntry {
+                        last_known: duty,
+                        next_verify_at: verify_at,
+                    },
+                );
+            }
+            repo.duty_cache
+                .insert(type_index, Rc::new(RefCell::new(entries)));
+        }
+        let driver_rc = Rc::new(driver);
+        repo.devices.insert(
+            uid.clone(),
+            (Rc::new(RefCell::new(device)), Rc::clone(&driver_rc)),
+        );
+        let task = WriterTask {
+            type_index,
+            mailbox: Rc::clone(repo.writers.get(&type_index).unwrap()),
+            semaphore: Rc::clone(repo.device_permits.get(&type_index).unwrap()),
+            driver: driver_rc,
+            config: Rc::clone(&repo.config),
+            preloaded_statuses: Rc::clone(&repo.preloaded_statuses),
+            duty_cache: repo.duty_cache.get(&type_index).map(Rc::clone),
+            shutdown: repo.shutdown_token.clone(),
+            write_permit_timeout: repo.device_write_permit_timeout,
+            delay_millis: 0,
+        };
+        tokio::task::spawn_local(run_writer_task(task));
+        uid
+    }
+
+    fn enqueue_write(
+        repo: &Rc<HwmonRepo>,
+        uid: &UID,
+        channel: &str,
+        duty: u8,
+    ) -> tokio::task::JoinHandle<Result<()>> {
+        let repo = Rc::clone(repo);
+        let uid = uid.clone();
+        let channel = channel.to_string();
+        tokio::task::spawn_local(async move {
+            repo.apply_setting_speed_fixed(&uid, &channel, duty).await
+        })
+    }
+
+    fn seed_failsafe(repo: &HwmonRepo, type_index: TypeIndex, channel_statuses: &[ChannelStatus]) {
+        let (cf, tf) = failsafe::create_failsafe_data(channel_statuses, &[]);
+        if let Some(fsd) = FailsafeStatusData::new(cf, tf) {
+            repo.failsafe_statuses.borrow_mut().insert(type_index, fsd);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn round_robin_rotates_fan_start_index_per_tick() {
+        // Goal: successive preloads with N=3 fan channels insert
+        // them into preloaded_statuses in rotated order. The Vec
+        // is cleared between ticks because upsert_single_channel
+        // updates in place; we want to observe the iteration
+        // order, not the long-lived order.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1, 2, 3], 128).await;
+
+            let mut repo = empty_repo();
+            let _uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![
+                    fan_channel(1, "fan1", &dir),
+                    fan_channel(2, "fan2", &dir),
+                    fan_channel(3, "fan3", &dir),
+                ],
+                false,
+                vec![],
+            );
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+            let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+
+            let mut orders: Vec<Vec<String>> = Vec::with_capacity(3);
+            for tick in 0..3_u64 {
+                repo.preloaded_statuses
+                    .borrow_mut()
+                    .remove(&TEST_TYPE_INDEX);
+                repo.tick_count.set(tick);
+                repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+                let order: Vec<String> = repo
+                    .preloaded_statuses
+                    .borrow()
+                    .get(&TEST_TYPE_INDEX)
+                    .unwrap()
+                    .0
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect();
+                orders.push(order);
+            }
+            assert_eq!(orders[0], vec!["fan1", "fan2", "fan3"]);
+            assert_eq!(orders[1], vec!["fan2", "fan3", "fan1"]);
+            assert_eq!(orders[2], vec!["fan3", "fan1", "fan2"]);
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn slow_device_preload_uses_cached_duty_until_verify_due() {
+        // Goal: on a slow device, preload uses the cached duty
+        // (no PWM read) while next_verify_at is in the future,
+        // and triggers a real PWM read once it elapses.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            // pwm1 file says duty=255 (=> 100%); cache says 50.
+            // If preload uses the cache, we see 50 in the upsert.
+            // If it does a real read, we see 100.
+            seed_fan_files(&dir, &[1], 255).await;
+            let mut repo = empty_repo();
+            let future_verify = Instant::now() + Duration::from_secs(60);
+            let _uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                true,
+                vec![("fan1", 50, future_verify)],
+            );
+            seed_failsafe(&repo, TEST_TYPE_INDEX, &[]);
+            let driver = Rc::clone(&repo.devices.values().next().unwrap().1);
+
+            // Cache is fresh: cached duty 50 is used.
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            let cached_seen = repo
+                .preloaded_statuses
+                .borrow()
+                .get(&TEST_TYPE_INDEX)
+                .unwrap()
+                .0[0]
+                .duty;
+            assert_eq!(cached_seen, Some(50.0), "should use cached duty");
+
+            // Force verify by moving next_verify_at into the past;
+            // next preload reads the real value (100 from pwm=255).
+            {
+                let mut entries = repo.duty_cache[&TEST_TYPE_INDEX].borrow_mut();
+                let entry = entries.get_mut("fan1").unwrap();
+                entry.next_verify_at = Instant::now() - Duration::from_secs(1);
+            }
+            repo.preloaded_statuses
+                .borrow_mut()
+                .remove(&TEST_TYPE_INDEX);
+            repo.preload_device_statuses(TEST_TYPE_INDEX, &driver).await;
+            let real_seen = repo
+                .preloaded_statuses
+                .borrow()
+                .get(&TEST_TYPE_INDEX)
+                .unwrap()
+                .0[0]
+                .duty;
+            assert_eq!(
+                real_seen,
+                Some(100.0),
+                "should refresh from sysfs once verify is due"
+            );
+            // Cache also refreshed. Borrow scoped so it drops
+            // before the next await (clippy::await_holding_refcell_ref).
+            {
+                let entries = repo.duty_cache[&TEST_TYPE_INDEX].borrow();
+                assert_eq!(entries["fan1"].last_known, 100);
+            }
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn manual_control_invalidates_cache() {
+        // Goal: apply_setting_manual_control removes the cache
+        // entry so the next preload re-reads the real value
+        // rather than serving a stale cached duty.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 128).await;
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                true,
+                vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
+            );
+            assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
+
+            repo.apply_setting_manual_control(&uid, "fan1")
+                .await
+                .unwrap();
+
+            assert!(
+                repo.duty_cache[&TEST_TYPE_INDEX]
+                    .borrow()
+                    .get("fan1")
+                    .is_none(),
+                "manual_control must invalidate the cache entry"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn reset_invalidates_cache() {
+        // Goal: apply_setting_reset removes the cache entry —
+        // device returns to auto mode, so the cached "what we
+        // last set" no longer reflects the live duty.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 128).await;
+            // Channel needs pwm_enable_default for set_pwm_enable_to_default_or_auto.
+            let mut channel = fan_channel(1, "fan1", &dir);
+            channel.pwm_enable_default = Some(2);
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![channel],
+                true,
+                vec![("fan1", 50, Instant::now() + Duration::from_secs(60))],
+            );
+            assert_eq!(repo.duty_cache[&TEST_TYPE_INDEX].borrow().len(), 1);
+
+            repo.apply_setting_reset(&uid, "fan1").await.unwrap();
+
+            assert!(
+                repo.duty_cache[&TEST_TYPE_INDEX]
+                    .borrow()
+                    .get("fan1")
+                    .is_none(),
+                "reset must invalidate the cache entry"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn write_skips_when_preloaded_status_matches_target() {
+        // Goal: when preloaded_statuses already says duty=50 and
+        // the writer task is asked to write 50, the sysfs file
+        // is NOT touched. Observable: write the pwm file with a
+        // sentinel before the test runs; if the writer skips,
+        // the sentinel survives.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+            // Place a sentinel in pwm1 we'll detect afterwards.
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            );
+            // Seed preloaded_statuses with duty 50 for fan1.
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(50.0),
+                        rpm: Some(1200),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+
+            // Target equals current cached duty: should skip.
+            enqueue_write(&repo, &uid, "fan1", 50)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(
+                pwm.trim(),
+                "42",
+                "sentinel must remain: write should have been skipped"
+            );
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn write_proceeds_when_preloaded_status_differs() {
+        // Goal: when preloaded_statuses says 50 and target is 60,
+        // the writer issues a real sysfs write (so pwm1 reflects
+        // duty_to_pwm_value(60), not the sentinel).
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+            cc_fs::write(dir.join("pwm1"), b"42".to_vec())
+                .await
+                .unwrap();
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            );
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(50.0),
+                        rpm: Some(1200),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+
+            enqueue_write(&repo, &uid, "fan1", 60)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(pwm.trim(), duty_to_pwm_value(60).to_string());
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn write_proceeds_when_preloaded_status_missing() {
+        // Goal: empty preloaded_statuses is treated as "current
+        // duty unknown"; the writer falls through to the real
+        // sysfs write rather than spuriously skipping.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+
+            let mut repo = empty_repo();
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                false,
+                vec![],
+            );
+            // Intentionally do NOT seed preloaded_statuses.
+            let repo = Rc::new(repo);
+
+            enqueue_write(&repo, &uid, "fan1", 70)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let pwm = cc_fs::read_sysfs(&dir.join("pwm1")).await.unwrap();
+            assert_eq!(pwm.trim(), duty_to_pwm_value(70).to_string());
+
+            repo.shutdown_token.cancel();
+            let _ = cc_fs::remove_dir_all(&base).await;
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn slow_device_duty_cache_updated_on_write() {
+        // Goal: a successful write on a slow device updates the
+        // cache's last_known so the next preload tick can use it
+        // without hitting the slow PWM read again.
+        cc_fs::test_runtime(async {
+            let base = PathBuf::from(format!("/tmp/coolercontrol-tests-{}", Uuid::new_v4()));
+            let dir = base.join("dev");
+            seed_fan_files(&dir, &[1], 99).await;
+
+            let mut repo = empty_repo();
+            let future_verify = Instant::now() + Duration::from_secs(60);
+            let uid = install_device(
+                &mut repo,
+                TEST_TYPE_INDEX,
+                "dev",
+                dir.clone(),
+                vec![fan_channel(1, "fan1", &dir)],
+                true,
+                vec![("fan1", 30, future_verify)],
+            );
+            // preloaded_statuses says 30 (matches cache); ensure
+            // target differs so the write goes through.
+            repo.preloaded_statuses.borrow_mut().insert(
+                TEST_TYPE_INDEX,
+                (
+                    vec![ChannelStatus {
+                        name: "fan1".to_string(),
+                        duty: Some(30.0),
+                        rpm: Some(1200),
+                        ..Default::default()
+                    }],
+                    vec![],
+                ),
+            );
+            let repo = Rc::new(repo);
+
+            enqueue_write(&repo, &uid, "fan1", 80)
+                .await
+                .unwrap()
+                .unwrap();
+
+            // Borrow scoped so it drops before the next await
+            // (clippy::await_holding_refcell_ref).
+            {
+                let entries = repo.duty_cache[&TEST_TYPE_INDEX].borrow();
+                assert_eq!(
+                    entries["fan1"].last_known, 80,
+                    "slow-device cache must absorb the new write"
+                );
+                assert_eq!(
+                    entries["fan1"].next_verify_at, future_verify,
+                    "writes do not reset the verification clock"
+                );
+            }
 
             repo.shutdown_token.cancel();
             let _ = cc_fs::remove_dir_all(&base).await;

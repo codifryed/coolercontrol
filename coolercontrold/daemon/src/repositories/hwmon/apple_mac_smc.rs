@@ -389,6 +389,28 @@ impl AppleMacSMC {
         })
     }
 
+    /// Reads only the RPM portion of an Apple SMC fan channel.
+    /// Mirrors `fans::read_one_fan_rpm_only` for the slow-device
+    /// preload path; see that function's doc for the rationale.
+    pub async fn read_one_fan_rpm_only(
+        &self,
+        driver: &Rc<HwmonDriverInfo>,
+        channel: &HwmonChannelInfo,
+    ) -> Option<Option<u32>> {
+        debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+        if channel.caps.has_rpm().not() {
+            return Some(None);
+        }
+        let fan_rpm = fans::get_fan_rpm(
+            &driver.path,
+            &channel.number,
+            channel.rpm_path.as_ref(),
+            false,
+        )
+        .await?;
+        Some(Some(fan_rpm))
+    }
+
     /// Buffered wrapper over `stream_fan_statuses`, kept for tests.
     /// Production callers use `stream_fan_statuses` directly so fresh
     /// readings upsert into the preloaded cache per channel.
