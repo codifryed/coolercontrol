@@ -24,7 +24,7 @@ use crate::repositories::hwmon::hwmon_repo::{
     AutoCurveInfo, HwmonChannelCapabilities, HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo,
 };
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, log_enabled, warn};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -367,7 +367,7 @@ impl AppleMacSMC {
                 &driver.path,
                 &channel.number,
                 channel.rpm_path.as_ref(),
-                false,
+                log_enabled!(log::Level::Debug),
             )
             .await
         } else {
@@ -513,9 +513,14 @@ impl AppleMacSMC {
         channel_number: u8,
         rpm_path: Option<&PathBuf>,
     ) -> Option<f64> {
-        fans::get_fan_rpm(&self.path, &channel_number, rpm_path, false)
-            .await
-            .and_then(|rpm| self.interpolate_duty_from_rpm(channel_number, rpm))
+        fans::get_fan_rpm(
+            &self.path,
+            &channel_number,
+            rpm_path,
+            log_enabled!(log::Level::Debug),
+        )
+        .await
+        .and_then(|rpm| self.interpolate_duty_from_rpm(channel_number, rpm))
     }
 
     pub async fn set_fan_duty(&self, channel_number: u8, speed: Duty) -> Result<()> {

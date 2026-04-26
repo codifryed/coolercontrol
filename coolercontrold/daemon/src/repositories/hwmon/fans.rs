@@ -24,7 +24,7 @@ use crate::repositories::hwmon::hwmon_repo::{
 use crate::repositories::hwmon::{auto_curve, devices};
 use anyhow::{anyhow, Context, Result};
 use futures_util::future::{join3, join_all};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, log_enabled, trace, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
@@ -214,7 +214,7 @@ pub async fn read_one_fan_status(
             &driver.path,
             &channel.number,
             channel.pwm_path.as_ref(),
-            false,
+            log_enabled!(log::Level::Debug),
         )
         .await
     } else {
@@ -225,7 +225,7 @@ pub async fn read_one_fan_status(
             &driver.path,
             &channel.number,
             channel.rpm_path.as_ref(),
-            false,
+            log_enabled!(log::Level::Debug),
         )
         .await
     } else {
@@ -263,7 +263,7 @@ pub async fn read_one_fan_rpm_only(
         &driver.path,
         &channel.number,
         channel.rpm_path.as_ref(),
-        false,
+        log_enabled!(log::Level::Debug),
     )
     .await?;
     Some(Some(fan_rpm))
