@@ -468,6 +468,12 @@ pub struct HwmonRepo {
     /// so callers do not hang on `rx.await` past daemon exit.
     shutdown_token: CancellationToken,
 
+    /// Monotonic counter incremented once per `preload_statuses`
+    /// call. Used to rotate the per-channel-type starting index in
+    /// `preload_device_statuses` so no channel is permanently last
+    /// in the FIFO under sustained contention with other ticks.
+    tick_count: Cell<u64>,
+
     /// Used to avoid logging a device-delay warning more than once and not on startup
     delay_logged: HashMap<TypeIndex, Cell<u8>>,
 
@@ -510,6 +516,7 @@ impl HwmonRepo {
             device_permits: HashMap::new(),
             writers: HashMap::new(),
             shutdown_token: CancellationToken::new(),
+            tick_count: Cell::new(0),
             delay_logged: HashMap::new(),
             lc_hwmon_paths: lc_locations
                 .into_iter()
@@ -815,13 +822,31 @@ impl HwmonRepo {
         let drivetemp_suspended =
             drivetemp::is_suspended(driver.block_dev_path.as_ref(), self.drivetemp_ioctl_timeout)
                 .await;
+        let tick = self.tick_count.get();
         let mut any_permit_timeout = false;
         for ch_type in [
             HwmonChannelType::Power,
             HwmonChannelType::Temp,
             HwmonChannelType::Fan,
         ] {
-            for channel in driver.channels.iter().filter(|c| c.hwmon_type == ch_type) {
+            // Round-robin start index per channel type: the same
+            // tick rotates Power, Temp, and Fan independently
+            // because each type has its own channel count. This
+            // removes the FIFO bias under sustained slow-device
+            // contention (later-iteration channels were
+            // disproportionately timing out every tick).
+            let typed_channels: Vec<&HwmonChannelInfo> = driver
+                .channels
+                .iter()
+                .filter(|c| c.hwmon_type == ch_type)
+                .collect();
+            let n = typed_channels.len();
+            if n == 0 {
+                continue;
+            }
+            let start = (tick as usize) % n;
+            for offset in 0..n {
+                let channel = typed_channels[(start + offset) % n];
                 let acquired = self
                     .read_one_channel(type_index, driver, channel, &ch_type, drivetemp_suspended)
                     .await;
@@ -1498,6 +1523,10 @@ impl Repository for HwmonRepo {
 
     async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
+        // Bump once per tick so per-device round-robin start
+        // indices in preload_device_statuses advance together;
+        // wraps at u64::MAX which is unreachable in practice.
+        self.tick_count.set(self.tick_count.get().wrapping_add(1));
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
                 let type_index = device_lock.borrow().type_index;
