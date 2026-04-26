@@ -190,42 +190,59 @@ where
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
-        let fan_duty = if channel.caps.has_pwm() {
-            get_pwm_duty(
-                &driver.path,
-                &channel.number,
-                channel.pwm_path.as_ref(),
-                false,
-            )
-            .await
-        } else {
-            None
-        };
-        let fan_rpm = if channel.caps.has_rpm() {
-            get_fan_rpm(
-                &driver.path,
-                &channel.number,
-                channel.rpm_path.as_ref(),
-                false,
-            )
-            .await
-        } else {
-            None
-        };
-        let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
-        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
-        if expected_pwm_failed || expected_rpm_failed {
-            any_failure = true;
-            continue;
+        match read_one_fan_status(driver, channel).await {
+            Some(status) => sink(status),
+            None => any_failure = true,
         }
-        sink(ChannelStatus {
-            name: channel.name.clone(),
-            rpm: fan_rpm,
-            duty: fan_duty,
-            ..Default::default()
-        });
     }
     any_failure
+}
+
+/// Reads pwm-duty and fan-rpm for one channel and returns the
+/// resulting `ChannelStatus`, or `None` if all expected fields
+/// failed. Pulled out so callers that need per-channel permit
+/// handoff (e.g. the preload loop on a slow device) can acquire
+/// the device permit just for the duration of one read instead
+/// of holding it across the whole device's channel set.
+pub async fn read_one_fan_status(
+    driver: &HwmonDriverInfo,
+    channel: &HwmonChannelInfo,
+) -> Option<ChannelStatus> {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+    let fan_duty = if channel.caps.has_pwm() {
+        get_pwm_duty(
+            &driver.path,
+            &channel.number,
+            channel.pwm_path.as_ref(),
+            // todo: log error in debug mode
+            false,
+        )
+        .await
+    } else {
+        None
+    };
+    let fan_rpm = if channel.caps.has_rpm() {
+        get_fan_rpm(
+            &driver.path,
+            &channel.number,
+            channel.rpm_path.as_ref(),
+            false,
+        )
+        .await
+    } else {
+        None
+    };
+    let expected_pwm_failed = channel.caps.has_pwm() && fan_duty.is_none();
+    let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+    if expected_pwm_failed || expected_rpm_failed {
+        return None;
+    }
+    Some(ChannelStatus {
+        name: channel.name.clone(),
+        rpm: fan_rpm,
+        duty: fan_duty,
+        ..Default::default()
+    })
 }
 
 /// Buffered wrapper over `stream_fan_statuses` for callers that want

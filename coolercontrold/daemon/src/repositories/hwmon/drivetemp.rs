@@ -25,13 +25,16 @@
 use crate::cc_fs;
 use crate::device::TempStatus;
 use crate::repositories::hwmon::devices;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelType, HwmonDriverInfo};
+#[cfg(test)]
+use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
+use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType};
 use anyhow::{anyhow, Result};
 use log::{trace, warn};
 use nix::libc;
 use std::cmp::PartialEq;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -85,6 +88,10 @@ pub fn get_verified_block_device_path(path: &Path) -> Result<PathBuf> {
 /// Streams the default suspended temp value for every temp channel
 /// on the driver to `sink`. Used when the drive is in standby; the
 /// real temp file is not read because reading wakes the drive.
+/// Production now calls `default_suspended_temp_for` per channel
+/// under the device permit (see `hwmon_repo::preload_device_statuses`),
+/// so this whole-driver streamer is kept for tests only.
+#[cfg(test)]
 pub fn stream_default_suspended_temps<F>(driver: &Rc<HwmonDriverInfo>, mut sink: F)
 where
     F: FnMut(TempStatus),
@@ -93,10 +100,18 @@ where
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        sink(TempStatus {
-            name: channel.name.clone(),
-            temp: DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED,
-        });
+        sink(default_suspended_temp_for(channel));
+    }
+}
+
+/// Returns the default suspended temp value for a single channel.
+/// Per-channel callers (e.g. preload's per-channel permit loop)
+/// use this directly so they do not iterate the whole driver list.
+pub fn default_suspended_temp_for(channel: &HwmonChannelInfo) -> TempStatus {
+    debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Temp);
+    TempStatus {
+        name: channel.name.clone(),
+        temp: DEFAULT_TEMP_WHEN_DRIVE_IS_SUSPENDED,
     }
 }
 

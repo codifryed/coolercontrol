@@ -324,8 +324,10 @@ impl AppleMacSMC {
 
     /// Streams Apple SMC fan statuses to `sink` one channel at a time
     /// as each read completes, returning whether any expected field
-    /// read failed. Callers that want a buffered `Vec` should use
-    /// `extract_fan_statuses`.
+    /// read failed. Production now uses `read_one_fan_status` per
+    /// channel under the device permit (see `preload_device_statuses`),
+    /// so this and `extract_fan_statuses` are kept for tests only.
+    #[cfg(test)]
     pub async fn stream_fan_statuses<F>(&self, driver: &Rc<HwmonDriverInfo>, mut sink: F) -> bool
     where
         F: FnMut(ChannelStatus),
@@ -335,40 +337,56 @@ impl AppleMacSMC {
             if channel.hwmon_type != HwmonChannelType::Fan {
                 continue;
             }
-            let fan_duty = if channel.caps.is_apple_smc() {
-                self.get_fan_duty(channel.number, channel.rpm_path.as_ref())
-                    .await
-            } else {
-                None
-            };
-            let fan_rpm = if channel.caps.has_rpm() {
-                fans::get_fan_rpm(
-                    &driver.path,
-                    &channel.number,
-                    channel.rpm_path.as_ref(),
-                    false,
-                )
-                .await
-            } else {
-                None
-            };
-            let expected_duty_failed = channel.caps.is_apple_smc() && fan_duty.is_none();
-            let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
-            if expected_duty_failed || expected_rpm_failed {
-                // Omit the entry so the upstream failsafe overlay can
-                // substitute safe values. See the comment on
-                // `fans::stream_fan_statuses` for the rationale.
-                any_failure = true;
-                continue;
+            match self.read_one_fan_status(driver, channel).await {
+                Some(status) => sink(status),
+                None => any_failure = true,
             }
-            sink(ChannelStatus {
-                name: channel.name.clone(),
-                rpm: fan_rpm,
-                duty: fan_duty,
-                ..Default::default()
-            });
         }
         any_failure
+    }
+
+    /// Reads the Apple SMC duty + rpm for one channel and returns
+    /// the resulting `ChannelStatus`, or `None` if any expected
+    /// field failed. Mirror of `fans::read_one_fan_status` for the
+    /// Apple SMC code path; pulled out so the preload loop can
+    /// acquire the device permit per channel.
+    pub async fn read_one_fan_status(
+        &self,
+        driver: &Rc<HwmonDriverInfo>,
+        channel: &HwmonChannelInfo,
+    ) -> Option<ChannelStatus> {
+        debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Fan);
+        let fan_duty = if channel.caps.is_apple_smc() {
+            self.get_fan_duty(channel.number, channel.rpm_path.as_ref())
+                .await
+        } else {
+            None
+        };
+        let fan_rpm = if channel.caps.has_rpm() {
+            fans::get_fan_rpm(
+                &driver.path,
+                &channel.number,
+                channel.rpm_path.as_ref(),
+                false,
+            )
+            .await
+        } else {
+            None
+        };
+        let expected_duty_failed = channel.caps.is_apple_smc() && fan_duty.is_none();
+        let expected_rpm_failed = channel.caps.has_rpm() && fan_rpm.is_none();
+        if expected_duty_failed || expected_rpm_failed {
+            // Omit the entry so the upstream failsafe overlay can
+            // substitute safe values. See the comment on
+            // `fans::stream_fan_statuses` for the rationale.
+            return None;
+        }
+        Some(ChannelStatus {
+            name: channel.name.clone(),
+            rpm: fan_rpm,
+            duty: fan_duty,
+            ..Default::default()
+        })
     }
 
     /// Buffered wrapper over `stream_fan_statuses`, kept for tests.
