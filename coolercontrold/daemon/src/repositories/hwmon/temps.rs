@@ -26,7 +26,7 @@ use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
 use futures_util::future::join_all;
-use log::{debug, info, trace};
+use log::{debug, info, log_enabled, trace, warn};
 use regex::Regex;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
@@ -117,6 +117,14 @@ pub async fn read_one_temp_status(
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)
+        .inspect_err(|err| {
+            if log_enabled!(log::Level::Debug) {
+                warn!(
+                    "Could not read temp value at {} ; {err}",
+                    temp_path.display()
+                );
+            }
+        })
         .ok()
         .map(|temp| TempStatus {
             name: channel.name.clone(),

@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{trace, warn};
+use log::{log_enabled, trace, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
@@ -137,10 +137,19 @@ pub async fn read_one_power_status(
 ) -> Option<ChannelStatus> {
     debug_assert_eq!(channel.hwmon_type, HwmonChannelType::Power);
     // In the Power case, channel.name is the real name of the sysfs file.
-    cc_fs::read_sysfs(driver.path.join(&channel.name))
+    let power_path = driver.path.join(&channel.name);
+    cc_fs::read_sysfs(&power_path)
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
+        .inspect_err(|err| {
+            if log_enabled!(log::Level::Debug) {
+                warn!(
+                    "Could not read power value at {} ; {err}",
+                    power_path.display()
+                );
+            }
+        })
         .ok()
         .map(|watts| ChannelStatus {
             name: channel.name.clone(),
