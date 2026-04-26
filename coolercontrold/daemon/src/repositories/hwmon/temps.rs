@@ -117,6 +117,7 @@ pub async fn read_one_temp_status(
         .and_then(check_parsing_32)
         // hwmon temps are in millidegrees:
         .map(|degrees| f64::from(degrees) / 1000.0f64)
+        .inspect(|temp| debug!("hwmon read {}: {temp} C", temp_path.display()))
         .inspect_err(|err| {
             if log_enabled!(log::Level::Debug) {
                 warn!(

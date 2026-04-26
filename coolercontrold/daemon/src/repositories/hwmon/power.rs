@@ -20,7 +20,7 @@ use crate::cc_fs;
 use crate::device::{ChannelStatus, Watts};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use anyhow::{Context, Result};
-use log::{log_enabled, trace, warn};
+use log::{debug, log_enabled, trace, warn};
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
@@ -142,6 +142,7 @@ pub async fn read_one_power_status(
         .await
         .and_then(check_parsing_64)
         .map(convert_micro_watts_to_watts)
+        .inspect(|watts| debug!("hwmon read {}: {watts} W", power_path.display()))
         .inspect_err(|err| {
             if log_enabled!(log::Level::Debug) {
                 warn!(

@@ -363,7 +363,10 @@ async fn get_pwm_duty(
         .and_then(check_parsing_8)
         .map(pwm_value_to_duty)
     {
-        Ok(duty) => Some(duty),
+        Ok(duty) => {
+            debug!("hwmon read {}: {duty}% duty", pwm_path.display());
+            Some(duty)
+        }
         Err(err) => {
             // Known drivers that refuse pwmX reads in auto mode:
             //   - gpd_fan:  EOPNOTSUPP (io::ErrorKind::Unsupported)
@@ -409,6 +412,7 @@ pub async fn get_fan_rpm(
         .and_then(check_parsing_32)
         // Edge case where on spin-up the output is max value until it begins moving
         .map(|rpm| if rpm >= u32::from(u16::MAX) { 0 } else { rpm })
+        .inspect(|rpm| debug!("hwmon read {}: {rpm} RPM", fan_input_path.display()))
         .inspect_err(|err| {
             if log_error {
                 warn!(
